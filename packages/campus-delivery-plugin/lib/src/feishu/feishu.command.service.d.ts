@@ -1,6 +1,7 @@
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
 import { DeliveryStatsService } from '../delivery-stats.service';
 import { MerchantAdminService } from '../merchant-admin.service';
+import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
 export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'close' | 'open' | 'unknown';
@@ -26,17 +27,29 @@ export declare function requiredRole(cmd: FeishuCommandName): 'none' | 'operator
 export declare class FeishuCommandService {
     private cfg;
     private client;
+    private cards;
     private requestContextService;
     private connection;
     private merchant;
     private deliveryStats;
     private rate;
     private pendingReject;
-    constructor(cfg: FeishuConfigService, client: FeishuClient, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, deliveryStats: DeliveryStatsService);
+    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, deliveryStats: DeliveryStatsService);
     handleMessage(input: {
         chatId: string;
         openId: string;
         text: string;
+        /** 被引用消息（im.message.receive_v1 的 parent_id） */
+        parentId?: string;
+        /** 话题根消息（root_id），parent 是普通文本时兜底 */
+        rootId?: string;
+    }): Promise<void>;
+    /** 卡片按钮回调（card.action.trigger）：全部走同一条通道，不落库 */
+    handleCardAction(input: {
+        chatId: string;
+        openId: string;
+        value?: any;
+        messageId?: string;
     }): Promise<void>;
     renderBoard(chat: FeishuChatConfig): Promise<string>;
     renderDigest(chat: FeishuChatConfig): Promise<string>;
@@ -44,7 +57,16 @@ export declare class FeishuCommandService {
     private platformBoardText;
     private platformDigestText;
     private channelBoardText;
-    private orderStatusText;
+    private status;
+    statusText(code: string): Promise<string>;
+    private findExactOrder;
+    /** 模糊检索：今日订单按完整/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
+    private searchOrders;
+    /** 允许用尾号/楼栋操作：唯一命中才放行，多命中发候选卡片 */
+    private resolveOrderCode;
+    /** 引用消息 → 完整单号（卡片读按钮 value，文本读最长字母数字串） */
+    private quotedCodeOf;
+    private codeFromMessage;
     private collectIssues;
     /** 各环节超时判定（与调度兜底阈值保持一致，仅用于群里提示，不做任何改单） */
     private overdueOf;
@@ -63,5 +85,7 @@ export declare class FeishuCommandService {
     private isRateLimited;
     private cleanupConfirmations;
     private reply;
+    /** 优先回在订单话题里（引用卡片/线程），拿不到锚点消息时退回群消息 */
+    private replyInThread;
     private audit;
 }

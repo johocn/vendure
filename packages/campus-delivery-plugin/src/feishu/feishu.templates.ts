@@ -36,13 +36,13 @@ export function formatDateTime(at: number): string {
 export const HELP_TEXT = [
     '可用指令：',
     '待处理 — 各环节订单数量与待接单单号（管理群为跨店视图）',
-    '查 <单号> — 查询订单状态、骑手、异常与耗时',
+    '查 <尾号/楼栋> — 模糊检索，返回候选卡片，无需完整单号',
     '异常 — 异常未处置 + 超时风险订单清单',
-    '接单 <单号> — 商家接单',
-    '出餐 <单号> — 出餐完成（进入大厅/待推送）',
+    '接单 <尾号> / 出餐 <尾号> — 也可直接点订单卡片上的按钮',
     '拒单 <单号> <原因> — 需再次回复「确认拒单 <单号>」（店主）',
     '关店 <店铺> / 开店 <店铺> — 暂停或恢复接单（店主；店铺群可省略店铺）',
     '今日汇总 — 立即返回当天经营数据（管理群为全平台）',
+    '引用订单卡片回复「催单 / 联系骑手 / 已联系顾客」— 自动归档到本订单话题',
     '帮助 — 显示本清单',
 ].join('\n');
 
@@ -239,6 +239,14 @@ const DELIVERY_LABEL: Record<string, string> = {
     exception: '异常',
 };
 
+export function orderHallLabel(status?: string | null): string {
+    return status ? HALL_LABEL[status] ?? status : '未进入配送流程';
+}
+
+export function orderDeliveryLabel(status?: string | null): string | null {
+    return status ? DELIVERY_LABEL[status] ?? status : null;
+}
+
 export function formatOrderStatus(o: OrderStatusInput): string {
     const hall = o.hallStatus ? HALL_LABEL[o.hallStatus] ?? o.hallStatus : '未进入配送流程';
     const delivery = o.deliveryStatus ? DELIVERY_LABEL[o.deliveryStatus] ?? o.deliveryStatus : null;
@@ -256,3 +264,238 @@ export function formatOrderStatus(o: OrderStatusInput): string {
     lines.push(`下单时间：${formatDateTime(o.createdAt)}｜已过 ${Math.max(0, Math.round((o.at - o.createdAt) / 60_000))} 分钟`);
     return lines.join('\n');
 }
+
+// ---------- 交互卡片（零建表：短码只在展示层计算，完整单号只放在按钮 value 里） ----------
+
+/** 展示用短码：去掉非字母数字后取尾 4 位；完整单号始终在按钮 value / 引用回读中 */
+export function shortCode(code: string): string {
+    const clean = (code ?? '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    return clean.length <= 4 ? clean : clean.slice(-4);
+}
+
+function cardButton(text: string, value: Record<string, unknown>, type: 'default' | 'primary' | 'danger' = 'default') {
+    return { tag: 'button', text: { tag: 'plain_text', content: text }, type, value };
+}
+
+function cardNote(content: string) {
+    return { tag: 'note', elements: [{ tag: 'plain_text', content }] };
+}
+
+export function buildOrderCard(o: OrderStatusInput): Record<string, unknown> {
+    const short = shortCode(o.code);
+    const hall = orderHallLabel(o.hallStatus);
+    const delivery = orderDeliveryLabel(o.deliveryStatus);
+    const exception = o.deliveryStatus === 'exception' || o.hallStatus === 'exception';
+    const mins = Math.max(0, Math.round((o.at - o.createdAt) / 60_000));
+    const template = exception
+        ? 'red'
+        : o.hallStatus === 'pending_merchant'
+            ? 'orange'
+            : o.hallStatus === 'accepted'
+                ? 'blue'
+                : o.hallStatus
+                    ? 'turquoise'
+                    : 'grey';
+    const addr = [o.building, o.zone, o.slotText].filter(Boolean).join(' ') || '-';
+    const fields = [
+        { is_short: true, text: { tag: 'lark_md', content: `**送达**\n${addr}` } },
+        { is_short: true, text: { tag: 'lark_md', content: `**金额**\n¥${((o.total ?? 0) / 100).toFixed(2)}` } },
+        { is_short: true, text: { tag: 'lark_md', content: `**骑手**\n${o.riderName || '-'}` } },
+        { is_short: true, text: { tag: 'lark_md', content: `**已过**\n${mins} 分钟` } },
+    ];
+    const elements: any[] = [
+        { tag: 'div', text: { tag: 'lark_md', content: `**${hall}**${delivery ? `（${delivery}）` : ''}｜${o.orderState}` } },
+    ];
+    if (exception) {
+        const reported = o.exceptionMinutes != null ? `（已上报 ${o.exceptionMinutes} 分钟）` : '';
+        const detail = [o.exceptionType, o.exceptionNote].filter(Boolean).join('｜') || '异常未处置';
+        elements.push({ tag: 'div', text: { tag: 'lark_md', content: `**异常**：${detail}${reported}` } });
+    }
+    elements.push({ tag: 'div', fields });
+    const actions: any[] = [];
+    if (o.hallStatus === 'pending_merchant') actions.push(cardButton('接单', { a: 'accept', c: o.code }, 'primary'));
+    if (o.hallStatus === 'accepted') actions.push(cardButton('出餐', { a: 'cooking', c: o.code }, 'primary'));
+    actions.push(cardButton('状态', { a: 'status', c: o.code }));
+    actions.push(cardButton('快捷回复', { a: 'template', c: o.code }));
+    actions.push(cardButton('报异常', { a: 'exception', c: o.code }, 'danger'));
+    elements.push({ tag: 'action', actions });
+    elements.push(cardNote(`短码 ${short} · ${o.store}｜点击按钮或引用本卡回复，沟通自动归入本订单`));
+    return {
+        config: { wide_screen_mode: true, update_multi: true },
+        header: { template, title: { tag: 'plain_text', content: `订单 ${short} · ${o.store}` } },
+        elements,
+    };
+}
+
+export interface SearchRow {
+    code: string;
+    store: string;
+    hallStatus?: string | null;
+    building?: string | null;
+    createdAt: number;
+}
+
+/** 模糊检索结果卡片：每行一个候选订单，按钮 value 里带完整单号 */
+export function buildSearchCard(query: string, rows: SearchRow[]): Record<string, unknown> {
+    const elements: any[] = [];
+    if (!rows.length) {
+        elements.push({ tag: 'div', text: { tag: 'lark_md', content: `没有匹配「${query}」的订单。` } });
+    }
+    for (const r of rows.slice(0, 4)) {
+        const detail = [orderHallLabel(r.hallStatus), r.building, r.store, formatDateTime(r.createdAt)]
+            .filter(Boolean)
+            .join(' · ');
+        elements.push({ tag: 'div', text: { tag: 'lark_md', content: `**${shortCode(r.code)}**\n${detail}` } });
+        const actions: any[] = [cardButton('查看', { a: 'status', c: r.code })];
+        if (r.hallStatus === 'pending_merchant') actions.push(cardButton('接单', { a: 'accept', c: r.code }, 'primary'));
+        if (r.hallStatus === 'accepted') actions.push(cardButton('出餐', { a: 'cooking', c: r.code }, 'primary'));
+        elements.push({ tag: 'action', actions });
+    }
+    elements.push(cardNote('回复「查 <完整单号>」可精确检索；点按钮直接操作该订单'));
+    return {
+        config: { wide_screen_mode: true, update_multi: true },
+        header: { template: 'blue', title: { tag: 'plain_text', content: `检索「${query}」· ${rows.length} 条` } },
+        elements,
+    };
+}
+
+// ---------- 快捷回复模板（纯常量，零存储） ----------
+
+export interface ReplyTemplate {
+    id: string;
+    label: string;
+    aliases: string[];
+    text: string;
+}
+
+export const REPLY_TEMPLATES: ReplyTemplate[] = [
+    {
+        id: 'urge_accept',
+        label: '催接单',
+        aliases: ['催单', '催接单', '催商家接单'],
+        text: '【催单】订单 {code} 已等待较久，请尽快接单，谢谢。',
+    },
+    {
+        id: 'urge_cooking',
+        label: '催出餐',
+        aliases: ['催出餐', '催餐'],
+        text: '【催出餐】订单 {code} 顾客在等，请尽快出餐并交接骑手。',
+    },
+    {
+        id: 'contact_rider',
+        label: '联系骑手',
+        aliases: ['联系骑手', '骑手'],
+        text: '【联系骑手】订单 {code} 请骑手确认取货进度，并回复预计送达时间。',
+    },
+    {
+        id: 'address_change',
+        label: '顾客改址',
+        aliases: ['改址', '顾客改址'],
+        text: '【顾客改址】订单 {code} 顾客申请修改送达楼栋，请确认后按新地址配送。',
+    },
+    {
+        id: 'out_of_stock',
+        label: '缺货处理',
+        aliases: ['缺货', '缺货处理'],
+        text: '【缺货】订单 {code} 部分商品缺货，请尽快电话联系顾客确认替换或退款。',
+    },
+    {
+        id: 'refund_note',
+        label: '退款说明',
+        aliases: ['退款说明', '退款'],
+        text: '【退款说明】订单 {code} 已按顾客要求发起退款，请留意到账通知。',
+    },
+    {
+        id: 'contacted_customer',
+        label: '已联系顾客',
+        aliases: ['已联系顾客', '已联系'],
+        text: '【已联系顾客】订单 {code} 已与顾客沟通并确认处理方式。',
+    },
+    {
+        id: 'later',
+        label: '稍后处理',
+        aliases: ['稍后处理', '稍后'],
+        text: '【稍后处理】订单 {code} 已收到，预计稍后处理，请勿重复催单。',
+    },
+    {
+        id: 'escalate',
+        label: '转客服',
+        aliases: ['转客服', '客服'],
+        text: '【转客服】订单 {code} 情况复杂，已转平台客服跟进。',
+    },
+    {
+        id: 'resolved',
+        label: '已解决',
+        aliases: ['已解决', '解决'],
+        text: '【已解决】订单 {code} 问题已处理完毕。',
+    },
+];
+
+function normalizeText(raw: string): string {
+    return (raw ?? '')
+        .replace(/@_user_\d+/g, ' ')
+        .replace(/@\S+\s*/g, ' ')
+        .replace(/[\s，。！!？?、：:；;]/g, '')
+        .trim();
+}
+
+/** 引用订单卡片时，整段文本命中模板名/别名则视为快捷回复 */
+export function matchReplyTemplate(raw: string): ReplyTemplate | undefined {
+    const text = normalizeText(raw);
+    if (!text) return undefined;
+    return REPLY_TEMPLATES.find(t => [t.label, ...t.aliases].some(name => normalizeText(name) === text));
+}
+
+export function replyTemplateText(tpl: ReplyTemplate, code: string): string {
+    return tpl.text.replace(/\{code\}/g, code);
+}
+
+/** 快捷回复卡片：按钮 value 带完整单号与模板 id */
+export function buildTemplateCard(code: string): Record<string, unknown> {
+    const buttons = REPLY_TEMPLATES.map(t => cardButton(t.label, { a: 'tpl', c: code, t: t.id }));
+    const groups: any[] = [];
+    for (let i = 0; i < buttons.length; i += 5) {
+        groups.push({ tag: 'action', actions: buttons.slice(i, i + 5) });
+    }
+    return {
+        config: { wide_screen_mode: true, update_multi: true },
+        header: { template: 'grey', title: { tag: 'plain_text', content: `快捷回复 · ${shortCode(code)}` } },
+        elements: [
+            { tag: 'div', text: { tag: 'lark_md', content: '点击下方按钮，模板会直接回复到本订单话题。' } },
+            ...groups,
+            cardNote(`短码 ${shortCode(code)} · 也可引用订单卡片回复「催单 / 联系骑手 / 已联系顾客」`),
+        ],
+    };
+}
+
+/** 从卡片 JSON（按钮 value）里取完整单号 */
+export function extractOrderCodeFromCard(content?: string): string | undefined {
+    if (!content) return undefined;
+    let parsed: any;
+    try {
+        parsed = JSON.parse(content);
+    } catch {
+        return undefined;
+    }
+    const seen = new Set<any>();
+    const walk = (node: any, depth: number): string | undefined => {
+        if (!node || depth > 10 || typeof node !== 'object' || seen.has(node)) return undefined;
+        seen.add(node);
+        if (typeof node.c === 'string' && typeof node.a === 'string') return node.c;
+        const values = Array.isArray(node) ? node : Object.values(node);
+        for (const v of values) {
+            const hit = walk(v, depth + 1);
+            if (hit) return hit;
+        }
+        return undefined;
+    };
+    return walk(parsed, 0);
+}
+
+/** 从被引用的纯文本消息里兜底提取单号（形如「订单 A1234…」） */
+export function extractOrderCodeFromText(text?: string): string | undefined {
+    if (!text) return undefined;
+    const tokens = text.match(/[0-9A-Za-z]{6,}/g) ?? [];
+    return tokens.sort((a, b) => b.length - a.length)[0];
+}
+

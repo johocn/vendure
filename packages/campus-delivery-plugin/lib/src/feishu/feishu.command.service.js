@@ -20,6 +20,7 @@ const campus_fulfillment_config_entity_1 = require("../campus-fulfillment-config
 const campus_time_1 = require("../campus-time");
 const delivery_stats_service_1 = require("../delivery-stats.service");
 const merchant_admin_service_1 = require("../merchant-admin.service");
+const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
 const feishu_config_1 = require("./feishu.config");
 const feishu_templates_1 = require("./feishu.templates");
@@ -88,9 +89,10 @@ function requiredRole(cmd) {
  * 所有操作记审计日志，回复里不出现顾客手机号/详细地址。
  */
 let FeishuCommandService = class FeishuCommandService {
-    constructor(cfg, client, requestContextService, connection, merchant, deliveryStats) {
+    constructor(cfg, client, cards, requestContextService, connection, merchant, deliveryStats) {
         this.cfg = cfg;
         this.client = client;
+        this.cards = cards;
         this.requestContextService = requestContextService;
         this.connection = connection;
         this.merchant = merchant;
@@ -99,7 +101,7 @@ let FeishuCommandService = class FeishuCommandService {
         this.pendingReject = new Map();
     }
     async handleMessage(input) {
-        var _a;
+        var _a, _b;
         const { chatId, openId } = input;
         if (!this.client.enabled)
             return;
@@ -112,7 +114,25 @@ let FeishuCommandService = class FeishuCommandService {
             await this.reply(chatId, '操作过于频繁，请稍后再试。');
             return;
         }
+        // 引用绑定：被引用的是订单/候选卡片时，自动把完整单号带进本次沟通
+        const quotedCode = await this.quotedCodeOf(input.parentId, input.rootId);
+        if (quotedCode) {
+            const tpl = (0, feishu_templates_1.matchReplyTemplate)(input.text);
+            if (tpl) {
+                if (!this.isOperator(chat, openId)) {
+                    await this.audit(chatId, openId, { name: 'accept', orderCode: quotedCode }, 'denied-template');
+                    await this.reply(chatId, '无权限发送模板（需操作员白名单）。');
+                    return;
+                }
+                const ok = await this.replyInThread(chatId, (_a = input.parentId) !== null && _a !== void 0 ? _a : input.rootId, (0, feishu_templates_1.replyTemplateText)(tpl, quotedCode));
+                await this.audit(chatId, openId, { name: 'accept', orderCode: quotedCode }, `template:${tpl.id}:${ok ? 'ok' : 'failed'}`);
+                return;
+            }
+        }
         const cmd = parseCommand(input.text);
+        if (!cmd.orderCode && quotedCode && cmd.name !== 'unknown' && cmd.name !== 'help') {
+            cmd.orderCode = quotedCode;
+        }
         const role = requiredRole(cmd.name);
         if (role === 'operator' && !this.isOperator(chat, openId)) {
             await this.audit(chatId, openId, cmd, 'denied');
@@ -139,7 +159,7 @@ let FeishuCommandService = class FeishuCommandService {
                     await this.reply(chatId, await this.renderExceptions(chat));
                     break;
                 case 'status':
-                    await this.reply(chatId, await this.orderStatusText(cmd.orderCode));
+                    await this.status(chat, chatId, cmd);
                     break;
                 case 'accept':
                     await this.accept(chat, chatId, openId, cmd);
@@ -148,7 +168,7 @@ let FeishuCommandService = class FeishuCommandService {
                     await this.cooking(chat, chatId, openId, cmd);
                     break;
                 case 'reject':
-                    await this.stageReject(chatId, openId, cmd);
+                    await this.stageReject(chat, chatId, openId, cmd);
                     break;
                 case 'confirmReject':
                     await this.confirmReject(chat, chatId, openId, cmd);
@@ -157,12 +177,98 @@ let FeishuCommandService = class FeishuCommandService {
                 case 'open':
                     await this.setPaused(chat, chatId, openId, cmd.name === 'close', cmd.store);
                     break;
-                default:
-                    await this.reply(chatId, '未识别指令，发送「帮助」查看可用指令。');
+                default: {
+                    const tpl = (0, feishu_templates_1.matchReplyTemplate)(input.text);
+                    await this.reply(chatId, tpl
+                        ? `「${tpl.label}」需先引用订单卡片（或先「查 <尾号>」），再回复或点击模板。`
+                        : '未识别指令，发送「帮助」查看可用指令。');
+                }
             }
         }
         catch (e) {
-            const msg = (_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : String(e);
+            const msg = (_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : String(e);
+            await this.audit(chatId, openId, cmd, `error:${msg}`);
+            await this.reply(chatId, `执行失败：${msg}`);
+        }
+    }
+    /** 卡片按钮回调（card.action.trigger）：全部走同一条通道，不落库 */
+    async handleCardAction(input) {
+        var _a, _b, _c, _d;
+        const { chatId, openId, messageId } = input;
+        if (!this.client.enabled)
+            return;
+        const chat = this.cfg.chatOf(chatId);
+        if (!chat) {
+            core_1.Logger.warn(`未配置的群 chat_id=${chatId}，忽略卡片操作`, loggerCtx);
+            return;
+        }
+        const action = String((_b = (_a = input.value) === null || _a === void 0 ? void 0 : _a.a) !== null && _b !== void 0 ? _b : '');
+        const code = typeof ((_c = input.value) === null || _c === void 0 ? void 0 : _c.c) === 'string' ? input.value.c : undefined;
+        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'exception'];
+        if (!known.includes(action))
+            return;
+        const cmd = {
+            name: action === 'accept' ? 'accept' : action === 'cooking' ? 'cooking' : 'status',
+            orderCode: code,
+        };
+        if (!this.isOperator(chat, openId)) {
+            await this.audit(chatId, openId, cmd, 'denied-card');
+            await this.reply(chatId, '无权限操作（需操作员白名单）。');
+            return;
+        }
+        if (!code) {
+            await this.reply(chatId, '卡片缺少订单信息，请重新发送「查 <尾号>」。');
+            return;
+        }
+        try {
+            switch (action) {
+                case 'accept': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found)
+                        return;
+                    await this.merchant.acceptOrder(found.ctx, found.order.id);
+                    await this.audit(chatId, openId, cmd, 'ok-card');
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `已接单：${found.order.code}`);
+                    }
+                    break;
+                }
+                case 'cooking': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found)
+                        return;
+                    await this.merchant.cookingDone(found.ctx, found.order.id);
+                    await this.audit(chatId, openId, cmd, 'ok-card');
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `已出餐：${found.order.code}`);
+                    }
+                    break;
+                }
+                case 'status':
+                case 'view':
+                    await this.replyInThread(chatId, messageId, await this.statusText(code));
+                    break;
+                case 'template': {
+                    const card = (0, feishu_templates_1.buildTemplateCard)(code);
+                    const inThread = messageId ? await this.client.replyCard(messageId, card, true) : false;
+                    if (!inThread)
+                        await this.client.sendCard(chatId, card);
+                    break;
+                }
+                case 'tpl': {
+                    const tpl = feishu_templates_1.REPLY_TEMPLATES.find(t => { var _a, _b; return t.id === String((_b = (_a = input.value) === null || _a === void 0 ? void 0 : _a.t) !== null && _b !== void 0 ? _b : ''); });
+                    if (!tpl)
+                        return;
+                    await this.replyInThread(chatId, messageId, (0, feishu_templates_1.replyTemplateText)(tpl, code));
+                    break;
+                }
+                case 'exception':
+                    await this.replyInThread(chatId, messageId, `【异常上报】订单 ${code} 需跟进：可直接回复「催单 / 联系骑手 / 已联系顾客 / 转客服」选择处理方式；未处置订单会持续出现在「异常」清单。`);
+                    break;
+            }
+        }
+        catch (e) {
+            const msg = (_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : String(e);
             await this.audit(chatId, openId, cmd, `error:${msg}`);
             await this.reply(chatId, `执行失败：${msg}`);
         }
@@ -267,50 +373,141 @@ let FeishuCommandService = class FeishuCommandService {
         const stats = await this.deliveryStats.stats(ctx, 'today');
         return (0, feishu_templates_1.formatDigest)(Object.assign(Object.assign({}, board), { date: (0, campus_time_1.campusDayKey)(Date.now()), totalOrders: stats.kpis.totalOrders, onTimeRate: stats.kpis.onTimeRate, cancelled: await this.cancelledCount(ctx), exceptionCount: await this.exceptionCount(ctx) }));
     }
-    async orderStatusText(code) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
-        if (!code)
-            return '用法：查 <单号>，例如「查 A1234」。';
+    // ---------- 查单：精确 + 模糊（只读现有 order 表） ----------
+    async status(chat, chatId, cmd) {
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '用法：查 <尾号/楼栋/单号>，例如「查 1234」「查 3 栋」。');
+            return;
+        }
+        const exact = await this.findExactOrder(chat, cmd.orderCode);
+        if (exact) {
+            if (!(await this.cards.sendOrderCard(chatId, exact.code))) {
+                await this.reply(chatId, await this.statusText(exact.code));
+            }
+            return;
+        }
+        const rows = await this.searchOrders(chat, cmd.orderCode);
+        if (!rows.length) {
+            await this.reply(chatId, `未找到与「${cmd.orderCode}」匹配的今日订单。`);
+            return;
+        }
+        if (rows.length === 1) {
+            if (!(await this.cards.sendOrderCard(chatId, rows[0].code))) {
+                await this.reply(chatId, await this.statusText(rows[0].code));
+            }
+            return;
+        }
+        await this.client.sendCard(chatId, (0, feishu_templates_1.buildSearchCard)(cmd.orderCode, rows));
+    }
+    async statusText(code) {
+        const view = await this.cards.loadOrderView(code);
+        return view ? (0, feishu_templates_1.formatOrderStatus)(view) : `未找到订单：${code}`;
+    }
+    async findExactOrder(chat, code) {
+        var _a;
         const order = await this.connection.rawConnection.getRepository(core_1.Order).findOne({
             where: { code },
             relations: ['channels'],
         });
         if (!order)
-            return `未找到订单：${code}`;
-        const cf = order.customFields;
-        let building = null;
-        if (cf.buildingId) {
-            const b = await this.connection.rawConnection.getRepository(campus_building_entity_1.CampusBuilding).findOne({
-                where: { id: String(cf.buildingId) },
-            });
-            building = (_a = b === null || b === void 0 ? void 0 : b.name) !== null && _a !== void 0 ? _a : null;
+            return null;
+        if (chat.scope === 'platform')
+            return order;
+        return ((_a = order.channels) === null || _a === void 0 ? void 0 : _a.some(c => c.token === chat.channel)) ? order : null;
+    }
+    /** 模糊检索：今日订单按完整/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
+    async searchOrders(chat, query) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const needle = (query !== null && query !== void 0 ? query : '').trim();
+        if (!needle)
+            return [];
+        const qb = this.connection.rawConnection.getRepository(core_1.Order).createQueryBuilder('order')
+            .leftJoinAndSelect('order.channels', 'channel')
+            .where('order.createdAt >= :start', { start: new Date((0, campus_time_1.startOfCampusDay)(Date.now())) })
+            .orderBy('order.createdAt', 'DESC')
+            .take(200);
+        if (chat.scope !== 'platform' && chat.channel) {
+            qb.andWhere('channel.token = :token', { token: chat.channel });
         }
-        let riderName = null;
-        if (cf.deliveryStaffId) {
-            const customer = await this.connection.rawConnection.getRepository('Customer').findOne({
-                where: { id: Number(cf.deliveryStaffId) },
+        const orders = await qb.getMany();
+        const buildingIds = [...new Set(orders.map(o => { var _a; return (_a = o.customFields) === null || _a === void 0 ? void 0 : _a.buildingId; }).filter(Boolean).map(String))];
+        const buildings = buildingIds.length
+            ? await this.connection.rawConnection.getRepository(campus_building_entity_1.CampusBuilding).find({
+                where: { id: (0, typeorm_1.In)(buildingIds) },
+            })
+            : [];
+        const nameById = new Map(buildings.map(b => [String(b.id), b.name]));
+        const upper = needle.toUpperCase();
+        const rows = [];
+        for (const o of orders) {
+            const cf = o.customFields;
+            const building = (_b = nameById.get(String((_a = cf === null || cf === void 0 ? void 0 : cf.buildingId) !== null && _a !== void 0 ? _a : ''))) !== null && _b !== void 0 ? _b : null;
+            const hit = o.code.toUpperCase().includes(upper) || (building ? building.includes(needle) : false);
+            if (!hit)
+                continue;
+            rows.push({
+                code: o.code,
+                store: (_f = (_e = (_d = (_c = o.channels) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.code) !== null && _e !== void 0 ? _e : chat.channel) !== null && _f !== void 0 ? _f : '',
+                hallStatus: (_g = cf === null || cf === void 0 ? void 0 : cf.hallStatus) !== null && _g !== void 0 ? _g : null,
+                building,
+                createdAt: new Date(o.createdAt).getTime(),
             });
-            riderName = (_c = (_b = customer === null || customer === void 0 ? void 0 : customer.customFields) === null || _b === void 0 ? void 0 : _b.riderRealName) !== null && _c !== void 0 ? _c : null;
+            if (rows.length >= 5)
+                break;
         }
-        const reportedAt = cf.exceptionReportedAt ? new Date(cf.exceptionReportedAt).getTime() : NaN;
-        return (0, feishu_templates_1.formatOrderStatus)({
-            code: order.code,
-            store: (_f = (_e = (_d = order.channels) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.code) !== null && _f !== void 0 ? _f : '',
-            orderState: String(order.state),
-            hallStatus: (_g = cf.hallStatus) !== null && _g !== void 0 ? _g : null,
-            deliveryStatus: (_h = cf.deliveryStatus) !== null && _h !== void 0 ? _h : null,
-            route: (_j = cf.fulfillmentRoute) !== null && _j !== void 0 ? _j : null,
-            riderName,
-            building,
-            zone: (_k = cf.campusZone) !== null && _k !== void 0 ? _k : null,
-            slotText: (_l = cf.deliverySlotText) !== null && _l !== void 0 ? _l : null,
-            total: order.total,
-            exceptionType: (_m = cf.exceptionType) !== null && _m !== void 0 ? _m : null,
-            exceptionNote: (_o = cf.exceptionNote) !== null && _o !== void 0 ? _o : null,
-            exceptionMinutes: Number.isNaN(reportedAt) ? null : Math.round((Date.now() - reportedAt) / 60000),
-            createdAt: new Date(order.createdAt).getTime(),
-            at: Date.now(),
-        });
+        return rows;
+    }
+    /** 允许用尾号/楼栋操作：唯一命中才放行，多命中发候选卡片 */
+    async resolveOrderCode(chat, chatId, input) {
+        if (!input)
+            return null;
+        const exact = await this.findExactOrder(chat, input);
+        if (exact)
+            return exact.code;
+        const rows = await this.searchOrders(chat, input);
+        if (rows.length === 1)
+            return rows[0].code;
+        if (!rows.length) {
+            await this.reply(chatId, `未找到与「${input}」匹配的订单。`);
+            return null;
+        }
+        await this.client.sendCard(chatId, (0, feishu_templates_1.buildSearchCard)(input, rows));
+        return null;
+    }
+    /** 引用消息 → 完整单号（卡片读按钮 value，文本读最长字母数字串） */
+    async quotedCodeOf(parentId, rootId) {
+        if (!parentId && !rootId)
+            return undefined;
+        const direct = parentId ? await this.codeFromMessage(parentId) : undefined;
+        if (direct)
+            return direct;
+        if (rootId && rootId !== parentId)
+            return this.codeFromMessage(rootId);
+        return undefined;
+    }
+    async codeFromMessage(messageId) {
+        var _a;
+        const msg = await this.client.getMessage(messageId);
+        if (!msg)
+            return undefined;
+        const content = (_a = msg.body) === null || _a === void 0 ? void 0 : _a.content;
+        const fromCard = (0, feishu_templates_1.extractOrderCodeFromCard)(content);
+        if (fromCard)
+            return fromCard;
+        let text;
+        try {
+            const parsed = JSON.parse(content !== null && content !== void 0 ? content : '');
+            text = typeof (parsed === null || parsed === void 0 ? void 0 : parsed.text) === 'string' ? parsed.text : undefined;
+        }
+        catch (_b) {
+            text = undefined;
+        }
+        const candidate = (0, feishu_templates_1.extractOrderCodeFromText)(text);
+        if (!candidate)
+            return undefined;
+        // 文本兜底必须命中真实订单，避免把普通长串误当成单号
+        const exists = await this.connection.rawConnection.getRepository(core_1.Order).findOne({ where: { code: candidate } });
+        return exists === null || exists === void 0 ? void 0 : exists.code;
     }
     // ---------- 异常/超时清单 ----------
     async collectIssues(targets) {
@@ -395,30 +592,47 @@ let FeishuCommandService = class FeishuCommandService {
     }
     // ---------- 写操作 ----------
     async accept(chat, chatId, openId, cmd) {
-        const found = await this.requireOrder(chat, chatId, cmd.orderCode);
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '请带单号，例如「接单 A1234」或直接点卡片按钮。');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
+        const found = await this.requireOrder(chat, chatId, code);
         if (!found)
             return;
         await this.merchant.acceptOrder(found.ctx, found.order.id);
-        await this.audit(chatId, openId, cmd, 'ok');
+        await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
         await this.reply(chatId, `已接单：${found.order.code}`);
     }
     async cooking(chat, chatId, openId, cmd) {
-        const found = await this.requireOrder(chat, chatId, cmd.orderCode);
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '请带单号，例如「出餐 A1234」或直接点卡片按钮。');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
+        const found = await this.requireOrder(chat, chatId, code);
         if (!found)
             return;
         await this.merchant.cookingDone(found.ctx, found.order.id);
-        await this.audit(chatId, openId, cmd, 'ok');
+        await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
         await this.reply(chatId, `已出餐：${found.order.code}`);
     }
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
-    async stageReject(chatId, openId, cmd) {
+    async stageReject(chat, chatId, openId, cmd) {
         if (!cmd.orderCode) {
             await this.reply(chatId, '用法：拒单 <单号> <原因>');
             return;
         }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
         this.cleanupConfirmations();
-        this.pendingReject.set(`${chatId}:${cmd.orderCode}`, { reason: cmd.reason, openId, at: Date.now() });
-        await this.reply(chatId, `即将拒单 ${cmd.orderCode}（全额退款并取消订单）。确认请回复「确认拒单 ${cmd.orderCode}」。`);
+        this.pendingReject.set(`${chatId}:${code}`, { reason: cmd.reason, openId, at: Date.now() });
+        await this.reply(chatId, `即将拒单 ${code}（全额退款并取消订单）。确认请回复「确认拒单 ${code}」。`);
     }
     async confirmReject(chat, chatId, openId, cmd) {
         var _a;
@@ -426,19 +640,22 @@ let FeishuCommandService = class FeishuCommandService {
             await this.reply(chatId, '用法：确认拒单 <单号>');
             return;
         }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
         this.cleanupConfirmations();
-        const key = `${chatId}:${cmd.orderCode}`;
+        const key = `${chatId}:${code}`;
         const pending = this.pendingReject.get(key);
         if (!pending || pending.openId !== openId) {
             await this.reply(chatId, '确认已过期，请重新发送「拒单 <单号> <原因>」。');
             return;
         }
         this.pendingReject.delete(key);
-        const found = await this.requireOrder(chat, chatId, cmd.orderCode);
+        const found = await this.requireOrder(chat, chatId, code);
         if (!found)
             return;
         await this.merchant.rejectOrder(found.ctx, found.order.id, pending.reason || '飞书指令拒单');
-        await this.audit(chatId, openId, cmd, `ok reason=${(_a = pending.reason) !== null && _a !== void 0 ? _a : ''}`);
+        await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), `ok reason=${(_a = pending.reason) !== null && _a !== void 0 ? _a : ''}`);
         await this.reply(chatId, `已拒单并退款：${found.order.code}`);
     }
     async setPaused(chat, chatId, openId, paused, store) {
@@ -534,6 +751,20 @@ let FeishuCommandService = class FeishuCommandService {
     async reply(chatId, text) {
         await this.client.sendToChat(chatId, text);
     }
+    /** 优先回在订单话题里（引用卡片/线程），拿不到锚点消息时退回群消息 */
+    async replyInThread(chatId, anchorId, text) {
+        var _a;
+        if (anchorId) {
+            try {
+                if (await this.client.replyToMessage(anchorId, text, true))
+                    return true;
+            }
+            catch (e) {
+                core_1.Logger.warn(`飞书线程回复失败 anchor=${anchorId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            }
+        }
+        return this.client.sendToChat(chatId, text);
+    }
     async audit(chatId, openId, cmd, result) {
         var _a;
         core_1.Logger.info(`[FeishuAudit] chat=${chatId} open_id=${openId} cmd=${cmd.name} order=${(_a = cmd.orderCode) !== null && _a !== void 0 ? _a : '-'} result=${result}`, loggerCtx);
@@ -544,6 +775,7 @@ exports.FeishuCommandService = FeishuCommandService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [feishu_config_1.FeishuConfigService,
         feishu_client_1.FeishuClient,
+        feishu_card_service_1.FeishuCardService,
         core_1.RequestContextService,
         core_1.TransactionalConnection,
         merchant_admin_service_1.MerchantAdminService,

@@ -30,23 +30,30 @@ export class FeishuEventService {
         if (!payload) return { status: 400, body: { error: 'invalid payload' } };
 
         const token = payload?.header?.token ?? payload?.token;
-        if (this.cfg.settings.verifyToken && token !== this.cfg.settings.verifyToken) {
+        // fail closed：未配置 verifyToken 时任何人都能伪造回调，直接拒绝（含 challenge，
+        // 配置 URL 验证必须同时配置 FEISHU_VERIFY_TOKEN）
+        if (!this.cfg.settings.verifyToken) {
+            Logger.error('未配置 FEISHU_VERIFY_TOKEN，拒绝飞书回调', loggerCtx);
+            return { status: 403, body: {} };
+        }
+        if (token !== this.cfg.settings.verifyToken) {
             Logger.warn('飞书回调 token 校验失败', loggerCtx);
             return { status: 403, body: {} };
         }
         if (payload?.challenge) {
             return { status: 200, body: { challenge: payload.challenge } };
         }
-        if (this.cfg.settings.verifyToken && !token) {
-            Logger.warn('飞书回调缺少 token', loggerCtx);
-            return { status: 403, body: {} };
-        }
 
         const eventId = payload?.header?.event_id as string | undefined;
         if (eventId && this.isDuplicate(eventId)) {
             return { status: 200, body: {} };
         }
-        if (payload?.header?.event_type !== 'im.message.receive_v1') {
+
+        const eventType = payload?.header?.event_type as string | undefined;
+        if (eventType === 'card.action.trigger') {
+            return this.handleCardAction(payload.event ?? {});
+        }
+        if (eventType !== 'im.message.receive_v1') {
             return { status: 200, body: {} };
         }
 
@@ -65,9 +72,29 @@ export class FeishuEventService {
         const openId = event.sender?.sender_id?.open_id as string | undefined;
         if (!chatId || !openId || !text.trim()) return { status: 200, body: {} };
 
-        void this.command.handleMessage({ chatId, openId, text }).catch(e =>
-            Logger.error(`飞书指令处理失败 chat=${chatId}: ${e?.message ?? e}`, loggerCtx),
-        );
+        void this.command
+            .handleMessage({
+                chatId,
+                openId,
+                text,
+                parentId: message.parent_id as string | undefined,
+                rootId: message.root_id as string | undefined,
+            })
+            .catch(e => Logger.error(`飞书指令处理失败 chat=${chatId}: ${e?.message ?? e}`, loggerCtx));
+        return { status: 200, body: {} };
+    }
+
+    /** 卡片按钮回调：value 里带着完整单号，直接转指令服务（先 200 再异步执行） */
+    private handleCardAction(event: any): FeishuEventResult {
+        const chatId = event.context?.open_chat_id ?? event.open_chat_id;
+        const openId = event.operator?.open_id ?? event.open_id;
+        const messageId = event.context?.open_message_id ?? event.open_message_id;
+        const value = event.action?.value;
+        if (!chatId || !openId || !value) return { status: 200, body: {} };
+
+        void this.command
+            .handleCardAction({ chatId, openId, value, messageId })
+            .catch(e => Logger.error(`飞书卡片操作失败 chat=${chatId}: ${e?.message ?? e}`, loggerCtx));
         return { status: 200, body: {} };
     }
 

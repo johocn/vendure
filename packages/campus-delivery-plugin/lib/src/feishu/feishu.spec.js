@@ -246,4 +246,78 @@ function encrypt(plain, encryptKey) {
         (0, vitest_1.expect)((0, feishu_digest_service_1.campusHhmm)(Date.UTC(2026, 0, 1, 16, 5))).toBe('00:05');
     });
 });
+(0, vitest_1.describe)('feishu 零建表卡片', () => {
+    const view = {
+        code: 'CAMPUS202610240001',
+        store: 'canteen-a',
+        orderState: 'ArrangingPayment',
+        hallStatus: 'pending_merchant',
+        deliveryStatus: null,
+        route: null,
+        riderName: null,
+        building: '3 号宿舍楼',
+        zone: '北区',
+        slotText: '12:00-12:30',
+        total: 2500,
+        exceptionType: null,
+        exceptionNote: null,
+        exceptionMinutes: null,
+        createdAt: Date.UTC(2026, 0, 2, 1, 0),
+        at: Date.UTC(2026, 0, 2, 1, 6),
+    };
+    (0, vitest_1.it)('短码只取尾 4 位且大写，完整单号不进标题', () => {
+        (0, vitest_1.expect)((0, feishu_templates_1.shortCode)('CAMPUS202610240001')).toBe('0001');
+        (0, vitest_1.expect)((0, feishu_templates_1.shortCode)('ab-12cd')).toBe('12CD');
+        const card = (0, feishu_templates_1.buildOrderCard)(view);
+        (0, vitest_1.expect)(card.header.title.content).toContain('0001');
+        (0, vitest_1.expect)(card.header.title.content).not.toContain('CAMPUS202610240001');
+        (0, vitest_1.expect)(JSON.stringify(card)).toContain('CAMPUS202610240001');
+    });
+    (0, vitest_1.it)('待接单卡片带「接单」按钮，value 携带完整单号', () => {
+        const card = (0, feishu_templates_1.buildOrderCard)(view);
+        const actions = card.elements.find((e) => e.tag === 'action');
+        const accept = actions.actions.find((b) => b.text.content === '接单');
+        (0, vitest_1.expect)(accept.value).toEqual({ a: 'accept', c: 'CAMPUS202610240001' });
+        (0, vitest_1.expect)(actions.actions.map((b) => b.text.content)).toContain('快捷回复');
+    });
+    (0, vitest_1.it)('异常订单卡片用红色标题并展示异常原因', () => {
+        const card = (0, feishu_templates_1.buildOrderCard)(Object.assign(Object.assign({}, view), { hallStatus: 'exception', deliveryStatus: 'exception', exceptionType: '骑手失联', exceptionNote: '联系不上', exceptionMinutes: 12 }));
+        (0, vitest_1.expect)(card.header.template).toBe('red');
+        (0, vitest_1.expect)(JSON.stringify(card)).toContain('骑手失联');
+    });
+    (0, vitest_1.it)('检索卡片最多 4 行且按钮带完整单号', () => {
+        const rows = Array.from({ length: 8 }, (_, i) => ({
+            code: `CAMPUS2026102400${i}`,
+            store: 'canteen-a',
+            hallStatus: 'pending_merchant',
+            building: '3 号宿舍楼',
+            createdAt: Date.UTC(2026, 0, 2, 1, i),
+        }));
+        const card = (0, feishu_templates_1.buildSearchCard)('3 号', rows);
+        (0, vitest_1.expect)(card.header.title.content).toContain('8 条');
+        (0, vitest_1.expect)(card.elements.filter((e) => e.tag === 'action').length).toBe(4);
+        (0, vitest_1.expect)(JSON.stringify(card)).toContain('CAMPUS20261024003');
+        (0, vitest_1.expect)(JSON.stringify(card)).not.toContain('CAMPUS20261024004');
+    });
+    (0, vitest_1.it)('卡片 JSON 可回读出完整单号（引用/话题绑定）', () => {
+        const card = (0, feishu_templates_1.buildOrderCard)(view);
+        const content = JSON.stringify(card);
+        (0, vitest_1.expect)((0, feishu_templates_1.extractOrderCodeFromCard)(content)).toBe('CAMPUS202610240001');
+        (0, vitest_1.expect)((0, feishu_templates_1.extractOrderCodeFromCard)('not json')).toBeUndefined();
+        (0, vitest_1.expect)((0, feishu_templates_1.extractOrderCodeFromText)('订单 CAMPUS202610240001 请尽快接单')).toBe('CAMPUS202610240001');
+    });
+    (0, vitest_1.it)('引用卡片回复模板名/别名可匹配，文本带完整单号', () => {
+        var _a;
+        const tpl = (0, feishu_templates_1.matchReplyTemplate)('催单');
+        (0, vitest_1.expect)(tpl === null || tpl === void 0 ? void 0 : tpl.id).toBe('urge_accept');
+        (0, vitest_1.expect)((_a = (0, feishu_templates_1.matchReplyTemplate)('  已联系顾客！ ')) === null || _a === void 0 ? void 0 : _a.id).toBe('contacted_customer');
+        (0, vitest_1.expect)((0, feishu_templates_1.matchReplyTemplate)('随便说点什么')).toBeUndefined();
+        (0, vitest_1.expect)((0, feishu_templates_1.replyTemplateText)(tpl, 'A1')).toContain('订单 A1');
+        const card = (0, feishu_templates_1.buildTemplateCard)('A1');
+        const values = card.elements.filter((e) => e.tag === 'action')
+            .flatMap((e) => e.actions.map((b) => b.value));
+        (0, vitest_1.expect)(values.length).toBe(feishu_templates_1.REPLY_TEMPLATES.length);
+        (0, vitest_1.expect)(values[0]).toEqual({ a: 'tpl', c: 'A1', t: 'urge_accept' });
+    });
+});
 //# sourceMappingURL=feishu.spec.js.map

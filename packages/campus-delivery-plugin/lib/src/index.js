@@ -41,6 +41,7 @@ __exportStar(require("./feishu/feishu.config"), exports);
 __exportStar(require("./feishu/feishu.crypto"), exports);
 __exportStar(require("./feishu/feishu.templates"), exports);
 __exportStar(require("./feishu/feishu.client"), exports);
+__exportStar(require("./feishu/feishu-card.service"), exports);
 __exportStar(require("./feishu/feishu-notify.service"), exports);
 __exportStar(require("./feishu/feishu.command.service"), exports);
 __exportStar(require("./feishu/feishu.digest.service"), exports);

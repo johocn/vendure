@@ -25,6 +25,7 @@ export * from './feishu/feishu.config';
 export * from './feishu/feishu.crypto';
 export * from './feishu/feishu.templates';
 export * from './feishu/feishu.client';
+export * from './feishu/feishu-card.service';
 export * from './feishu/feishu-notify.service';
 export * from './feishu/feishu.command.service';
 export * from './feishu/feishu.digest.service';

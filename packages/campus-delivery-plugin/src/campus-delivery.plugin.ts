@@ -38,6 +38,7 @@ import { P4OpsHardeningMigration } from './migrations/p4-ops-hardening';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
+import { FeishuCardService } from './feishu/feishu-card.service';
 import { FeishuClient } from './feishu/feishu.client';
 import { FeishuCommandService } from './feishu/feishu.command.service';
 import { FeishuConfigService } from './feishu/feishu.config';
@@ -132,6 +133,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         PaymentTimeoutAdminService,
         FeishuConfigService,
         FeishuClient,
+        FeishuCardService,
         FeishuNotifyService,
         FeishuCommandService,
         FeishuEventService,
@@ -1189,7 +1191,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
             void this.injector.get(FeishuNotifyService).onAdminNotify(event);
         });
-        // 每日经营汇总（UTC+8 定点，advisory lock + 落库标记防重）
+        // 每日经营汇总（UTC+8 定点，advisory lock + 群消息回读防重，零建表）
         this.injector.get(FeishuDigestService).start();
     }
 

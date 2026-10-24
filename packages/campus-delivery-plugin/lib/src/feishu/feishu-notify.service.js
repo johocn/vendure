@@ -12,25 +12,41 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FeishuNotifyService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
-const feishu_config_1 = require("./feishu.config");
 const feishu_templates_1 = require("./feishu.templates");
 const loggerCtx = 'Feishu';
 const DEDUPE_MS = 5 * 60000;
 /**
  * 管理侧外发：订阅 notification-plugin 的 AdminNotifyEvent，把新订单/售后推到飞书群；
+ * 新订单优先发订单卡片（尾号 + 按钮 + 话题归集），卡片失败再降级为文本；
  * 外卖插件内部的异常/超时也走 push() 复用同一条通道。
  * 未启用、未配置、发送失败一律静默降级，绝不阻塞订单主流程。
  */
 let FeishuNotifyService = class FeishuNotifyService {
-    constructor(cfg, client) {
-        this.cfg = cfg;
+    constructor(client, cards) {
         this.client = client;
+        this.cards = cards;
         this.recent = new Map();
     }
     async onAdminNotify(event) {
+        var _a;
         if (!this.client.enabled)
             return;
+        const dedupeKey = event.orderCode || event.orderId != null
+            ? `${event.scene}:${event.orderId != null ? String(event.orderId) : event.orderCode}`
+            : undefined;
+        if (dedupeKey && this.isDuplicate(dedupeKey))
+            return;
+        if (event.scene === 'shop_new_order' && event.orderCode) {
+            try {
+                if (await this.cards.broadcastOrderCard(event.orderCode))
+                    return;
+            }
+            catch (e) {
+                core_1.Logger.warn(`新订单卡片发送失败，降级文本：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            }
+        }
         const link = event.link
             ? `${process.env.ADMIN_UI_BASE_URL || 'https://e.joho.cn'}${event.link.startsWith('/') ? '' : '/'}${event.link}`
             : undefined;
@@ -42,15 +58,21 @@ let FeishuNotifyService = class FeishuNotifyService {
             link,
             at: Date.now(),
         });
-        await this.push(event.scene, event.orderId != null ? String(event.orderId) : event.orderCode, text);
+        await this.deliver(text, event.scene);
     }
     /** 内部事件（异常/超时/支付取消）直接推群；按业务键 5 分钟去重 */
     async push(scene, dedupeKey, text) {
-        var _a;
         if (!this.client.enabled)
             return;
         if (dedupeKey && this.isDuplicate(`${scene}:${dedupeKey}`))
             return;
+        await this.deliver(text, scene);
+    }
+    async pushEvent(scene, title, content, orderCode, dedupeKey) {
+        await this.push(scene, dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : orderCode, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
+    }
+    async deliver(text, scene) {
+        var _a;
         try {
             const ok = await this.client.broadcast(text);
             if (!ok)
@@ -59,9 +81,6 @@ let FeishuNotifyService = class FeishuNotifyService {
         catch (e) {
             core_1.Logger.warn(`飞书推送异常 scene=${scene}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
         }
-    }
-    async pushEvent(scene, title, content, orderCode, dedupeKey) {
-        await this.push(scene, dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : orderCode, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
     }
     isDuplicate(key) {
         const now = Date.now();
@@ -79,6 +98,7 @@ let FeishuNotifyService = class FeishuNotifyService {
 exports.FeishuNotifyService = FeishuNotifyService;
 exports.FeishuNotifyService = FeishuNotifyService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [feishu_config_1.FeishuConfigService, feishu_client_1.FeishuClient])
+    __metadata("design:paramtypes", [feishu_client_1.FeishuClient,
+        feishu_card_service_1.FeishuCardService])
 ], FeishuNotifyService);
 //# sourceMappingURL=feishu-notify.service.js.map

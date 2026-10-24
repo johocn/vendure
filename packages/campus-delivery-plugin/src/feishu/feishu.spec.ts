@@ -6,7 +6,24 @@ import { parseCommand, requiredRole } from './feishu.command.service';
 import { parseChatMap, readFeishuSettings } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
 import { campusHhmm } from './feishu.digest.service';
-import { formatBoard, formatDigest, formatExceptions, formatOrderStatus, formatPlatformBoard, formatPlatformDigest, formatPush } from './feishu.templates';
+import {
+    buildOrderCard,
+    buildSearchCard,
+    buildTemplateCard,
+    extractOrderCodeFromCard,
+    extractOrderCodeFromText,
+    formatBoard,
+    formatDigest,
+    formatExceptions,
+    formatOrderStatus,
+    formatPlatformBoard,
+    formatPlatformDigest,
+    formatPush,
+    matchReplyTemplate,
+    REPLY_TEMPLATES,
+    replyTemplateText,
+    shortCode,
+} from './feishu.templates';
 
 function encrypt(plain: string, encryptKey: string): string {
     const key = createHash('sha256').update(encryptKey).digest();
@@ -276,5 +293,93 @@ describe('feishu digest time gate', () => {
     it('按 UTC+8 输出 HH:mm（跨日不漂移）', () => {
         expect(campusHhmm(Date.UTC(2026, 0, 1, 0, 30))).toBe('08:30');
         expect(campusHhmm(Date.UTC(2026, 0, 1, 16, 5))).toBe('00:05');
+    });
+});
+
+describe('feishu 零建表卡片', () => {
+    const view = {
+        code: 'CAMPUS202610240001',
+        store: 'canteen-a',
+        orderState: 'ArrangingPayment',
+        hallStatus: 'pending_merchant',
+        deliveryStatus: null,
+        route: null,
+        riderName: null,
+        building: '3 号宿舍楼',
+        zone: '北区',
+        slotText: '12:00-12:30',
+        total: 2500,
+        exceptionType: null,
+        exceptionNote: null,
+        exceptionMinutes: null,
+        createdAt: Date.UTC(2026, 0, 2, 1, 0),
+        at: Date.UTC(2026, 0, 2, 1, 6),
+    };
+
+    it('短码只取尾 4 位且大写，完整单号不进标题', () => {
+        expect(shortCode('CAMPUS202610240001')).toBe('0001');
+        expect(shortCode('ab-12cd')).toBe('12CD');
+        const card: any = buildOrderCard(view);
+        expect(card.header.title.content).toContain('0001');
+        expect(card.header.title.content).not.toContain('CAMPUS202610240001');
+        expect(JSON.stringify(card)).toContain('CAMPUS202610240001');
+    });
+
+    it('待接单卡片带「接单」按钮，value 携带完整单号', () => {
+        const card: any = buildOrderCard(view);
+        const actions = card.elements.find((e: any) => e.tag === 'action');
+        const accept = actions.actions.find((b: any) => b.text.content === '接单');
+        expect(accept.value).toEqual({ a: 'accept', c: 'CAMPUS202610240001' });
+        expect(actions.actions.map((b: any) => b.text.content)).toContain('快捷回复');
+    });
+
+    it('异常订单卡片用红色标题并展示异常原因', () => {
+        const card: any = buildOrderCard({
+            ...view,
+            hallStatus: 'exception',
+            deliveryStatus: 'exception',
+            exceptionType: '骑手失联',
+            exceptionNote: '联系不上',
+            exceptionMinutes: 12,
+        });
+        expect(card.header.template).toBe('red');
+        expect(JSON.stringify(card)).toContain('骑手失联');
+    });
+
+    it('检索卡片最多 4 行且按钮带完整单号', () => {
+        const rows = Array.from({ length: 8 }, (_, i) => ({
+            code: `CAMPUS2026102400${i}`,
+            store: 'canteen-a',
+            hallStatus: 'pending_merchant',
+            building: '3 号宿舍楼',
+            createdAt: Date.UTC(2026, 0, 2, 1, i),
+        }));
+        const card: any = buildSearchCard('3 号', rows);
+        expect(card.header.title.content).toContain('8 条');
+        expect(card.elements.filter((e: any) => e.tag === 'action').length).toBe(4);
+        expect(JSON.stringify(card)).toContain('CAMPUS20261024003');
+        expect(JSON.stringify(card)).not.toContain('CAMPUS20261024004');
+    });
+
+    it('卡片 JSON 可回读出完整单号（引用/话题绑定）', () => {
+        const card = buildOrderCard(view);
+        const content = JSON.stringify(card);
+        expect(extractOrderCodeFromCard(content)).toBe('CAMPUS202610240001');
+        expect(extractOrderCodeFromCard('not json')).toBeUndefined();
+        expect(extractOrderCodeFromText('订单 CAMPUS202610240001 请尽快接单')).toBe('CAMPUS202610240001');
+    });
+
+    it('引用卡片回复模板名/别名可匹配，文本带完整单号', () => {
+        const tpl = matchReplyTemplate('催单');
+        expect(tpl?.id).toBe('urge_accept');
+        expect(matchReplyTemplate('  已联系顾客！ ')?.id).toBe('contacted_customer');
+        expect(matchReplyTemplate('随便说点什么')).toBeUndefined();
+        expect(replyTemplateText(tpl!, 'A1')).toContain('订单 A1');
+
+        const card: any = buildTemplateCard('A1');
+        const values = card.elements.filter((e: any) => e.tag === 'action')
+            .flatMap((e: any) => e.actions.map((b: any) => b.value));
+        expect(values.length).toBe(REPLY_TEMPLATES.length);
+        expect(values[0]).toEqual({ a: 'tpl', c: 'A1', t: 'urge_accept' });
     });
 });

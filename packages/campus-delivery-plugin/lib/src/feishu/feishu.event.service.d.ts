@@ -14,6 +14,8 @@ export declare class FeishuEventService {
     private seen;
     constructor(cfg: FeishuConfigService, command: FeishuCommandService);
     handle(raw: any): Promise<FeishuEventResult>;
+    /** 卡片按钮回调：value 里带着完整单号，直接转指令服务（先 200 再异步执行） */
+    private handleCardAction;
     private decode;
     private isDuplicate;
 }

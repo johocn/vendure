@@ -37,6 +37,7 @@ const p4_ops_hardening_1 = require("./migrations/p4-ops-hardening");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
+const feishu_card_service_1 = require("./feishu/feishu-card.service");
 const feishu_client_1 = require("./feishu/feishu.client");
 const feishu_command_service_1 = require("./feishu/feishu.command.service");
 const feishu_config_1 = require("./feishu/feishu.config");
@@ -172,7 +173,7 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.eventBus.ofType(notification_plugin_1.AdminNotifyEvent).subscribe(event => {
             void this.injector.get(feishu_notify_service_1.FeishuNotifyService).onAdminNotify(event);
         });
-        // 每日经营汇总（UTC+8 定点，advisory lock + 落库标记防重）
+        // 每日经营汇总（UTC+8 定点，advisory lock + 群消息回读防重，零建表）
         this.injector.get(feishu_digest_service_1.FeishuDigestService).start();
     }
     /** 权限迁移：permissions 为 simple-array（逗号分隔），给持有 CampusViewDispatch 的角色补授 CampusDispatch。
@@ -247,6 +248,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             payment_timeout_admin_service_1.PaymentTimeoutAdminService,
             feishu_config_1.FeishuConfigService,
             feishu_client_1.FeishuClient,
+            feishu_card_service_1.FeishuCardService,
             feishu_notify_service_1.FeishuNotifyService,
             feishu_command_service_1.FeishuCommandService,
             feishu_event_service_1.FeishuEventService,

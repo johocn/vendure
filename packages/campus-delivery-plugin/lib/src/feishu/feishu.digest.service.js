@@ -18,14 +18,17 @@ const feishu_config_1 = require("./feishu.config");
 const feishu_client_1 = require("./feishu.client");
 const feishu_command_service_1 = require("./feishu.command.service");
 const loggerCtx = 'Feishu';
-const DIGEST_TABLE = 'feishu_digest_state';
 /** 当前校园时区 HH:mm */
 function campusHhmm(t) {
     const d = new Date(t + campus_time_1.CAMPUS_TZ_OFFSET_MS);
     const p = (n) => String(n).padStart(2, '0');
     return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
-/** 到达汇总时间且今天未发 → 逐群推送当天经营汇总（advisory lock + 落库标记，防多进程/重发） */
+/**
+ * 到达汇总时间且今天未发 → 逐群推送当天经营汇总。
+ * 零建表：防重不落库，发送前用飞书消息列表接口回读当天是否已有「【每日汇总】」；
+ * 多进程并发仍用 PG advisory lock 兜底（不建表）。
+ */
 let FeishuDigestService = class FeishuDigestService {
     constructor(cfg, client, connection, command) {
         this.cfg = cfg;
@@ -33,7 +36,8 @@ let FeishuDigestService = class FeishuDigestService {
         this.connection = connection;
         this.command = command;
         this.running = false;
-        this.ready = false;
+        /** 进程内兜底（webhook 模式无法回读消息时防同进程重复发送，不落库） */
+        this.sent = new Map();
     }
     start(intervalMs = 60000) {
         if (this.timer || !this.client.enabled)
@@ -55,10 +59,6 @@ let FeishuDigestService = class FeishuDigestService {
             return;
         this.running = true;
         try {
-            if (!this.ready) {
-                await this.ensureStateTable();
-                this.ready = true;
-            }
             for (const [chatId, chat] of Object.entries(this.cfg.settings.chats)) {
                 await this.sendOnce(chatId, chat);
             }
@@ -70,8 +70,12 @@ let FeishuDigestService = class FeishuDigestService {
     async sendOnce(chatId, chat) {
         var _a;
         const day = (0, campus_time_1.campusDayKey)(Date.now());
-        if (await this.sentOn(chatId, day))
+        if (this.sent.get(chatId) === day)
             return;
+        if (await this.sentToday(chatId, day)) {
+            this.sent.set(chatId, day);
+            return;
+        }
         const runner = this.connection.rawConnection.createQueryRunner();
         await runner.connect();
         const lockKey = `campus:feishu:digest:${chatId}:${day}`;
@@ -81,11 +85,12 @@ let FeishuDigestService = class FeishuDigestService {
             if (!((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.ok))
                 return;
             try {
-                if (await this.sentOn(chatId, day))
+                if (await this.sentToday(chatId, day))
                     return;
+                // 没有 app 凭据时无法回读消息，退化为进程内标记 + advisory lock
                 const text = await this.buildDigest(chat);
                 if (await this.client.sendToChat(chatId, text)) {
-                    await this.markSent(chatId, day);
+                    this.sent.set(chatId, day);
                     core_1.Logger.info(`每日汇总已发送 chat=${chatId} day=${day}`, loggerCtx);
                 }
             }
@@ -101,22 +106,28 @@ let FeishuDigestService = class FeishuDigestService {
     buildDigest(chat) {
         return this.command.renderDigest(chat);
     }
-    async ensureStateTable() {
-        await this.connection.rawConnection.query(`CREATE TABLE IF NOT EXISTS "${DIGEST_TABLE}" ("chatId" varchar PRIMARY KEY, "sentDay" varchar NOT NULL, "sentAt" timestamp NOT NULL DEFAULT now())`);
-    }
-    async sentOn(chatId, day) {
-        try {
-            const rows = await this.connection.rawConnection.query(`SELECT "sentDay" FROM "${DIGEST_TABLE}" WHERE "chatId" = $1`, [chatId]);
-            const row = Array.isArray(rows) ? rows[0] : undefined;
-            return (row === null || row === void 0 ? void 0 : row.sentDay) === day;
+    /** 回读当天群消息，已有当日「【每日汇总】」则跳过（最多翻 5 页，纯读）
+     * 只从当日汇总时间点开始算，避免早上人工查过一次汇总就把定时汇总吞掉 */
+    async sentToday(chatId, day) {
+        var _a, _b;
+        const base = (0, campus_time_1.startOfCampusDay)(Date.now());
+        const [h, m] = this.cfg.settings.digestAt.split(':').map(Number);
+        const scheduled = base + (h || 0) * 3600000 + (m || 0) * 60000;
+        const startSec = Math.floor(Math.max(base, scheduled) / 1000);
+        const endSec = Math.floor(Date.now() / 1000);
+        let pageToken;
+        for (let page = 0; page < 5; page++) {
+            const { items, nextToken } = await this.client.listMessages(chatId, startSec, endSec, pageToken);
+            for (const m of items) {
+                const content = (_b = (_a = m.body) === null || _a === void 0 ? void 0 : _a.content) !== null && _b !== void 0 ? _b : '';
+                if (content.includes('【每日汇总】') && content.includes(day))
+                    return true;
+            }
+            if (!nextToken)
+                break;
+            pageToken = nextToken;
         }
-        catch (_a) {
-            return false;
-        }
-    }
-    async markSent(chatId, day) {
-        await this.connection.rawConnection.query(`INSERT INTO "${DIGEST_TABLE}" ("chatId", "sentDay", "sentAt") VALUES ($1, $2, now())
-             ON CONFLICT ("chatId") DO UPDATE SET "sentDay" = $2, "sentAt" = now()`, [chatId, day]);
+        return false;
     }
 };
 exports.FeishuDigestService = FeishuDigestService;

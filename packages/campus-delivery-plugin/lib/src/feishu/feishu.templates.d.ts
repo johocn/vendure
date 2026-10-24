@@ -103,4 +103,34 @@ export interface OrderStatusInput {
     createdAt: number;
     at: number;
 }
+export declare function orderHallLabel(status?: string | null): string;
+export declare function orderDeliveryLabel(status?: string | null): string | null;
 export declare function formatOrderStatus(o: OrderStatusInput): string;
+/** 展示用短码：去掉非字母数字后取尾 4 位；完整单号始终在按钮 value / 引用回读中 */
+export declare function shortCode(code: string): string;
+export declare function buildOrderCard(o: OrderStatusInput): Record<string, unknown>;
+export interface SearchRow {
+    code: string;
+    store: string;
+    hallStatus?: string | null;
+    building?: string | null;
+    createdAt: number;
+}
+/** 模糊检索结果卡片：每行一个候选订单，按钮 value 里带完整单号 */
+export declare function buildSearchCard(query: string, rows: SearchRow[]): Record<string, unknown>;
+export interface ReplyTemplate {
+    id: string;
+    label: string;
+    aliases: string[];
+    text: string;
+}
+export declare const REPLY_TEMPLATES: ReplyTemplate[];
+/** 引用订单卡片时，整段文本命中模板名/别名则视为快捷回复 */
+export declare function matchReplyTemplate(raw: string): ReplyTemplate | undefined;
+export declare function replyTemplateText(tpl: ReplyTemplate, code: string): string;
+/** 快捷回复卡片：按钮 value 带完整单号与模板 id */
+export declare function buildTemplateCard(code: string): Record<string, unknown>;
+/** 从卡片 JSON（按钮 value）里取完整单号 */
+export declare function extractOrderCodeFromCard(content?: string): string | undefined;
+/** 从被引用的纯文本消息里兜底提取单号（形如「订单 A1234…」） */
+export declare function extractOrderCodeFromText(text?: string): string | undefined;
