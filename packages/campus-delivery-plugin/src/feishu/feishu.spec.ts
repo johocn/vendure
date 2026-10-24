@@ -382,4 +382,52 @@ describe('feishu 零建表卡片', () => {
         expect(values.length).toBe(REPLY_TEMPLATES.length);
         expect(values[0]).toEqual({ a: 'tpl', c: 'A1', t: 'urge_accept' });
     });
+
+    it('异常卡片按钮：改派(primary) + 已处置 替换原无用报异常', () => {
+        const now = Date.now();
+        const card: any = buildOrderCard({
+            code: 'CAMPUS2026102412345ABCDE',
+            store: 'canteen-a',
+            hallStatus: 'open',
+            deliveryStatus: 'exception',
+            exceptionType: '骑手联系不上',
+            exceptionNote: '测试单',
+            exceptionMinutes: 20,
+            createdAt: now - 30 * 60_000,
+            at: now,
+            building: '3 号宿舍楼',
+            riderName: null,
+            route: 'R2',
+            total: 1800,
+        } as any);
+        const btnLabels = card.elements.find((e: any) => e.tag === 'action')
+            .actions.map((b: any) => b.text.content);
+        // 必须出现改派 + 已处置（primary 在前），且不再出现「报异常」
+        expect(btnLabels[0]).toBe('改派');
+        expect(btnLabels).toContain('已处置');
+        expect(btnLabels).not.toContain('报异常');
+        const btnA = card.elements.find((e: any) => e.tag === 'action')
+            .actions.map((b: any) => b.value.a);
+        expect(btnA).toContain('reassign');
+        expect(btnA).toContain('handled');
+    });
+
+    it('非异常卡片按 hallStatus 显示接单/出餐/状态按钮', () => {
+        const now = Date.now();
+        const pendingCard: any = buildOrderCard({
+            code: 'ABC123456789XYZ', store: 'canteen-a',
+            hallStatus: 'pending_merchant', createdAt: now - 2 * 60_000, at: now,
+        } as any);
+        const labels = pendingCard.elements.find((e: any) => e.tag === 'action')
+            .actions.map((b: any) => b.text.content);
+        expect(labels[0]).toBe('接单'); // primary 位
+
+        const acceptedCard: any = buildOrderCard({
+            code: 'ABC123456789XYZ', store: 'canteen-a',
+            hallStatus: 'accepted', createdAt: now - 10 * 60_000, at: now,
+        } as any);
+        const acceptedLabels = acceptedCard.elements.find((e: any) => e.tag === 'action')
+            .actions.map((b: any) => b.text.content);
+        expect(acceptedLabels[0]).toBe('出餐'); // primary 位
+    });
 });

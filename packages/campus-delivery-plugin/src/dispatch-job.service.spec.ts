@@ -7,6 +7,8 @@ function makeEnv(opts: {
     onlineRiders?: any[];
     cfg?: any;
     refundedSum?: number;
+    thirdParty?: any;
+    feishu?: any;
 }) {
     const grabResults: any[] = [];
     const grabSvc = {
@@ -78,6 +80,8 @@ function makeEnv(opts: {
     } as any;
     const svc = new DispatchJobService(
         conn, grabSvc as any, hallSvc as any, capacitySvc as any, creditSvc as any, { get: vi.fn() } as any,
+        opts.thirdParty ?? undefined,
+        opts.feishu ?? undefined,
     );
     return { svc, grabSvc, creditSvc, hallSvc, capacitySvc, orderRepo, configRepo, grabResults, rawQuery: conn.rawConnection.query };
 }
@@ -778,6 +782,66 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         await (env.svc as any).tick();
         expect(scanSpy).toHaveBeenCalledTimes(2);
         expect((scanSpy.mock.calls[1][0] as any).channelId).toBe(2);
+    });
+
+    // ---------- P1 提前告警 ----------
+
+    it('grabbed+assigned 骑手 13.5min 未取货 → ⏱ 骑手取货超时提前告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc } = makeEnv({
+            // assignedAt 13.5min 前（>=13.5min 提前告警点 且 <15min 兜底点）
+            assignedOrders: [{ id: 101, code: 'RIDER_PICK_01', customFields: { hallStatus: 'grabbed', deliveryStatus: 'assigned', assignedAt: minAgo(13.5), deliveryStaffId: 7 } }],
+            cfg: { merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20, inProgressSlaMinutes: 45, synchronize: false },
+            feishu,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'rider_pick_alert:RIDER_PICK_01');
+        expect(call).toBeDefined();
+        expect(call[1]).toBe('⏱ 骑手取货超时');
+    });
+
+    it('pending_merchant R2 超 4min → ⚠️ 商家即将超时提前告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc } = makeEnv({
+            // acceptMs=5min，提前告警点 4min，hallEnteredAt 4min 前
+            openOrders: [{ id: 201, code: 'ACCEPT_ALERT_01', customFields: { hallStatus: 'pending_merchant', fulfillmentRoute: 'R2', hallEnteredAt: minAgo(4) } }],
+            cfg: { merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20, inProgressSlaMinutes: 45, synchronize: false },
+            feishu,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'accept_alert:ACCEPT_ALERT_01');
+        expect(call).toBeDefined();
+        expect(call[1]).toBe('⚠️ 商家即将超时');
+    });
+
+    it('open+exception 超 7.5min → 🚨 异常待处置提前告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc } = makeEnv({
+            // SLA=45min，alertMs=45/6=7.5min，exceptionReportedAt 8min 前
+            openOrders: [{ id: 301, code: 'EXCEPTION_ALERT_01', customFields: { hallStatus: 'open', deliveryStatus: 'exception', exceptionReportedAt: minAgo(8), exceptionType: '骑手联系不上' } }],
+            cfg: { merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20, inProgressSlaMinutes: 45, synchronize: false },
+            feishu,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'exception_alert:EXCEPTION_ALERT_01');
+        expect(call).toBeDefined();
+        expect(call[1]).toBe('🚨 异常待处置');
+        expect(call[2]).toContain('骑手联系不上');
+    });
+
+    it('third_party 超 17.5min → 📦 外部快递在途超时提前告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc } = makeEnv({
+            // fallbackMs=20min，alertMs=20-2.5=17.5min，thirdPartyDispatchAt 18min 前
+            openOrders: [{ id: 401, code: 'TP_ALERT_01', customFields: { hallStatus: 'third_party', thirdPartyDispatchAt: minAgo(18), thirdPartyState: 'not_received', fulfillmentRoute: 'R3' } }],
+            cfg: { merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20, inProgressSlaMinutes: 45, synchronize: false },
+            feishu,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'third_party_alert:TP_ALERT_01');
+        expect(call).toBeDefined();
+        expect(call[1]).toBe('📦 外部快递在途超时');
+        expect(call[2]).toContain('not_received');
     });
 });
 
