@@ -29,19 +29,27 @@ export class FeishuEventService {
         const payload = await this.decode(raw);
         if (!payload) return { status: 400, body: { error: 'invalid payload' } };
 
-        const token = payload?.header?.token ?? payload?.token;
-        // fail closed：未配置 verifyToken 时任何人都能伪造回调，直接拒绝（含 challenge，
-        // 配置 URL 验证必须同时配置 FEISHU_VERIFY_TOKEN）
-        if (!this.cfg.settings.verifyToken) {
+        // 卡片回调的事件体有时把 token 放在 event.token，两处都取
+        const token = payload?.header?.token ?? payload?.event?.token ?? payload?.token;
+        // URL 验证是纯握手（不回显任何业务数据），先放行，避免控制台保存回调地址被 token 挡住
+        if (payload?.challenge) {
+            return { status: 200, body: { challenge: payload.challenge } };
+        }
+        // fail closed：未配置 verifyToken 时任何人都能伪造回调，直接拒绝
+        const allowed = this.verifyTokens();
+        if (!allowed.length) {
             Logger.error('未配置 FEISHU_VERIFY_TOKEN，拒绝飞书回调', loggerCtx);
             return { status: 403, body: {} };
         }
-        if (token !== this.cfg.settings.verifyToken) {
-            Logger.warn('飞书回调 token 校验失败', loggerCtx);
+        if (typeof token !== 'string' || !allowed.includes(token)) {
+            // 不打印 token 原文，只暴露事件类型与长度便于排查是哪个回调的验证令牌
+            Logger.warn(
+                `飞书回调 token 校验失败 type=${payload?.header?.event_type ?? '-'} tokenLen=${
+                    typeof token === 'string' ? token.length : 'none'
+                }`,
+                loggerCtx,
+            );
             return { status: 403, body: {} };
-        }
-        if (payload?.challenge) {
-            return { status: 200, body: { challenge: payload.challenge } };
         }
 
         const eventId = payload?.header?.event_id as string | undefined;
@@ -109,6 +117,14 @@ export class FeishuEventService {
             return decryptFeishuPayload(raw.encrypt, key);
         }
         return raw;
+    }
+
+    /** 事件订阅与卡片回调可能各有一份验证令牌，支持用逗号并列配置 */
+    private verifyTokens(): string[] {
+        return String(this.cfg.settings.verifyToken ?? '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
     }
 
     private isDuplicate(eventId: string): boolean {
