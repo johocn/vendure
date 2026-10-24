@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RiderTaskService } from './rider-task.service';
 
-function make(order: any, cfg: any = { riderCommissionRate: 100 }) {
+function make(order: any, cfg: any = { riderCommissionRate: 100 }, feishu?: any) {
     const riderSvc = { assertApprovedRider: vi.fn().mockResolvedValue({ id: 9 }) } as any;
     const saved: any[] = [];
     // findOne 调用次序：deliver = assertOwner(查单) → getConfig(查配置)；start = assertOwner(查单)
@@ -22,7 +22,7 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }) {
         // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
         rawConnection: { query: rawQuery },
     } as any;
-    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any), repo, saved, rawQuery };
+    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any, feishu), repo, saved, rawQuery, feishu };
 }
 
 const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };
@@ -68,6 +68,16 @@ describe('RiderTaskService', () => {
         expect(rawQuery.mock.calls[1][0]).toContain('UPDATE rider_earning');
         expect(rawQuery.mock.calls[1][1]).toEqual(['crediting', 501, 'pending']);
         expect(saved[0].amount).toBe(400); // 300 shipping + 100 tip
+    });
+    it('分成落库失败（订单已送达不可重试）→ 推飞书告警人工补账', async () => {
+        const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
+        const feishu = { pushEvent: vi.fn() };
+        const { svc, repo } = make(inProg, { riderCommissionRate: 100 }, feishu);
+        repo.save.mockRejectedValueOnce(new Error('db down'));
+        await expect(svc.deliver({ channelId: 1 } as any, 10 as any, ['p1'])).resolves.toBeTruthy();
+        expect(feishu.pushEvent).toHaveBeenCalledWith(
+            'alert', '骑手分成落库失败', expect.stringContaining('400'), 'A1', 'earning_persist_failed:A1',
+        );
     });
     it('并发双送达/已取消 → 认领失败拒绝，不写分成（防双入账）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };

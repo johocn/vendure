@@ -13,7 +13,7 @@ import { CampusNotifyService } from './campus-notify.service';
 import { startOfCampusDay } from './campus-time';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
-import { refundablePayments } from './refund-payment';
+import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { normalizePrintMode } from './waimai-store.service';
 
@@ -206,7 +206,7 @@ export class MerchantAdminService {
                     if (!created || created.errorCode) {
                         throw new UserInputError(`退款失败：${created?.errorCode ?? '未知原因'}`);
                     }
-                    await this.orderService.settleRefund(ctx, { id: created.id } as any);
+                    await settleRefundOrMarkFailed(this.connection, this.orderService, ctx, created.id);
                 }
             }
 

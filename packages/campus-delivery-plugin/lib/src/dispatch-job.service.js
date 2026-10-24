@@ -933,7 +933,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     if (!created || created.errorCode) {
                         throw new Error(`refundOrder failed: ${(_e = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _e !== void 0 ? _e : 'no result'}`);
                     }
-                    await orderSvc.settleRefund(ctx, { id: created.id });
+                    await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, orderSvc, ctx, created.id);
                 }
                 // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
                 // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult

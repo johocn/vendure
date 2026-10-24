@@ -8,6 +8,8 @@ interface HandleEnvOpts {
     payment?: any;
     refundedSum?: number;
     orderSvc?: any;
+    /** 飞书告警 mock（注入惰性服务，避免 ModuleRef） */
+    feishu?: any;
 }
 
 function makeEnv(opts: HandleEnvOpts = {}) {
@@ -41,8 +43,12 @@ function makeEnv(opts: HandleEnvOpts = {}) {
         createQueryBuilder: () => ({
             select: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
+            // P1：已退总额排除 Failed 退款单
+            andWhere: vi.fn().mockReturnThis(),
             getRawOne: vi.fn().mockResolvedValue({ sum: String(opts.refundedSum ?? 0) }),
         }),
+        // 结算失败置 Failed
+        update: vi.fn().mockResolvedValue({}),
     };
     const rawQuery = vi.fn().mockResolvedValue([{ id: 1 }]);
     const conn = {
@@ -75,6 +81,8 @@ function makeEnv(opts: HandleEnvOpts = {}) {
         cancelOrder: vi.fn().mockResolvedValue({}),
     };
     (svc as any).orderSvc = orderSvc;
+    // 直接注入飞书（undefined → 保持未解析，测试不走 ModuleRef）
+    if (opts.feishu) (svc as any).feishuSvc = opts.feishu;
     return { svc, grabSvc, hallSvc, capacitySvc, orderRepo, configRepo, paymentRepo, refundRepo, rawQuery, orderSvc, notifySvc: (svc as any).notify };
 }
 
@@ -252,6 +260,48 @@ describe('DispatchAdminService.handleException', () => {
         }));
     });
 
+    it('refund_diff 结算失败 → 退款单置 Failed + refund_failed + 飞书告警，不回滚认领', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const orderSvc = {
+            refundOrder: vi.fn().mockResolvedValue({ id: 55 }),
+            settleRefund: vi.fn().mockRejectedValue(new Error('provider down')),
+            cancelOrder: vi.fn().mockResolvedValue({}),
+        };
+        const { svc, orderRepo, hallSvc, refundRepo } = makeEnv({
+            payment: { id: 9, amount: 2300 }, refundedSum: 0, orderSvc, feishu,
+        });
+        orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
+
+        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 300)).rejects.toThrow('provider down');
+
+        // 未真实打款的退款单不能继续计入已退总额，否则重试会跳过退款直接完结订单
+        expect(refundRepo.update).toHaveBeenCalledWith(55, { state: 'Failed' });
+        // 置 refund_failed 退出自动重试并告警
+        expect(hallSvc.transitionFrom).toHaveBeenCalledTimes(1);
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            ctx, 7, ['exception_final'], expect.objectContaining({ hallStatus: 'refund_failed', campusCause: 'refund_failed' }),
+        );
+        expect(feishu.pushEvent).toHaveBeenCalledWith(
+            'exception', '异常处置退款失败', expect.stringContaining('A7'), 'A7', 'exception_refund_failed:A7',
+        );
+    });
+
+    it('refund_diff 退款失败但订单已取消（条件写未命中）→ 不回滚也不告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const orderSvc = {
+            refundOrder: vi.fn().mockResolvedValue({ id: 55 }),
+            settleRefund: vi.fn().mockRejectedValue(new Error('provider down')),
+            cancelOrder: vi.fn().mockResolvedValue({}),
+        };
+        const { svc, orderRepo, hallSvc } = makeEnv({
+            payment: { id: 9, amount: 2300 }, refundedSum: 0, orderSvc, feishu,
+        });
+        orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
+        hallSvc.transitionFrom.mockResolvedValue(false);
+
+        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 300)).rejects.toThrow('provider down');
+        expect(feishu.pushEvent).not.toHaveBeenCalled();
+    });
     it('refund_diff 超可退余额（已全额退）→ 拒绝', async () => {
         const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({ refundedSum: 2300 });
         paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
@@ -352,16 +402,27 @@ describe('DispatchAdminService.handleException', () => {
         expect(orderSvc.cancelOrder).not.toHaveBeenCalled();
     });
 
-    it('处置失败 → 回滚认领，异常态保留可重试', async () => {
+    it('退款处置失败 → 置 refund_failed 待人工对账（不回滚成可自动重试态）', async () => {
         const env = makeEnv({ payment: { id: 9, amount: 2300 }, refundedSum: 0 });
         env.orderRepo.findOne.mockResolvedValue(exceptionOrder(15, 'A15'));
         env.orderSvc.refundOrder.mockResolvedValue({ errorCode: 'REFUND_FAILED' });
         await expect(env.svc.handleException(ctx, 15 as any, 'refund_diff', 300)).rejects.toThrow('refundOrder failed');
-        // 认领（置 exception_final）+ 回滚（从 exception_final 恢复原态）各一次条件写
+        // 只写一次条件：exception_final → refund_failed（不再回滚原态，避免掩盖未退款）
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledTimes(1);
         expect(env.hallSvc.transitionFrom).toHaveBeenLastCalledWith(ctx, 15, ['exception_final'], {
-            hallStatus: 'grabbed', deliveryStatus: 'exception',
+            hallStatus: 'refund_failed', campusCause: 'refund_failed',
         });
         expect(env.orderRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('发券处置失败 → 回滚认领，异常态保留可重试', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue(exceptionOrder(16, 'A16'));
+        (env.svc as any).couponSvc = { grantCoupon: vi.fn().mockRejectedValue(new Error('coupon down')) };
+        await expect(env.svc.handleException(ctx, 16 as any, 'coupon', undefined, '9' as any)).rejects.toThrow('coupon down');
+        expect(env.hallSvc.transitionFrom).toHaveBeenLastCalledWith(ctx, 16, ['exception_final'], {
+            hallStatus: 'grabbed', deliveryStatus: 'exception',
+        });
     });
 });
 

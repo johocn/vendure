@@ -1,5 +1,6 @@
 import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusNotifyService } from './campus-notify.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallService } from './hall.service';
 import { RiderCreditService } from './rider-credit.service';
 import { RiderService } from './rider.service';
@@ -9,7 +10,8 @@ export declare class RiderTaskService {
     private credit;
     private hall;
     private notify;
-    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService);
+    private feishu?;
+    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService, feishu?: FeishuNotifyService | undefined);
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
      * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。
      * 跟踪页：附带目标楼栋坐标与直线距离/ETA（楼栋无坐标时均为 null，前端降级）。

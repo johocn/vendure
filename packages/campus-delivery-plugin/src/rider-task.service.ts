@@ -12,6 +12,7 @@ import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallService } from './hall.service';
 import { CREDIT_COMPLETE, RiderCreditService } from './rider-credit.service';
 import { RiderEarning } from './rider-earning.entity';
@@ -43,6 +44,7 @@ export class RiderTaskService {
         private credit: RiderCreditService,
         private hall: HallService,
         private notify: CampusNotifyService,
+        private feishu?: FeishuNotifyService,
     ) {}
 
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
@@ -310,6 +312,14 @@ export class RiderTaskService {
                 Logger.error(
                     `分成落库失败（订单已送达 ${order.code ?? order.id}，需人工补账 ${earning} 分）：${e?.message ?? e}`,
                     'RiderTask',
+                );
+                // 订单已送达不可重试，分成只能人工补：仅日志会静默丢钱，必须推运营群
+                void this.feishu?.pushEvent(
+                    'alert',
+                    '骑手分成落库失败',
+                    `订单 ${order.code ?? order.id} 已送达，但分成 ${earning} 分未落库，请人工补账。原因：${e?.message ?? e}`,
+                    order.code,
+                    `earning_persist_failed:${order.code ?? order.id}`,
                 );
             }
         }

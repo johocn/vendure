@@ -53,8 +53,12 @@ function makeEnv(opts: {
         createQueryBuilder: () => ({
             select: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
+            // P1：已退总额排除 Failed
+            andWhere: vi.fn().mockReturnThis(),
             getRawOne: vi.fn().mockResolvedValue({ sum: String(opts.refundedSum ?? 0) }),
         }),
+        // 结算失败置 Failed
+        update: vi.fn().mockResolvedValue({}),
     };
     const conn = {
         getRepository: vi.fn((_ctx: any, ent: any) => {

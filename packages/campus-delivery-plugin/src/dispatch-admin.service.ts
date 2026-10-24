@@ -14,9 +14,10 @@ import {
 import { CapacityService } from './capacity.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService, ACTIVE_HALL_STATUSES } from './hall.service';
-import { refundablePayments } from './refund-payment';
+import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { withRefundLock } from './refund-lock';
 import { CREDIT_LIMIT } from './rider-credit.service';
 
@@ -75,6 +76,7 @@ export interface HandedException {
 export class DispatchAdminService {
     private orderSvc?: OrderService;
     private couponSvc?: { grantCoupon: (ctx: RequestContext, templateId: ID, customerIds: ID[]) => Promise<string[]> } | null;
+    private feishuSvc?: FeishuNotifyService | null;
 
     constructor(
         private connection: TransactionalConnection,
@@ -88,6 +90,17 @@ export class DispatchAdminService {
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector(): Injector {
         return new Injector(this.moduleRef);
+    }
+
+    /** 飞书通知（可选依赖，测试/未启用时返回 null） */
+    private getFeishu(): FeishuNotifyService | null {
+        if (this.feishuSvc !== undefined) return this.feishuSvc ?? null;
+        try {
+            this.feishuSvc = this.injector.get(FeishuNotifyService) ?? null;
+        } catch {
+            this.feishuSvc = null;
+        }
+        return this.feishuSvc ?? null;
     }
 
     async board(ctx: RequestContext) {
@@ -313,6 +326,8 @@ export class DispatchAdminService {
               });
         // 退差价金额归一化后落留痕（避免把小数/原始入参写进 exceptionCompensation）
         let refundDiffAmount: number | null = null;
+        // 退款/退单失败已置 refund_failed 时不再回滚认领（回滚会把单子拉回可自动重试态，掩盖客户未退款）
+        let refundFailureMarked = false;
         try {
             switch (action) {
                 case 'reassign': {
@@ -338,9 +353,15 @@ export class DispatchAdminService {
                         throw new UserInputError('赔付金额不能超过订单实付金额');
                     }
                     refundDiffAmount = diff;
-                    const done = await withRefundLock(this.connection, Number(order.id), () =>
-                        this.refundAmount(ctx, order, diff, `exception diff refund (${order.code})`),
-                    );
+                    let done;
+                    try {
+                        done = await withRefundLock(this.connection, Number(order.id), () =>
+                            this.refundAmount(ctx, order, diff, `exception diff refund (${order.code})`),
+                        );
+                    } catch (e) {
+                        refundFailureMarked = await this.markExceptionRefundFailed(ctx, order, action, e);
+                        throw e;
+                    }
                     if (!done.ok) throw new UserInputError('该订单正在退款处理中，请稍后重试');
                     break;
                 }
@@ -353,9 +374,15 @@ export class DispatchAdminService {
                     break;
                 }
                 case 'refund_all': {
-                    const done = await withRefundLock(this.connection, Number(order.id), () =>
-                        this.refundAllAndCancel(ctx, order),
-                    );
+                    let done;
+                    try {
+                        done = await withRefundLock(this.connection, Number(order.id), () =>
+                            this.refundAllAndCancel(ctx, order),
+                        );
+                    } catch (e) {
+                        refundFailureMarked = await this.markExceptionRefundFailed(ctx, order, action, e);
+                        throw e;
+                    }
                     if (!done.ok) throw new UserInputError('该订单正在退款处理中，请稍后重试');
                     break;
                 }
@@ -367,8 +394,9 @@ export class DispatchAdminService {
                     throw new UserInputError('未知处置动作');
             }
         } catch (e) {
-            // 处置失败回滚认领，保留异常态供重试（避免「标记已处置但钱未退/券未发」）
-            await restore().catch(() => undefined);
+            // 处置失败回滚认领，保留异常态供重试（避免「标记已处置但钱未退/券未发」）；
+            // 退款失败已置 refund_failed 的不回滚，等人工对账（重试仍可从 refund_failed 再次认领）
+            if (!refundFailureMarked) await restore().catch(() => undefined);
             throw e;
         }
         const patch: any = {
@@ -450,7 +478,8 @@ export class DispatchAdminService {
         if (!created || (created as any).errorCode) {
             throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
         }
-        await orderSvc.settleRefund(ctx, { id: (created as any).id } as any);
+        // 结算失败置 Failed：否则未真实打款的退款单仍计入已退总额，重试会跳过退款直接取消订单
+        await settleRefundOrMarkFailed(this.connection, orderSvc, ctx, (created as any).id);
     }
 
     /** 全额退单：退剩余未退部分 + cancelOrder（行取消+状态转换，同 T4） */
@@ -466,6 +495,40 @@ export class DispatchAdminService {
         } as any);
         if (cancelled && (cancelled as any).errorCode) {
             throw new Error(`cancelOrder failed: ${(cancelled as any).errorCode}`);
+        }
+    }
+
+    /**
+     * 退款/退单处置失败兜底：不能只回滚认领——退款单可能已创建但客户未到账。
+     * 与 T4 一致置 refund_failed 退出自动重试并推飞书，人工对账后仍可再次处置
+     * （deliveryStatus 保持 exception，重新处置会重新认领）。条件写防覆盖已取消单。
+     */
+    private async markExceptionRefundFailed(
+        ctx: RequestContext,
+        order: Order,
+        action: ExceptionAction,
+        e: any,
+    ): Promise<boolean> {
+        try {
+            const marked = await this.hall.transitionFrom(ctx, Number(order.id), ['exception_final'], {
+                hallStatus: 'refund_failed',
+                campusCause: 'refund_failed',
+            });
+            if (!marked) {
+                Logger.warn(`Order ${order.code} 退款失败但订单状态已变更，refund_failed 未写入`, 'CampusDispatch');
+                return false;
+            }
+            void this.getFeishu()?.pushEvent(
+                'exception',
+                '异常处置退款失败',
+                `订单 ${order.code} 异常处置（${action}）退款/退单失败，客户可能未收到退款，请人工核对。原因：${e?.message ?? e}`,
+                order.code,
+                `exception_refund_failed:${order.code}`,
+            );
+            return true;
+        } catch (e2: any) {
+            Logger.error(`Order ${order.code} 退款失败兜底写入异常：${e2?.message ?? e2}`, 'CampusDispatch');
+            return false;
         }
     }
 

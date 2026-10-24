@@ -15,7 +15,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { ACTIVE_HALL_STATUSES, HallService } from './hall.service';
-import { refundablePayments } from './refund-payment';
+import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CREDIT_LIMIT, CREDIT_TIMEOUT, RiderCreditService } from './rider-credit.service';
 
@@ -1043,7 +1043,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                     if (!created || (created as any).errorCode) {
                         throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
                     }
-                    await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
+                    await settleRefundOrMarkFailed(this.connection, orderSvc!, ctx, (created as any).id);
                 }
                 // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
                 // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult

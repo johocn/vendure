@@ -48,9 +48,12 @@ export declare class DispatchAdminService {
     private notify;
     private orderSvc?;
     private couponSvc?;
+    private feishuSvc?;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, moduleRef: ModuleRef, notify: CampusNotifyService);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
+    /** 飞书通知（可选依赖，测试/未启用时返回 null） */
+    private getFeishu;
     board(ctx: RequestContext): Promise<{
         paused: boolean;
         alerts: DispatchAlert[];
@@ -89,6 +92,12 @@ export declare class DispatchAdminService {
     private refundAmount;
     /** 全额退单：退剩余未退部分 + cancelOrder（行取消+状态转换，同 T4） */
     private refundAllAndCancel;
+    /**
+     * 退款/退单处置失败兜底：不能只回滚认领——退款单可能已创建但客户未到账。
+     * 与 T4 一致置 refund_failed 退出自动重试并推飞书，人工对账后仍可再次处置
+     * （deliveryStatus 保持 exception，重新处置会重新认领）。条件写防覆盖已取消单。
+     */
+    private markExceptionRefundFailed;
     private getOrderService;
     /** 补偿券服务：coupon-plugin 为可选依赖，动态 require + Injector 解析（同 dispatch-job），
      * 未安装/未启用/解析失败返回 null。 */

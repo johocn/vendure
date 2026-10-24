@@ -163,7 +163,7 @@ let MerchantAdminService = class MerchantAdminService {
                     if (!created || created.errorCode) {
                         throw new core_1.UserInputError(`退款失败：${(_d = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _d !== void 0 ? _d : '未知原因'}`);
                     }
-                    await this.orderService.settleRefund(ctx, { id: created.id });
+                    await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, this.orderService, ctx, created.id);
                 }
             }
             // 先留痕再取消：脱厅只写 hallStatus，不覆盖 campusCause

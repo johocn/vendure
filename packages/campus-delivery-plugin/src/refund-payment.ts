@@ -1,7 +1,10 @@
-import { Payment, Refund, TransactionalConnection } from '@vendure/core';
+import { ID, Payment, Refund, RequestContext, TransactionalConnection } from '@vendure/core';
 
 /** 可退款支付状态：只认已成功支付（Declined/Error/Cancelled 的重试单不可退） */
 export const REFUNDABLE_PAYMENT_STATES = ['Settled', 'Authorized'];
+
+/** 退款失败终态：不计入已退总额，允许重试真实退款（否则重试会跳过退款直接取消订单） */
+const REFUND_FAILED_STATE = 'Failed';
 
 export interface RefundablePayment {
     payment: Payment;
@@ -9,15 +12,38 @@ export interface RefundablePayment {
     remaining: number;
 }
 
-/** 单支付单已退总额 */
+/** 单支付单已退总额（排除 Failed：结算失败的单并未真实打款） */
 export async function refundedTotal(connection: TransactionalConnection, paymentId: number | string): Promise<number> {
     const refunded = await connection.rawConnection
         .getRepository(Refund)
         .createQueryBuilder('r')
         .select('COALESCE(SUM(r.total), 0)', 'sum')
         .where('r."paymentId" = :pid', { pid: paymentId })
+        .andWhere('r.state <> :failed', { failed: REFUND_FAILED_STATE })
         .getRawOne();
     return Number(refunded?.sum ?? 0);
+}
+
+/**
+ * 结算退款：refundOrder 只创建 Pending 退款单，settleRefund 才真实打款。
+ * 结算失败必须把退款单置 Failed（保留审计痕迹），否则该单仍计入已退总额：
+ * 商家重试拒单/异常全额退款时会判定「无可退余额」，直接取消订单而不退款（客户静默少退）。
+ */
+export async function settleRefundOrMarkFailed(
+    connection: TransactionalConnection,
+    orderService: { settleRefund: (ctx: RequestContext, input: { id: ID }) => Promise<unknown> },
+    ctx: RequestContext,
+    refundId: ID,
+): Promise<void> {
+    try {
+        await orderService.settleRefund(ctx, { id: refundId });
+    } catch (e) {
+        await connection.rawConnection
+            .getRepository(Refund)
+            .update(refundId as any, { state: REFUND_FAILED_STATE } as any)
+            .catch(() => undefined);
+        throw e;
+    }
 }
 
 /**

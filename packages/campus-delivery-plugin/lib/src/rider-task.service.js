@@ -16,6 +16,7 @@ const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_notify_service_1 = require("./campus-notify.service");
+const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
@@ -35,12 +36,13 @@ function haversineMeters(a, b) {
     return 2 * R * Math.asin(Math.sqrt(s));
 }
 let RiderTaskService = class RiderTaskService {
-    constructor(connection, riderService, credit, hall, notify) {
+    constructor(connection, riderService, credit, hall, notify, feishu) {
         this.connection = connection;
         this.riderService = riderService;
         this.credit = credit;
         this.hall = hall;
         this.notify = notify;
+        this.feishu = feishu;
     }
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
      * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。
@@ -228,7 +230,7 @@ let RiderTaskService = class RiderTaskService {
     }
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     async deliver(ctx, orderId, photos, note) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         if (!(photos === null || photos === void 0 ? void 0 : photos.length))
             throw new core_1.UserInputError('送达需至少一张照片');
         const order = await this.assertOwner(ctx, orderId, 'in_progress');
@@ -303,6 +305,8 @@ let RiderTaskService = class RiderTaskService {
             }
             catch (e) {
                 common_1.Logger.error(`分成落库失败（订单已送达 ${(_e = order.code) !== null && _e !== void 0 ? _e : order.id}，需人工补账 ${earning} 分）：${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, 'RiderTask');
+                // 订单已送达不可重试，分成只能人工补：仅日志会静默丢钱，必须推运营群
+                void ((_g = this.feishu) === null || _g === void 0 ? void 0 : _g.pushEvent('alert', '骑手分成落库失败', `订单 ${(_h = order.code) !== null && _h !== void 0 ? _h : order.id} 已送达，但分成 ${earning} 分未落库，请人工补账。原因：${(_j = e === null || e === void 0 ? void 0 : e.message) !== null && _j !== void 0 ? _j : e}`, order.code, `earning_persist_failed:${(_k = order.code) !== null && _k !== void 0 ? _k : order.id}`));
             }
         }
         // 完单信用加分（+2）；非资金项，失败不阻断送达
@@ -310,7 +314,7 @@ let RiderTaskService = class RiderTaskService {
             await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_COMPLETE, 'complete', order.id);
         }
         catch (e) {
-            common_1.Logger.warn(`完单信用加分失败：${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, 'RiderTask');
+            common_1.Logger.warn(`完单信用加分失败：${(_l = e === null || e === void 0 ? void 0 : e.message) !== null && _l !== void 0 ? _l : e}`, 'RiderTask');
         }
         // 通知下单用户已送达（fire-and-forget）
         this.notify.user(ctx, order.id, 'orderDelivered');
@@ -380,6 +384,7 @@ exports.RiderTaskService = RiderTaskService = __decorate([
         rider_service_1.RiderService,
         rider_credit_service_1.RiderCreditService,
         hall_service_1.HallService,
-        campus_notify_service_1.CampusNotifyService])
+        campus_notify_service_1.CampusNotifyService,
+        feishu_notify_service_1.FeishuNotifyService])
 ], RiderTaskService);
 //# sourceMappingURL=rider-task.service.js.map
