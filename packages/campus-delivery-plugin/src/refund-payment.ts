@@ -31,12 +31,17 @@ export async function refundedTotal(connection: TransactionalConnection, payment
  */
 export async function settleRefundOrMarkFailed(
     connection: TransactionalConnection,
-    orderService: { settleRefund: (ctx: RequestContext, input: { id: ID }) => Promise<unknown> },
+    orderService: { settleRefund: (ctx: RequestContext, input: any) => Promise<unknown> },
     ctx: RequestContext,
     refundId: ID,
 ): Promise<void> {
     try {
-        await orderService.settleRefund(ctx, { id: refundId });
+        // 查 refund 关联的 paymentId，作为 transactionId 传入（Vendure SettleRefundInput 要求）
+        const conn = connection.rawConnection;
+        const repo = conn.getRepository(Refund);
+        const refund = await repo.findOne({ where: { id: refundId } } as any);
+        const transactionId = (refund as any)?.paymentId ?? String(refundId);
+        await orderService.settleRefund(ctx, { id: refundId, transactionId });
     } catch (e) {
         await connection.rawConnection
             .getRepository(Refund)

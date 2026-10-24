@@ -5,13 +5,15 @@ import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
-export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'close' | 'open' | 'unknown';
+export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'confirmRestore' | 'close' | 'open' | 'unknown';
 export interface ParsedCommand {
     name: FeishuCommandName;
     orderCode?: string;
     reason?: string;
     /** 关店/开店的目标店铺（平台管理群必填） */
     store?: string;
+    /** 卡片按钮原始 action 值（refund_diff/coupon/refund_all 等），用于审计日志 */
+    cardAction?: string;
 }
 /** 去掉 @ 占位符与首尾空白，再按首个空格切命令与参数（纯函数，便于单测） */
 export declare function parseCommand(raw: string): ParsedCommand;
@@ -36,6 +38,7 @@ export declare class FeishuCommandService {
     private deliveryStats;
     private rate;
     private pendingReject;
+    private pendingRestore;
     constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService);
     handleMessage(input: {
         chatId: string;
@@ -79,8 +82,9 @@ export declare class FeishuCommandService {
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
     private stageReject;
     private confirmReject;
-    /** restore：恢复 hallStatus 到指定值（open/pending_merchant/accepted），用于 exception_final 卡死的单重新进调度墙 */
-    private restore;
+    /** stageRestore：二次确认模式，避免误操作恢复 exception_final 单 */
+    private stageRestore;
+    private confirmRestore;
     private setPaused;
     private requireOrder;
     private channelTargets;

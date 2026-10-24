@@ -28,8 +28,14 @@ async function refundedTotal(connection, paymentId) {
  * 商家重试拒单/异常全额退款时会判定「无可退余额」，直接取消订单而不退款（客户静默少退）。
  */
 async function settleRefundOrMarkFailed(connection, orderService, ctx, refundId) {
+    var _a;
     try {
-        await orderService.settleRefund(ctx, { id: refundId });
+        // 查 refund 关联的 paymentId，作为 transactionId 传入（Vendure SettleRefundInput 要求）
+        const conn = connection.rawConnection;
+        const repo = conn.getRepository(core_1.Refund);
+        const refund = await repo.findOne({ where: { id: refundId } });
+        const transactionId = (_a = refund === null || refund === void 0 ? void 0 : refund.paymentId) !== null && _a !== void 0 ? _a : String(refundId);
+        await orderService.settleRefund(ctx, { id: refundId, transactionId });
     }
     catch (e) {
         await connection.rawConnection

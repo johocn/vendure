@@ -57,6 +57,8 @@ function makeEnv(opts: {
             andWhere: vi.fn().mockReturnThis(),
             getRawOne: vi.fn().mockResolvedValue({ sum: String(opts.refundedSum ?? 0) }),
         }),
+        // settleRefundOrMarkFailed 要查 refund 关联的 paymentId 当 transactionId
+        findOne: vi.fn().mockResolvedValue({ id: 30, paymentId: 7 }),
         // 结算失败置 Failed
         update: vi.fn().mockResolvedValue({}),
     };

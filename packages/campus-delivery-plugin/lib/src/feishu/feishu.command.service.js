@@ -21,6 +21,7 @@ const campus_time_1 = require("../campus-time");
 const delivery_stats_service_1 = require("../delivery-stats.service");
 const dispatch_admin_service_1 = require("../dispatch-admin.service");
 const merchant_admin_service_1 = require("../merchant-admin.service");
+const feishu_alert_windows_1 = require("./feishu.alert-windows");
 const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
 const feishu_config_1 = require("./feishu.config");
@@ -60,6 +61,8 @@ function parseCommand(raw) {
         return { name: 'cooking', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^确认拒单$/.test(head))
         return { name: 'confirmReject', orderCode: arg ? arg.split(' ')[0] : undefined };
+    if (/^确认恢复$/.test(head))
+        return { name: 'confirmRestore', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^拒单$/.test(head)) {
         const [orderCode, ...reasonParts] = arg.split(' ').filter(Boolean);
         return { name: 'reject', orderCode, reason: reasonParts.join(' ').trim() || undefined };
@@ -103,6 +106,7 @@ let FeishuCommandService = class FeishuCommandService {
         this.deliveryStats = deliveryStats;
         this.rate = new Map();
         this.pendingReject = new Map();
+        this.pendingRestore = new Map();
     }
     async handleMessage(input) {
         var _a, _b;
@@ -177,12 +181,15 @@ let FeishuCommandService = class FeishuCommandService {
                 case 'confirmReject':
                     await this.confirmReject(chat, chatId, openId, cmd);
                     break;
+                case 'confirmRestore':
+                    await this.confirmRestore(chat, chatId, openId, cmd);
+                    break;
                 case 'close':
                 case 'open':
                     await this.setPaused(chat, chatId, openId, cmd.name === 'close', cmd.store);
                     break;
                 case 'restore':
-                    await this.restore(chat, chatId, openId, cmd);
+                    await this.stageRestore(chat, chatId, openId, cmd);
                     break;
                 default: {
                     const tpl = (0, feishu_templates_1.matchReplyTemplate)(input.text);
@@ -217,6 +224,7 @@ let FeishuCommandService = class FeishuCommandService {
         const cmd = {
             name: action === 'accept' ? 'accept' : action === 'cooking' ? 'cooking' : 'status',
             orderCode: code,
+            cardAction: action,
         };
         if (!this.isOperator(chat, openId)) {
             await this.audit(chatId, openId, cmd, 'denied-card');
@@ -594,30 +602,32 @@ let FeishuCommandService = class FeishuCommandService {
     }
     /** 即将超时（提前告警窗口内但还没真超阈值） */
     soonOverdueOf(order, cf, cfg, now) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d;
         const minutesSince = (t) => t ? Math.round((now - new Date(t).getTime()) / 60000) : null;
         const accept = (_a = cfg.merchantAcceptMinutes) !== null && _a !== void 0 ? _a : 5;
         const push = (_b = cfg.externalPushTimeoutMinutes) !== null && _b !== void 0 ? _b : 10;
         const fallback = (_c = cfg.externalFallbackMinutes) !== null && _c !== void 0 ? _c : 20;
-        const sla = (_d = cfg.inProgressSlaMinutes) !== null && _d !== void 0 ? _d : 45;
         const NOT_PICKED = 15;
         switch (cf.hallStatus) {
             case 'pending_merchant': {
-                const m = minutesSince((_e = cf.hallEnteredAt) !== null && _e !== void 0 ? _e : order.createdAt);
-                if (m != null && m >= accept - 1 && m <= accept)
+                const m = minutesSince((_d = cf.hallEnteredAt) !== null && _d !== void 0 ? _d : order.createdAt);
+                const alertStart = accept - feishu_alert_windows_1.ALERT_WINDOWS_MIN.accept;
+                if (m != null && m >= alertStart && m <= accept)
                     return `⚠️ 商户即将超时（${m}/${accept}min）`;
                 return null;
             }
             case 'grabbed':
             case 'assigned': {
                 const m = minutesSince(cf.assignedAt);
-                if (m != null && m >= NOT_PICKED - 1.5 && m <= NOT_PICKED)
+                const alertStart = NOT_PICKED - feishu_alert_windows_1.ALERT_WINDOWS_MIN.riderPick;
+                if (m != null && m >= alertStart && m <= NOT_PICKED)
                     return `⚠️ 骑手即将超时（${m}/${NOT_PICKED}min）`;
                 return null;
             }
             case 'third_party': {
                 const m = minutesSince(cf.thirdPartyDispatchAt);
-                if (m != null && m >= fallback - 2.5 && m <= fallback)
+                const alertStart = fallback - feishu_alert_windows_1.ALERT_WINDOWS_MIN.thirdParty;
+                if (m != null && m >= alertStart && m <= fallback)
                     return `⚠️ 外部快递即将超时（${m}/${fallback}min）`;
                 return null;
             }
@@ -740,9 +750,8 @@ let FeishuCommandService = class FeishuCommandService {
         await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), `ok reason=${(_a = pending.reason) !== null && _a !== void 0 ? _a : ''}`);
         await this.reply(chatId, `已拒单并退款：${found.order.code}`);
     }
-    /** restore：恢复 hallStatus 到指定值（open/pending_merchant/accepted），用于 exception_final 卡死的单重新进调度墙 */
-    async restore(chat, chatId, openId, cmd) {
-        var _a;
+    /** stageRestore：二次确认模式，避免误操作恢复 exception_final 单 */
+    async stageRestore(chat, chatId, openId, cmd) {
         if (!cmd.orderCode) {
             await this.reply(chatId, '请带单号，例如「恢复 A1234」。');
             return;
@@ -750,15 +759,35 @@ let FeishuCommandService = class FeishuCommandService {
         const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
         if (!code)
             return;
+        this.cleanupConfirmations();
+        this.pendingRestore.set(`${chatId}:${code}`, { openId, at: Date.now() });
+        await this.reply(chatId, `⚠️ 即将恢复 ${code}（hallStatus→open，重新进调度队）。确认请回复「确认恢复 ${code}」，5 分钟内有效。`);
+    }
+    async confirmRestore(chat, chatId, openId, cmd) {
+        var _a;
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '用法：确认恢复 <单号>');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
+        this.cleanupConfirmations();
+        const key = `${chatId}:${code}`;
+        const pending = this.pendingRestore.get(key);
+        if (!pending || pending.openId !== openId) {
+            await this.reply(chatId, '确认已过期，请重新发送「恢复 <单号>」。');
+            return;
+        }
+        this.pendingRestore.delete(key);
         const found = await this.requireOrder(chat, chatId, code);
         if (!found)
             return;
         try {
-            // 回到 open 进调度墙；exception_final 的单 hallStatus 被锁死，需要显式改
             await this.connection.rawConnection.query(`UPDATE "order" SET "customFieldsHallstatus"='open', "customFieldsExceptionfinal"=FALSE,
                  "customFieldsExceptionaction"=NULL, "customFieldsExceptionhandledat"=NULL
                  WHERE id=$1`, [found.order.id]);
-            await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
+            await this.audit(chatId, openId, { name: 'restore', orderCode: code }, 'ok');
             await this.reply(chatId, `已恢复进大厅：${found.order.code}（hallStatus→open）`);
         }
         catch (e) {
@@ -854,6 +883,10 @@ let FeishuCommandService = class FeishuCommandService {
             if (now - v.at > CONFIRM_TTL_MS)
                 this.pendingReject.delete(k);
         }
+        for (const [k, v] of this.pendingRestore) {
+            if (now - v.at > CONFIRM_TTL_MS)
+                this.pendingRestore.delete(k);
+        }
     }
     async reply(chatId, text) {
         await this.client.sendToChat(chatId, text);
@@ -874,7 +907,8 @@ let FeishuCommandService = class FeishuCommandService {
     }
     async audit(chatId, openId, cmd, result) {
         var _a;
-        core_1.Logger.info(`[FeishuAudit] chat=${chatId} open_id=${openId} cmd=${cmd.name} order=${(_a = cmd.orderCode) !== null && _a !== void 0 ? _a : '-'} result=${result}`, loggerCtx);
+        const act = cmd.cardAction ? ` card=${cmd.cardAction}` : '';
+        core_1.Logger.info(`[FeishuAudit] chat=${chatId} open_id=${openId} cmd=${cmd.name}${act} order=${(_a = cmd.orderCode) !== null && _a !== void 0 ? _a : '-'} result=${result}`, loggerCtx);
     }
 };
 exports.FeishuCommandService = FeishuCommandService;

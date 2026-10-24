@@ -34,15 +34,20 @@ export function formatDateTime(at: number): string {
 }
 
 export const HELP_TEXT = [
-    '可用指令：',
-    '待处理 — 各环节订单数量与待接单单号（管理群为跨店视图）',
-    '查 <尾号/楼栋> — 模糊检索，返回候选卡片，无需完整单号',
-    '异常 — 异常未处置 + 超时风险订单清单',
-    '接单 <尾号> / 出餐 <尾号> — 也可直接点订单卡片上的按钮',
-    '拒单 <单号> <原因> — 需再次回复「确认拒单 <单号>」（店主）',
-    '关店 <店铺> / 开店 <店铺> — 暂停或恢复接单（店主；店铺群可省略店铺）',
-    '今日汇总 — 立即返回当天经营数据（管理群为全平台）',
-    '引用订单卡片回复「催单 / 联系骑手 / 已联系顾客」— 自动归档到本订单话题',
+    '📋 群指令：',
+    '  待处理 / 看板 — 各环节订单数量（管理群为跨店视图）',
+    '  查 <尾号/楼栋> — 模糊检索，返回候选卡片',
+    '  异常 — 异常未处置 + 已超时 + 即将超时 ⚠️ 三段清单',
+    '  今日汇总 — 立即返回当天经营数据（管理群为全平台）',
+    '  接单 <尾号> / 出餐 <尾号> — 也可直接点卡片按钮',
+    '  拒单 <单号> <原因> — 需再次「确认拒单 <单号>」（店主）',
+    '  恢复 <单号> — 恢复进调度队；需再次「确认恢复 <单号>」',
+    '  关店 <店铺> / 开店 <店铺> — 暂停/恢复接单（店主）',
+    '',
+    '🃏 异常卡按钮：改派 → 已处置 → 退差价 → 发券 → 全额退款',
+    '💓 每整点发服务健康心跳；异常单会把告警合并进同一张卡片',
+    '',
+    '引用订单卡片回复「催单 / 联系骑手 / 已联系顾客」— 自动归入本订单话题',
     '帮助 — 显示本清单',
 ].join('\n');
 
@@ -150,21 +155,37 @@ export function formatPlatformBoard(input: {
     return lines.join('\n');
 }
 
+function groupByStore(lines: string[]): Record<string, string[]> {
+    const groups: Record<string, string[]> = {};
+    for (const l of lines) {
+        const parts = l.split(/\s+/);
+        const store = parts.length >= 2 ? parts[1] : '未知';
+        (groups[store] ||= []).push(l);
+    }
+    return groups;
+}
+
+function formatSection(title: string, lines: string[], max = 15): string[] {
+    if (!lines.length) return [];
+    const trimmed = lines.slice(0, max);
+    const groups = groupByStore(trimmed);
+    const out: string[] = [`【${title} ${lines.length}】`];
+    const storeNames = Object.keys(groups).sort();
+    for (const store of storeNames) {
+        const items = groups[store];
+        out.push(`  ${store}（${items.length}）`);
+        for (const it of items) out.push(`    · ${it}`);
+    }
+    if (lines.length > max) out.push(`  ... 其余 ${lines.length - max} 条`);
+    return out;
+}
+
 export function formatExceptions(exceptions: string[], overdue: string[], soonOverdue: string[] = []): string {
     if (!exceptions.length && !overdue.length && !soonOverdue.length) return '当前没有异常或超时订单。';
     const lines: string[] = [];
-    if (exceptions.length) {
-        lines.push(`【异常未处置 ${exceptions.length}】`);
-        lines.push(...exceptions.slice(0, 15).map(t => `· ${t}`));
-    }
-    if (overdue.length) {
-        lines.push(`【已超时 ${overdue.length}】`);
-        lines.push(...overdue.slice(0, 15).map(t => `· ${t}`));
-    }
-    if (soonOverdue.length) {
-        lines.push(`【即将超时 ⚠️ ${soonOverdue.length}】`);
-        lines.push(...soonOverdue.slice(0, 15).map(t => `· ${t}`));
-    }
+    lines.push(...formatSection('异常未处置', exceptions));
+    lines.push(...formatSection('已超时', overdue));
+    lines.push(...formatSection('即将超时 ⚠️', soonOverdue));
     return lines.join('\n');
 }
 

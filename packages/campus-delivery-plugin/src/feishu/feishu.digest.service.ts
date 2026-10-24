@@ -147,6 +147,6 @@ export class FeishuDigestService implements OnApplicationShutdown {
             ).then((r: any) => Number(r?.[0]?.n ?? 0)).catch(() => -1),
         ]);
         const ts = campusHhmm(Date.now());
-        return `💓 服务健康 · ${ts} · 活动单 ${active === -1 ? 'DB 查询异常' : active} · 店铺 ${channels === -1 ? '?' : channels}`;
+        return `💓 服务健康 · ${campusDayKey(Date.now())} ${ts} · 活动单 ${active === -1 ? 'DB查询异常' : active} · 店铺 ${channels === -1 ? '?' : channels}`;
     }
 }

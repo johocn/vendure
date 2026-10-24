@@ -29,7 +29,7 @@ let FeishuCardService = class FeishuCardService {
     }
     /** 告警合并入口：pushEvent 带 orderCode 时先尝试 PATCH 卡片追加告警，返回是否成功 */
     async appendAlert(orderCode, alertText) {
-        var _a;
+        var _a, _b;
         const mapping = this.codeToMessage.get(orderCode);
         if (!mapping)
             return false;
@@ -39,8 +39,12 @@ let FeishuCardService = class FeishuCardService {
                 const card = await this.buildCard(orderCode);
                 if (!card)
                     continue;
-                // 在卡片 elements 里追加一个 alert div（红色 md 文本）
                 const elems = (_a = card.elements) !== null && _a !== void 0 ? _a : [];
+                // P2.2 去重：同一卡片里已存在相同告警 title 的 alert div 就跳过
+                const alertTitle = (_b = alertText.split(' · ')[0]) !== null && _b !== void 0 ? _b : alertText;
+                const alreadyAlerted = elems.some((e) => { var _a, _b; return e.tag === 'div' && ((_b = (_a = e.text) === null || _a === void 0 ? void 0 : _a.content) === null || _b === void 0 ? void 0 : _b.includes(`🚨 **${alertTitle}`)); });
+                if (alreadyAlerted)
+                    continue;
                 const lastDiv = elems.findIndex((e) => { var _a, _b; return e.tag === 'div' && ((_b = (_a = e.text) === null || _a === void 0 ? void 0 : _a.content) === null || _b === void 0 ? void 0 : _b.startsWith('📍')); });
                 const alertElem = { tag: 'div', text: { tag: 'lark_md', content: `🚨 **${alertText}** · ${new Date().toLocaleTimeString('zh-CN')}` } };
                 if (lastDiv >= 0) {
@@ -53,7 +57,7 @@ let FeishuCardService = class FeishuCardService {
                 if (ok)
                     anyOk = true;
             }
-            catch ( /* 单群失败不影响其他群 */_b) { /* 单群失败不影响其他群 */ }
+            catch ( /* 单群失败不影响其他群 */_c) { /* 单群失败不影响其他群 */ }
         }
         return anyOk;
     }

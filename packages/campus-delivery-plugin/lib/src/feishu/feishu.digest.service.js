@@ -154,7 +154,7 @@ let FeishuDigestService = class FeishuDigestService {
             this.connection.rawConnection.query(`SELECT COUNT(*)::int AS n FROM "channel" WHERE "enabled"=true AND "code"<>'__default_channel__'`).then((r) => { var _a, _b; return Number((_b = (_a = r === null || r === void 0 ? void 0 : r[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0); }).catch(() => -1),
         ]);
         const ts = campusHhmm(Date.now());
-        return `💓 服务健康 · ${ts} · 活动单 ${active === -1 ? 'DB 查询异常' : active} · 店铺 ${channels === -1 ? '?' : channels}`;
+        return `💓 服务健康 · ${(0, campus_time_1.campusDayKey)(Date.now())} ${ts} · 活动单 ${active === -1 ? 'DB查询异常' : active} · 店铺 ${channels === -1 ? '?' : channels}`;
     }
 };
 exports.FeishuDigestService = FeishuDigestService;

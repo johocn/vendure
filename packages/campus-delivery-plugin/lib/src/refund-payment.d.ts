@@ -14,9 +14,7 @@ export declare function refundedTotal(connection: TransactionalConnection, payme
  * 商家重试拒单/异常全额退款时会判定「无可退余额」，直接取消订单而不退款（客户静默少退）。
  */
 export declare function settleRefundOrMarkFailed(connection: TransactionalConnection, orderService: {
-    settleRefund: (ctx: RequestContext, input: {
-        id: ID;
-    }) => Promise<unknown>;
+    settleRefund: (ctx: RequestContext, input: any) => Promise<unknown>;
 }, ctx: RequestContext, refundId: ID): Promise<void>;
 /**
  * 订单可退支付单（新→旧）：仅 Settled/Authorized，且仍有未退余额。

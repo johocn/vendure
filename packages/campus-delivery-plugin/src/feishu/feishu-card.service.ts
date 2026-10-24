@@ -30,8 +30,13 @@ export class FeishuCardService {
             try {
                 const card = await this.buildCard(orderCode);
                 if (!card) continue;
-                // 在卡片 elements 里追加一个 alert div（红色 md 文本）
                 const elems: any[] = (card as any).elements ?? [];
+                // P2.2 去重：同一卡片里已存在相同告警 title 的 alert div 就跳过
+                const alertTitle = alertText.split(' · ')[0] ?? alertText;
+                const alreadyAlerted = elems.some(
+                    (e: any) => e.tag === 'div' && e.text?.content?.includes(`🚨 **${alertTitle}`),
+                );
+                if (alreadyAlerted) continue;
                 const lastDiv = elems.findIndex((e: any) => e.tag === 'div' && e.text?.content?.startsWith('📍'));
                 const alertElem = { tag: 'div', text: { tag: 'lark_md', content: `🚨 **${alertText}** · ${new Date().toLocaleTimeString('zh-CN')}` } };
                 if (lastDiv >= 0) {
