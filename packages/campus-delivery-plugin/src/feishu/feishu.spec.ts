@@ -383,7 +383,7 @@ describe('feishu 零建表卡片', () => {
         expect(values[0]).toEqual({ a: 'tpl', c: 'A1', t: 'urge_accept' });
     });
 
-    it('异常卡片按钮：改派(primary) + 已处置 替换原无用报异常', () => {
+    it('异常卡片按钮：改派(primary)→已处置→退差价→发券→全额退款(danger)，不再出现报异常', () => {
         const now = Date.now();
         const card: any = buildOrderCard({
             code: 'CAMPUS2026102412345ABCDE',
@@ -400,19 +400,21 @@ describe('feishu 零建表卡片', () => {
             route: 'R2',
             total: 1800,
         } as any);
-        const btnLabels = card.elements.find((e: any) => e.tag === 'action')
-            .actions.map((b: any) => b.text.content);
-        // 必须出现改派 + 已处置（primary 在前），且不再出现「报异常」
-        expect(btnLabels[0]).toBe('改派');
-        expect(btnLabels).toContain('已处置');
+        const actionElem = card.elements.find((e: any) => e.tag === 'action');
+        const btnLabels = actionElem.actions.map((b: any) => b.text.content);
+        const btnTypes = actionElem.actions.map((b: any) => b.type);
+        const btnA = actionElem.actions.map((b: any) => b.value.a);
+        // 5 个异常处置按钮 + 状态 + 快捷回复 = 7
+        expect(btnLabels.length).toBe(7);
+        // 序列：改派(primary) → 已处置 → 退差价 → 发券 → 全额退款(danger) → 状态 → 快捷回复
+        expect(btnLabels).toEqual(['改派', '已处置', '退差价', '发券', '全额退款', '状态', '快捷回复']);
+        expect(btnTypes[0]).toBe('primary');
+        expect(btnTypes[4]).toBe('danger');
+        expect(btnA.slice(0, 5)).toEqual(['reassign', 'handled', 'refund_diff', 'coupon', 'refund_all']);
         expect(btnLabels).not.toContain('报异常');
-        const btnA = card.elements.find((e: any) => e.tag === 'action')
-            .actions.map((b: any) => b.value.a);
-        expect(btnA).toContain('reassign');
-        expect(btnA).toContain('handled');
     });
 
-    it('非异常卡片按 hallStatus 显示接单/出餐/状态按钮', () => {
+    it('非异常卡片：按 hallStatus 显示接单/出餐 primary', () => {
         const now = Date.now();
         const pendingCard: any = buildOrderCard({
             code: 'ABC123456789XYZ', store: 'canteen-a',
@@ -429,5 +431,58 @@ describe('feishu 零建表卡片', () => {
         const acceptedLabels = acceptedCard.elements.find((e: any) => e.tag === 'action')
             .actions.map((b: any) => b.text.content);
         expect(acceptedLabels[0]).toBe('出餐'); // primary 位
+    });
+
+    // ---------- P1.2 restore 指令 ----------
+
+    it('parseCommand 解析 restore / 恢复 指令', () => {
+        expect(parseCommand('恢复 ABC123').name).toBe('restore');
+        expect(parseCommand('恢复 ABC123').orderCode).toBe('ABC123');
+        expect(parseCommand('restore XYZ999').name).toBe('restore');
+        expect(parseCommand('restore XYZ999').orderCode).toBe('XYZ999');
+        expect(parseCommand('恢复').name).toBe('restore');
+        expect(parseCommand('恢复').orderCode).toBeUndefined();
+    });
+
+    // ---------- P2.2 即将超时看板 ----------
+
+    it('formatExceptions 三段输出：异常未处置 / 已超时 / 即将超时 ⚠️', () => {
+        const text = formatExceptions(
+            ['CODE1 store 骑手失联（已 30 分钟）'],
+            ['CODE2 store 商户 8 分钟未接单（阈值 5）'],
+            ['CODE3 store ⚠️ 骑手即将超时（14/15min）'],
+        );
+        expect(text).toContain('【异常未处置 1】');
+        expect(text).toContain('CODE1');
+        expect(text).toContain('【已超时 1】');
+        expect(text).toContain('CODE2');
+        expect(text).toContain('【即将超时 ⚠️ 1】');
+        expect(text).toContain('CODE3');
+    });
+
+    it('formatExceptions 空 soonOverdue 不崩溃', () => {
+        expect(formatExceptions([], [], [])).toBe('当前没有异常或超时订单。');
+        expect(formatExceptions(['A1'], [], [])).toContain('【异常未处置 1】');
+        expect(formatExceptions([], ['B2'], [])).toContain('【已超时 1】');
+    });
+
+    // ---------- P2.1 同单告警合并（FeishuCardService.appendAlert 需要 mock client，这里测纯模板层） ----------
+
+    it('buildOrderCard header 状态 emoji 按 hallStatus 正确渲染', () => {
+        const now = Date.now();
+        const cases: Array<[string, string, string]> = [
+            ['pending_merchant', '🟠', '待商户接单'],
+            ['accepted', '🔵', '备餐中'],
+            ['open', '🟢', '待抢单'],
+        ];
+        for (const [hs, emoji, label] of cases) {
+            const card: any = buildOrderCard({
+                code: 'EMOJITEST1234567', store: 'canteen-a',
+                hallStatus: hs, createdAt: now - 5 * 60_000, at: now,
+            } as any);
+            const title = card.header.title.content;
+            expect(title).toContain(emoji);
+            expect(title).toContain(label);
+        }
     });
 });
