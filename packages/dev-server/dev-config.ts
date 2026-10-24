@@ -362,11 +362,13 @@ export const devConfig: VendureConfig = {
         Promotion: [],
     },
     schedulerOptions: {
-        // 任务只在 worker 进程执行：验收要求「停掉 worker 时预留单不被释放」以证明是真定时任务。
-        // 代价：只用 `npm run dev:server` 时不会有任何 ScheduledTask（含 OrderTimeoutPlugin 补偿扫描、
-        // 秒杀状态转换）在跑 —— 本地必须用 `npm run dev`（concurrently 同时起 server + worker），
-        // 生产必须常驻一个 worker 进程（见 Task 4.9 手册章节）。
-        runTasksInWorkerOnly: true,
+        // 生产为单进程部署（pm2 只跑 prod-start.js → dist/index，常驻 worker 进程为零），
+        // 若限制「任务只在 worker 执行」，所有 ScheduledTask 在生产永远不会运行——
+        // 2026-10-25 实证：待付款补偿扫描缺失致订单卡 ArrangingPayment 11 天，
+        // OrderTimeoutPlugin 补偿、会话清理、售后超时、秒杀/拼团状态切换同样全停。
+        // 单进程部署的官方推荐做法是在当前进程执行计划任务；本地 `npm run dev` 会
+        // server+worker 双进程各跑一次（幂等补偿无害，介意可本地临时改回 true）。
+        runTasksInWorkerOnly: false,
         tasks: [cleanSessionsTask, cleanOrphanedSettingsStoreTask],
     },
     logger: new DefaultLogger({ level: LogLevel.Verbose }),
