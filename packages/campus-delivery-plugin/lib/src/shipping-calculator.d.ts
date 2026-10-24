@@ -3,6 +3,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 export declare function bindCampusErrandCalculatorConnection(conn: TransactionalConnection): void;
 /** 大厅待抢单量（30s 缓存）；动态计价预览与运费报价共用同一口径 */
 export declare function readHallBacklog(conn: TransactionalConnection, channelId: ID): Promise<number>;
+export declare function readOnlineRiderCount(conn: TransactionalConnection, channelId: ID): Promise<number>;
 export declare const campusErrandCalculator: ShippingCalculator<{}>;
 /** 运费口径：分区配送 / 跑腿起步价 / 第三方到校配基价 */
 export type CampusFeeScope = 'zone' | 'errand' | 'third-party';

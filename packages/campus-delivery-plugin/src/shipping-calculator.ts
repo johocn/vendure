@@ -1,4 +1,4 @@
-import { ID, LanguageCode, Order, ShippingCalculator, TransactionalConnection } from '@vendure/core';
+import { Customer, ID, LanguageCode, Order, ShippingCalculator, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
@@ -43,6 +43,29 @@ export async function readHallBacklog(conn: TransactionalConnection, channelId: 
             .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
             .getCount();
         backlogCache.set(key, { at: Date.now(), value });
+        return value;
+    } catch {
+        return 0;
+    }
+}
+
+/** 在线骑手数（approved 且 5min 内有心跳，同 CapacityService.listOnlineRiders 口径）；30s 缓存。
+ * 供需加价必须带这个数：不传时 quoteDynamicFee 按 0 处理，riderThreshold 永不生效、骑手充足也会加价。 */
+const onlineRiderCache = new Map<string, { at: number; value: number }>();
+export async function readOnlineRiderCount(conn: TransactionalConnection, channelId: ID): Promise<number> {
+    const key = String(channelId);
+    const hit = onlineRiderCache.get(key);
+    if (hit && Date.now() - hit.at < BACKLOG_TTL) return hit.value;
+    try {
+        const value = await conn.rawConnection
+            .getRepository(Customer)
+            .createQueryBuilder('customer')
+            .leftJoin('customer.channels', 'channel')
+            .where('channel.id = :cid', { cid: channelId })
+            .andWhere('customer.customFields.riderStatus = :status', { status: 'approved' })
+            .andWhere('customer.customFields.riderOnlineAt >= :since', { since: new Date(Date.now() - 5 * 60_000) })
+            .getCount();
+        onlineRiderCache.set(key, { at: Date.now(), value });
         return value;
     } catch {
         return 0;
@@ -100,7 +123,8 @@ export async function quoteDynamicBaseFee(
 ) {
     const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
-    const quote = quoteDynamicFee({ baseFee, config: pricing, at: new Date(), backlog });
+    const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
+    const quote = quoteDynamicFee({ baseFee, config: pricing, at: new Date(), backlog, onlineRiders });
     return {
         price: quote.price,
         priceIncludesTax: true,
@@ -128,9 +152,10 @@ export async function quoteZonesForShop(
     });
     const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
+    const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
     const at = new Date();
     return zones.map(z => {
-        const q = quoteDynamicFee({ baseFee: Number(z.fee), config: pricing, at, backlog });
+        const q = quoteDynamicFee({ baseFee: Number(z.fee), config: pricing, at, backlog, onlineRiders });
         return {
             ...z,
             fee: Number(z.fee),
@@ -162,7 +187,8 @@ export async function quoteZoneFee(
     }
     const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
-    const quote = quoteDynamicFee({ baseFee: zone.fee, config: pricing, at: new Date(), backlog });
+    const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
+    const quote = quoteDynamicFee({ baseFee: zone.fee, config: pricing, at: new Date(), backlog, onlineRiders });
     return {
         price: quote.price,
         priceIncludesTax: true,

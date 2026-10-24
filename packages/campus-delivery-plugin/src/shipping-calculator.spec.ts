@@ -150,13 +150,45 @@ describe('campusErrandCalculator', () => {
         expect(res!.metadata?.freeShipping).toBeUndefined();
     });
 
-    it('R2 第三方到校：未配置 thirdPartyBaseFee 返回 undefined（沿用店铺普通快递运费）', async () => {
-        cfgRepo.findOne.mockResolvedValue({ thirdPartyBaseFee: null, dynamicPricing: JSON.parse(dynamicMul(1.5)) });
-        const res = await campusErrandCalculator.calculate(
-            makeCtx(2),
-            { customFields: { fulfillmentRoute: 'R2', campusZone: '东区' } } as any,
-            [] as any, {} as any,
+    // ===== 供需加价必须带在线骑手数（与改址/派单同口径，2026-10-24） =====
+    it('供需加价：积压达标且在线骑手 <= riderThreshold 才加价，骑手充足不加价', async () => {
+        const supply = { backlogThreshold: 5, riderThreshold: 3, addFee: 200 };
+        const bind = (riders: number) => {
+            const chain = (count: number) => {
+                const qb: any = {
+                    innerJoin: () => qb, leftJoin: () => qb, where: () => qb, andWhere: () => qb,
+                    getCount: async () => count,
+                };
+                return qb;
+            };
+            bindCampusErrandCalculatorConnection({
+                rawConnection: {
+                    getRepository: (ent: any) => {
+                        const n = ent.name ?? String(ent);
+                        if (n === 'CampusZone') return zoneRepo;
+                        if (n === 'Order') return { createQueryBuilder: () => chain(10) };
+                        if (n === 'Customer') return { createQueryBuilder: () => chain(riders) };
+                        return cfgRepo;
+                    },
+                },
+            } as any);
+        };
+        cfgRepo.findOne.mockResolvedValue({
+            errandBaseFee: 300,
+            dynamicPricing: { enabled: true, peakWindows: [], supply, manualMultiplier: 1, maxAddFee: 0 },
+        });
+        // 渠道号唯一：绕开 backlog/在线骑手 30s 模块级缓存串味
+        bind(5);
+        const plenty = await campusErrandCalculator.calculate(
+            makeCtx(901), { customFields: { orderKind: 'errand' } } as any, [] as any, {} as any,
         );
-        expect(res).toBeUndefined();
+        expect(plenty!.price).toBe(300);
+        bind(2);
+        const tight = await campusErrandCalculator.calculate(
+            makeCtx(902), { customFields: { orderKind: 'errand' } } as any, [] as any, {} as any,
+        );
+        expect(tight!.price).toBe(500);
+        expect(tight!.metadata).toMatchObject({ addFee: 200 });
     });
+
 });

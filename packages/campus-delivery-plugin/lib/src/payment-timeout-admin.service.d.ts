@@ -26,7 +26,9 @@ export declare class PaymentTimeoutAdminService {
         items: PaymentTimeoutTaskRow[];
         total: number;
     }>;
-    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道） */
+    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道）。
+     * 「今日」用校园 UTC+8 日界（campus-time），与骑手统计/飞书日报同口径；
+     * 服务器本地 setHours(0,0,0,0) 在 TZ 变更后会整体漂移 8 小时。 */
     getStats(ctx: RequestContext): Promise<{
         todayRemind: number;
         todayCancel: number;

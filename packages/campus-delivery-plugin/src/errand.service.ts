@@ -148,16 +148,29 @@ export class ErrandService {
             where: { id: orderId as any },
             relations: ['surcharges'],
         });
-        for (const s of (existing?.surcharges ?? []).filter(x => x.description === ERRAND_TIP_SURCHARGE_DESC)) {
+        const oldTips = (existing?.surcharges ?? []).filter(x => x.description === ERRAND_TIP_SURCHARGE_DESC);
+        for (const s of oldTips) {
             await this.orderService.removeSurchargeFromOrder(ctx, orderId as any, s.id as any);
         }
         if (tip > 0) {
             // 本 fork 无独立 SurchargeService，surcharge 原语在 OrderService.addSurchargeToOrder（service 层无权限校验，shop ctx 可用）
-            await this.orderService.addSurchargeToOrder(ctx, orderId as any, {
-                description: ERRAND_TIP_SURCHARGE_DESC,
-                listPrice: tip,
-                listPriceIncludesTax: true,
-            } as any);
+            try {
+                await this.orderService.addSurchargeToOrder(ctx, orderId as any, {
+                    description: ERRAND_TIP_SURCHARGE_DESC,
+                    listPrice: tip,
+                    listPriceIncludesTax: true,
+                } as any);
+            } catch (e) {
+                // 先清后加非事务：新增失败时回补刚清掉的旧小费（尽力而为），避免用户已填小费静默丢失
+                for (const s of oldTips) {
+                    await this.orderService.addSurchargeToOrder(ctx, orderId as any, {
+                        description: ERRAND_TIP_SURCHARGE_DESC,
+                        listPrice: Number((s as any).listPrice ?? 0),
+                        listPriceIncludesTax: true,
+                    } as any).catch(() => undefined);
+                }
+                throw e;
+            }
         }
         return order;
     }

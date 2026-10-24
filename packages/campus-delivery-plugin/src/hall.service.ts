@@ -126,54 +126,66 @@ export class HallService {
         const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
         const deferred =
             !Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService.SCHEDULE_RELEASE_MIN * 60_000;
-        const update = (patch: Record<string, unknown>) =>
-            this.connection.getRepository(ctx, Order).update(order.id, {
-                customFields: {
-                    ...snapshot,
-                    ...(locked || snapshot.campusCause ? {} : { campusCause: 'slot_full' }),
-                    ...patch,
-                },
-            } as any);
+        // 入厅条件写（CAS）：仅当 hallStatus 仍为空且订单未取消才写入。
+        // 先读后写的无条件 update 会与用户取消并发：取消事件把 hallStatus 置 cancelled 后，
+        // 本次写入仍会把已退款单复活成 open/pending_merchant，商家工作台按 hallStatus 查询即会显示已取消单。
+        const enter = async (patch: Record<string, unknown>): Promise<boolean> => {
+            const entered = await this.transitionFrom(ctx, Number(order.id), [''], {
+                ...snapshot,
+                ...(locked || snapshot.campusCause ? {} : { campusCause: 'slot_full' }),
+                ...patch,
+            });
+            if (!entered) {
+                // 已取消/已入厅：归还本次可能占用的时段容量，避免取消竞态造成名额泄漏
+                await this.slotLock.unlock(ctx, Number(order.id)).catch(() => undefined);
+                Logger.warn(`Order ${order.code} enter hall skipped (cancelled or already entered)`, 'CampusHall');
+            }
+            return entered;
+        };
 
         // R1：商户/自营快递先完成第一段（送到校园交接点），出餐后由商家工作台分流
         if (route === 'R1' && !degrade) {
             if (deferred) {
-                await update({ hallStatus: 'scheduled' });
+                await enter({ hallStatus: 'scheduled' });
                 return;
             }
-            await update({ hallStatus: 'pending_merchant' });
-            Logger.info(`Order ${order.code} awaiting merchant (R1/${snapshot.deliveryPlan})`, 'CampusHall');
+            if (await enter({ hallStatus: 'pending_merchant' })) {
+                Logger.info(`Order ${order.code} awaiting merchant (R1/${snapshot.deliveryPlan})`, 'CampusHall');
+            }
             return;
         }
 
         // R2：固定外部快递，但必须先经商户接单/出餐（出餐闸门），cookingDone 后才推送外部快递
         if (route === 'R2' && !degrade) {
-            await update({ hallStatus: deferred ? 'scheduled' : 'pending_merchant' });
-            Logger.info(`Order ${order.code} awaiting merchant (R2 cooking gate)`, 'CampusHall');
+            if (await enter({ hallStatus: deferred ? 'scheduled' : 'pending_merchant' })) {
+                Logger.info(`Order ${order.code} awaiting merchant (R2 cooking gate)`, 'CampusHall');
+            }
             return;
         }
 
         // R3：一段到底，按第一段进入对应池
         const leg1 = String(snapshot.deliveryPlan);
         if (deferred) {
-            await update({ hallStatus: 'scheduled' });
+            await enter({ hallStatus: 'scheduled' });
             return;
         }
         if (leg1 === 'external_courier') {
-            await update({ hallStatus: 'pending_dispatch' });
-            Logger.info(`Order ${order.code} awaiting external push (R3)`, 'CampusHall');
+            if (await enter({ hallStatus: 'pending_dispatch' })) {
+                Logger.info(`Order ${order.code} awaiting external push (R3)`, 'CampusHall');
+            }
             return;
         }
         if (leg1 === 'owned') {
-            await update({ hallStatus: 'owned_pool' });
-            Logger.info(`Order ${order.code} in owned pool (R3)`, 'CampusHall');
+            if (await enter({ hallStatus: 'owned_pool' })) {
+                Logger.info(`Order ${order.code} in owned pool (R3)`, 'CampusHall');
+            }
             return;
         }
         if (cfg?.merchantConfirmEnabled) {
-            await update({ hallStatus: 'pending_merchant' });
+            await enter({ hallStatus: 'pending_merchant' });
             return;
         }
-        await update({ hallStatus: 'open', hallEnteredAt: new Date() });
+        if (!(await enter({ hallStatus: 'open', hallEnteredAt: new Date() }))) return;
         Logger.info(`Order ${order.code} entered hall (${route}, slotLocked=${locked})`, 'CampusHall');
         this.notifyRiders(ctx, order);
     }

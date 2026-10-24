@@ -101,6 +101,18 @@ describe('ErrandService.setErrandInfo', () => {
         expect(env.orderSvc.removeSurchargeFromOrder).toHaveBeenCalledWith(ctx, 5, 71);
         expect(env.orderSvc.addSurchargeToOrder).not.toHaveBeenCalled();
     });
+
+    it('新增小费失败 → 回补刚清掉的旧小费并抛错（不静默丢失）', async () => {
+        const env = makeEnv({ surcharges: [{ id: 71, description: '跑腿小费', listPrice: 100 }] });
+        env.orderSvc.addSurchargeToOrder.mockRejectedValueOnce(new Error('db down'));
+        const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } } as any;
+        await expect(env.svc.setErrandInfo(ctx, input)).rejects.toThrow('db down');
+        // 第一次新增新值失败 → 回补旧小费：共 2 次，第二次金额取旧值
+        expect(env.orderSvc.addSurchargeToOrder).toHaveBeenCalledTimes(2);
+        expect(env.orderSvc.addSurchargeToOrder).toHaveBeenLastCalledWith(
+            ctx, 5, expect.objectContaining({ description: '跑腿小费', listPrice: 100 }),
+        );
+    });
 });
 
 describe('ErrandService.setErrandInfo 二期字段', () => {

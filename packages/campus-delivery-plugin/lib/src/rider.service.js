@@ -117,7 +117,12 @@ let RiderService = class RiderService {
     }
     /** 骑手上下线开关 + 心跳：大厅轮询页每 15s 调 online=true 即续命 */
     async setOnline(ctx, online) {
+        var _a, _b;
         const customer = await this.requireCustomer(ctx);
+        const status = String((_b = (_a = customer.customFields) === null || _a === void 0 ? void 0 : _a.riderStatus) !== null && _b !== void 0 ? _b : 'none');
+        // 未过审（none/pending/suspended）不得上线：避免待审/停用账号写心跳污染在线运力
+        if (online && status !== 'approved')
+            throw new core_1.ForbiddenError();
         await this.connection.getRepository(ctx, core_1.Customer).update(customer.id, {
             customFields: { riderOnlineAt: online ? new Date() : null },
         });

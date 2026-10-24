@@ -114,6 +114,9 @@ export class RiderService {
     /** 骑手上下线开关 + 心跳：大厅轮询页每 15s 调 online=true 即续命 */
     async setOnline(ctx: RequestContext, online: boolean) {
         const customer = await this.requireCustomer(ctx);
+        const status = String((customer.customFields as any)?.riderStatus ?? 'none');
+        // 未过审（none/pending/suspended）不得上线：避免待审/停用账号写心跳污染在线运力
+        if (online && status !== 'approved') throw new ForbiddenError();
         await this.connection.getRepository(ctx, Customer).update(customer.id, {
             customFields: { riderOnlineAt: online ? new Date() : null },
         } as any);

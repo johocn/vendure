@@ -4,6 +4,16 @@ import { Order } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { HallService } from './hall.service';
 
+/** customFields 字段 → 物理列名后缀（用于把 CAS 的 SET 列反解回字段名） */
+const COLUMN_FIELD: Record<string, string> = Object.fromEntries(
+    [
+        'hallStatus', 'hallEnteredAt', 'deliveryPlan', 'handoverMode', 'thirdPartyProvider',
+        'handoverPointName', 'handoverPointAddress', 'handoverPointLat', 'handoverPointLng',
+        'promisedAt', 'promiseSource', 'campusCause', 'deliveryStatus', 'assignedAt',
+        'deliveryStaffId', 'slotLocked',
+    ].map(f => [`${f.charAt(0).toUpperCase()}${f.slice(1).toLowerCase()}`, f]),
+);
+
 function makeEnv(opts: { cfg?: any; slotLocked?: boolean; curHs?: string } = {}) {
     const updates: any[] = [];
     const orderRepo = {
@@ -13,8 +23,17 @@ function makeEnv(opts: { cfg?: any; slotLocked?: boolean; curHs?: string } = {})
         ),
     };
     const cfgRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? null) };
-    // transitionFrom 走裸 SQL（条件状态迁移），默认命中 1 行
-    const rawQuery = vi.fn().mockResolvedValue([[{ id: 9 }]]);
+    // 入厅/状态迁移都走裸 SQL 条件写（CAS）：把 SET 列反解成 customFields 补丁供用例断言，默认命中 1 行
+    const rawQuery = vi.fn().mockImplementation((sql: string, params: any[] = []) => {
+        if (sql.includes('"customFieldsHallstatus" =')) {
+            const patch: Record<string, any> = {};
+            for (const m of String(sql).matchAll(/"customFields([A-Za-z]+)" = \$(\d+)/g)) {
+                patch[COLUMN_FIELD[m[1]] ?? m[1]] = params[Number(m[2]) - 1];
+            }
+            updates.push({ customFields: patch });
+        }
+        return Promise.resolve([[{ id: 9 }]]);
+    });
     const conn = {
         getRepository: vi.fn((_ctx: any, ent: any) => {
             const name = (ent as any).name;
@@ -23,9 +42,12 @@ function makeEnv(opts: { cfg?: any; slotLocked?: boolean; curHs?: string } = {})
         }),
         rawConnection: { query: rawQuery },
     } as any;
-    const slotLock = { lock: vi.fn().mockResolvedValue(opts.slotLocked ?? true) };
+    const slotLock = {
+        lock: vi.fn().mockResolvedValue(opts.slotLocked ?? true),
+        unlock: vi.fn().mockResolvedValue(false),
+    };
     const svc = new HallService(conn, slotLock as any, { get: vi.fn() } as any, { listOnlineRiders: vi.fn().mockResolvedValue([]) } as any);
-    return { svc, orderRepo, cfgRepo, updates, rawQuery };
+    return { svc, orderRepo, cfgRepo, updates, rawQuery, slotLock };
 }
 
 const future = (min: number) => new Date(Date.now() + min * 60_000);
@@ -92,6 +114,27 @@ describe('HallService.onOrderPlaced 预约闸门', () => {
         const env = makeEnv({ cfg: { channelId: 1, routeFirstLeg: { R3: 'owned' } } });
         await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R3' } } as any);
         expect(env.updates[0].customFields).toMatchObject({ hallStatus: 'owned_pool', deliveryPlan: 'owned' });
+    });
+});
+
+describe('HallService.onOrderPlaced 取消竞态保护', () => {
+    it('入厅 CAS 未命中（订单已取消/已入厅）→ 不写入任何字段并归还时段容量', async () => {
+        const env = makeEnv();
+        env.rawQuery.mockResolvedValueOnce([[]]);
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, {
+            id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' },
+        } as any);
+        expect(env.updates).toHaveLength(0);
+        expect(env.slotLock.unlock).toHaveBeenCalledWith(expect.anything(), 9);
+    });
+
+    it('入厅 CAS 命中 → 照常写入快照与目标态', async () => {
+        const env = makeEnv();
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, {
+            id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' },
+        } as any);
+        expect(env.updates[0].customFields).toMatchObject({ hallStatus: 'open' });
+        expect(env.slotLock.unlock).not.toHaveBeenCalled();
     });
 });
 

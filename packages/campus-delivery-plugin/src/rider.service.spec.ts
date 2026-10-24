@@ -15,6 +15,40 @@ describe('RiderService.assertApprovedRider', () => {
     it('信用分低于 60 拒绝', async () => expect(make({ riderStatus: 'approved', riderCredit: 59 })).rejects.toThrow());
 });
 
+// 上下线开关：未过审账号不得写心跳（避免污染在线运力口径）
+describe('RiderService.setOnline 审核态防护', () => {
+    const make = (riderStatus: string) => {
+        const update = vi.fn().mockResolvedValue({});
+        const svc = new RiderService(
+            { getRepository: vi.fn().mockReturnValue({ update }) } as any,
+            { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
+        );
+        return { svc, update };
+    };
+
+    it('approved 可上线并写心跳', async () => {
+        const { svc, update } = make('approved');
+        await expect(svc.setOnline({ channelId: 1, activeUserId: 1 } as any, true)).resolves.toEqual({ online: true });
+        expect(update).toHaveBeenCalledWith(1, expect.objectContaining({
+            customFields: expect.objectContaining({ riderOnlineAt: expect.any(Date) }),
+        }));
+    });
+
+    it('none/pending/suspended 上线被拒且不写心跳', async () => {
+        for (const st of ['none', 'pending', 'suspended']) {
+            const { svc, update } = make(st);
+            await expect(svc.setOnline({ channelId: 1, activeUserId: 1 } as any, true)).rejects.toThrow();
+            expect(update).not.toHaveBeenCalled();
+        }
+    });
+
+    it('下线不受审核态限制（清心跳）', async () => {
+        const { svc, update } = make('suspended');
+        await expect(svc.setOnline({ channelId: 1, activeUserId: 1 } as any, false)).resolves.toEqual({ online: false });
+        expect(update).toHaveBeenCalledWith(1, expect.objectContaining({ customFields: { riderOnlineAt: null } }));
+    });
+});
+
 // 入驻申请状态保护：待审可重新提交；已通过仅更新资料；已停用不得自助复申请
 describe('RiderService.applyRider 状态保护', () => {
     const make = (riderStatus: string) => {

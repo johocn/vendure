@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const payment_timeout_job_1 = require("./payment-timeout.job");
+const campus_time_1 = require("./campus-time");
 const payment_timeout_entity_1 = require("./payment-timeout.entity");
 let PaymentTimeoutAdminService = class PaymentTimeoutAdminService {
     constructor(connection, job) {
@@ -37,20 +38,22 @@ let PaymentTimeoutAdminService = class PaymentTimeoutAdminService {
     /** 任务分页列表（dueAt 倒序），附带订单号/订单状态摘要 */
     async listTasks(ctx, opts) {
         var _a, _b, _c, _d;
-        const take = Math.min((_a = opts.take) !== null && _a !== void 0 ? _a : 20, 100);
+        // 分页参数钳制：GraphQL Int 可传负数，skip<0 会生成非法 OFFSET 直接报错；take<1 同样非法
+        const skip = Math.max(0, (_a = opts.skip) !== null && _a !== void 0 ? _a : 0);
+        const take = Math.min(Math.max((_b = opts.take) !== null && _b !== void 0 ? _b : 20, 1), 100);
         const where = {};
         if (opts.status)
             where.status = opts.status;
         if (opts.type)
             where.type = opts.type;
         if (opts.from || opts.to)
-            where.dueAt = (0, typeorm_1.Between)((_b = opts.from) !== null && _b !== void 0 ? _b : new Date(0), (_c = opts.to) !== null && _c !== void 0 ? _c : new Date('2999-12-31'));
+            where.dueAt = (0, typeorm_1.Between)((_c = opts.from) !== null && _c !== void 0 ? _c : new Date(0), (_d = opts.to) !== null && _d !== void 0 ? _d : new Date('2999-12-31'));
         if (!this.isPlatformAdmin(ctx))
             where.channelId = Number(ctx.channelId);
         const [tasks, total] = await this.taskRepo.findAndCount({
             where: where,
             order: { dueAt: 'DESC' },
-            skip: (_d = opts.skip) !== null && _d !== void 0 ? _d : 0,
+            skip,
             take,
         });
         const ids = [...new Set(tasks.map(t => Number(t.orderId)))];
@@ -62,10 +65,11 @@ let PaymentTimeoutAdminService = class PaymentTimeoutAdminService {
         });
         return { items, total };
     }
-    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道） */
+    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道）。
+     * 「今日」用校园 UTC+8 日界（campus-time），与骑手统计/飞书日报同口径；
+     * 服务器本地 setHours(0,0,0,0) 在 TZ 变更后会整体漂移 8 小时。 */
     async getStats(ctx) {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        const startOfDay = new Date((0, campus_time_1.startOfCampusDay)(Date.now()));
         const scope = this.isPlatformAdmin(ctx) ? {} : { channelId: Number(ctx.channelId) };
         const [todayRemind, todayCancel, totalFailed, pendingOverdue] = await Promise.all([
             this.taskRepo.count({ where: Object.assign(Object.assign({}, scope), { type: payment_timeout_entity_1.PaymentTimeoutType.REMIND, status: payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED, dueAt: (0, typeorm_1.Between)(startOfDay, new Date()) }) }),

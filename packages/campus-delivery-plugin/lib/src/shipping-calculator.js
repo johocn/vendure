@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.campusErrandCalculator = void 0;
 exports.bindCampusErrandCalculatorConnection = bindCampusErrandCalculatorConnection;
 exports.readHallBacklog = readHallBacklog;
+exports.readOnlineRiderCount = readOnlineRiderCount;
 exports.quoteDynamicBaseFee = quoteDynamicBaseFee;
 exports.quoteZonesForShop = quoteZonesForShop;
 exports.quoteZoneFee = quoteZoneFee;
@@ -48,6 +49,30 @@ async function readHallBacklog(conn, channelId) {
             .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
             .getCount();
         backlogCache.set(key, { at: Date.now(), value });
+        return value;
+    }
+    catch (_a) {
+        return 0;
+    }
+}
+/** 在线骑手数（approved 且 5min 内有心跳，同 CapacityService.listOnlineRiders 口径）；30s 缓存。
+ * 供需加价必须带这个数：不传时 quoteDynamicFee 按 0 处理，riderThreshold 永不生效、骑手充足也会加价。 */
+const onlineRiderCache = new Map();
+async function readOnlineRiderCount(conn, channelId) {
+    const key = String(channelId);
+    const hit = onlineRiderCache.get(key);
+    if (hit && Date.now() - hit.at < BACKLOG_TTL)
+        return hit.value;
+    try {
+        const value = await conn.rawConnection
+            .getRepository(core_1.Customer)
+            .createQueryBuilder('customer')
+            .leftJoin('customer.channels', 'channel')
+            .where('channel.id = :cid', { cid: channelId })
+            .andWhere('customer.customFields.riderStatus = :status', { status: 'approved' })
+            .andWhere('customer.customFields.riderOnlineAt >= :since', { since: new Date(Date.now() - 5 * 60000) })
+            .getCount();
+        onlineRiderCache.set(key, { at: Date.now(), value });
         return value;
     }
     catch (_a) {
@@ -101,7 +126,8 @@ async function quoteDynamicBaseFee(conn, channelId, baseFee, cfg, scope) {
     var _a;
     const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_a = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _a !== void 0 ? _a : null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
-    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee, config: pricing, at: new Date(), backlog });
+    const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
+    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee, config: pricing, at: new Date(), backlog, onlineRiders });
     return {
         price: quote.price,
         priceIncludesTax: true,
@@ -125,9 +151,10 @@ async function quoteZonesForShop(conn, channelId, zones) {
     });
     const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_a = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _a !== void 0 ? _a : null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
+    const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
     const at = new Date();
     return zones.map(z => {
-        const q = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: Number(z.fee), config: pricing, at, backlog });
+        const q = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: Number(z.fee), config: pricing, at, backlog, onlineRiders });
         return Object.assign(Object.assign({}, z), { fee: Number(z.fee), price: q.price, addFee: q.addFee, breakdown: q.breakdown });
     });
 }
@@ -147,7 +174,8 @@ async function quoteZoneFee(conn, channelId, zone, cfg, order) {
     }
     const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_d = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _d !== void 0 ? _d : null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
-    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: zone.fee, config: pricing, at: new Date(), backlog });
+    const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
+    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: zone.fee, config: pricing, at: new Date(), backlog, onlineRiders });
     return {
         price: quote.price,
         priceIncludesTax: true,

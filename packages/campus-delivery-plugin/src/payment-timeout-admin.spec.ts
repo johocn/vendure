@@ -142,6 +142,14 @@ describe('PaymentTimeoutAdminService', () => {
         expect(out.items[0]).toMatchObject({ orderCode: 'A1001', orderState: 'Cancelled' });
     });
 
+    it('listTasks：分页参数钳制（负 skip → 0，take 至少 1、最多 100）', async () => {
+        const { svc, taskRepo } = makeService([pendingTask()]);
+        await svc.listTasks(adminCtx, { skip: -5, take: 0 });
+        expect(taskRepo.findAndCount.mock.calls[0][0]).toMatchObject({ skip: 0, take: 1 });
+        await svc.listTasks(adminCtx, { take: 999 });
+        expect(taskRepo.findAndCount.mock.calls[1][0]).toMatchObject({ skip: 0, take: 100 });
+    });
+
     it('listTasks：非平台超管只返回本渠道任务', async () => {
         const { svc, taskRepo } = makeService([
             pendingTask({ id: 1, channelId: 1 }),

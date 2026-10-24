@@ -1,5 +1,6 @@
 // 纯逻辑单测：原子加减分（+2 完单 / -5 拒单 / 扣到 0 下限）+ 流水落库
 import { describe, expect, it, vi } from 'vitest';
+import { Logger } from '@vendure/core';
 import { RiderCreditService } from './rider-credit.service';
 
 describe('RiderCreditService.adjust', () => {
@@ -37,5 +38,17 @@ describe('RiderCreditService.adjust', () => {
         const { svc } = mk(0, -10);
         const next = await svc.adjust({ channelId: 1 } as any, 9, -10, 'timeout_not_picked');
         expect(next).toBe(0);
+    });
+
+    it('流水落库失败 → 分数照常返回并告警（不抛错导致调用方重复加减分）', async () => {
+        const warn = vi.spyOn(Logger, 'warn').mockImplementation(() => undefined as any);
+        const conn = {
+            getRepository: vi.fn(() => ({ save: vi.fn().mockRejectedValue(new Error('db down')) })),
+            rawConnection: { query: vi.fn().mockResolvedValue([[{ credit: 98 }], []]) },
+        } as any;
+        const svc = new RiderCreditService(conn);
+        await expect(svc.adjust({ channelId: 1 } as any, 9, -2, 'reject_assign')).resolves.toBe(98);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('rider credit log save failed'), 'CampusCredit');
+        warn.mockRestore();
     });
 });

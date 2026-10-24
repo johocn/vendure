@@ -73,7 +73,7 @@ let ErrandService = class ErrandService {
      * tip>0 时给订单加小费 surcharge（listPrice=tip，含税口径）。
      */
     async setErrandInfo(ctx, input) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         if (!ctx.activeUserId)
             throw new core_2.ForbiddenError();
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
@@ -150,16 +150,30 @@ let ErrandService = class ErrandService {
             where: { id: orderId },
             relations: ['surcharges'],
         });
-        for (const s of ((_f = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _f !== void 0 ? _f : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC)) {
+        const oldTips = ((_f = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _f !== void 0 ? _f : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC);
+        for (const s of oldTips) {
             await this.orderService.removeSurchargeFromOrder(ctx, orderId, s.id);
         }
         if (tip > 0) {
             // 本 fork 无独立 SurchargeService，surcharge 原语在 OrderService.addSurchargeToOrder（service 层无权限校验，shop ctx 可用）
-            await this.orderService.addSurchargeToOrder(ctx, orderId, {
-                description: exports.ERRAND_TIP_SURCHARGE_DESC,
-                listPrice: tip,
-                listPriceIncludesTax: true,
-            });
+            try {
+                await this.orderService.addSurchargeToOrder(ctx, orderId, {
+                    description: exports.ERRAND_TIP_SURCHARGE_DESC,
+                    listPrice: tip,
+                    listPriceIncludesTax: true,
+                });
+            }
+            catch (e) {
+                // 先清后加非事务：新增失败时回补刚清掉的旧小费（尽力而为），避免用户已填小费静默丢失
+                for (const s of oldTips) {
+                    await this.orderService.addSurchargeToOrder(ctx, orderId, {
+                        description: exports.ERRAND_TIP_SURCHARGE_DESC,
+                        listPrice: Number((_g = s.listPrice) !== null && _g !== void 0 ? _g : 0),
+                        listPriceIncludesTax: true,
+                    }).catch(() => undefined);
+                }
+                throw e;
+            }
         }
         return order;
     }

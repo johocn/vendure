@@ -3,6 +3,7 @@ import { Between, In, LessThan } from 'typeorm';
 import { Order, Permission, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 
 import { PaymentTimeoutJob } from './payment-timeout.job';
+import { startOfCampusDay } from './campus-time';
 import { PaymentTimeoutStatus, PaymentTimeoutTask, PaymentTimeoutType } from './payment-timeout.entity';
 
 export interface PaymentTimeoutTaskRow extends PaymentTimeoutTask {
@@ -35,7 +36,9 @@ export class PaymentTimeoutAdminService {
 
     /** 任务分页列表（dueAt 倒序），附带订单号/订单状态摘要 */
     async listTasks(ctx: RequestContext, opts: { status?: string; type?: string; from?: Date; to?: Date; skip?: number; take?: number; }) {
-        const take = Math.min(opts.take ?? 20, 100);
+        // 分页参数钳制：GraphQL Int 可传负数，skip<0 会生成非法 OFFSET 直接报错；take<1 同样非法
+        const skip = Math.max(0, opts.skip ?? 0);
+        const take = Math.min(Math.max(opts.take ?? 20, 1), 100);
         const where: Record<string, any> = {};
         if (opts.status) where.status = opts.status;
         if (opts.type) where.type = opts.type;
@@ -44,7 +47,7 @@ export class PaymentTimeoutAdminService {
         const [tasks, total] = await this.taskRepo.findAndCount({
             where: where as any,
             order: { dueAt: 'DESC' } as any,
-            skip: opts.skip ?? 0,
+            skip,
             take,
         });
         const ids = [...new Set(tasks.map(t => Number(t.orderId)))];
@@ -58,10 +61,11 @@ export class PaymentTimeoutAdminService {
         return { items, total };
     }
 
-    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道） */
+    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道）。
+     * 「今日」用校园 UTC+8 日界（campus-time），与骑手统计/飞书日报同口径；
+     * 服务器本地 setHours(0,0,0,0) 在 TZ 变更后会整体漂移 8 小时。 */
     async getStats(ctx: RequestContext) {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        const startOfDay = new Date(startOfCampusDay(Date.now()));
         const scope: Record<string, any> = this.isPlatformAdmin(ctx) ? {} : { channelId: Number(ctx.channelId) };
         const [todayRemind, todayCancel, totalFailed, pendingOverdue] = await Promise.all([
             this.taskRepo.count({ where: { ...scope, type: PaymentTimeoutType.REMIND, status: PaymentTimeoutStatus.EXECUTED, dueAt: Between(startOfDay, new Date()) } as any }),
