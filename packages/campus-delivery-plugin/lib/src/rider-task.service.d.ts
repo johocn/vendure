@@ -55,6 +55,8 @@ export declare class RiderTaskService {
     deliver(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
     /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     reportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string): Promise<Order>;
+    /** 实收跑腿小费：以订单小费 surcharge 合计为准（0 元小费在 errand.service 只清不加） */
+    private actualTip;
     private calcEarning;
     /** 配送配置按订单所属渠道解析（P2）：跨店骑手请求头渠道与订单渠道不一致时，佣金比例必须锚定订单渠道 */
     private getConfig;

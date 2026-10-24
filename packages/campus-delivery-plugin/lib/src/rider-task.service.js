@@ -16,6 +16,7 @@ const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_notify_service_1 = require("./campus-notify.service");
+const errand_service_1 = require("./errand.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
@@ -230,13 +231,15 @@ let RiderTaskService = class RiderTaskService {
     }
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     async deliver(ctx, orderId, photos, note) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         if (!(photos === null || photos === void 0 ? void 0 : photos.length))
             throw new core_1.UserInputError('送达需至少一张照片');
         const order = await this.assertOwner(ctx, orderId, 'in_progress');
         const rider = await this.riderService.assertApprovedRider(ctx);
-        const earning = this.calcEarning(order, await this.getConfig(ctx, order));
-        const tip = (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0;
+        // 小费以实际收取的 surcharge 为准：customFields.tip 可能因写入失败未真正计费，
+        // 按 cf.tip 计分成会虚高（平台多发钱）。
+        const tip = this.actualTip(order);
+        const earning = this.calcEarning(order, await this.getConfig(ctx, order), tip);
         const deliveredAt = new Date();
         // 单条原子 UPDATE 完成「认领 + 终态」：deliveryStatus 条件更新与 hallStatus/照片/分成/位置清空
         // 同语句落库（原两步写在两步之间宕机会留下 delivered 但 hallStatus 仍旧态的半完成单）。
@@ -248,7 +251,7 @@ let RiderTaskService = class RiderTaskService {
             // 同时锚定「当前仍是本人的 grabbed 单」，防改派窗口内旧骑手完成送达并领分成。
             + `WHERE id = $7 AND "customFieldsDeliverystatus" = $8 AND "customFieldsDeliverystaffid" = $9 `
             + `AND "customFieldsHallstatus" = $10 AND "state" <> 'Cancelled' RETURNING id`, ['delivered', deliveredAt, 'delivered', JSON.stringify(photos), note !== null && note !== void 0 ? note : null, earning, order.id, 'in_progress',
-            String((_b = order.customFields.deliveryStaffId) !== null && _b !== void 0 ? _b : ''), 'grabbed']);
+            String((_a = order.customFields.deliveryStaffId) !== null && _a !== void 0 ? _a : ''), 'grabbed']);
         const claimedRows = Array.isArray(claimed) ? claimed[0] : claimed;
         if (!(claimedRows === null || claimedRows === void 0 ? void 0 : claimedRows.length))
             throw new core_1.UserInputError('订单已被取消或处理，无法送达');
@@ -256,7 +259,7 @@ let RiderTaskService = class RiderTaskService {
             // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错，
             // 且 0 金额 pending 行会在钱包补账时永久重试报错）。
             // 判据只看 earning（小费已计入 calcEarning），避免 earning=0 但 tip>0 时仍落 0 元 pending。
-            common_1.Logger.log(`订单 ${(_c = order.code) !== null && _c !== void 0 ? _c : order.id} 0 分成，跳过入账`, 'RiderTask');
+            common_1.Logger.log(`订单 ${(_b = order.code) !== null && _b !== void 0 ? _b : order.id} 0 分成，跳过入账`, 'RiderTask');
         }
         else {
             // 先落 earning（pending），入账成功才置 credited：addBalance 失败时订单已终态、
@@ -292,7 +295,7 @@ let RiderTaskService = class RiderTaskService {
                             await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning)
                                 .update(earningRow.id, { status: 'pending' })
                                 .catch(() => undefined);
-                            common_1.Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, 'RiderTask');
+                            common_1.Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, 'RiderTask');
                         }
                     }
                     else {
@@ -304,9 +307,9 @@ let RiderTaskService = class RiderTaskService {
                 }
             }
             catch (e) {
-                common_1.Logger.error(`分成落库失败（订单已送达 ${(_e = order.code) !== null && _e !== void 0 ? _e : order.id}，需人工补账 ${earning} 分）：${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, 'RiderTask');
+                common_1.Logger.error(`分成落库失败（订单已送达 ${(_d = order.code) !== null && _d !== void 0 ? _d : order.id}，需人工补账 ${earning} 分）：${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, 'RiderTask');
                 // 订单已送达不可重试，分成只能人工补：仅日志会静默丢钱，必须推运营群
-                void ((_g = this.feishu) === null || _g === void 0 ? void 0 : _g.pushEvent('alert', '骑手分成落库失败', `订单 ${(_h = order.code) !== null && _h !== void 0 ? _h : order.id} 已送达，但分成 ${earning} 分未落库，请人工补账。原因：${(_j = e === null || e === void 0 ? void 0 : e.message) !== null && _j !== void 0 ? _j : e}`, order.code, `earning_persist_failed:${(_k = order.code) !== null && _k !== void 0 ? _k : order.id}`));
+                void ((_f = this.feishu) === null || _f === void 0 ? void 0 : _f.pushEvent('alert', '骑手分成落库失败', `订单 ${(_g = order.code) !== null && _g !== void 0 ? _g : order.id} 已送达，但分成 ${earning} 分未落库，请人工补账。原因：${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`, order.code, `earning_persist_failed:${(_j = order.code) !== null && _j !== void 0 ? _j : order.id}`));
             }
         }
         // 完单信用加分（+2）；非资金项，失败不阻断送达
@@ -314,7 +317,7 @@ let RiderTaskService = class RiderTaskService {
             await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_COMPLETE, 'complete', order.id);
         }
         catch (e) {
-            common_1.Logger.warn(`完单信用加分失败：${(_l = e === null || e === void 0 ? void 0 : e.message) !== null && _l !== void 0 ? _l : e}`, 'RiderTask');
+            common_1.Logger.warn(`完单信用加分失败：${(_k = e === null || e === void 0 ? void 0 : e.message) !== null && _k !== void 0 ? _k : e}`, 'RiderTask');
         }
         // 通知下单用户已送达（fire-and-forget）
         this.notify.user(ctx, order.id, 'orderDelivered');
@@ -344,11 +347,17 @@ let RiderTaskService = class RiderTaskService {
         }
         return order;
     }
-    calcEarning(order, cfg) {
+    /** 实收跑腿小费：以订单小费 surcharge 合计为准（0 元小费在 errand.service 只清不加） */
+    actualTip(order) {
         var _a;
-        // 跑腿单：跑腿费在 orderLines 单价中（虚拟商品 0 元时全在 shipping）；统一取 shipping + 小费
+        const list = ((_a = order.surcharges) !== null && _a !== void 0 ? _a : []);
+        return list
+            .filter(s => (s === null || s === void 0 ? void 0 : s.description) === errand_service_1.ERRAND_TIP_SURCHARGE_DESC)
+            .reduce((sum, s) => { var _a; return sum + Number((_a = s === null || s === void 0 ? void 0 : s.listPrice) !== null && _a !== void 0 ? _a : 0); }, 0);
+    }
+    calcEarning(order, cfg, tip) {
+        // 跑腿单：跑腿费在 orderLines 单价中（虚拟商品 0 元时全在 shipping）；统一取 shipping + 实收小费
         const shipping = order.shipping || 0;
-        const tip = (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0;
         return Math.floor(((shipping + tip) * cfg.riderCommissionRate) / 100);
     }
     /** 配送配置按订单所属渠道解析（P2）：跨店骑手请求头渠道与订单渠道不一致时，佣金比例必须锚定订单渠道 */
@@ -367,7 +376,7 @@ let RiderTaskService = class RiderTaskService {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const order = await this.connection
             .getRepository(ctx, core_1.Order)
-            .findOne({ where: { id: orderId }, relations: ['customer', 'channels'] });
+            .findOne({ where: { id: orderId }, relations: ['customer', 'channels', 'surcharges'] });
         const cf = order === null || order === void 0 ? void 0 : order.customFields;
         if (!order || (cf === null || cf === void 0 ? void 0 : cf.deliveryStaffId) !== String(rider.id))
             throw new core_1.ForbiddenError();

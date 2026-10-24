@@ -324,6 +324,8 @@ export class FeishuCommandService {
                     if (!found) return;
                     await this.dispatchAdmin.handleException(found.ctx, found.order.id, 'reassign');
                     await this.audit(chatId, openId, { name: 'reassign', orderCode: code }, 'ok-card');
+                    // Bug 10 修复：改派后 hallStatus→open，之前的异常告警行清掉避免视觉残留
+                    this.cards.clearAlerts(code);
                     if (!(await this.cards.refresh(messageId, code))) {
                         await this.reply(chatId, `已改派：${code}（异常单已回抢单大厅）`);
                     }
@@ -334,6 +336,8 @@ export class FeishuCommandService {
                     if (!found) return;
                     await this.dispatchAdmin.handleException(found.ctx, found.order.id, 'handled');
                     await this.audit(chatId, openId, { name: 'handled', orderCode: code }, 'ok-card');
+                    // Bug 10 修复：handled 后 hallStatus→exception_final，告警历史清掉
+                    this.cards.clearAlerts(code);
                     if (!(await this.cards.refresh(messageId, code))) {
                         await this.reply(chatId, `已标记处置完结：${code}`);
                     }
@@ -348,6 +352,8 @@ export class FeishuCommandService {
                     const label = actionName === 'refund_diff' ? '退差价' : actionName === 'coupon' ? '发补偿券' : '全额退款';
                     await this.dispatchAdmin.handleException(found.ctx, found.order.id, actionName);
                     await this.audit(chatId, openId, { name: 'status', orderCode: code }, `ok-card:${actionName}`);
+                    // Bug 10 修复：退款/发券后 hallStatus→exception_final，告警历史清掉
+                    this.cards.clearAlerts(code);
                     if (!(await this.cards.refresh(messageId, code))) {
                         await this.reply(chatId, `${label}已执行：${code}`);
                     }
@@ -827,12 +833,18 @@ export class FeishuCommandService {
         const found = await this.requireOrder(chat, chatId, code);
         if (!found) return;
         try {
+            // Bug 9 修复：之前硬写了不存在的列 customFieldsExceptionfinal（custom-fields.ts 没定义，
+            // PostgreSQL 会报 column does not exist，恢复功能完全不可用）。hallStatus=exception_final
+            // 才是真正的终态标志，restore 把 hallStatus 改回 open 就够了，不需要额外清布尔字段。
             await this.connection.rawConnection.query(
-                `UPDATE "order" SET "customFieldsHallstatus"='open', "customFieldsExceptionfinal"=FALSE,
-                 "customFieldsExceptionaction"=NULL, "customFieldsExceptionhandledat"=NULL
+                `UPDATE "order" SET "customFieldsHallstatus"='open',
+                 "customFieldsExceptionaction"=NULL, "customFieldsExceptionhandledat"=NULL,
+                 "customFieldsExceptionhandledby"=NULL, "customFieldsExceptionhandlednote"=NULL
                  WHERE id=$1`,
                 [found.order.id],
             );
+            // Bug 10 修复：异常已处置/恢复后清掉卡片告警历史，重建卡片时不会再显示已过期的告警行
+            this.cards.clearAlerts(code);
             await this.audit(chatId, openId, { name: 'restore', orderCode: code }, 'ok');
             await this.reply(chatId, `已恢复进大厅：${found.order.code}（hallStatus→open）`);
         } catch (e: any) {

@@ -117,8 +117,12 @@ let WaimaiStoreService = class WaimaiStoreService {
             const n = Number(raw);
             if (!Number.isFinite(n))
                 throw new core_1.UserInputError(`${key} 必须是数字`);
-            if (n < min || n > max)
-                throw new core_1.UserInputError(`${key} 超出允许范围（${min}-${max}）`);
+            if (n < 0)
+                throw new core_1.UserInputError(`${key} 不能为负数`);
+            if (n > max)
+                throw new core_1.UserInputError(`${key} 超出允许上限（${max}）`);
+            if (n < min)
+                throw new core_1.UserInputError(`${key} 不能小于 ${min}`);
             nums[key] = Math.round(n);
         }
         // 第一段承运：只有 R1（merchant|owned）、R3（campus|owned|external）可配

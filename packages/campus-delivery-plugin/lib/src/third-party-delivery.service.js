@@ -249,7 +249,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         }
     }
     async doCancel(ctx, orderId, reason) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const order = await this.orderRepo(ctx).findOne({ where: { id: orderId }, relations: ['channels'] });
         if (!order)
             throw new core_2.UserInputError('订单不存在');
@@ -261,12 +261,15 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         if (res.success) {
             // 平台取消成功后立刻回退本地状态，不等超时扫描：
             // R2 回待推送（运营换一家），R3 回抢单大厅（传信者兜底）。
-            // 重新读库：并发下订单可能已被取消（hallStatus=cancelled），此时不得把订单复活。
+            // 条件写（CAS）：并发下订单可能已被取消/已被其它路径回退，读后无条件写会把已退款单复活。
             const fresh = await this.orderRepo(oCtx).findOne({ where: { id: orderId } });
             const hs = String((_e = (_d = fresh === null || fresh === void 0 ? void 0 : fresh.customFields) === null || _d === void 0 ? void 0 : _d.hallStatus) !== null && _e !== void 0 ? _e : '');
             const route = String((_g = (_f = fresh === null || fresh === void 0 ? void 0 : fresh.customFields) === null || _f === void 0 ? void 0 : _f.fulfillmentRoute) !== null && _g !== void 0 ? _g : '');
-            const patch = { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' };
             if (hs === 'third_party') {
+                const patch = {
+                    thirdPartyState: 'cancelled',
+                    campusCause: 'third_party_cancelled',
+                };
                 if (route === 'R2') {
                     patch.hallStatus = 'pending_dispatch';
                     patch.thirdPartyDispatchAt = new Date();
@@ -278,8 +281,15 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
                     patch.handoverMode = '';
                     patch.thirdPartyProvider = '';
                 }
+                const moved = await this.hall.transitionFrom(oCtx, orderId, ['third_party'], patch);
+                if (!moved) {
+                    // 读后被取消/回退：只补第三方状态，绝不动 hallStatus
+                    await this.writeThirdPartyPatch(orderId, { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' }, String((_h = cf.thirdPartyState) !== null && _h !== void 0 ? _h : ''));
+                }
             }
-            await this.hall.updateOrder(oCtx, orderId, { customFields: patch });
+            else {
+                await this.writeThirdPartyPatch(orderId, { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' }, String((_j = cf.thirdPartyState) !== null && _j !== void 0 ? _j : ''));
+            }
         }
         return { ok: res.success, reason: res.reason };
     }
