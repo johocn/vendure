@@ -19,25 +19,25 @@ export class PaymentTimeoutAdminResolver {
         @Args({ name: 'skip', type: () => Int, nullable: true }) skip?: number,
         @Args({ name: 'take', type: () => Int, nullable: true }) take?: number,
     ) {
-        return this.admin.listTasks({ status, type, from, to, skip, take });
+        return this.admin.listTasks(ctx, { status, type, from, to, skip, take });
     }
 
     @Query()
     @Allow(Permission.ReadOrder as any)
     async paymentTimeoutStats(@Ctx() ctx: RequestContext) {
-        return this.admin.getStats();
+        return this.admin.getStats(ctx);
     }
 
     @Mutation()
     @Allow(Permission.UpdateOrder as any)
     async executePaymentTimeoutTask(@Ctx() ctx: RequestContext, @Args({ name: 'id', type: () => GqlID }) id: ID) {
-        return this.admin.executeTask(Number(id));
+        return this.admin.executeTask(ctx, Number(id));
     }
 
     @Mutation()
     @Allow(Permission.UpdateOrder as any)
     async resendPaymentTimeoutRemind(@Ctx() ctx: RequestContext, @Args({ name: 'taskId', type: () => GqlID }) taskId: ID) {
-        return this.admin.resendRemind(Number(taskId));
+        return this.admin.resendRemind(ctx, Number(taskId));
     }
 
     @Mutation()

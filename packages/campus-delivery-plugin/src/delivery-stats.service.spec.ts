@@ -186,7 +186,21 @@ describe('DeliveryStatsService.stats 口径', () => {
         };
         const repo = { createQueryBuilder: vi.fn(() => qb), find: vi.fn().mockResolvedValue([]) };
         const svc = new DeliveryStatsService({ getRepository: vi.fn(() => repo) } as any);
-        await svc.stats({} as any, 'today');
+        await svc.stats({ channelId: 1, userHasPermissions: () => true } as any, 'today');
         expect(andWhere).toHaveBeenCalledWith('order.customFields.hallStatus IS NOT NULL');
+    });
+
+    it('非平台超管按当前渠道过滤（防跨租户看板泄漏）', async () => {
+        const andWhere = vi.fn().mockReturnThis();
+        const qb = {
+            leftJoinAndSelect: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere,
+            getMany: vi.fn().mockResolvedValue([]),
+        };
+        const repo = { createQueryBuilder: vi.fn(() => qb), find: vi.fn().mockResolvedValue([]) };
+        const svc = new DeliveryStatsService({ getRepository: vi.fn(() => repo) } as any);
+        await svc.stats({ channelId: 7, userHasPermissions: () => false } as any, 'today');
+        expect(andWhere).toHaveBeenCalledWith('channel.id = :ch', { ch: 7 });
     });
 });

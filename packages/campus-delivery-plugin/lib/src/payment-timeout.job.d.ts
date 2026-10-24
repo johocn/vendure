@@ -10,8 +10,8 @@ export declare const PAYMENT_REMIND_MS: number;
 export declare const PAYMENT_CANCEL_MS: number;
 /**
  * 到点复查是竞态防线：任务执行时订单已离开 ArrangingPayment（已支付/已取消）→ 任务作废。
- * 取消路径按 order-timeout-plugin 先例：先显式释放库存分配（active 订单 cancelOrder 不释放），
- * 再 cancelOrder。与 OrderTimeoutPlugin（渠道 30min 兜底）共存，幂等无害。
+ * 取消路径按 order-timeout-plugin 先例：先幂等释放库存分配（createOutstandingReleasesForOrderLines），
+ * 再 cancelOrder。任务级咨询锁保证队列 / 手动 / 补偿扫描并发时只有一人真正执行。
  */
 export declare class PaymentTimeoutJob {
     private jobQueueService;
@@ -26,8 +26,14 @@ export declare class PaymentTimeoutJob {
     constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService, stockMovementService: StockMovementService, notify: CampusNotifyService, campusConfig: CampusConfigService);
     init(): Promise<void>;
     process(data: PaymentTimeoutJobData): Promise<void>;
-    /** 执行核心（定时队列与手动执行共用）：状态复查 → 提醒/取消 → 落库 */
+    /** 执行核心（定时队列与手动执行共用）：任务级咨询锁 → 锁内复查状态 → 提醒/取消 → 落库 */
     private runTask;
+    /**
+     * 会话级咨询锁（手动执行 + 队列 + 5min 补偿扫描可能同时命中同一任务）。
+     * 持锁连接全程不归还连接池，保证 unlock 命中同一会话。
+     */
+    private withTaskLock;
+    private runTaskLocked;
     /** 登记：进入 ArrangingPayment 时调用（提醒 + 取消两个任务） */
     scheduleForOrder(ctx: RequestContext, orderId: number, channelId: number, expectedState: string): Promise<void>;
     /** 离开 ArrangingPayment → 作废该订单全部 PENDING 任务 */

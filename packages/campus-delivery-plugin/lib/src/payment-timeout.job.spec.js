@@ -21,12 +21,17 @@ const payment_timeout_entity_1 = require("./payment-timeout.entity");
             findOne: vitest_1.vi.fn().mockResolvedValue(order),
             cancelOrder: vitest_1.vi.fn().mockResolvedValue(order),
         };
-        const stockMovementService = { createReleasesForOrderLines: vitest_1.vi.fn().mockResolvedValue([]) };
+        const stockMovementService = { createOutstandingReleasesForOrderLines: vitest_1.vi.fn().mockResolvedValue([]) };
         const notify = { user: vitest_1.vi.fn() };
+        const queryRunner = {
+            connect: vitest_1.vi.fn().mockResolvedValue(undefined),
+            query: vitest_1.vi.fn().mockResolvedValue([{ locked: true }]),
+            release: vitest_1.vi.fn().mockResolvedValue(undefined),
+        };
         const job = new payment_timeout_job_1.PaymentTimeoutJob({ createQueue: vitest_1.vi.fn() }, // jobQueueService（process 不经 init 也能跑）
-        { rawConnection: { getRepository: () => taskRepo } }, orderService, { findOne: vitest_1.vi.fn().mockResolvedValue({}) }, // channelService
+        { rawConnection: { getRepository: () => taskRepo, createQueryRunner: () => queryRunner } }, orderService, { findOne: vitest_1.vi.fn().mockResolvedValue({}) }, // channelService
         stockMovementService, notify, { getConfig: vitest_1.vi.fn().mockResolvedValue({ h5BaseUrl: null }) });
-        return { job, taskRepo, task, orderService, stockMovementService, notify, order };
+        return { job, taskRepo, task, orderService, stockMovementService, notify, order, queryRunner };
     }
     (0, vitest_1.beforeEach)(() => { vitest_1.vi.clearAllMocks(); });
     (0, vitest_1.it)('到点订单已支付（非 ArrangingPayment）→ 任务 CANCELLED，不取消订单', async () => {
@@ -35,13 +40,21 @@ const payment_timeout_entity_1 = require("./payment-timeout.entity");
         (0, vitest_1.expect)(taskRepo.save).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: payment_timeout_entity_1.PaymentTimeoutStatus.CANCELLED }));
         (0, vitest_1.expect)(orderService.cancelOrder).not.toHaveBeenCalled();
     });
-    (0, vitest_1.it)('到点仍在 ArrangingPayment（CANCEL 型）→ 先释放库存分配再 cancelOrder + 发取消通知', async () => {
+    (0, vitest_1.it)('到点仍在 ArrangingPayment（CANCEL 型）→ 幂等释放库存分配再 cancelOrder + 发取消通知', async () => {
         const { job, taskRepo, stockMovementService, orderService, notify } = makeJob({ orderState: 'ArrangingPayment' });
         await job.process({ taskId: 1 });
-        (0, vitest_1.expect)(stockMovementService.createReleasesForOrderLines).toHaveBeenCalledWith(vitest_1.expect.anything(), [{ orderLineId: 'L1', quantity: 1 }]);
+        (0, vitest_1.expect)(stockMovementService.createOutstandingReleasesForOrderLines).toHaveBeenCalledWith(vitest_1.expect.anything(), [{ orderLineId: 'L1', quantity: 1 }]);
         (0, vitest_1.expect)(orderService.cancelOrder).toHaveBeenCalled();
         (0, vitest_1.expect)(notify.user).toHaveBeenCalledWith(vitest_1.expect.anything(), 11, 'orderCancelled', '订单超时未支付，已自动取消', undefined);
         (0, vitest_1.expect)(taskRepo.save).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED }));
+    });
+    (0, vitest_1.it)('未抢到任务锁 → 跳过本轮，不动订单（并发执行只允许一人）', async () => {
+        const { job, taskRepo, orderService, notify, queryRunner } = makeJob({ orderState: 'ArrangingPayment' });
+        queryRunner.query.mockResolvedValue([{ locked: false }]);
+        await job.process({ taskId: 1 });
+        (0, vitest_1.expect)(orderService.cancelOrder).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(notify.user).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(taskRepo.save).not.toHaveBeenCalled();
     });
     (0, vitest_1.it)('REMIND 型到点仍在待支付 → 发提醒，不动订单', async () => {
         const { job, task, notify, orderService } = makeJob({ orderState: 'ArrangingPayment' });

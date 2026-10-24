@@ -22,8 +22,20 @@ let PaymentTimeoutAdminService = class PaymentTimeoutAdminService {
         this.taskRepo = this.connection.rawConnection.getRepository(payment_timeout_entity_1.PaymentTimeoutTask);
         this.orderRepo = this.connection.rawConnection.getRepository(core_1.Order);
     }
+    isPlatformAdmin(ctx) {
+        return ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+    }
+    /** 非平台超管只能操作本渠道任务，避免误读/误取消其他店铺待付款单 */
+    async assertTaskScope(ctx, id) {
+        if (this.isPlatformAdmin(ctx))
+            return;
+        const task = await this.taskRepo.findOne({ where: { id } });
+        if (!task || Number(task.channelId) !== Number(ctx.channelId)) {
+            throw new core_1.UserInputError('任务不属于当前店铺');
+        }
+    }
     /** 任务分页列表（dueAt 倒序），附带订单号/订单状态摘要 */
-    async listTasks(opts) {
+    async listTasks(ctx, opts) {
         var _a, _b, _c, _d;
         const take = Math.min((_a = opts.take) !== null && _a !== void 0 ? _a : 20, 100);
         const where = {};
@@ -33,6 +45,8 @@ let PaymentTimeoutAdminService = class PaymentTimeoutAdminService {
             where.type = opts.type;
         if (opts.from || opts.to)
             where.dueAt = (0, typeorm_1.Between)((_b = opts.from) !== null && _b !== void 0 ? _b : new Date(0), (_c = opts.to) !== null && _c !== void 0 ? _c : new Date('2999-12-31'));
+        if (!this.isPlatformAdmin(ctx))
+            where.channelId = Number(ctx.channelId);
         const [tasks, total] = await this.taskRepo.findAndCount({
             where: where,
             order: { dueAt: 'DESC' },
@@ -48,22 +62,25 @@ let PaymentTimeoutAdminService = class PaymentTimeoutAdminService {
         });
         return { items, total };
     }
-    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理 */
-    async getStats() {
+    /** 看板统计：今日已提醒 / 今日已取消 / 累计失败 / 逾期未处理（非超管限本渠道） */
+    async getStats(ctx) {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
+        const scope = this.isPlatformAdmin(ctx) ? {} : { channelId: Number(ctx.channelId) };
         const [todayRemind, todayCancel, totalFailed, pendingOverdue] = await Promise.all([
-            this.taskRepo.count({ where: { type: payment_timeout_entity_1.PaymentTimeoutType.REMIND, status: payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED, dueAt: (0, typeorm_1.Between)(startOfDay, new Date()) } }),
-            this.taskRepo.count({ where: { type: payment_timeout_entity_1.PaymentTimeoutType.CANCEL, status: payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED, dueAt: (0, typeorm_1.Between)(startOfDay, new Date()) } }),
-            this.taskRepo.count({ where: { status: payment_timeout_entity_1.PaymentTimeoutStatus.FAILED } }),
-            this.taskRepo.count({ where: { status: payment_timeout_entity_1.PaymentTimeoutStatus.PENDING, dueAt: (0, typeorm_1.LessThan)(new Date()) } }),
+            this.taskRepo.count({ where: Object.assign(Object.assign({}, scope), { type: payment_timeout_entity_1.PaymentTimeoutType.REMIND, status: payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED, dueAt: (0, typeorm_1.Between)(startOfDay, new Date()) }) }),
+            this.taskRepo.count({ where: Object.assign(Object.assign({}, scope), { type: payment_timeout_entity_1.PaymentTimeoutType.CANCEL, status: payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED, dueAt: (0, typeorm_1.Between)(startOfDay, new Date()) }) }),
+            this.taskRepo.count({ where: Object.assign(Object.assign({}, scope), { status: payment_timeout_entity_1.PaymentTimeoutStatus.FAILED }) }),
+            this.taskRepo.count({ where: Object.assign(Object.assign({}, scope), { status: payment_timeout_entity_1.PaymentTimeoutStatus.PENDING, dueAt: (0, typeorm_1.LessThan)(new Date()) }) }),
         ]);
         return { todayRemind, todayCancel, totalFailed, pendingOverdue };
     }
-    executeTask(id) {
+    async executeTask(ctx, id) {
+        await this.assertTaskScope(ctx, id);
         return this.job.executeTaskNow(id);
     }
-    resendRemind(taskId) {
+    async resendRemind(ctx, taskId) {
+        await this.assertTaskScope(ctx, taskId);
         return this.job.resendRemind(taskId);
     }
     runCompensationNow() {

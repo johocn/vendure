@@ -166,14 +166,18 @@ let DeliveryStatsService = class DeliveryStatsService {
         const now = Date.now();
         const windowStart = windowStartOf(range, now);
         // 只计校园履约单（hallStatus 非空），避免把普通快递/自提订单计入配送 KPI
-        const orders = (await this.connection
+        // 租户隔离：店铺级看板非平台超管只看本渠道，否则 storeComparison 会暴露其他店铺单量
+        const qb = this.connection
             .getRepository(ctx, core_1.Order)
             .createQueryBuilder('order')
             .leftJoinAndSelect('order.channels', 'channel')
             .where('order.createdAt >= :ws', { ws: new Date(windowStart) })
             .andWhere('order.state != :st', { st: 'Cancelled' })
-            .andWhere('order.customFields.hallStatus IS NOT NULL')
-            .getMany());
+            .andWhere('order.customFields.hallStatus IS NOT NULL');
+        if (!ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            qb.andWhere('channel.id = :ch', { ch: ctx.channelId });
+        }
+        const orders = (await qb.getMany());
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const graceByChannel = new Map(configs.map(c => [Number(c.channelId), c.timeoutGraceMinutes]));
         const payload = aggregateStats({ orders, graceByChannel, windowStart, now, range });

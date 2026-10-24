@@ -172,8 +172,21 @@ const order = (id, ch, cf, extra = {}) => {
         };
         const repo = { createQueryBuilder: vitest_1.vi.fn(() => qb), find: vitest_1.vi.fn().mockResolvedValue([]) };
         const svc = new delivery_stats_service_1.DeliveryStatsService({ getRepository: vitest_1.vi.fn(() => repo) });
-        await svc.stats({}, 'today');
+        await svc.stats({ channelId: 1, userHasPermissions: () => true }, 'today');
         (0, vitest_1.expect)(andWhere).toHaveBeenCalledWith('order.customFields.hallStatus IS NOT NULL');
+    });
+    (0, vitest_1.it)('非平台超管按当前渠道过滤（防跨租户看板泄漏）', async () => {
+        const andWhere = vitest_1.vi.fn().mockReturnThis();
+        const qb = {
+            leftJoinAndSelect: vitest_1.vi.fn().mockReturnThis(),
+            where: vitest_1.vi.fn().mockReturnThis(),
+            andWhere,
+            getMany: vitest_1.vi.fn().mockResolvedValue([]),
+        };
+        const repo = { createQueryBuilder: vitest_1.vi.fn(() => qb), find: vitest_1.vi.fn().mockResolvedValue([]) };
+        const svc = new delivery_stats_service_1.DeliveryStatsService({ getRepository: vitest_1.vi.fn(() => repo) });
+        await svc.stats({ channelId: 7, userHasPermissions: () => false }, 'today');
+        (0, vitest_1.expect)(andWhere).toHaveBeenCalledWith('channel.id = :ch', { ch: 7 });
     });
 });
 //# sourceMappingURL=delivery-stats.service.spec.js.map

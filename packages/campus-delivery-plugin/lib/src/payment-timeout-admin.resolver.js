@@ -22,16 +22,16 @@ let PaymentTimeoutAdminResolver = class PaymentTimeoutAdminResolver {
         this.admin = admin;
     }
     async paymentTimeoutTasks(ctx, status, type, from, to, skip, take) {
-        return this.admin.listTasks({ status, type, from, to, skip, take });
+        return this.admin.listTasks(ctx, { status, type, from, to, skip, take });
     }
     async paymentTimeoutStats(ctx) {
-        return this.admin.getStats();
+        return this.admin.getStats(ctx);
     }
     async executePaymentTimeoutTask(ctx, id) {
-        return this.admin.executeTask(Number(id));
+        return this.admin.executeTask(ctx, Number(id));
     }
     async resendPaymentTimeoutRemind(ctx, taskId) {
-        return this.admin.resendRemind(Number(taskId));
+        return this.admin.resendRemind(ctx, Number(taskId));
     }
     async runPaymentTimeoutCompensation(ctx) {
         return this.admin.runCompensationNow();

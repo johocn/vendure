@@ -14,17 +14,22 @@ function makeJob(overrides: Record<string, any> = {}) {
         count: vi.fn(async () => 0),
         createQueryBuilder: vi.fn(),
     };
+    const queryRunner = {
+        connect: vi.fn(async () => undefined),
+        query: vi.fn(async () => [{ locked: true }]),
+        release: vi.fn(async () => undefined),
+    };
     const job = new PaymentTimeoutJob(
         {} as any, // jobQueueService：executeTaskNow 不用队列
-        { rawConnection: { getRepository: () => taskRepo } } as any,
+        { rawConnection: { getRepository: () => taskRepo, createQueryRunner: () => queryRunner } } as any,
         { findOne: vi.fn(async () => ({ id: 1, state: 'ArrangingPayment', lines: [] })), cancelOrder: vi.fn(async () => ({ id: 1 })) } as any, // orderService
         { findOne: vi.fn(async () => ({ id: 1 })) } as any, // channelService
-        { createReleasesForOrderLines: vi.fn(async () => undefined) } as any, // stockMovementService
+        { createOutstandingReleasesForOrderLines: vi.fn(async () => []) } as any, // stockMovementService
         { user: vi.fn(async () => undefined) } as any, // notify
         { getConfig: vi.fn(async () => ({ h5BaseUrl: 'https://h5.test' })) } as any, // campusConfig
     ) as any;
     (job as any).taskRepo = taskRepo;
-    return { job, taskRepo, tasks, notify: (job as any).notify, orderService: (job as any).orderService };
+    return { job, taskRepo, tasks, notify: (job as any).notify, orderService: (job as any).orderService, queryRunner };
 }
 
 function pendingTask(partial: Partial<PaymentTimeoutTask> = {}): PaymentTimeoutTask {
@@ -79,13 +84,38 @@ describe('PaymentTimeoutJob.executeTaskNow', () => {
         tasks.push(pendingTask({ type: PaymentTimeoutType.CANCEL }));
         await expect(job.resendRemind(1)).rejects.toThrow('PAYMENT_TIMEOUT_REMIND_TASK_NOT_FOUND');
     });
+
+    it('同一任务已被其他执行者持锁 → 拒绝执行（PAYMENT_TIMEOUT_TASK_BUSY）', async () => {
+        const { job, tasks, queryRunner, orderService } = makeJob();
+        queryRunner.query.mockResolvedValue([{ locked: false }]);
+        tasks.push(pendingTask());
+        await expect(job.executeTaskNow(1)).rejects.toThrow('PAYMENT_TIMEOUT_TASK_BUSY');
+        expect(orderService.cancelOrder).not.toHaveBeenCalled();
+    });
+
+    it('order 已被并发路径取消（cancelOrder 抛错但状态 Cancelled）→ 视为成功且不重复通知', async () => {
+        const { job, tasks, notify, orderService } = makeJob();
+        orderService.cancelOrder.mockRejectedValue(new Error('already cancelled'));
+        orderService.findOne
+            .mockResolvedValueOnce({ id: 1, state: 'ArrangingPayment', lines: [] })
+            .mockResolvedValueOnce({ id: 1, state: 'Cancelled', lines: [] });
+        tasks.push(pendingTask());
+        const out = await job.executeTaskNow(1);
+        expect(out.status).toBe(PaymentTimeoutStatus.EXECUTED);
+        expect(notify.user).not.toHaveBeenCalled();
+    });
 });
 
 describe('PaymentTimeoutAdminService', () => {
+    const adminCtx = { channelId: 1, userHasPermissions: () => true } as any;
+    const tenantCtx = { channelId: 2, userHasPermissions: () => false } as any;
+
     function makeService(tasks: PaymentTimeoutTask[], orders: any[] = []) {
         const taskRepo = {
+            findOne: vi.fn(async ({ where }: any) => tasks.find(t => t.id === where.id) ?? null),
             findAndCount: vi.fn(async (opts: any) => {
                 let list = tasks.filter(t => (!opts.where.status || t.status === opts.where.status) && (!opts.where.type || t.type === opts.where.type));
+                if (opts.where.channelId != null) list = list.filter(t => Number(t.channelId) === Number(opts.where.channelId));
                 return [list.slice(opts.skip ?? 0, (opts.skip ?? 0) + (opts.take ?? 20)), list.length];
             }),
             count: vi.fn(async ({ where }: any) => {
@@ -107,21 +137,42 @@ describe('PaymentTimeoutAdminService', () => {
     it('listTasks：返回任务 + 订单摘要映射', async () => {
         const t = pendingTask();
         const { svc } = makeService([t], [{ id: 1, code: 'A1001', state: 'Cancelled' }]);
-        const out = await svc.listTasks({ status: 'PENDING', skip: 0, take: 20 });
+        const out = await svc.listTasks(adminCtx, { status: 'PENDING', skip: 0, take: 20 });
         expect(out.total).toBe(1);
         expect(out.items[0]).toMatchObject({ orderCode: 'A1001', orderState: 'Cancelled' });
     });
 
+    it('listTasks：非平台超管只返回本渠道任务', async () => {
+        const { svc, taskRepo } = makeService([
+            pendingTask({ id: 1, channelId: 1 }),
+            pendingTask({ id: 2, channelId: 2 }),
+        ]);
+        const out = await svc.listTasks(tenantCtx, { skip: 0, take: 20 });
+        expect(out.items.map((t: any) => t.id)).toEqual([2]);
+        expect(taskRepo.findAndCount.mock.calls[0][0].where.channelId).toBe(2);
+    });
+
     it('getStats：四项计数', async () => {
         const { svc } = makeService([]);
-        const s = await svc.getStats();
+        const s = await svc.getStats(adminCtx);
         expect(s).toEqual({ todayRemind: 12, todayCancel: 5, totalFailed: 1, pendingOverdue: 2 });
     });
 
     it('executeTask 委托 job；runCompensationNow 返回条数', async () => {
         const t = pendingTask(); const { svc } = makeService([t]);
-        await svc.executeTask(1);
+        await svc.executeTask(adminCtx, 1);
         expect((svc as any).job.executeTaskNow).toHaveBeenCalledWith(1);
         await expect(svc.runCompensationNow()).resolves.toBe(3);
+    });
+
+    it('非平台超管执行其他渠道任务 → 拒绝', async () => {
+        const t = pendingTask({ id: 1, channelId: 1 }); const { svc } = makeService([t]);
+        await expect(svc.executeTask(tenantCtx, 1)).rejects.toThrow('任务不属于当前店铺');
+        expect((svc as any).job.executeTaskNow).not.toHaveBeenCalled();
+    });
+
+    it('非平台超管重发其他渠道提醒 → 拒绝', async () => {
+        const t = pendingTask({ id: 1, channelId: 1 }); const { svc } = makeService([t]);
+        await expect(svc.resendRemind(tenantCtx, 1)).rejects.toThrow('任务不属于当前店铺');
     });
 });

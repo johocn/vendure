@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Logger, Order, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { campusDayKey, campusHour, startOfCampusDay } from './campus-time';
 
@@ -227,14 +227,18 @@ export class DeliveryStatsService {
         const now = Date.now();
         const windowStart = windowStartOf(range, now);
         // 只计校园履约单（hallStatus 非空），避免把普通快递/自提订单计入配送 KPI
-        const orders = (await this.connection
+        // 租户隔离：店铺级看板非平台超管只看本渠道，否则 storeComparison 会暴露其他店铺单量
+        const qb = this.connection
             .getRepository(ctx, Order)
             .createQueryBuilder('order')
             .leftJoinAndSelect('order.channels', 'channel')
             .where('order.createdAt >= :ws', { ws: new Date(windowStart) })
             .andWhere('order.state != :st', { st: 'Cancelled' })
-            .andWhere('order.customFields.hallStatus IS NOT NULL')
-            .getMany()) as unknown as StatsOrderLike[];
+            .andWhere('order.customFields.hallStatus IS NOT NULL');
+        if (!ctx.userHasPermissions([Permission.SuperAdmin])) {
+            qb.andWhere('channel.id = :ch', { ch: ctx.channelId as any });
+        }
+        const orders = (await qb.getMany()) as unknown as StatsOrderLike[];
         const configs = await this.connection.getRepository(ctx, CampusFulfillmentConfig).find();
         const graceByChannel = new Map(
             configs.map(c => [Number(c.channelId), c.timeoutGraceMinutes]),

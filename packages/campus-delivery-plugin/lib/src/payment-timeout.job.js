@@ -20,10 +20,11 @@ exports.PAYMENT_REMIND_MS = 10 * 60 * 1000;
 exports.PAYMENT_CANCEL_MS = 15 * 60 * 1000;
 const MAX_RETRY = 3;
 const loggerCtx = 'PaymentTimeout';
+const TASK_BUSY = 'PAYMENT_TIMEOUT_TASK_BUSY';
 /**
  * 到点复查是竞态防线：任务执行时订单已离开 ArrangingPayment（已支付/已取消）→ 任务作废。
- * 取消路径按 order-timeout-plugin 先例：先显式释放库存分配（active 订单 cancelOrder 不释放），
- * 再 cancelOrder。与 OrderTimeoutPlugin（渠道 30min 兜底）共存，幂等无害。
+ * 取消路径按 order-timeout-plugin 先例：先幂等释放库存分配（createOutstandingReleasesForOrderLines），
+ * 再 cancelOrder。任务级咨询锁保证队列 / 手动 / 补偿扫描并发时只有一人真正执行。
  */
 let PaymentTimeoutJob = class PaymentTimeoutJob {
     constructor(jobQueueService, connection, orderService, channelService, stockMovementService, notify, campusConfig) {
@@ -48,10 +49,61 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
             return;
         if (new Date() < new Date(task.dueAt))
             return; // SQL JobQueue 忽略 delay → 补偿扫描兜底
-        await this.runTask(task);
+        try {
+            await this.runTask(task);
+        }
+        catch (e) {
+            // 同一任务已被其他执行者持锁处理：本轮跳过，补偿扫描会再兜底
+            if (String(e === null || e === void 0 ? void 0 : e.message) === TASK_BUSY) {
+                core_1.Logger.info(`Task ${task.id} busy, skip this round`, loggerCtx);
+                return;
+            }
+            throw e;
+        }
     }
-    /** 执行核心（定时队列与手动执行共用）：状态复查 → 提醒/取消 → 落库 */
+    /** 执行核心（定时队列与手动执行共用）：任务级咨询锁 → 锁内复查状态 → 提醒/取消 → 落库 */
     async runTask(task) {
+        const outcome = await this.withTaskLock(Number(task.id), async () => {
+            // 锁内重新读取：并发的第二个执行者应看到已完成状态而直接退出，避免重复通知/重复取消
+            const fresh = await this.taskRepo.findOne({ where: { id: task.id } });
+            if (!fresh)
+                return;
+            if (fresh.status === payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED || fresh.status === payment_timeout_entity_1.PaymentTimeoutStatus.CANCELLED)
+                return;
+            await this.runTaskLocked(fresh);
+            task.status = fresh.status;
+            task.retryCount = fresh.retryCount;
+            task.lastError = fresh.lastError;
+        });
+        if (!outcome.locked)
+            throw new Error(TASK_BUSY);
+    }
+    /**
+     * 会话级咨询锁（手动执行 + 队列 + 5min 补偿扫描可能同时命中同一任务）。
+     * 持锁连接全程不归还连接池，保证 unlock 命中同一会话。
+     */
+    async withTaskLock(taskId, fn) {
+        var _a, _b;
+        const key = `campus:paytimeout:${taskId}`;
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        try {
+            const rows = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [key]);
+            const locked = ((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.locked) === true || ((_b = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _b === void 0 ? void 0 : _b.locked) === 't';
+            if (!locked)
+                return { locked: false };
+            try {
+                return { locked: true, result: await fn() };
+            }
+            finally {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [key]);
+            }
+        }
+        finally {
+            await runner.release();
+        }
+    }
+    async runTaskLocked(task) {
         var _a, _b;
         try {
             const ctx = await this.buildCtx(task.channelId);
@@ -68,12 +120,24 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
                 this.notify.user(ctx, order.id, 'paymentPending', undefined, await this.h5Base(ctx));
             }
             else {
-                // 先释放库存分配再取消（order-timeout.job.ts 先例），失败即抛走重试
+                // 幂等释放：只释放尚未释放的分配，重试/并发重复执行不会重复扣减与重复生成 Release
                 const lines = ((_a = order.lines) !== null && _a !== void 0 ? _a : []).map((l) => ({ orderLineId: l.id, quantity: l.quantity }));
                 if (lines.length)
-                    await this.stockMovementService.createReleasesForOrderLines(ctx, lines);
-                await this.orderService.cancelOrder(ctx, { orderId: order.id });
-                this.notify.user(ctx, order.id, 'orderCancelled', '订单超时未支付，已自动取消', await this.h5Base(ctx));
+                    await this.stockMovementService.createOutstandingReleasesForOrderLines(ctx, lines);
+                let cancelled = false;
+                try {
+                    await this.orderService.cancelOrder(ctx, { orderId: order.id });
+                    cancelled = true;
+                }
+                catch (e) {
+                    // 并发路径已把订单取消 → 视为成功，避免重试无限循环；通知由先成功者发出
+                    const freshOrder = await this.orderService.findOne(ctx, order.id);
+                    if ((freshOrder === null || freshOrder === void 0 ? void 0 : freshOrder.state) !== 'Cancelled')
+                        throw e;
+                    core_1.Logger.info(`Task ${task.id}: order ${order.id} already cancelled`, loggerCtx);
+                }
+                if (cancelled)
+                    this.notify.user(ctx, order.id, 'orderCancelled', '订单超时未支付，已自动取消', await this.h5Base(ctx));
             }
             task.status = payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED;
             task.lastError = null;
