@@ -34,6 +34,7 @@ const add_address_change_pricing_1 = require("./migrations/add-address-change-pr
 const add_address_change_settle_proof_1 = require("./migrations/add-address-change-settle-proof");
 const p3_data_cleanup_1 = require("./migrations/p3-data-cleanup");
 const p4_ops_hardening_1 = require("./migrations/p4-ops-hardening");
+const p5_timestamp_timezone_1 = require("./migrations/p5-timestamp-timezone");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
@@ -228,6 +229,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             add_address_change_settle_proof_1.AddAddressChangeSettleProofMigration,
             p3_data_cleanup_1.P3DataCleanupMigration,
             p4_ops_hardening_1.P4OpsHardeningMigration,
+            p5_timestamp_timezone_1.P5TimestampTimezoneMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,

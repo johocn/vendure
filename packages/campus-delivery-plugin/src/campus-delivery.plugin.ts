@@ -35,6 +35,7 @@ import { AddAddressChangePricingMigration } from './migrations/add-address-chang
 import { AddAddressChangeSettleProofMigration } from './migrations/add-address-change-settle-proof';
 import { P3DataCleanupMigration } from './migrations/p3-data-cleanup';
 import { P4OpsHardeningMigration } from './migrations/p4-ops-hardening';
+import { P5TimestampTimezoneMigration } from './migrations/p5-timestamp-timezone';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
@@ -108,6 +109,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         AddAddressChangeSettleProofMigration,
         P3DataCleanupMigration,
         P4OpsHardeningMigration,
+        P5TimestampTimezoneMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
