@@ -444,44 +444,47 @@ let JianghuService = class JianghuService {
     }
     /** 声望入账：日上限裁剪 + 事务幂等（唯一键冲突视为已处理） */
     async addRep(ctx, profile, delta, reason, taskId) {
-        var _a;
+        var _a, _b;
         this.ensureDay(profile);
         let applied = (0, constants_1.clampByDailyCap)(profile.repToday, delta);
         const idem = `${profile.customerId}:${reason}:${taskId !== null && taskId !== void 0 ? taskId : 'x'}:${(_a = ctx.channelId) !== null && _a !== void 0 ? _a : ''}`;
+        // 先查幂等：已入账则直接返回，不加声望、不写流水。
+        // 关键：不能「先插流水再查旧记录」——Postgres 语句一旦报错，同事务后续查询
+        // 全部抛 25P02「当前事务被终止」，幂等恢复代码会失效并把该错误抛给用户。
+        const recRepo = this.connection.getRepository(ctx, jianghu_record_entity_1.JianghuRecord);
+        const existing = await recRepo.findOne({ where: { idempotentKey: idem } });
+        if (existing) {
+            return { deltaRep: (_b = existing.deltaRep) !== null && _b !== void 0 ? _b : 0, rep: profile.rep };
+        }
         await this.connection.withTransaction(ctx, async (ctx2) => {
-            var _a;
             const prepo = this.connection.getRepository(ctx2, jianghu_profile_entity_1.JianghuProfile);
             const p = await prepo.findOneOrFail({ where: { id: profile.id } });
-            const left = (0, constants_1.clampByDailyCap)(p.repToday, delta);
-            p.repToday += left;
-            p.rep += left;
-            await prepo.save(p);
+            // 先写流水：撞唯一索引即视为已入账，此时不能也不该再查询（事务已被 PG 中止）
             try {
                 await this.connection.getRepository(ctx2, jianghu_record_entity_1.JianghuRecord).save({
                     customerId: profile.customerId,
                     taskId: taskId ? String(taskId) : null,
                     idempotentKey: idem,
                     reason,
-                    deltaRep: left,
+                    deltaRep: (0, constants_1.clampByDailyCap)(p.repToday, delta),
                     snapshotRep: p.rep,
                     channelId: ctx2.channelId,
                 });
             }
             catch (e) {
-                if ((e === null || e === void 0 ? void 0 : e.code) === '23505' || /unique/i.test((e === null || e === void 0 ? void 0 : e.message) || '')) {
-                    // 已入账，命中幂等
-                    const prev = await this.connection
-                        .getRepository(ctx2, jianghu_record_entity_1.JianghuRecord)
-                        .findOne({ where: { idempotentKey: idem } });
-                    applied = (_a = prev === null || prev === void 0 ? void 0 : prev.deltaRep) !== null && _a !== void 0 ? _a : 0;
-                    p.rep -= left; // 回滚本次加的
-                    p.repToday -= left;
-                    await prepo.save(p);
+                if ((e === null || e === void 0 ? void 0 : e.code) === '23505' || /unique|duplicate/i.test((e === null || e === void 0 ? void 0 : e.message) || '')) {
+                    // 并发下已入账：不再查询、不加声望，本次事务整体回滚，保证不重复入账
+                    applied = 0;
+                    return;
                 }
-                else {
-                    throw e;
-                }
+                throw e;
             }
+            // 流水落库成功后才加声望
+            const left = (0, constants_1.clampByDailyCap)(p.repToday, delta);
+            p.repToday += left;
+            p.rep += left;
+            await prepo.save(p);
+            applied = left;
             profile.rep = p.rep;
             profile.repToday = p.repToday;
         });

@@ -95,6 +95,28 @@ function add(name, state, detail) {
             ? { state: 'OK', detail: `${d.jianghuIntelMarket.length} 条情报` }
             : { state: 'EMPTY', detail: '情报为空（需先有人提交并经审核）' });
 
+    // 5b) 提交线索（事件拼图主循环，需已登录骑手 + 有事件）
+    await probe('提交线索 jianghuCollectClue',
+        `mutation CC($input: ClueInput!) { jianghuCollectClue(input: $input) { id collected total myClues { id status } } }`,
+        { input: { content: '联调线索：北门驿站第三块砖下压着半张纸条', sourceNote: '联调验证来源' } },
+        (d) => {
+            const r = d.jianghuCollectClue;
+            return r
+                ? { state: 'OK', detail: `collected=${r.collected}/${r.total} 我的线索=${r.myClues?.length ?? 0}（PENDING 需运营审核才上墙）` }
+                : { state: 'EMPTY', detail: '未返回事件详情（无进行中事件？）' };
+        });
+
+    // 5c) 提交情报（进入待审，审核通过后才进情报市场）
+    await probe('提交情报 jianghuSubmitRumor',
+        `mutation SR($input: RumorInput!) { jianghuSubmitRumor(input: $input) { id status } }`,
+        { input: { category: 'FOOD', content: '联调情报：二食堂新窗口糖醋排骨限量供应', sourceNote: '联调验证来源' } },
+        (d) => {
+            const r = d.jianghuSubmitRumor;
+            return r
+                ? { state: 'OK', detail: `status=${r.status}（需运营 jianghuAuditIntel 审核后才上架）` }
+                : { state: 'EMPTY', detail: '未返回提交结果' };
+        });
+
     // 6) 榜单
     await probe('今日排行 jianghuDailyRank',
         `query R { jianghuDailyRank { customerId nickname rep isMe } }`, {},
@@ -109,15 +131,16 @@ function add(name, state, detail) {
     if (hallData?.jianghuHall?.length) {
         const task = hallData.jianghuHall[0];
         const take = await gql(
-            `mutation T($id: ID!) { jianghuTakeTask(taskId: $id) { id status } }`, { id: task.id });
+            `mutation T($id: ID!) { jianghuTakeTask(taskId: $id) { id status } }`, { id: task.id }, cookie);
         if (take.body?.errors) {
             add('接单 jianghuTakeTask', 'ERR', take.body.errors[0].message);
         } else {
             add('接单 jianghuTakeTask', 'OK', `status=${take.body.data.jianghuTakeTask.status}`);
             const code = await gql(
-                `mutation RC($id: ID!) { jianghuRefreshCode(taskId: $id) }`, { id: task.id });
+                `mutation RC($id: ID!) { jianghuRefreshCode(taskId: $id) }`, { id: task.id }, cookie);
             const codeVal = code.body?.data?.jianghuRefreshCode;
             if (codeVal) {
+                add('取码 jianghuRefreshCode', 'OK', `verifyCode=${codeVal}`);
                 const vf = await gql(
                     `mutation V($id: ID!, $code: String) { jianghuVerify(taskId: $id, code: $code) { ok deltaRep rep message } }`,
                     { id: task.id, code: codeVal }, cookie);
@@ -139,8 +162,17 @@ function add(name, state, detail) {
     console.log(`OK=${ok}  EMPTY(无数据)=${empty}  SKIP(前置条件)=${skip}  ERR(报错)=${err}`);
     const contentOk = rows.find((r) => r.name.startsWith('文案源'))?.state === 'OK';
     const hallOk = rows.find((r) => r.name.startsWith('大厅'))?.state === 'OK';
-    if (err === 0 && contentOk && closed) console.log('结论：可玩（文案源就绪 + 任务闭环跑通）');
-    else if (err === 0 && contentOk && hallOk) console.log('结论：基本可玩（文案源就绪、有任务，但核销未跑通）');
-    else if (err === 0 && contentOk) console.log('结论：文案链路通，玩法主体缺数据（需播种事件/任务后才谈得上可玩）');
-    else console.log('结论：不可玩，先修上面标 ERR 的项');
+    if (err > 0) {
+        console.log('结论：不可玩，先修上面标 ERR 的项');
+    } else if (contentOk && closed) {
+        console.log('结论：可玩（文案源就绪 + 任务闭环跑通）');
+    } else if (contentOk && hallOk) {
+        console.log('结论：基本可玩（文案源就绪、有任务，但核销未跑通）');
+    } else if (closed) {
+        console.log('结论：玩法闭环可玩；但文案源当前不可达（对方服务异常/未上架），页面会回退内置文案');
+    } else if (hallOk) {
+        console.log('结论：文案源不可达，但玩法主体有数据；补好文案源即可玩');
+    } else {
+        console.log('结论：文案源不可达且玩法主体缺数据（需播种事件/任务后才谈得上可玩）');
+    }
 })();
