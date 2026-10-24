@@ -5,11 +5,14 @@
 #   .\start-local-test.ps1 -Restart   # 强制重启
 #   .\start-local-test.ps1 -Stop      # 停止服务与 mock
 #   .\start-local-test.ps1 -Status    # 查看当前状态
+#   .\start-local-test.ps1 -Seed      # 顺带播种本地玩法数据（骑手/事件/任务/审核，仅本地库）
+#   .\start-local-test.ps1 -Live      # 直连线上 h.joho.cn 文案源（不启本地 mock），用于真机联调验收
 param(
     [switch]$Verify,
     [switch]$Restart,
     [switch]$Stop,
     [switch]$Status,
+    [switch]$Seed,
     [switch]$Live   # 直连线上 h.joho.cn 文案源（不启本地 mock），用于真机联调验收
 )
 
@@ -154,6 +157,23 @@ if (-not (Test-ShopApiReady)) {
     }
 }
 Write-Host "就绪      : http://localhost:3000/shop-api   (日志: $logDir)" -ForegroundColor Green
+
+if ($Seed) {
+    # 本地玩法数据播种：骑手身份 / 事件 / 大厅任务 / 情报与线索审核（幂等，可重复执行）
+    $sql = Join-Path $root 'seed-jianghu-local.sql'
+    $psql = Get-ChildItem 'C:\Program Files\PostgreSQL' -Recurse -Filter psql.exe -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not (Test-Path $sql)) {
+        Write-Host "找不到播种脚本 $sql" -ForegroundColor Red
+    } elseif (-not $psql) {
+        Write-Host "未找到 psql.exe，请手动执行：psql -h 127.0.0.1 -U postgres -d vendure -f `"$sql`"" -ForegroundColor Yellow
+    } else {
+        Write-Host "`n== 播种本地玩法数据（仅本地库）==" -ForegroundColor Cyan
+        $env:PGPASSWORD = if ($env:DB_PASSWORD) { $env:DB_PASSWORD } else { 'admin' }
+        & $psql -h 127.0.0.1 -U postgres -d vendure -f $sql
+        Write-Host '播种完成，可接着跑：node verify-jianghu-playable.mjs' -ForegroundColor Green
+    }
+}
 
 if ($Verify) {
     Write-Host "`n== 端到端校验 ==" -ForegroundColor Cyan
