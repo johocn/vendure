@@ -193,22 +193,23 @@ export class RiderTaskService {
         if (status !== 'assigned' && status !== 'in_progress') {
             throw new UserInputError('当前状态不允许转单');
         }
-        // 条件回厅：订单若已被取消/退款脱厅（hallStatus 已终态），不得再改回 open 复活
-        const back = await this.hall.backToHall(ctx, order.id as any);
-        if (!back) throw new UserInputError('订单已被取消或改派，无法转单');
-        // 转单即清除位置残留（plan 2.2 隐私：位置只跟随当前配送骑手）
-        await this.connection.getRepository(ctx, Order).update(order.id, {
-            customFields: { riderLat: null, riderLng: null },
-        } as any);
-        if (photos?.length) {
-            await this.connection.getRepository(ctx, Order).update(order.id, {
-                customFields: {
-                    transferPhotos: photos,
+        // 条件回厅：订单若已被取消/退款脱厅（hallStatus 已终态），不得再改回 open 复活。
+        // 位置残留/交接存证与回厅字段同语句写入（CAS 单次 UPDATE），避免两次写之间被取消/改派插入造成半更新。
+        const back = await this.hall.backToHall(ctx, order.id as any, {
+            // 转单即清除位置残留（plan 2.2 隐私：位置只跟随当前配送骑手）
+            riderLat: null,
+            riderLng: null,
+            ...(photos?.length
+                ? {
+                    // transferPhotos 是 string[] 自定义字段（物理列为 simple-array，逗号分隔）：
+                    // 走原生 SQL 必须自己按该格式序列化，不能传数组（transitionFrom 会 JSON 序列化导致回读异常）
+                    transferPhotos: photos.join(','),
                     transferNote: note ?? null,
                     transferAt: new Date(),
-                },
-            } as any);
-        }
+                }
+                : {}),
+        });
+        if (!back) throw new UserInputError('订单已被取消或改派，无法转单');
         return order;
     }
 

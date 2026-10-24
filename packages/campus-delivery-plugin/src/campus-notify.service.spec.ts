@@ -76,6 +76,12 @@ describe('CampusNotifyService', () => {
         await vi.waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
     });
 
+    it('ssoId 非数字（脏数据占位串）→ 跳过调用，不把 NaN 发给下游', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created', ssoId: 'sso-placeholder' });
+        svc.user(makeCtx(), 1, 'orderAccepted');
+        await vi.waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
+    });
+
     it('履约节点（amount 型模板）→ params 含 itemName/amount/payMethod', async () => {
         const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created', ssoId: '3' });
         svc.user(makeCtx(), 1, 'cookingDone');

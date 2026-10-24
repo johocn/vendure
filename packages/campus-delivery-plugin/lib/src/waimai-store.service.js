@@ -35,6 +35,13 @@ const INT_RANGES = {
 };
 /** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
 const CAMPUS_R4_REMARK = 'campus-r4';
+/** 用户侧模板消息 ID 字段：未传即保留，避免后台表单漏传把已配模板清空 */
+const NOTIFY_TEMPLATE_FIELDS = [
+    'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
+    'notifyTemplateDelivered', 'notifyTemplateExceptionHandled', 'notifyTemplateOrderPlaced',
+    'notifyTemplatePaymentPending', 'notifyTemplateCancelled', 'notifyTemplateAfterSales',
+    'notifyTemplateAddressChanged',
+];
 let WaimaiStoreService = class WaimaiStoreService {
     constructor(connection) {
         this.connection = connection;
@@ -99,7 +106,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2;
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
         const routes = Array.from(new Set(((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).map(r => String(r))));
         const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
@@ -190,29 +197,36 @@ let WaimaiStoreService = class WaimaiStoreService {
         // 记录「本次新开通」的路线：只有新开通 R1/R2 才强制交接点，历史配置（已开通但缺点）不阻断其它字段编辑
         const prevEnabled = [...((_p = cfg.routesEnabled) !== null && _p !== void 0 ? _p : [])];
         cfg.routesEnabled = routes;
-        cfg.deliveryMinutes = (_q = nums.deliveryMinutes) !== null && _q !== void 0 ? _q : null;
-        cfg.minOrderAmount = (_r = nums.minOrderAmount) !== null && _r !== void 0 ? _r : null;
-        cfg.deliveryFee = (_s = nums.deliveryFee) !== null && _s !== void 0 ? _s : null;
-        cfg.storeAddress = (_t = input.storeAddress) !== null && _t !== void 0 ? _t : null;
-        cfg.storePhone = (_u = input.storePhone) !== null && _u !== void 0 ? _u : null;
-        cfg.storeNotice = (_v = input.storeNotice) !== null && _v !== void 0 ? _v : null;
-        cfg.errandBaseFee = (_w = nums.errandBaseFee) !== null && _w !== void 0 ? _w : null;
+        // 未传（undefined）即保留原值，只有显式传 null 才清空：
+        // 旧后台表单不认识的新字段、局部更新（如只改公告）都不会把已有配置意外抹掉。
+        if (input.deliveryMinutes !== undefined)
+            cfg.deliveryMinutes = (_q = nums.deliveryMinutes) !== null && _q !== void 0 ? _q : null;
+        if (input.minOrderAmount !== undefined)
+            cfg.minOrderAmount = (_r = nums.minOrderAmount) !== null && _r !== void 0 ? _r : null;
+        if (input.deliveryFee !== undefined)
+            cfg.deliveryFee = (_s = nums.deliveryFee) !== null && _s !== void 0 ? _s : null;
+        if (input.storeAddress !== undefined)
+            cfg.storeAddress = (_t = input.storeAddress) !== null && _t !== void 0 ? _t : null;
+        if (input.storePhone !== undefined)
+            cfg.storePhone = (_u = input.storePhone) !== null && _u !== void 0 ? _u : null;
+        if (input.storeNotice !== undefined)
+            cfg.storeNotice = (_v = input.storeNotice) !== null && _v !== void 0 ? _v : null;
+        if (input.errandBaseFee !== undefined)
+            cfg.errandBaseFee = (_w = nums.errandBaseFee) !== null && _w !== void 0 ? _w : null;
         // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
         if (input.thirdPartyBaseFee !== undefined)
             cfg.thirdPartyBaseFee = (_x = nums.thirdPartyBaseFee) !== null && _x !== void 0 ? _x : null;
-        cfg.freeShippingThreshold = (_y = nums.freeShippingThreshold) !== null && _y !== void 0 ? _y : null;
-        cfg.notifyTemplateAccepted = (_z = input.notifyTemplateAccepted) !== null && _z !== void 0 ? _z : null;
-        cfg.notifyTemplateRiderAssigned = (_0 = input.notifyTemplateRiderAssigned) !== null && _0 !== void 0 ? _0 : null;
-        cfg.notifyTemplateCookingDone = (_1 = input.notifyTemplateCookingDone) !== null && _1 !== void 0 ? _1 : null;
-        cfg.notifyTemplateDelivered = (_2 = input.notifyTemplateDelivered) !== null && _2 !== void 0 ? _2 : null;
-        cfg.notifyTemplateExceptionHandled = (_3 = input.notifyTemplateExceptionHandled) !== null && _3 !== void 0 ? _3 : null;
-        cfg.notifyTemplateOrderPlaced = (_4 = input.notifyTemplateOrderPlaced) !== null && _4 !== void 0 ? _4 : null;
-        cfg.notifyTemplatePaymentPending = (_5 = input.notifyTemplatePaymentPending) !== null && _5 !== void 0 ? _5 : null;
-        cfg.notifyTemplateCancelled = (_6 = input.notifyTemplateCancelled) !== null && _6 !== void 0 ? _6 : null;
-        cfg.notifyTemplateAfterSales = (_7 = input.notifyTemplateAfterSales) !== null && _7 !== void 0 ? _7 : null;
-        cfg.notifyTemplateAddressChanged = (_8 = input.notifyTemplateAddressChanged) !== null && _8 !== void 0 ? _8 : null;
-        cfg.h5BaseUrl = (_9 = input.h5BaseUrl) !== null && _9 !== void 0 ? _9 : null;
-        cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        if (input.freeShippingThreshold !== undefined)
+            cfg.freeShippingThreshold = (_y = nums.freeShippingThreshold) !== null && _y !== void 0 ? _y : null;
+        for (const key of NOTIFY_TEMPLATE_FIELDS) {
+            if (input[key] !== undefined)
+                cfg[key] = (_z = input[key]) !== null && _z !== void 0 ? _z : null;
+        }
+        if (input.h5BaseUrl !== undefined)
+            cfg.h5BaseUrl = (_0 = input.h5BaseUrl) !== null && _0 !== void 0 ? _0 : null;
+        if (input.printMode !== undefined) {
+            cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        }
         // 超时赔付：未传即保留（旧表单不会清空已配值）
         if (input.timeoutCompensationEnabled != null)
             cfg.timeoutCompensationEnabled = input.timeoutCompensationEnabled;
@@ -265,7 +279,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_12) {
+                catch (_3) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -286,10 +300,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_10 = input.storeAddress) !== null && _10 !== void 0 ? _10 : '').trim();
+        const address = ((_1 = input.storeAddress) !== null && _1 !== void 0 ? _1 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_11 = input.storePhone) !== null && _11 !== void 0 ? _11 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_2 = input.storePhone) !== null && _2 !== void 0 ? _2 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -347,7 +361,8 @@ let WaimaiStoreService = class WaimaiStoreService {
             notifyTemplateAddressChanged: (_v = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAddressChanged) !== null && _v !== void 0 ? _v : null,
             h5BaseUrl: (_w = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _w !== void 0 ? _w : null,
             printMode: normalizePrintMode(cfg === null || cfg === void 0 ? void 0 : cfg.printMode),
-            timeoutCompensationEnabled: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _x !== void 0 ? _x : false,
+            // 与实体默认值一致（timeoutCompensationEnabled default true）：无配置行时也应显示「已开启」
+            timeoutCompensationEnabled: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _x !== void 0 ? _x : true,
             timeoutGraceMinutes: (_y = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutGraceMinutes) !== null && _y !== void 0 ? _y : 10,
             timeoutCompensationWindowHours: (_z = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationWindowHours) !== null && _z !== void 0 ? _z : 24,
             timeoutCompensationCouponTemplateId: (_0 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _0 !== void 0 ? _0 : null,

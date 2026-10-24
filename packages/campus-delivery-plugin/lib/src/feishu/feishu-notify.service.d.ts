@@ -13,9 +13,13 @@ export declare class FeishuNotifyService {
     private recent;
     constructor(client: FeishuClient, cards: FeishuCardService);
     onAdminNotify(event: AdminNotifyEvent): Promise<void>;
-    /** 内部事件（异常/超时/支付取消）直接推群；按业务键 5 分钟去重 */
-    push(scene: string, dedupeKey: string | undefined, text: string): Promise<void>;
-    pushEvent(scene: string, title: string, content: string, orderCode?: string, dedupeKey?: string): Promise<void>;
+    /** 内部事件（异常/超时/支付取消）直接推群；按业务键 2 分钟去重。
+     * 返回是否送达（未启用/去重命中记为 true，避免调用方无意义重试）。 */
+    push(scene: string, dedupeKey: string | undefined, text: string): Promise<boolean>;
+    /** 返回是否已送达/已合并到卡片：false 表示本次推送失败，调用方应保留重试机会。 */
+    pushEvent(scene: string, title: string, content: string, orderCode?: string, dedupeKey?: string): Promise<boolean>;
     private deliver;
+    /** 送达成功后才登记去重键：发送失败不应占用去重窗口，否则失败一次会静默整整一个窗口。 */
+    private mark;
     private isDuplicate;
 }

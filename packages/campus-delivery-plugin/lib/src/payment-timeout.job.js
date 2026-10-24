@@ -307,11 +307,15 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
             const tid = Number(t.id);
             if (this.alertedFailed.has(tid))
                 continue;
-            this.alertedFailed.set(tid, now);
             const code = (_a = codeById.get(Number(t.orderId))) !== null && _a !== void 0 ? _a : `#${t.orderId}`;
             const typeLabel = t.type === payment_timeout_entity_1.PaymentTimeoutType.CANCEL ? '超时取消' : '待付款提醒';
             try {
-                await this.feishu.pushEvent('payment_timeout_failed', '待付款任务失败', `订单 ${code} ${typeLabel}重试 ${t.retryCount} 次仍失败：${(_b = t.lastError) !== null && _b !== void 0 ? _b : '未知错误'}（订单可能卡在待付款）`, String(code), `paytimeout_failed:${tid}`);
+                const sent = await this.feishu.pushEvent('payment_timeout_failed', '待付款任务失败', `订单 ${code} ${typeLabel}重试 ${t.retryCount} 次仍失败：${(_b = t.lastError) !== null && _b !== void 0 ? _b : '未知错误'}（订单可能卡在待付款）`, String(code), `paytimeout_failed:${tid}`);
+                // 送达成功才登记 24h 去重：推送失败时下一轮继续重试，避免失败一次就静默一天
+                if (sent)
+                    this.alertedFailed.set(tid, now);
+                else
+                    core_1.Logger.warn(`failed-task alert not delivered task=${tid}, will retry next sweep`, loggerCtx);
             }
             catch (e) {
                 core_1.Logger.warn(`failed-task alert push error task=${tid}: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e)}`, loggerCtx);

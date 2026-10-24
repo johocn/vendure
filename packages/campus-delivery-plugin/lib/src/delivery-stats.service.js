@@ -76,9 +76,10 @@ function aggregateStats(args) {
         const grace = ((_e = graceByChannel.get(chId)) !== null && _e !== void 0 ? _e : DEFAULT_GRACE_MIN) * 60000;
         const createdAt = new Date(o.createdAt).getTime();
         bucketOf(createdAt).orders++;
+        const chName = ((_f = ch === null || ch === void 0 ? void 0 : ch.customFields) === null || _f === void 0 ? void 0 : _f.shopName) || (ch === null || ch === void 0 ? void 0 : ch.code) || `channel-${chId}`;
         let store = stores.get(chId);
         if (!store) {
-            store = { name: (_f = ch === null || ch === void 0 ? void 0 : ch.code) !== null && _f !== void 0 ? _f : `channel-${chId}`, orders: 0, onTime: 0, scored: 0 };
+            store = { name: chName, orders: 0, onTime: 0, scored: 0 };
             stores.set(chId, store);
         }
         store.orders++;

@@ -192,25 +192,24 @@ describe('RiderTaskService.transfer', () => {
     it('assigned 未取货转单：回大厅并清除位置残留，不写交接存证', async () => {
         const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } } });
         await env.svc.transfer({} as any, 5, []);
-        expect(env.hall.backToHall).toHaveBeenCalledWith(expect.anything(), 5);
-        // plan 2.2 隐私：转单清位置
-        expect(env.orderRepo.update).toHaveBeenCalledWith(5, expect.objectContaining({
-            customFields: { riderLat: null, riderLng: null },
-        }));
+        // 位置残留与回厅字段同一条 CAS 语句写入（不再二次 update，避免半更新）
+        expect(env.hall.backToHall).toHaveBeenCalledWith(expect.anything(), 5, { riderLat: null, riderLng: null });
+        expect(env.orderRepo.update).not.toHaveBeenCalled();
     });
 
     it('in_progress 已取货转单：photos 必填并写存证', async () => {
         const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
         await expect(env.svc.transfer({} as any, 5, [])).rejects.toThrow('已取货转单需拍照交接');
         await env.svc.transfer({} as any, 5, ['/static/p1.jpg'], '货物完好');
-        expect(env.hall.backToHall).toHaveBeenCalled();
-        expect(env.orderRepo.update).toHaveBeenCalledWith(5, expect.objectContaining({
-            customFields: expect.objectContaining({
-                transferPhotos: ['/static/p1.jpg'],
-                transferNote: '货物完好',
-                transferAt: expect.any(Date),
-            }),
+        expect(env.hall.backToHall).toHaveBeenCalledWith(expect.anything(), 5, expect.objectContaining({
+            riderLat: null,
+            riderLng: null,
+            // simple-array 物理列：原生 SQL 按逗号分隔写入
+            transferPhotos: '/static/p1.jpg',
+            transferNote: '货物完好',
+            transferAt: expect.any(Date),
         }));
+        expect(env.orderRepo.update).not.toHaveBeenCalled();
     });
 
     it('delivered 状态拒绝转单', async () => {
@@ -222,6 +221,8 @@ describe('RiderTaskService.transfer', () => {
         const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } } });
         env.hall.backToHall.mockResolvedValueOnce(false);
         await expect(env.svc.transfer({} as any, 5, [])).rejects.toThrow('订单已被取消或改派');
+        // 只有那一次被拒的 CAS 写；不得再补写位置/存证
+        expect(env.hall.backToHall).toHaveBeenCalledTimes(1);
         expect(env.orderRepo.update).not.toHaveBeenCalled();
     });
 });

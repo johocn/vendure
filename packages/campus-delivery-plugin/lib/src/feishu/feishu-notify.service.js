@@ -40,8 +40,11 @@ let FeishuNotifyService = class FeishuNotifyService {
             return;
         if (event.scene === 'shop_new_order' && event.orderCode) {
             try {
-                if (await this.cards.broadcastOrderCard(event.orderCode))
+                if (await this.cards.broadcastOrderCard(event.orderCode)) {
+                    if (dedupeKey)
+                        this.mark(dedupeKey);
                     return;
+                }
             }
             catch (e) {
                 core_1.Logger.warn(`新订单卡片发送失败，降级文本：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
@@ -58,22 +61,33 @@ let FeishuNotifyService = class FeishuNotifyService {
             link,
             at: Date.now(),
         });
-        await this.deliver(text, event.scene);
+        if (await this.deliver(text, event.scene)) {
+            if (dedupeKey)
+                this.mark(dedupeKey);
+        }
     }
-    /** 内部事件（异常/超时/支付取消）直接推群；按业务键 5 分钟去重 */
+    /** 内部事件（异常/超时/支付取消）直接推群；按业务键 2 分钟去重。
+     * 返回是否送达（未启用/去重命中记为 true，避免调用方无意义重试）。 */
     async push(scene, dedupeKey, text) {
         if (!this.client.enabled)
-            return;
-        if (dedupeKey && this.isDuplicate(`${scene}:${dedupeKey}`))
-            return;
-        await this.deliver(text, scene);
+            return true;
+        const key = dedupeKey ? `${scene}:${dedupeKey}` : undefined;
+        if (key && this.isDuplicate(key))
+            return true;
+        const ok = await this.deliver(text, scene);
+        if (ok && key)
+            this.mark(key);
+        return ok;
     }
+    /** 返回是否已送达/已合并到卡片：false 表示本次推送失败，调用方应保留重试机会。 */
     async pushEvent(scene, title, content, orderCode, dedupeKey) {
+        if (!this.client.enabled)
+            return true;
         // 缺省键必须带事件标题：同一订单 2 分钟内可能连发多个不同事件（如取货超时告警 + 回厅），
         // 只用 orderCode 会把后到的那条吞掉。显式传键的调用方保持原语义。
         const key = dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : (orderCode ? `${orderCode}:${title}` : undefined);
         if (key && this.isDuplicate(key))
-            return;
+            return true;
         // P2.1 同单告警合并：有 orderCode 时先尝试 PATCH 已有订单卡片追加告警行，找不到再降级广播文本
         if (orderCode) {
             const alertText = `${title} · ${content}`;
@@ -81,10 +95,15 @@ let FeishuNotifyService = class FeishuNotifyService {
             const alertDedupeKey = key !== null && key !== void 0 ? key : dedupeKey;
             if (await this.cards.appendAlert(orderCode, alertText, alertDedupeKey)) {
                 // 已合并到卡片，不再额外发文本
-                return;
+                if (key)
+                    this.mark(key);
+                return true;
             }
         }
-        await this.push(scene, key, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
+        const ok = await this.push(scene, key, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
+        if (ok && key)
+            this.mark(key);
+        return ok;
     }
     async deliver(text, scene) {
         var _a;
@@ -92,10 +111,16 @@ let FeishuNotifyService = class FeishuNotifyService {
             const ok = await this.client.broadcast(text);
             if (!ok)
                 core_1.Logger.warn(`飞书推送未送达 scene=${scene}`, loggerCtx);
+            return ok;
         }
         catch (e) {
             core_1.Logger.warn(`飞书推送异常 scene=${scene}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            return false;
         }
+    }
+    /** 送达成功后才登记去重键：发送失败不应占用去重窗口，否则失败一次会静默整整一个窗口。 */
+    mark(key) {
+        this.recent.set(key, Date.now());
     }
     // Bug 6 修复：同 Bug 5，Map 遍历时 delete 跳过元素导致泄漏；改数组收集再统一 delete
     isDuplicate(key) {
@@ -108,10 +133,7 @@ let FeishuNotifyService = class FeishuNotifyService {
         for (const k of expired)
             this.recent.delete(k);
         const seen = this.recent.get(key);
-        if (seen && now - seen <= DEDUPE_MS)
-            return true;
-        this.recent.set(key, now);
-        return false;
+        return seen != null && now - seen <= DEDUPE_MS;
     }
 };
 exports.FeishuNotifyService = FeishuNotifyService;

@@ -17,7 +17,7 @@ export interface StatsOrderLike {
     code: string;
     state: string;
     createdAt: Date | string;
-    channels?: Array<{ id: unknown; code: string }>;
+    channels?: Array<{ id: unknown; code: string; customFields?: { shopName?: string | null } | null }>;
     customFields: {
         promisedAt?: Date | string | null;
         assignedAt?: Date | string | null;
@@ -135,9 +135,10 @@ export function aggregateStats(args: {
 
         bucketOf(createdAt).orders++;
 
+        const chName = ch?.customFields?.shopName || ch?.code || `channel-${chId}`;
         let store = stores.get(chId);
         if (!store) {
-            store = { name: ch?.code ?? `channel-${chId}`, orders: 0, onTime: 0, scored: 0 };
+            store = { name: chName, orders: 0, onTime: 0, scored: 0 };
             stores.set(chId, store);
         }
         store.orders++;

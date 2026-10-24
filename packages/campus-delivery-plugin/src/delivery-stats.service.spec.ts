@@ -9,7 +9,7 @@ const order = (id: number, ch: number, cf: any, extra: any = {}) => ({
     code: `A${id}`,
     state: 'Delivered',
     createdAt: cf.createdAt ?? min(60),
-    channels: [{ id: ch, code: ch === 9 ? '__default_channel__' : `shop-${ch}` }],
+    channels: [{ id: ch, code: ch === 9 ? '__default_channel__' : `shop-${ch}`, customFields: ch === 1 ? { shopName: '一食堂麻辣香锅' } : {} }],
     customFields: cf,
     ...extra,
 });
@@ -147,7 +147,9 @@ describe('aggregateStats', () => {
         });
         expect(res.storeComparison).toHaveLength(3);
         const s1 = res.storeComparison.find(s => s.channelId === '1')!;
-        expect(s1.channelName).toBe('shop-1');
+        // 店铺名优先取渠道 customFields.shopName（中文店名），无则回退渠道 code
+        expect(s1.channelName).toBe('一食堂麻辣香锅');
+        expect(res.storeComparison.find(s => s.channelId === '2')!.channelName).toBe('shop-2');
         expect(s1.orders).toBe(3);
         expect(s1.onTimeRate).toBe(50); // 1/2
         expect(res.storeComparison[0].orders).toBe(3); // 排序按单量降序

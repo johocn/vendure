@@ -28,7 +28,7 @@ describe('PaymentTimeoutJob', () => {
         };
         const stockMovementService = { createOutstandingReleasesForOrderLines: vi.fn().mockResolvedValue([]) };
         const notify = { user: vi.fn() };
-        const feishu = { pushEvent: vi.fn().mockResolvedValue(undefined) };
+        const feishu = { pushEvent: vi.fn().mockResolvedValue(true) };
         const queryRunner = {
             connect: vi.fn().mockResolvedValue(undefined),
             query: vi.fn().mockResolvedValue([{ locked: true }]),
@@ -191,6 +191,20 @@ describe('PaymentTimeoutJob', () => {
             taskRepo.find.mockResolvedValue([]);
             await job.runCompensation();
             expect(feishu.pushEvent).not.toHaveBeenCalled();
+        });
+
+        it('推送未送达（返回 false）→ 不登记去重，下一轮继续重试', async () => {
+            const { job, taskRepo, feishu } = makeJob({ orderState: 'ArrangingPayment' });
+            (job as any).jobQueue = { add: vi.fn().mockResolvedValue(undefined) };
+            taskRepo.find.mockResolvedValue([failedTask()]);
+            feishu.pushEvent.mockResolvedValueOnce(false);
+            await job.runCompensation();
+            expect(feishu.pushEvent).toHaveBeenCalledTimes(1);
+            // 第二轮送达成功 → 登记 24h 去重
+            await job.runCompensation();
+            expect(feishu.pushEvent).toHaveBeenCalledTimes(2);
+            await job.runCompensation();
+            expect(feishu.pushEvent).toHaveBeenCalledTimes(2);
         });
 
         it('pushEvent 抛错 → 吞错不阻断 runCompensation（返回逾期条数）', async () => {

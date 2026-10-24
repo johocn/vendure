@@ -92,6 +92,14 @@ const INT_RANGES: Record<string, [number, number]> = {
 /** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
 const CAMPUS_R4_REMARK = 'campus-r4';
 
+/** 用户侧模板消息 ID 字段：未传即保留，避免后台表单漏传把已配模板清空 */
+const NOTIFY_TEMPLATE_FIELDS = [
+    'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
+    'notifyTemplateDelivered', 'notifyTemplateExceptionHandled', 'notifyTemplateOrderPlaced',
+    'notifyTemplatePaymentPending', 'notifyTemplateCancelled', 'notifyTemplateAfterSales',
+    'notifyTemplateAddressChanged',
+] as const;
+
 @Injectable()
 export class WaimaiStoreService {
     constructor(private connection: TransactionalConnection) {}
@@ -282,28 +290,25 @@ export class WaimaiStoreService {
         // 记录「本次新开通」的路线：只有新开通 R1/R2 才强制交接点，历史配置（已开通但缺点）不阻断其它字段编辑
         const prevEnabled = [...(cfg.routesEnabled ?? [])];
         cfg.routesEnabled = routes;
-        cfg.deliveryMinutes = nums.deliveryMinutes ?? null;
-        cfg.minOrderAmount = nums.minOrderAmount ?? null;
-        cfg.deliveryFee = nums.deliveryFee ?? null;
-        cfg.storeAddress = input.storeAddress ?? null;
-        cfg.storePhone = input.storePhone ?? null;
-        cfg.storeNotice = input.storeNotice ?? null;
-        cfg.errandBaseFee = nums.errandBaseFee ?? null;
+        // 未传（undefined）即保留原值，只有显式传 null 才清空：
+        // 旧后台表单不认识的新字段、局部更新（如只改公告）都不会把已有配置意外抹掉。
+        if (input.deliveryMinutes !== undefined) cfg.deliveryMinutes = nums.deliveryMinutes ?? null;
+        if (input.minOrderAmount !== undefined) cfg.minOrderAmount = nums.minOrderAmount ?? null;
+        if (input.deliveryFee !== undefined) cfg.deliveryFee = nums.deliveryFee ?? null;
+        if (input.storeAddress !== undefined) cfg.storeAddress = input.storeAddress ?? null;
+        if (input.storePhone !== undefined) cfg.storePhone = input.storePhone ?? null;
+        if (input.storeNotice !== undefined) cfg.storeNotice = input.storeNotice ?? null;
+        if (input.errandBaseFee !== undefined) cfg.errandBaseFee = nums.errandBaseFee ?? null;
         // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
         if (input.thirdPartyBaseFee !== undefined) cfg.thirdPartyBaseFee = nums.thirdPartyBaseFee ?? null;
-        cfg.freeShippingThreshold = nums.freeShippingThreshold ?? null;
-        cfg.notifyTemplateAccepted = input.notifyTemplateAccepted ?? null;
-        cfg.notifyTemplateRiderAssigned = input.notifyTemplateRiderAssigned ?? null;
-        cfg.notifyTemplateCookingDone = input.notifyTemplateCookingDone ?? null;
-        cfg.notifyTemplateDelivered = input.notifyTemplateDelivered ?? null;
-        cfg.notifyTemplateExceptionHandled = input.notifyTemplateExceptionHandled ?? null;
-        cfg.notifyTemplateOrderPlaced = input.notifyTemplateOrderPlaced ?? null;
-        cfg.notifyTemplatePaymentPending = input.notifyTemplatePaymentPending ?? null;
-        cfg.notifyTemplateCancelled = input.notifyTemplateCancelled ?? null;
-        cfg.notifyTemplateAfterSales = input.notifyTemplateAfterSales ?? null;
-        cfg.notifyTemplateAddressChanged = input.notifyTemplateAddressChanged ?? null;
-        cfg.h5BaseUrl = input.h5BaseUrl ?? null;
-        cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        if (input.freeShippingThreshold !== undefined) cfg.freeShippingThreshold = nums.freeShippingThreshold ?? null;
+        for (const key of NOTIFY_TEMPLATE_FIELDS) {
+            if (input[key] !== undefined) (cfg as any)[key] = input[key] ?? null;
+        }
+        if (input.h5BaseUrl !== undefined) cfg.h5BaseUrl = input.h5BaseUrl ?? null;
+        if (input.printMode !== undefined) {
+            cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        }
         // 超时赔付：未传即保留（旧表单不会清空已配值）
         if (input.timeoutCompensationEnabled != null) cfg.timeoutCompensationEnabled = input.timeoutCompensationEnabled;
         if (input.timeoutGraceMinutes != null) cfg.timeoutGraceMinutes = input.timeoutGraceMinutes;
@@ -434,7 +439,8 @@ export class WaimaiStoreService {
             notifyTemplateAddressChanged: cfg?.notifyTemplateAddressChanged ?? null,
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
             printMode: normalizePrintMode(cfg?.printMode),
-            timeoutCompensationEnabled: cfg?.timeoutCompensationEnabled ?? false,
+            // 与实体默认值一致（timeoutCompensationEnabled default true）：无配置行时也应显示「已开启」
+            timeoutCompensationEnabled: cfg?.timeoutCompensationEnabled ?? true,
             timeoutGraceMinutes: cfg?.timeoutGraceMinutes ?? 10,
             timeoutCompensationWindowHours: cfg?.timeoutCompensationWindowHours ?? 24,
             timeoutCompensationCouponTemplateId: cfg?.timeoutCompensationCouponTemplateId ?? null,

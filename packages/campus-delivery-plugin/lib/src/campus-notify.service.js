@@ -73,8 +73,14 @@ let CampusNotifyService = class CampusNotifyService {
                     relations: ['customer', 'lines', 'lines.productVariant'],
                 });
                 const ssoId = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.ssoId;
-                if (!order || !ssoId) {
+                if (!order || ssoId == null || ssoId === '') {
                     core_1.Logger.debug(`order ${orderId} customer has no ssoId, skip user notify (${event})`, 'CampusNotify');
+                    return;
+                }
+                // sso_user_id 必须是数字：非数字（脏数据/占位串）会让下游按 NaN 落库，这里提前拦下
+                const ssoUserId = Number(ssoId);
+                if (!Number.isFinite(ssoUserId)) {
+                    core_1.Logger.warn(`order ${orderId} customer ssoId is not numeric (${String(ssoId)}), skip user notify (${event})`, 'CampusNotify');
                     return;
                 }
                 // 微信模板字段必填：按事件分型组装 params（与 sso_msg_templates.wx_template_fields 的 key 对应）
@@ -99,7 +105,7 @@ let CampusNotifyService = class CampusNotifyService {
                 const payload = JSON.stringify({
                     app_code: appCode,
                     app_secret: appSecret,
-                    sso_user_id: Number(ssoId),
+                    sso_user_id: ssoUserId,
                     template_code: templateCode,
                     params,
                     link,

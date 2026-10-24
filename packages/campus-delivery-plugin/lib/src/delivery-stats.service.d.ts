@@ -8,6 +8,9 @@ export interface StatsOrderLike {
     channels?: Array<{
         id: unknown;
         code: string;
+        customFields?: {
+            shopName?: string | null;
+        } | null;
     }>;
     customFields: {
         promisedAt?: Date | string | null;

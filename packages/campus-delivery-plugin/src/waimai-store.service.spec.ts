@@ -97,7 +97,7 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateAddressChanged: null,
             h5BaseUrl: null,
             printMode: 'off',
-            timeoutCompensationEnabled: false, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
+            timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
             dynamicPricing: null,
             routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
             merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
@@ -119,7 +119,7 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateAddressChanged: null,
             h5BaseUrl: null,
             printMode: 'off',
-            timeoutCompensationEnabled: false, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
+            timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
             dynamicPricing: null,
             routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
             merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
@@ -190,7 +190,7 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             notifyTemplateAddressChanged: null,
             h5BaseUrl: null,
             printMode: 'off',
-            timeoutCompensationEnabled: false, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
+            timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
             dynamicPricing: null,
             routeFirstLeg: [],
             handoverPoints: [{ route: 'R2', name: '菜鸟驿站', address: null, phone: null, lat: 30.2, lng: 120.25, isDefault: true }],
@@ -198,6 +198,28 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
             storeLat: null, storeLng: null,
         });
+    });
+
+    it('未传字段即保留原值，显式 null 才清空（局部更新不清空既有配置）', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂' }] });
+        const cfgRepo = env.repoByEntity.CampusFulfillmentConfig;
+        cfgRepo.findOne.mockResolvedValue({
+            channelId: 2, routesEnabled: ['R1'],
+            handoverPoints: { R1: { route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 } },
+            deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼',
+            storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300, freeShippingThreshold: 1800,
+            notifyTemplateAccepted: 'TPL-A', h5BaseUrl: 'https://h5.example.com', printMode: 'onPaid',
+        });
+        const kept = await env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R1'] } as any);
+        expect(kept).toMatchObject({
+            deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼',
+            storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300, freeShippingThreshold: 1800,
+            notifyTemplateAccepted: 'TPL-A', h5BaseUrl: 'https://h5.example.com', printMode: 'onPaid',
+        });
+        // 显式 null 才允许清空
+        const cleared = await env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R1'], storeNotice: null } as any);
+        expect(cleared.storeNotice).toBeNull();
+        expect(cleared.deliveryMinutes).toBe(35);
     });
 });
 

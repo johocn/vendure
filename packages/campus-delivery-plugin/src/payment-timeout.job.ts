@@ -299,17 +299,19 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
         for (const t of failed) {
             const tid = Number(t.id);
             if (this.alertedFailed.has(tid)) continue;
-            this.alertedFailed.set(tid, now);
             const code = codeById.get(Number(t.orderId)) ?? `#${t.orderId}`;
             const typeLabel = t.type === PaymentTimeoutType.CANCEL ? '超时取消' : '待付款提醒';
             try {
-                await this.feishu.pushEvent(
+                const sent = await this.feishu.pushEvent(
                     'payment_timeout_failed',
                     '待付款任务失败',
                     `订单 ${code} ${typeLabel}重试 ${t.retryCount} 次仍失败：${t.lastError ?? '未知错误'}（订单可能卡在待付款）`,
                     String(code),
                     `paytimeout_failed:${tid}`,
                 );
+                // 送达成功才登记 24h 去重：推送失败时下一轮继续重试，避免失败一次就静默一天
+                if (sent) this.alertedFailed.set(tid, now);
+                else Logger.warn(`failed-task alert not delivered task=${tid}, will retry next sweep`, loggerCtx);
             } catch (e: any) {
                 Logger.warn(`failed-task alert push error task=${tid}: ${String(e?.message ?? e)}`, loggerCtx);
             }

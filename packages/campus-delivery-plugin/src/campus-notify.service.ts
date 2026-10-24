@@ -78,9 +78,18 @@ export class CampusNotifyService {
                     relations: ['customer', 'lines', 'lines.productVariant'],
                 });
                 const ssoId = (order?.customer?.customFields as any)?.ssoId as string | number | undefined;
-                if (!order || !ssoId) {
+                if (!order || ssoId == null || ssoId === '') {
                     Logger.debug(
                         `order ${orderId} customer has no ssoId, skip user notify (${event})`,
+                        'CampusNotify',
+                    );
+                    return;
+                }
+                // sso_user_id 必须是数字：非数字（脏数据/占位串）会让下游按 NaN 落库，这里提前拦下
+                const ssoUserId = Number(ssoId);
+                if (!Number.isFinite(ssoUserId)) {
+                    Logger.warn(
+                        `order ${orderId} customer ssoId is not numeric (${String(ssoId)}), skip user notify (${event})`,
                         'CampusNotify',
                     );
                     return;
@@ -108,7 +117,7 @@ export class CampusNotifyService {
                 const payload = JSON.stringify({
                     app_code: appCode,
                     app_secret: appSecret,
-                    sso_user_id: Number(ssoId),
+                    sso_user_id: ssoUserId,
                     template_code: templateCode,
                     params,
                     link,
