@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentTimeoutJob, PAYMENT_REMIND_MS, PAYMENT_CANCEL_MS } from './payment-timeout.job';
 import { PaymentTimeoutStatus, PaymentTimeoutType } from './payment-timeout.entity';
 
@@ -85,5 +85,65 @@ describe('PaymentTimeoutJob', () => {
     it('常量：提醒 10 分钟 / 取消 15 分钟', () => {
         expect(PAYMENT_REMIND_MS).toBe(10 * 60 * 1000);
         expect(PAYMENT_CANCEL_MS).toBe(15 * 60 * 1000);
+    });
+
+    describe('补偿定时器（生产无 worker，ScheduledTask 不执行 → 自管循环）', () => {
+        beforeEach(() => { vi.useFakeTimers(); });
+        afterEach(() => { vi.useRealTimers(); });
+
+        it('30s 首跑 + 每 5min 一轮；重复 start 不叠加；stop 后不再触发', async () => {
+            const { job } = makeJob({ orderState: 'ArrangingPayment' });
+            const spy = vi.spyOn(job, 'runCompensation').mockResolvedValue(0);
+            job.startCompensationLoop();
+            job.startCompensationLoop(); // 幂等：不应再挂一套定时器
+            expect(spy).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(30_000);
+            expect(spy).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(5 * 60_000);
+            expect(spy).toHaveBeenCalledTimes(2);
+            job.stopCompensationLoop();
+            await vi.advanceTimersByTimeAsync(30 * 60_000);
+            expect(spy).toHaveBeenCalledTimes(2);
+        });
+
+        it('上一轮未结束 → 本轮跳过，不并发堆叠', async () => {
+            const { job } = makeJob({ orderState: 'ArrangingPayment' });
+            let resolve!: (n: number) => void;
+            const spy = vi.spyOn(job, 'runCompensation').mockImplementation(
+                () => new Promise<number>(r => { resolve = r; }),
+            );
+            job.startCompensationLoop();
+            await vi.advanceTimersByTimeAsync(30_000);
+            expect(spy).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(5 * 60_000); // 第一轮仍挂着
+            expect(spy).toHaveBeenCalledTimes(1);
+            resolve(0);
+            await vi.advanceTimersByTimeAsync(0); // 释放 running 标记
+            await vi.advanceTimersByTimeAsync(5 * 60_000);
+            expect(spy).toHaveBeenCalledTimes(2);
+        });
+
+        it('补偿异常只记日志，不抛出（下一轮继续）', async () => {
+            const { job } = makeJob({ orderState: 'ArrangingPayment' });
+            const spy = vi.spyOn(job, 'runCompensation').mockRejectedValue(new Error('db down'));
+            job.startCompensationLoop();
+            await vi.advanceTimersByTimeAsync(30_000); // 不抛出即通过（.catch 已吞错）
+            expect(spy).toHaveBeenCalledTimes(1);
+            job.stopCompensationLoop();
+        });
+
+        it('onApplicationShutdown 清理定时器', async () => {
+            const { job } = makeJob({ orderState: 'ArrangingPayment' });
+            const spy = vi.spyOn(job, 'runCompensation').mockResolvedValue(0);
+            job.startCompensationLoop();
+            job.onApplicationShutdown();
+            await vi.advanceTimersByTimeAsync(30 * 60_000);
+            expect(spy).not.toHaveBeenCalled();
+        });
+
+        it('init 未完成（无 jobQueue）→ runCompensation 返回 0', async () => {
+            const { job } = makeJob({ orderState: 'ArrangingPayment' });
+            await expect(job.runCompensation()).resolves.toBe(0);
+        });
     });
 });

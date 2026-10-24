@@ -85,16 +85,10 @@ const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
 const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
 const waimai_store_service_1 = require("./waimai-store.service");
-const PAYMENT_TIMEOUT_COMPENSATION = 'payment-timeout-compensation';
-// 补偿扫描（照抄 OrderTimeoutPlugin 模式）：SQL JobQueue 忽略 delay，靠此任务把 overdue 任务重入队
-const paymentTimeoutCompensation = new core_1.ScheduledTask({
-    id: PAYMENT_TIMEOUT_COMPENSATION,
-    description: 'Scan overdue PaymentTimeoutTask records and re-enqueue them',
-    schedule: cron => cron.every(5).minutes(),
-    async execute({ injector }) {
-        await injector.get(payment_timeout_job_1.PaymentTimeoutJob).runCompensation();
-    },
-});
+// 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
+// dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
+// 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
+// （与 DispatchJobService / FeishuDigestService 同款部署形态）。
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     constructor(eventBus, hallService, r4TagService, moduleRef, notify, paymentTimeout, configService, slotLock, connection) {
         this.eventBus = eventBus;
@@ -116,10 +110,11 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
         // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
         void this.grantDispatchPermission().catch(e => core_1.Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'));
-        // 待付款任务队列（+10min 提醒 / +15min 取消）
-        this.injector
-            .get(payment_timeout_job_1.PaymentTimeoutJob)
+        // 待付款补偿任务：自管定时器（生产无 worker，ScheduledTask 不执行）
+        const paymentTimeoutJob = this.injector.get(payment_timeout_job_1.PaymentTimeoutJob);
+        paymentTimeoutJob
             .init()
+            .then(() => paymentTimeoutJob.startCompensationLoop())
             .catch(e => core_1.Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
@@ -1193,7 +1188,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
@@ -1214,11 +1209,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 config.shippingOptions.shippingLineAssignmentStrategy =
                     new errand_shipping_line_assignment_1.CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
             }
-            // 待付款补偿任务幂等注册
-            config.schedulerOptions.tasks = (_r = config.schedulerOptions.tasks) !== null && _r !== void 0 ? _r : [];
-            if (!config.schedulerOptions.tasks.some(t => t.id === PAYMENT_TIMEOUT_COMPENSATION)) {
-                config.schedulerOptions.tasks.push(paymentTimeoutCompensation);
-            }
+            // 待付款补偿任务：不再注册 ScheduledTask（生产无 worker 不执行），改由 PaymentTimeoutJob 自管定时器
             return config;
         },
         compatibility: '^3.6.4',

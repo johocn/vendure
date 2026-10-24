@@ -8,7 +8,6 @@ import {
     PaymentStateTransitionEvent,
     PluginCommonModule,
     RequestContext,
-    ScheduledTask,
     TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
@@ -87,17 +86,10 @@ import { SlotLockService } from './slot-lock.service';
 import { WaimaiShopResolver } from './waimai-shop.resolver';
 import { WaimaiStoreService } from './waimai-store.service';
 
-const PAYMENT_TIMEOUT_COMPENSATION = 'payment-timeout-compensation';
-
-// 补偿扫描（照抄 OrderTimeoutPlugin 模式）：SQL JobQueue 忽略 delay，靠此任务把 overdue 任务重入队
-const paymentTimeoutCompensation = new ScheduledTask({
-    id: PAYMENT_TIMEOUT_COMPENSATION,
-    description: 'Scan overdue PaymentTimeoutTask records and re-enqueue them',
-    schedule: cron => cron.every(5).minutes(),
-    async execute({ injector }) {
-        await injector.get(PaymentTimeoutJob).runCompensation();
-    },
-});
+// 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
+// dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
+// 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
+// （与 DispatchJobService / FeishuDigestService 同款部署形态）。
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -1103,11 +1095,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
             config.shippingOptions.shippingLineAssignmentStrategy =
                 new CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
         }
-        // 待付款补偿任务幂等注册
-        config.schedulerOptions.tasks = config.schedulerOptions.tasks ?? [];
-        if (!config.schedulerOptions.tasks.some(t => t.id === PAYMENT_TIMEOUT_COMPENSATION)) {
-            config.schedulerOptions.tasks.push(paymentTimeoutCompensation);
-        }
+        // 待付款补偿任务：不再注册 ScheduledTask（生产无 worker 不执行），改由 PaymentTimeoutJob 自管定时器
         return config;
     },
     compatibility: '^3.6.4',
@@ -1137,10 +1125,11 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         void this.grantDispatchPermission().catch(e =>
             Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'),
         );
-        // 待付款任务队列（+10min 提醒 / +15min 取消）
-        this.injector
-            .get(PaymentTimeoutJob)
+        // 待付款补偿任务：自管定时器（生产无 worker，ScheduledTask 不执行）
+        const paymentTimeoutJob = this.injector.get(PaymentTimeoutJob);
+        paymentTimeoutJob
             .init()
+            .then(() => paymentTimeoutJob.startCompensationLoop())
             .catch(e => Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）

@@ -21,10 +21,19 @@ exports.PAYMENT_CANCEL_MS = 15 * 60 * 1000;
 const MAX_RETRY = 3;
 const loggerCtx = 'PaymentTimeout';
 const TASK_BUSY = 'PAYMENT_TIMEOUT_TASK_BUSY';
+/** 补偿扫描周期：SQL JobQueue 不按 delay 排队，任务 job 往往在到期前就被执行掉，全靠补偿重入队 */
+const COMPENSATION_INTERVAL_MS = 5 * 60000;
+/** 启动后首跑延迟：等 JobQueue 完成初始化 */
+const COMPENSATION_BOOT_DELAY_MS = 30000;
 /**
  * 到点复查是竞态防线：任务执行时订单已离开 ArrangingPayment（已支付/已取消）→ 任务作废。
  * 取消路径按 order-timeout-plugin 先例：先幂等释放库存分配（createOutstandingReleasesForOrderLines），
  * 再 cancelOrder。任务级咨询锁保证队列 / 手动 / 补偿扫描并发时只有一人真正执行。
+ *
+ * 补偿扫描用自管定时器（startCompensationLoop）而非 Vendure ScheduledTask：生产为单进程
+ * （pm2 只跑 API，dev-config 配 runTasksInWorkerOnly: true），ScheduledTask 在生产从不执行，
+ * 曾导致超时任务永久 PENDING、订单卡在 ArrangingPayment。本插件其余后台任务（调度扫描 /
+ * 飞书汇总）同样用自管定时器，部署形态一致。
  */
 let PaymentTimeoutJob = class PaymentTimeoutJob {
     constructor(jobQueueService, connection, orderService, channelService, stockMovementService, notify, campusConfig) {
@@ -35,6 +44,9 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         this.stockMovementService = stockMovementService;
         this.notify = notify;
         this.campusConfig = campusConfig;
+        this.compensationTimer = null;
+        this.compensationBootTimer = null;
+        this.compensationRunning = false;
         this.taskRepo = this.connection.rawConnection.getRepository(payment_timeout_entity_1.PaymentTimeoutTask);
     }
     async init() {
@@ -42,6 +54,35 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
             name: 'payment-timeout',
             process: async (job) => { await this.process(job.data); },
         });
+    }
+    /**
+     * 启动补偿扫描循环（幂等）：30s 后首跑，此后每 intervalMs 一轮。
+     * 必须晚于 init()（runCompensation 依赖 jobQueue）。
+     */
+    startCompensationLoop(intervalMs = COMPENSATION_INTERVAL_MS) {
+        if (this.compensationTimer)
+            return;
+        const tick = () => {
+            if (this.compensationRunning)
+                return; // 上一轮未结束跳过，避免堆积
+            this.compensationRunning = true;
+            this.runCompensation()
+                .catch(e => { var _a; return core_1.Logger.warn(`payment timeout compensation failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, loggerCtx); })
+                .finally(() => { this.compensationRunning = false; });
+        };
+        this.compensationBootTimer = setTimeout(tick, COMPENSATION_BOOT_DELAY_MS);
+        this.compensationTimer = setInterval(tick, intervalMs);
+    }
+    stopCompensationLoop() {
+        if (this.compensationBootTimer)
+            clearTimeout(this.compensationBootTimer);
+        if (this.compensationTimer)
+            clearInterval(this.compensationTimer);
+        this.compensationBootTimer = null;
+        this.compensationTimer = null;
+    }
+    onApplicationShutdown() {
+        this.stopCompensationLoop();
     }
     async process(data) {
         const task = await this.taskRepo.findOne({ where: { id: data.taskId } });
@@ -208,6 +249,8 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
     }
     /** 补偿扫描：捡起 dueAt 已过的 PENDING 任务重新入队，返回处理条数 */
     async runCompensation() {
+        if (!this.jobQueue)
+            return 0; // init 未完成（启动窗口）
         const now = new Date();
         const overdue = await this.taskRepo.createQueryBuilder('t')
             .where('t.status = :status', { status: payment_timeout_entity_1.PaymentTimeoutStatus.PENDING })
@@ -216,6 +259,9 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
             .getMany();
         for (const t of overdue) {
             await this.jobQueue.add({ taskId: Number(t.id) }, { retries: MAX_RETRY });
+        }
+        if (overdue.length) {
+            core_1.Logger.info(`compensation re-enqueued ${overdue.length} overdue task(s)`, loggerCtx);
         }
         return overdue.length;
     }
