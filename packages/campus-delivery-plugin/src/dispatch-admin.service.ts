@@ -20,7 +20,7 @@ import { refundablePayments } from './refund-payment';
 import { withRefundLock } from './refund-lock';
 import { CREDIT_LIMIT } from './rider-credit.service';
 
-export type ExceptionAction = 'reassign' | 'refund_diff' | 'coupon' | 'refund_all';
+export type ExceptionAction = 'reassign' | 'handled' | 'refund_diff' | 'coupon' | 'refund_all';
 
 /** 骑手在线窗口（与 CapacityService 心跳窗口 5min 对齐） */
 const RIDER_ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -31,6 +31,7 @@ const EXCEPTION_NOTIFY_TEXT: Record<ExceptionAction, string> = {
     coupon: '异常已处理，补偿券已发放',
     refund_all: '订单已全额退款',
     reassign: '平台已重新安排配送',
+    handled: '异常已协调处理',
 };
 
 export interface DispatchAlert {
@@ -130,6 +131,18 @@ export class DispatchAdminService {
             if (cf.hallStatus === 'cancelled' || cf.hallStatus === 'no_rider_final' || cf.hallStatus === 'delivered') continue;
             if (cf.deliveryStatus === 'delivered') continue;
             if (cf.hallStatus === 'scheduled') continue; // 预约单未放量，不进调度墙（商家工作台可见，plan 3.1）
+            // 无人接单自动退款失败：非终态但也退出自动扫描，必须常驻告警等人工退款/取消，
+            // 否则已付款未送达的单在大厅/商家台/调度墙同时消失（历史静默事故根因）
+            if (cf.hallStatus === 'refund_failed') {
+                alerts.push({
+                    orderId: String(o.id),
+                    orderCode: o.code,
+                    type: 'exception',
+                    detail: '无人接单自动退款失败，请人工退款/取消',
+                });
+                activeOrders.push(o);
+                continue;
+            }
             if (cf.hallStatus === 'open') {
                 hallOrders.push(o);
                 if (cf.campusCause === 'slot_full') {
@@ -298,6 +311,8 @@ export class DispatchAdminService {
                   hallStatus: origHallStatus,
                   deliveryStatus: 'exception',
               });
+        // 退差价金额归一化后落留痕（避免把小数/原始入参写进 exceptionCompensation）
+        let refundDiffAmount: number | null = null;
         try {
             switch (action) {
                 case 'reassign': {
@@ -311,8 +326,15 @@ export class DispatchAdminService {
                 }
                 case 'refund_diff': {
                     if (!amount || amount <= 0) throw new UserInputError('赔付金额必须大于 0');
+                    // 金额必须为整数分且不超过订单实付：防小数/超额导致部分退款异常或重复套现
+                    const diff = Math.floor(Number(amount));
+                    if (!Number.isInteger(diff) || diff <= 0) throw new UserInputError('赔付金额必须为正整数（分）');
+                    if (diff > Number((order as any).totalWithTax ?? 0)) {
+                        throw new UserInputError('赔付金额不能超过订单实付金额');
+                    }
+                    refundDiffAmount = diff;
                     const done = await withRefundLock(this.connection, Number(order.id), () =>
-                        this.refundAmount(ctx, order, amount as number, `exception diff refund (${order.code})`),
+                        this.refundAmount(ctx, order, diff, `exception diff refund (${order.code})`),
                     );
                     if (!done.ok) throw new UserInputError('该订单正在退款处理中，请稍后重试');
                     break;
@@ -332,6 +354,10 @@ export class DispatchAdminService {
                     if (!done.ok) throw new UserInputError('该订单正在退款处理中，请稍后重试');
                     break;
                 }
+                case 'handled': {
+                    // 群内运营已电话/微信跟客户沟通完毕，无需退款/补偿，仅标记处置完结
+                    break;
+                }
                 default:
                     throw new UserInputError('未知处置动作');
             }
@@ -342,7 +368,7 @@ export class DispatchAdminService {
         }
         const patch: any = {
             exceptionAction: action,
-            exceptionCompensation: action === 'refund_diff' ? amount : null,
+            exceptionCompensation: action === 'refund_diff' ? refundDiffAmount : null,
             exceptionCouponTemplateId: action === 'coupon' ? String(couponTemplateId) : null,
             exceptionHandledNote: note ?? null,
             exceptionHandledAt: new Date(),

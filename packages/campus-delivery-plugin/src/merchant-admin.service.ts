@@ -169,6 +169,7 @@ export class MerchantAdminService {
     async rejectOrder(ctx: RequestContext, orderId: ID, reason: string) {
         const trimmed = (reason ?? '').trim();
         if (!trimmed) throw new UserInputError('请填写拒单原因');
+        if (trimmed.length > 200) throw new UserInputError('拒单原因不能超过 200 个字符');
         const order = await this.assertChannelOrderState(ctx, orderId, ['pending_merchant', 'accepted']);
 
         // 并发防重退款：拒单是「查已退总额 → 退差额 → 取消」的复合动作，

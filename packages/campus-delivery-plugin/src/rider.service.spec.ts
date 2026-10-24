@@ -48,13 +48,25 @@ describe('RiderService.applyRider 状态保护', () => {
 
 // 入参校验 + 状态白名单（P3-12）：无长度约束的 customFields 不得被超长/空值写入
 describe('RiderService.applyRider 入参校验 / setRiderStatus（P3）', () => {
-    const make = (riderStatus = 'none') => {
+    const make = (riderStatus = 'none', inChannel = true) => {
         const update = vi.fn().mockResolvedValue({});
+        const getOne = vi.fn().mockResolvedValue(inChannel ? { id: 1 } : null);
+        const qb: any = {
+            leftJoin: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            getOne,
+        };
         const svc = new RiderService(
-            { getRepository: vi.fn().mockReturnValue({ update }) } as any,
+            {
+                getRepository: vi.fn().mockReturnValue({
+                    update,
+                    createQueryBuilder: vi.fn().mockReturnValue(qb),
+                }),
+            } as any,
             { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
         );
-        return { svc, update };
+        return { svc, update, qb };
     };
 
     it('姓名/学号/校区为空（含纯空格）→ 拒绝', async () => {
@@ -96,12 +108,20 @@ describe('RiderService.applyRider 入参校验 / setRiderStatus（P3）', () => 
         await svc.setRiderStatus({ channelId: 1 } as any, 1, 'approved');
         expect(update).toHaveBeenLastCalledWith(1, { customFields: { riderStatus: 'approved' } });
     });
+
+    it('setRiderStatus 骑手不属于当前渠道 → 拒绝（防跨店停用）', async () => {
+        const { svc, update } = make('approved', false);
+        await expect(svc.setRiderStatus({ channelId: 1 } as any, 1, 'suspended')).rejects.toThrow('骑手不存在或不属于当前店铺');
+        expect(update).not.toHaveBeenCalled();
+    });
 });
 // F8 审核列表分页：skip/take 透传 QueryBuilder，返回 { items, total }
 describe('RiderService.listApplications（F8 分页）', () => {
     it('skip/take 透传并返回 items+total', async () => {
         const qb: any = {
+            leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
             orderBy: vi.fn().mockReturnThis(),
             skip: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),
@@ -120,7 +140,9 @@ describe('RiderService.listApplications（F8 分页）', () => {
 
     it('缺省参数：skip=0 / take=200 兜底防全量', async () => {
         const qb: any = {
+            leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
             orderBy: vi.fn().mockReturnThis(),
             skip: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),
@@ -135,7 +157,9 @@ describe('RiderService.listApplications（F8 分页）', () => {
 
     it('参数钳制：负数 take → 1，超大 take → 500，负 skip → 0', async () => {
         const qb: any = {
+            leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
             orderBy: vi.fn().mockReturnThis(),
             skip: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),

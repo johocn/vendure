@@ -30,7 +30,8 @@ let RiderAdminResolver = class RiderAdminResolver {
     async campusSetRiderStatus(ctx, customerId, status) {
         return this.riderService.setRiderStatus(ctx, Number(customerId), status);
     }
-    /** 骑手提现申请列表（status=ALL/PENDING/PAID/REJECTED，渠道隔离） */
+    /** 骑手提现申请列表（status=ALL/PENDING/PAID/REJECTED）。
+     * 钱包为平台级（余额跨渠道汇总），列表按设计不限定店铺渠道；审核权限 CampusAuditRider。 */
     async riderWithdrawals(ctx, status, skip, take) {
         return this.wallet.adminList(ctx, status, skip, take);
     }

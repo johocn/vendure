@@ -162,18 +162,41 @@ export class DispatchJobService implements OnApplicationShutdown {
             );
         }
         const now = Date.now();
+        // P1 骑手超时提前告警阈值：兜底前 3min 先告警
+        const notPickedAlertMs = Math.max(60_000, (NOT_PICKED_TIMEOUT_MIN - 3) * 60_000);
 
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分（逐单隔离：单笔异常不阻断本轮）
         for (const o of orders) {
             const cf = o.customFields as any;
+            // P1 提前告警：骑手接了单迟迟不来取货（dedupe 5min 窗口）
             if (cf.hallStatus === 'grabbed' && cf.deliveryStatus === 'assigned' && cf.assignedAt) {
-                if (now - new Date(cf.assignedAt).getTime() > NOT_PICKED_TIMEOUT_MIN * 60_000) {
+                const elapsed = now - new Date(cf.assignedAt).getTime();
+                const alertMin = Math.round(notPickedAlertMs / 60_000);
+                if (elapsed >= notPickedAlertMs && elapsed <= NOT_PICKED_TIMEOUT_MIN * 60_000) {
+                    const mins = Math.round(elapsed / 60_000);
+                    const dedupeKey = `rider_pick_alert:${o.code}`;
+                    void this.feishu?.pushEvent(
+                        'alert',
+                        '⏱ 骑手取货超时',
+                        `订单 ${o.code} 骑手已抢单 ${mins} 分钟未取货，${NOT_PICKED_TIMEOUT_MIN} 分钟后将自动回大厅重派。`,
+                        o.code,
+                        dedupeKey,
+                    );
+                }
+                if (elapsed > NOT_PICKED_TIMEOUT_MIN * 60_000) {
                     try {
                         // 条件回厅：并发取消/送达时不得把终态单改回 open，也不应再扣骑手信用分
                         const back = await this.hall.backToHall(ctx, o.id as any);
                         if (!back) continue;
                         await this.credit.adjust(ctx, Number(cf.deliveryStaffId), CREDIT_TIMEOUT, 'timeout_not_picked', o.id as any);
                         Logger.warn(`Order ${o.code} reassigned (rider ${cf.deliveryStaffId} not picked in ${NOT_PICKED_TIMEOUT_MIN}min)`, 'CampusDispatch');
+                        void this.feishu?.pushEvent(
+                            'exception',
+                            '骑手取货超时自动回厅',
+                            `订单 ${o.code} 骑手 ${NOT_PICKED_TIMEOUT_MIN} 分钟未取货，已回抢单大厅。`,
+                            o.code,
+                            o.code,
+                        );
                     } catch (e: any) {
                         Logger.error(`not-picked timeout failed for order ${o.code ?? o.id}: ${e?.message}`, 'CampusDispatch');
                     }
@@ -229,13 +252,23 @@ export class DispatchJobService implements OnApplicationShutdown {
                             ctx,
                             Number(o.id),
                             ['pending_merchant', 'accepted'],
-                            { hallStatus: 'open', hallEnteredAt: enteredAt, campusCause: 'merchant_timeout' },
+                            {
+                                hallStatus: 'open',
+                                hallEnteredAt: enteredAt,
+                                // 履约快照必须同步切换：否则 R1 单仍带着 merchant/to_campus_rider 进入抢单大厅，
+                                // C 端承运方展示、改址重推判定都会按旧计划走（与规则 1b/2 的兜底写法保持一致）
+                                deliveryPlan: 'campus_rider',
+                                handoverMode: '',
+                                campusCause: 'merchant_timeout',
+                            },
                         );
                         if (!moved) continue; // 期间已被商家接单/取消
                         Logger.warn(`Order ${o.code} auto-opened (merchant not responding)`, 'CampusDispatch');
                         const cf = o.customFields as any;
                         cf.hallStatus = 'open';
                         cf.hallEnteredAt = enteredAt; // 同步锚点，避免同轮 T2 按旧锚点立即强派
+                        cf.deliveryPlan = 'campus_rider';
+                        cf.handoverMode = '';
                     } catch (e: any) {
                         Logger.error(`merchant stale auto-open failed for order ${o.code ?? o.id}: ${e?.message}`, 'CampusDispatch');
                     }
@@ -476,8 +509,10 @@ export class DispatchJobService implements OnApplicationShutdown {
                     continue;
                 }
 
-                // 1b) R2 已接单但久未出餐（出餐闸门卡住）→ 降级传信者到店取餐直送
-                if (cf.hallStatus === 'accepted' && route === 'R2'
+                // 1b) 已接单但久未出餐（出餐闸门卡住）→ 降级传信者到店取餐直送。
+                //     R1/R2 都要兜底：R1 若只依赖上面的 merchantConfirmEnabled 开关块，渠道关闭确认模式后
+                //     遗留 accepted 单会永久卡死（不退款、不进墙、不告警）。
+                if (cf.hallStatus === 'accepted' && (route === 'R1' || route === 'R2')
                     && now - new Date(cf.hallEnteredAt ?? o.createdAt).getTime() > deliverMs) {
                     const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['accepted'], {
                         hallStatus: 'open',
@@ -487,16 +522,17 @@ export class DispatchJobService implements OnApplicationShutdown {
                         campusCause: 'merchant_cooking_timeout',
                     });
                     if (!moved) continue;
-                    Logger.warn(`Order ${o.code} R2 cooking timeout → hall`, 'CampusDispatch');
+                    Logger.warn(`Order ${o.code} ${route} cooking timeout → hall`, 'CampusDispatch');
                     void this.feishu?.pushEvent(
                         'exception',
                         '商户出餐超时',
-                        `订单 ${o.code} 商户 ${cfg.merchantAutoOpenMinutes ?? 15} 分钟未出餐，已回抢单大厅。`,
+                        `订单 ${o.code} 商户 ${cfg.merchantAutoOpenMinutes ?? 15} 分钟未出餐（${route}），已回抢单大厅。`,
                         o.code,
                         o.code,
                     );
                     cf.hallStatus = 'open';
                     cf.deliveryPlan = 'campus_rider';
+                    cf.handoverMode = '';
                     cf.hallEnteredAt = new Date();
                     continue;
                 }
@@ -561,6 +597,19 @@ export class DispatchJobService implements OnApplicationShutdown {
                     : 0;
                 const tpStale = cf.thirdPartyDispatchAt
                     && ((!inDelivery && tpElapsed > fallbackMs) || tpElapsed > fallbackMs * 3);
+                // P1 提前告警：外部快递在途超 fallbackMs - 5min 仍无有效状态 → 推群（给运营时间介入/换平台）
+                const tpAlertMs = cf.thirdPartyDispatchAt ? Math.max(60_000, fallbackMs - 5 * 60_000) : 0;
+                if (cf.hallStatus === 'third_party' && tpAlertMs > 0 && tpElapsed >= tpAlertMs && tpElapsed < fallbackMs) {
+                    const mins = Math.round(tpElapsed / 60_000);
+                    const dedupeKey = `third_party_alert:${o.code}`;
+                    void this.feishu?.pushEvent(
+                        'alert',
+                        '📦 外部快递在途超时',
+                        `订单 ${o.code} 外部快递已在途 ${mins} 分钟（状态：${tpState || '未知'}），${cfg.externalFallbackMinutes ?? 20} 分钟后将自动回落。`,
+                        o.code,
+                        dedupeKey,
+                    );
+                }
                 if (cf.hallStatus === 'third_party' && tpStale) {
                     // 取消失败绝不回落/重推：外部运单仍有效，回落后再推会产生双运单双份运费。
                     // 保持 third_party 留痕并下轮重试取消，直到平台确认取消。
@@ -1008,10 +1057,25 @@ export class DispatchJobService implements OnApplicationShutdown {
                 );
             } catch (e: any) {
                 Logger.error(`T4 refund failed for order ${order.code}: ${e?.message}`, 'CampusDispatch');
+                // 退款失败绝不能写 no_rider_final：那是终态，调度墙/大厅/商家台会一起跳过，
+                // 已付款未送达的单会静默消失。改为独立的 refund_failed 状态退出自动重试，
+                // 由调度墙按告警暴露给运营人工退款/取消（条件写在取消竞态下不复活已取消单）。
                 try {
-                    await mark();
+                    const marked = await this.hall.transitionFrom(ctx, Number(order.id), ['open'], {
+                        hallStatus: 'refund_failed',
+                        campusCause: 'refund_failed',
+                    });
+                    if (marked) {
+                        void this.feishu?.pushEvent(
+                            'exception',
+                            '无人接单自动退款失败',
+                            `订单 ${order.code} 超时无骑手且自动退款失败，请人工退款/取消。原因：${e?.message ?? e}`,
+                            order.code,
+                            `refund_failed:${order.code}`,
+                        );
+                    }
                 } catch (e2: any) {
-                    Logger.error(`T4 fallback mark failed for order ${order.code}: ${e2?.message}`, 'CampusDispatch');
+                    Logger.error(`T4 refund_failed mark failed for order ${order.code}: ${e2?.message}`, 'CampusDispatch');
                 }
             }
         } finally {

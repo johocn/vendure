@@ -105,7 +105,14 @@ export class FavoriteShopResolver {
         if (!channel) {
             throw new UserInputError('CHANNEL_NOT_FOUND');
         }
-        const variant = await this.dataSource.getRepository(ProductVariant).findOne({ where: { id: variantPk as any } });
+        // 归属校验：variant 必须属于所收藏的渠道，否则可跨店收藏任意商品（列表按 channelId 展示串店）
+        const variant = await this.dataSource
+            .getRepository(ProductVariant)
+            .createQueryBuilder('variant')
+            .leftJoin('variant.channels', 'channel')
+            .where('variant.id = :id', { id: variantPk })
+            .andWhere('channel.id = :ch', { ch: channelPk })
+            .getOne();
         if (!variant) {
             throw new UserInputError('VARIANT_NOT_FOUND');
         }

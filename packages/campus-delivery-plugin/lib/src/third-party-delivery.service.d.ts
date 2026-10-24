@@ -39,7 +39,8 @@ export declare class ThirdPartyDeliveryService implements OnApplicationBootstrap
     }>;
     /** 推送主体（须由 dispatchExternal 持订单级锁调用）：幂等判断与下单在同一锁内 */
     private doDispatchExternal;
-    /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等 */
+    /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等。
+     * 与 dispatchExternal 共用订单级咨询锁：否则「推送中」被取消可能产生孤儿运单或取消不存在的单。 */
     cancel(ctx: RequestContext, orderId: number, reason?: string): Promise<{
         ok: boolean;
         skipped: boolean;
@@ -49,6 +50,7 @@ export declare class ThirdPartyDeliveryService implements OnApplicationBootstrap
         reason: string | undefined;
         skipped?: undefined;
     }>;
+    private doCancel;
     /** 轮询对账：主动向平台查询运单状态（防外部回调丢失），幂等交给网关状态机。
      * 已到终态/未推送的订单直接跳过；Provider 未实现 queryStatus 时网关返回 null（静默）。 */
     syncStatus(ctx: RequestContext, orderId: number): Promise<{

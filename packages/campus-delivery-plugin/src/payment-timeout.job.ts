@@ -152,6 +152,12 @@ export class PaymentTimeoutJob {
     /** 登记：进入 ArrangingPayment 时调用（提醒 + 取消两个任务） */
     async scheduleForOrder(ctx: RequestContext, orderId: number, channelId: number, expectedState: string): Promise<void> {
         for (const [type, delayMs] of [[PaymentTimeoutType.REMIND, PAYMENT_REMIND_MS], [PaymentTimeoutType.CANCEL, PAYMENT_CANCEL_MS]] as const) {
+            // 同单同类型去重：重复进入 ArrangingPayment（支付失败后重试）不得叠加两套定时任务，
+            // 否则会重复提醒、且旧任务的 dueAt 会让取消提前触发
+            const dup = await this.taskRepo.findOne({
+                where: { orderId, type, status: PaymentTimeoutStatus.PENDING } as any,
+            });
+            if (dup) continue;
             const task = await this.taskRepo.save(this.taskRepo.create({
                 orderId, channelId, type, expectedState,
                 dueAt: new Date(Date.now() + delayMs),

@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var CampusConfigService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusConfigService = void 0;
 const common_1 = require("@nestjs/common");
@@ -58,7 +59,7 @@ function normalizeCoord(v, kind) {
     }
     return n;
 }
-let CampusConfigService = class CampusConfigService {
+let CampusConfigService = CampusConfigService_1 = class CampusConfigService {
     constructor(dataSource, orderService) {
         this.dataSource = dataSource;
         this.orderService = orderService;
@@ -176,6 +177,46 @@ let CampusConfigService = class CampusConfigService {
     }
     async updateConfig(ctx, patch) {
         const cfg = await this.getConfig(ctx);
+        const unknown = Object.keys(patch !== null && patch !== void 0 ? patch : {}).filter(k => !CampusConfigService_1.WRITABLE_FIELDS.has(k));
+        if (unknown.length) {
+            throw new core_1.UserInputError(`不支持的配置字段：${unknown.join(', ')}`);
+        }
+        // 数值字段统一强制取整 + 区间校验：防负数/小数/超大值把调度节奏改坏
+        for (const [field, [min, max]] of Object.entries(CampusConfigService_1.INT_RANGES)) {
+            if (patch[field] === undefined || patch[field] === null)
+                continue;
+            const v = Number(patch[field]);
+            if (!Number.isInteger(v) || v < min || v > max) {
+                throw new core_1.UserInputError(`${field} 必须为 ${min}-${max} 的整数`);
+            }
+            patch[field] = v;
+        }
+        // 模板消息/域名等字符串字段做长度上限，防超长文本撑爆数据库列
+        const stringLimits = {
+            storeAddress: 200, storePhone: 32, storeNotice: 500, h5BaseUrl: 200,
+            compensationCouponTemplateId: 128, timeoutCompensationCouponTemplateId: 128,
+            notifyTemplateAccepted: 128, notifyTemplateRiderAssigned: 128, notifyTemplateCookingDone: 128,
+            notifyTemplateDelivered: 128, notifyTemplateExceptionHandled: 128, notifyTemplateOrderPlaced: 128,
+            notifyTemplatePaymentPending: 128, notifyTemplateCancelled: 128, notifyTemplateAfterSales: 128,
+            notifyTemplateAddressChanged: 128,
+        };
+        for (const [field, limit] of Object.entries(stringLimits)) {
+            const v = patch[field];
+            if (typeof v === 'string' && v.length > limit) {
+                throw new core_1.UserInputError(`${field} 长度不能超过 ${limit} 字符`);
+            }
+        }
+        if (patch.routesEnabled !== undefined) {
+            const routes = patch.routesEnabled;
+            if (!Array.isArray(routes) || routes.some(r => !['R1', 'R2', 'R3', 'R4', 'R5'].includes(String(r)))) {
+                throw new core_1.UserInputError('配送路线配置不合法');
+            }
+            patch.routesEnabled = Array.from(new Set(routes.map(r => String(r))));
+        }
+        if (patch.printMode !== undefined && patch.printMode !== null
+            && !['off', 'onPaid', 'onAccepted'].includes(String(patch.printMode))) {
+            throw new core_1.UserInputError('打印时机不合法');
+        }
         // 超时赔付（P2）：开启必须指定券模板；宽限非法值直接拒绝，不再静默回落默认 10 分钟
         if (patch.timeoutGraceMinutes != null) {
             const grace = Number(patch.timeoutGraceMinutes);
@@ -284,7 +325,7 @@ let CampusConfigService = class CampusConfigService {
     /** C 端选楼/选区/选路线/选时段写入 activeOrder。
      * route/slot 可选（向后兼容 plan2 旧调用形态）；route 为 R1/R2/R3；R2 的到校确认走 r2-mark 链路。 */
     async setDeliveryTarget(ctx, zoneId, buildingId, route, slotId) {
-        var _a;
+        var _a, _b;
         const zone = await this.dataSource.getRepository(campus_zone_entity_1.CampusZone).findOne({ where: { id: zoneId } });
         if (!zone)
             throw new core_1.UserInputError('分区不存在');
@@ -302,6 +343,15 @@ let CampusConfigService = class CampusConfigService {
         // R2 与 R1/R3 同走 zone/building 写入（R2 原单收宿舍楼信息供接力预填）；R4 不经骑手不落此链路
         if (route && !['R1', 'R2', 'R3'].includes(route))
             throw new core_1.UserInputError('配送路线不合法');
+        if (route) {
+            // 路线开关校验：渠道关闭某路线后 C 端不能再下该路线的单（读不到配置按未启用处理）
+            const cfgRepo = this.dataSource.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig);
+            const cfg = await ((_a = cfgRepo === null || cfgRepo === void 0 ? void 0 : cfgRepo.findOne) === null || _a === void 0 ? void 0 : _a.call(cfgRepo, { where: { channelId: ctx.channelId } }));
+            const enabled = cfg === null || cfg === void 0 ? void 0 : cfg.routesEnabled;
+            if (!enabled || !enabled.includes(route)) {
+                throw new core_1.UserInputError('该配送路线当前不可用');
+            }
+        }
         const fields = {
             buildingId: String(buildingId),
             campusZone: zone.name,
@@ -312,6 +362,10 @@ let CampusConfigService = class CampusConfigService {
             const slot = await this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot).findOne({ where: { id: slotId } });
             if (!slot || !slot.active || Number(slot.channelId) !== Number(ctx.channelId)) {
                 throw new core_1.UserInputError('时段不可用');
+            }
+            // 分区专属时段只能选对应分区（null=全分区通用）
+            if (slot.zoneId != null && Number(slot.zoneId) !== Number(zone.id)) {
+                throw new core_1.UserInputError('该时段不属于所选分区');
             }
             const now = new Date();
             const today = localDateStr(now);
@@ -332,7 +386,7 @@ let CampusConfigService = class CampusConfigService {
             fields.deliverySlotText = null;
             fields.scheduledFor = null;
         }
-        const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
+        const orderId = (_b = ctx.session) === null || _b === void 0 ? void 0 : _b.activeOrderId;
         if (!orderId)
             throw new core_1.UserInputError('购物车为空');
         // 与 core shop setOrderCustomFields mutation 内部实现等价（patchEntity + 保存 + OrderEvent）
@@ -340,7 +394,40 @@ let CampusConfigService = class CampusConfigService {
     }
 };
 exports.CampusConfigService = CampusConfigService;
-exports.CampusConfigService = CampusConfigService = __decorate([
+/** 允许后台写入的字段白名单：不含 channelId/id/createdAt 等身份列，
+ * 防止渠道管理员通过 patch 注入主键或跨渠道绑定（resolver 入参为 any，服务层必须自守）。 */
+CampusConfigService.WRITABLE_FIELDS = new Set([
+    'routesEnabled', 'riderCommissionRate', 'autoAssignMinutes', 'paused', 'autoRefundMinutes',
+    'inProgressSlaMinutes', 'compensationCouponTemplateId', 'deliveryMinutes', 'minOrderAmount',
+    'deliveryFee', 'storeAddress', 'storePhone', 'storeNotice', 'errandBaseFee', 'thirdPartyBaseFee',
+    'freeShippingThreshold', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
+    'timeoutCompensationEnabled', 'timeoutGraceMinutes', 'timeoutCompensationWindowHours',
+    'timeoutCompensationCouponTemplateId',
+    'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
+    'notifyTemplateDelivered', 'notifyTemplateExceptionHandled', 'notifyTemplateOrderPlaced',
+    'notifyTemplatePaymentPending', 'notifyTemplateCancelled', 'notifyTemplateAfterSales',
+    'notifyTemplateAddressChanged', 'h5BaseUrl', 'printMode', 'routeFirstLeg', 'handoverPoints',
+    'providerShopNo', 'merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes',
+    'storeLat', 'storeLng', 'dynamicPricing',
+]);
+/** 整型配置的取值范围（分钟/百分比/分） */
+CampusConfigService.INT_RANGES = {
+    riderCommissionRate: [0, 100],
+    autoAssignMinutes: [1, 120],
+    autoRefundMinutes: [1, 240],
+    inProgressSlaMinutes: [1, 240],
+    merchantAutoOpenMinutes: [1, 240],
+    merchantAcceptMinutes: [0, 240],
+    externalPushTimeoutMinutes: [1, 240],
+    externalFallbackMinutes: [1, 240],
+    deliveryMinutes: [1, 240],
+    minOrderAmount: [0, 10000000],
+    deliveryFee: [0, 10000000],
+    errandBaseFee: [0, 10000000],
+    thirdPartyBaseFee: [0, 10000000],
+    freeShippingThreshold: [0, 10000000],
+};
+exports.CampusConfigService = CampusConfigService = CampusConfigService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [typeorm_1.DataSource, core_1.OrderService])
 ], CampusConfigService);

@@ -84,6 +84,7 @@ const exceptionOrder = (id: number, code: string, extra: any = {}) => ({
     id,
     code,
     customerId: 160,
+    totalWithTax: 2300,
     channels: [{ id: 1 }],
     customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception', exceptionType: 'food_spilled', ...extra },
 });
@@ -260,6 +261,13 @@ describe('DispatchAdminService.handleException', () => {
         await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 0)).rejects.toThrow('赔付金额必须大于 0');
         paymentRepo.find.mockResolvedValue([]);
         await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 300)).rejects.toThrow('无可退支付余额');
+    });
+
+    it('refund_diff 赔付额超过订单实付 → 拒绝（防越权超额退款）', async () => {
+        const { svc, orderRepo, orderSvc } = makeEnv({ payment: { id: 9, amount: 2300 }, refundedSum: 0 });
+        orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
+        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 2301)).rejects.toThrow('赔付金额不能超过订单实付金额');
+        expect(orderSvc.refundOrder).not.toHaveBeenCalled();
     });
 
     it('coupon：发补偿券 + exception_final 留痕', async () => {

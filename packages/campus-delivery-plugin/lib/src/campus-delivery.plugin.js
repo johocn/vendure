@@ -136,14 +136,19 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(e => {
             this.r4TagService.tagR4(e).catch(err => core_1.Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
             if (e.toState === 'Cancelled') {
-                // 已推给达达/美团的运单必须同步取消：先取消外部运单（在途骑手不再上门），再脱厅
-                this.injector
-                    .get(third_party_delivery_service_1.ThirdPartyDeliveryService)
-                    .cancel(e.ctx, Number(e.order.id), 'order cancelled')
-                    .catch(err => core_1.Logger.warn(`Cancel external delivery failed: ${String(err)}`, 'CampusHall'));
-                this.hallService.exitHall(e.ctx, e.order).catch(err => core_1.Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
-                // 时段锁位释放（A 组漏项）：取消/退款/未支付超时统一经 Cancelled 转换归还容量
-                this.slotLock.unlock(e.ctx, Number(e.order.id)).catch(err => core_1.Logger.warn(`Slot unlock failed: ${String(err)}`, 'CampusSlot'));
+                // 已推给达达/美团的运单必须同步取消：按「取消外部运单 → 脱厅 → 释放时段」顺序串行，
+                // 不能三者并行——并行时外部取消失败也已脱厅，外部骑手仍可能上门取餐造成餐损。
+                // 整段异步执行，不阻塞事件总线；任一步失败只记日志，后续步骤照常执行。
+                void (async () => {
+                    await this.injector
+                        .get(third_party_delivery_service_1.ThirdPartyDeliveryService)
+                        .cancel(e.ctx, Number(e.order.id), 'order cancelled')
+                        .catch(err => core_1.Logger.warn(`Cancel external delivery failed: ${String(err)}`, 'CampusHall'));
+                    await this.hallService.exitHall(e.ctx, e.order)
+                        .catch(err => core_1.Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+                    await this.slotLock.unlock(e.ctx, Number(e.order.id))
+                        .catch(err => core_1.Logger.warn(`Slot unlock failed: ${String(err)}`, 'CampusSlot'));
+                })();
                 // 用户本人主动取消不推（ctx.activeUserId 存在即本人操作）；商家/系统/超时取消才推
                 if (!e.ctx.activeUserId) {
                     void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.order.id, 'orderCancelled', undefined, url));

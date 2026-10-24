@@ -13,6 +13,7 @@ import { CampusBuilding } from '../campus-building.entity';
 import { CampusFulfillmentConfig } from '../campus-fulfillment-config.entity';
 import { campusDayKey, startOfCampusDay } from '../campus-time';
 import { DeliveryStatsService } from '../delivery-stats.service';
+import { DispatchAdminService } from '../dispatch-admin.service';
 import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
@@ -44,6 +45,7 @@ const RIDER_PICK_TIMEOUT_MIN = 15;
 export type FeishuCommandName =
     | 'help' | 'board' | 'digest' | 'status' | 'exceptions'
     | 'accept' | 'cooking' | 'reject' | 'confirmReject'
+    | 'reassign' | 'handled'
     | 'close' | 'open' | 'unknown';
 
 export interface ParsedCommand {
@@ -125,6 +127,7 @@ export class FeishuCommandService {
         private requestContextService: RequestContextService,
         private connection: TransactionalConnection,
         private merchant: MerchantAdminService,
+        private dispatchAdmin: DispatchAdminService,
         private deliveryStats: DeliveryStatsService,
     ) {}
 
@@ -247,7 +250,7 @@ export class FeishuCommandService {
         }
         const action = String(input.value?.a ?? '');
         const code = typeof input.value?.c === 'string' ? input.value.c : undefined;
-        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'exception'];
+        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'reassign', 'handled'];
         if (!known.includes(action)) return;
 
         const cmd: ParsedCommand = {
@@ -286,6 +289,7 @@ export class FeishuCommandService {
                     }
                     break;
                 }
+                case 'exception':
                 case 'status':
                 case 'view':
                     await this.replyInThread(chatId, messageId, await this.statusText(code));
@@ -302,13 +306,26 @@ export class FeishuCommandService {
                     await this.replyInThread(chatId, messageId, replyTemplateText(tpl, code));
                     break;
                 }
-                case 'exception':
-                    await this.replyInThread(
-                        chatId,
-                        messageId,
-                        `【异常上报】订单 ${code} 需跟进：可直接回复「催单 / 联系骑手 / 已联系顾客 / 转客服」选择处理方式；未处置订单会持续出现在「异常」清单。`,
-                    );
+                case 'reassign': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found) return;
+                    await this.dispatchAdmin.handleException(found.ctx, found.order.id, 'reassign');
+                    await this.audit(chatId, openId, { name: 'reassign', orderCode: code }, 'ok-card');
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `已改派：${code}（异常单已回抢单大厅）`);
+                    }
                     break;
+                }
+                case 'handled': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found) return;
+                    await this.dispatchAdmin.handleException(found.ctx, found.order.id, 'handled');
+                    await this.audit(chatId, openId, { name: 'handled', orderCode: code }, 'ok-card');
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `已标记处置完结：${code}`);
+                    }
+                    break;
+                }
             }
         } catch (e: any) {
             const msg = e?.message ?? String(e);

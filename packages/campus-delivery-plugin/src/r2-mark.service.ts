@@ -22,9 +22,15 @@ export class R2MarkService {
         const leg1 = (order.customFields as any)?.leg1Status as string | null;
         if (leg1 === 'arrived_gate') return { leg1Status: 'arrived_gate' }; // 幂等：不重复写 handoverAt
         if (leg1 != null && leg1 !== 'preparing') throw new UserInputError('当前状态不支持到校确认');
-        await this.connection.getRepository(ctx, Order).update(order.id, {
-            customFields: { leg1Status: 'arrived_gate', handoverAt: new Date() },
-        } as any);
+        // 条件写：与取消/并发重复提交竞争时只允许一次成功，且不复活已取消单
+        const out: any = await this.connection.rawConnection.query(
+            'UPDATE "order" SET "customFieldsLeg1status" = $2, "customFieldsHandoverat" = $3 '
+            + 'WHERE id = $1 AND COALESCE("customFieldsLeg1status", \'\') IN (\'\', \'preparing\') '
+            + 'AND "state" <> \'Cancelled\' RETURNING id',
+            [order.id, 'arrived_gate', new Date()],
+        );
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        if (!Array.isArray(rows) || !rows.length) throw new UserInputError('订单状态已变更，请刷新');
         return { leg1Status: 'arrived_gate' };
     }
 

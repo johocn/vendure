@@ -446,6 +446,20 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
         }));
     });
 
+    it('R1 已接单但久未出餐（确认模式关闭遗留单）→ 同样回大厅兜底', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 26, code: 'R1C', createdAt: minAgo(40), customFields: { hallStatus: 'accepted', fulfillmentRoute: 'R1', deliveryPlan: 'merchant' } }],
+            cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
+        });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 26, ['accepted'], expect.objectContaining({
+            hallStatus: 'open',
+            deliveryPlan: 'campus_rider',
+            handoverMode: '',
+            campusCause: 'merchant_cooking_timeout',
+        }));
+    });
+
     it('R1 商户久未送达交接点 → 回大厅由传信者取餐', async () => {
         const env = makeEnv({
             openOrders: [{ id: 22, code: 'R1D', createdAt: minAgo(40), customFields: { hallStatus: 'merchant_delivering', fulfillmentRoute: 'R1', deliveryPlan: 'merchant', assignedAt: minAgo(20) } }],

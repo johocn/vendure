@@ -59,10 +59,24 @@ export class RiderService {
         return { status };
     }
 
+    /** 骑手归属渠守卫：Customer 的渠道是多对多，必须 join customer.channels。
+     * 否则 A 店审核员可按 customerId 查看/停用 B 店骑手（含学号、证件照）。 */
+    private async assertCustomerInChannel(ctx: RequestContext, customerId: number): Promise<void> {
+        const inChannel = await this.connection
+            .getRepository(ctx, Customer)
+            .createQueryBuilder('customer')
+            .leftJoin('customer.channels', 'channel')
+            .where('customer.id = :id', { id: customerId })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId as any })
+            .getOne();
+        if (!inChannel) throw new UserInputError('骑手不存在或不属于当前店铺');
+    }
+
     async setRiderStatus(ctx: RequestContext, customerId: number, status: 'approved' | 'suspended' | 'none') {
         if (!['none', 'approved', 'suspended'].includes(String(status ?? ''))) {
             throw new UserInputError('骑手状态不合法');
         }
+        await this.assertCustomerInChannel(ctx, customerId);
         const customFields: Record<string, unknown> = { riderStatus: status };
         // 停用/重置即强制下线：否则残留的心跳时间仍让对方出现在在线运力池里被派单
         if (status !== 'approved') customFields.riderOnlineAt = null;
@@ -119,7 +133,10 @@ export class RiderService {
         const [items, total] = await this.connection
             .getRepository(ctx, Customer)
             .createQueryBuilder('customer')
+            // 渠道隔离：Customer 的渠道为多对多，join 后仅返回本店骑手申请
+            .leftJoin('customer.channels', 'channel')
             .where('customer.customFields.riderStatus = :status', { status })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId as any })
             .orderBy('customer.id', 'ASC')
             .skip(safeSkip)
             .take(safeTake)

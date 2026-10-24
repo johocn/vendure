@@ -69,27 +69,31 @@ let RiderWalletService = class RiderWalletService {
     async riderBalanceHistory(ctx, skip, take) {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const pc = await this.platformCtx();
+        const safeSkip = Math.max(0, skip !== null && skip !== void 0 ? skip : 0);
+        const safeTake = Math.min(Math.max(take !== null && take !== void 0 ? take : 20, 1), 200);
         return this.connection
             .getRepository(pc, recharge_card_plugin_1.BalanceTransaction)
             .createQueryBuilder('tx')
             .where('tx.customerId = :id', { id: rider.id })
             .andWhere('tx.channelId = :ch', { ch: pc.channelId })
             .orderBy('tx.createdAt', 'DESC')
-            .skip(skip !== null && skip !== void 0 ? skip : 0)
-            .take(take !== null && take !== void 0 ? take : 20)
+            .skip(safeSkip)
+            .take(safeTake)
             .getMany();
     }
     /** 本人提现申请记录（平台级，倒序） */
     async riderWithdrawRequests(ctx, skip, take) {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const pc = await this.platformCtx();
+        const safeSkip = Math.max(0, skip !== null && skip !== void 0 ? skip : 0);
+        const safeTake = Math.min(Math.max(take !== null && take !== void 0 ? take : 20, 1), 200);
         return this.connection
             .getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest)
             .createQueryBuilder('w')
             .where('w.customerId = :id', { id: rider.id })
             .orderBy('w.createdAt', 'DESC')
-            .skip(skip !== null && skip !== void 0 ? skip : 0)
-            .take(take !== null && take !== void 0 ? take : 20)
+            .skip(safeSkip)
+            .take(safeTake)
             .getMany();
     }
     /** 提现申请：校验骑手 + ≥¥10 + 无在途申请 + ≤可提现 → 扣款冻结 → PENDING 申请 */
@@ -103,6 +107,13 @@ let RiderWalletService = class RiderWalletService {
             throw new core_1.UserInputError('请选择收款渠道');
         if (!((_b = input.account) === null || _b === void 0 ? void 0 : _b.trim()))
             throw new core_1.UserInputError('请填写收款账号');
+        // 入参长度上限：账号/渠道名会原样落库并展示给审核人，防超长文本
+        const channelText = input.channel.trim();
+        const accountText = input.account.trim();
+        if (channelText.length > 30)
+            throw new core_1.UserInputError('收款渠道名称过长');
+        if (accountText.length > 100)
+            throw new core_1.UserInputError('收款账号过长');
         const pc = await this.platformCtx();
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (!port)
@@ -128,8 +139,8 @@ let RiderWalletService = class RiderWalletService {
                 customerId: rider.id,
                 channelId: pc.channelId,
                 amount,
-                channel: input.channel.trim(),
-                account: input.account.trim(),
+                channel: channelText,
+                account: accountText,
                 status: 'PENDING',
             });
         });
@@ -141,7 +152,9 @@ let RiderWalletService = class RiderWalletService {
         if (status && status !== 'ALL') {
             qb.andWhere('w.status = :s', { s: status });
         }
-        return qb.orderBy('w.createdAt', 'DESC').skip(skip !== null && skip !== void 0 ? skip : 0).take(take !== null && take !== void 0 ? take : 20).getMany();
+        const safeSkip = Math.max(0, skip !== null && skip !== void 0 ? skip : 0);
+        const safeTake = Math.min(Math.max(take !== null && take !== void 0 ? take : 20, 1), 200);
+        return qb.orderBy('w.createdAt', 'DESC').skip(safeSkip).take(safeTake).getMany();
     }
     /** 管理端：通过打款（仅留痕，金额已在申请时扣减） */
     async adminApprove(ctx, id, remark) {

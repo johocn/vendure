@@ -19,6 +19,7 @@ const campus_building_entity_1 = require("../campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("../campus-fulfillment-config.entity");
 const campus_time_1 = require("../campus-time");
 const delivery_stats_service_1 = require("../delivery-stats.service");
+const dispatch_admin_service_1 = require("../dispatch-admin.service");
 const merchant_admin_service_1 = require("../merchant-admin.service");
 const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
@@ -89,13 +90,14 @@ function requiredRole(cmd) {
  * 所有操作记审计日志，回复里不出现顾客手机号/详细地址。
  */
 let FeishuCommandService = class FeishuCommandService {
-    constructor(cfg, client, cards, requestContextService, connection, merchant, deliveryStats) {
+    constructor(cfg, client, cards, requestContextService, connection, merchant, dispatchAdmin, deliveryStats) {
         this.cfg = cfg;
         this.client = client;
         this.cards = cards;
         this.requestContextService = requestContextService;
         this.connection = connection;
         this.merchant = merchant;
+        this.dispatchAdmin = dispatchAdmin;
         this.deliveryStats = deliveryStats;
         this.rate = new Map();
         this.pendingReject = new Map();
@@ -204,7 +206,7 @@ let FeishuCommandService = class FeishuCommandService {
         }
         const action = String((_b = (_a = input.value) === null || _a === void 0 ? void 0 : _a.a) !== null && _b !== void 0 ? _b : '');
         const code = typeof ((_c = input.value) === null || _c === void 0 ? void 0 : _c.c) === 'string' ? input.value.c : undefined;
-        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'exception'];
+        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'reassign', 'handled'];
         if (!known.includes(action))
             return;
         const cmd = {
@@ -244,6 +246,7 @@ let FeishuCommandService = class FeishuCommandService {
                     }
                     break;
                 }
+                case 'exception':
                 case 'status':
                 case 'view':
                     await this.replyInThread(chatId, messageId, await this.statusText(code));
@@ -262,9 +265,28 @@ let FeishuCommandService = class FeishuCommandService {
                     await this.replyInThread(chatId, messageId, (0, feishu_templates_1.replyTemplateText)(tpl, code));
                     break;
                 }
-                case 'exception':
-                    await this.replyInThread(chatId, messageId, `【异常上报】订单 ${code} 需跟进：可直接回复「催单 / 联系骑手 / 已联系顾客 / 转客服」选择处理方式；未处置订单会持续出现在「异常」清单。`);
+                case 'reassign': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found)
+                        return;
+                    await this.dispatchAdmin.handleException(found.ctx, found.order.id, 'reassign');
+                    await this.audit(chatId, openId, { name: 'reassign', orderCode: code }, 'ok-card');
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `已改派：${code}（异常单已回抢单大厅）`);
+                    }
                     break;
+                }
+                case 'handled': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found)
+                        return;
+                    await this.dispatchAdmin.handleException(found.ctx, found.order.id, 'handled');
+                    await this.audit(chatId, openId, { name: 'handled', orderCode: code }, 'ok-card');
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `已标记处置完结：${code}`);
+                    }
+                    break;
+                }
             }
         }
         catch (e) {
@@ -780,6 +802,7 @@ exports.FeishuCommandService = FeishuCommandService = __decorate([
         core_1.RequestContextService,
         core_1.TransactionalConnection,
         merchant_admin_service_1.MerchantAdminService,
+        dispatch_admin_service_1.DispatchAdminService,
         delivery_stats_service_1.DeliveryStatsService])
 ], FeishuCommandService);
 //# sourceMappingURL=feishu.command.service.js.map

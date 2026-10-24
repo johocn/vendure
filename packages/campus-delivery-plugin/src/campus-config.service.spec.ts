@@ -57,19 +57,25 @@ describe('setDeliveryTarget route/slot 扩展', () => {
     };
     const ctx = { channelId: 1, session: { activeOrderId: 100 } } as any;
 
-    function makeEnv(opts: { slot?: any } = {}) {
+    function makeEnv(opts: { slot?: any; cfg?: any } = {}) {
         const zoneRepo = { findOne: vi.fn().mockResolvedValue({ id: 1, name: '东区', channelId: 1 }) };
         const buildingRepo = { findOne: vi.fn().mockResolvedValue({ id: 7, name: '1号楼', zoneId: 1, channelId: 1 }) };
         const slotRepo = { findOne: vi.fn().mockResolvedValue(opts.slot === undefined ? slot : opts.slot) };
+        const cfgRepo = {
+            findOne: vi.fn().mockResolvedValue(
+                opts.cfg === undefined ? { channelId: 1, routesEnabled: ['R1', 'R2', 'R3'] } : opts.cfg,
+            ),
+        };
         const repos: Record<string, any> = {
             CampusZone: zoneRepo,
             CampusBuilding: buildingRepo,
             DeliverySlot: slotRepo,
+            CampusFulfillmentConfig: cfgRepo,
         };
         const dataSource = { getRepository: vi.fn((ent: any) => repos[ent.name ?? String(ent)]) } as any;
         const orderService = { updateCustomFields: vi.fn().mockResolvedValue({ id: 100 }) } as any;
         const svc = new CampusConfigService(dataSource, orderService);
-        return { svc, orderService, slotRepo };
+        return { svc, orderService, slotRepo, cfgRepo };
     }
 
     it('传 route+slotId 时写全 fulfillmentRoute/deliverySlotId/deliverySlotText/scheduledFor', async () => {
@@ -135,5 +141,51 @@ describe('setDeliveryTarget route/slot 扩展', () => {
             deliverySlotText: null,
             scheduledFor: null,
         });
+    });
+
+    it('渠道关闭的路线 → 拒绝下单', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, routesEnabled: ['R1'] } });
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R3')).rejects.toThrow('该配送路线当前不可用');
+    });
+
+    it('分区专属时段与所选分区不一致 → 拒绝', async () => {
+        const env = makeEnv({ slot: { ...slot, zoneId: 2 } });
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('该时段不属于所选分区');
+    });
+});
+
+describe('CampusConfigService.updateConfig 字段白名单（P2）', () => {
+    function makeEnv(cfg: any = {}) {
+        const repo = {
+            findOne: vi.fn().mockResolvedValue({ channelId: 1, routesEnabled: ['R1'], ...cfg }),
+            save: vi.fn().mockImplementation(v => Promise.resolve(v)),
+        };
+        const svc = new CampusConfigService({ getRepository: () => repo } as any, {} as any);
+        return { svc, repo };
+    }
+    const ctx = { channelId: 1 } as any;
+
+    it('拒绝身份列/未知字段注入（channelId / id）', async () => {
+        const { svc, repo } = makeEnv();
+        await expect(svc.updateConfig(ctx, { channelId: 2 } as any)).rejects.toThrow('不支持的配置字段');
+        await expect(svc.updateConfig(ctx, { id: 9 } as any)).rejects.toThrow('不支持的配置字段');
+        expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('数值字段越界/负数 → 拒绝', async () => {
+        const { svc } = makeEnv();
+        await expect(svc.updateConfig(ctx, { autoAssignMinutes: -1 } as any)).rejects.toThrow('autoAssignMinutes');
+        await expect(svc.updateConfig(ctx, { riderCommissionRate: 101 } as any)).rejects.toThrow('riderCommissionRate');
+    });
+
+    it('合法字段写入；路线去重并校验', async () => {
+        const { svc, repo } = makeEnv();
+        await svc.updateConfig(ctx, { autoAssignMinutes: 20, routesEnabled: ['R1', 'R3', 'R3'] } as any);
+        expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({
+            autoAssignMinutes: 20,
+            routesEnabled: ['R1', 'R3'],
+        }));
+        const { svc: svc2 } = makeEnv();
+        await expect(svc2.updateConfig(ctx, { routesEnabled: ['R9'] } as any)).rejects.toThrow('配送路线配置不合法');
     });
 });

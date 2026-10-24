@@ -4,7 +4,7 @@ import { CapacityService } from './capacity.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
-export type ExceptionAction = 'reassign' | 'refund_diff' | 'coupon' | 'refund_all';
+export type ExceptionAction = 'reassign' | 'handled' | 'refund_diff' | 'coupon' | 'refund_all';
 export interface DispatchAlert {
     orderId: string;
     orderCode: string;

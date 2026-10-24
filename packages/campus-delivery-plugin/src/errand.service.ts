@@ -14,12 +14,16 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusZone } from './campus-zone.entity';
 import { quoteDynamicBaseFee } from './shipping-calculator';
 
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export const ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
 export const ERRAND_BASE_SLUG = 'campus-errand-base';
+/** 跑腿类型白名单（与发单页/调度统计口径一致） */
+export const ERRAND_KINDS = ['pickup_express', 'bring_food', 'buy', 'other'];
 /** 小费 surcharge 标识（幂等清理键：同单重复设置按此描述清旧补新，防重复计费） */
 export const ERRAND_TIP_SURCHARGE_DESC = '跑腿小费';
 
@@ -83,19 +87,60 @@ export class ErrandService {
         if (!ctx.activeUserId) throw new ForbiddenError();
         const orderId = ctx.session?.activeOrderId;
         if (!orderId) throw new UserInputError('购物车为空');
+        // kind 白名单：防任意字符串写入后调度/统计按未知类型走
+        const kind = String(input.kind ?? '').trim();
+        if (!ERRAND_KINDS.includes(kind)) throw new UserInputError('跑腿类型不合法');
+        const fromText = String(input.fromText ?? '').trim();
+        const toText = String(input.toText ?? '').trim();
+        if (!fromText || !toText) throw new UserInputError('请填写跑腿起点和终点');
+        const note = input.note == null ? null : String(input.note).trim();
+        const errandFrom = input.errandFrom == null ? null : String(input.errandFrom).trim();
+        // 文本长度上限（字段无长度约束，防超长文本撑爆库/前端渲染）
+        if (fromText.length > 100 || toText.length > 100) throw new UserInputError('起点/终点不能超过 100 个字符');
+        if (note && note.length > 200) throw new UserInputError('备注不能超过 200 个字符');
+        if (errandFrom && errandFrom.length > 64) throw new UserInputError('来源单号不合法');
         if (!Number.isFinite(input.tip) || input.tip < 0) throw new UserInputError('小费金额不合法');
         const tip = Math.floor(input.tip);
+        if (tip > 100_000_00) throw new UserInputError('小费金额过大');
+        // 分区/楼栋归属校验：只允许本渠道的地址体系，防写入他店 ID 导致调度/计价串店
+        let campusZone: string | null = input.campusZone == null ? null : String(input.campusZone).trim();
+        let buildingId: string | null = input.buildingId == null ? null : String(input.buildingId).trim();
+        let zone: CampusZone | null = null;
+        if (campusZone) {
+            zone = await this.connection.getRepository(ctx, CampusZone).findOne({
+                where: { name: campusZone, channelId: ctx.channelId as any },
+            });
+            if (!zone) throw new UserInputError('跑腿分区不属于当前店铺');
+        }
+        if (buildingId) {
+            const bid = Number(buildingId);
+            if (!Number.isInteger(bid) || bid <= 0) throw new UserInputError('楼栋不合法');
+            const building = await this.connection.getRepository(ctx, CampusBuilding).findOne({
+                where: { id: bid as any, channelId: ctx.channelId as any },
+            });
+            if (!building) throw new UserInputError('楼栋不属于当前店铺');
+            if (zone && Number(building.zoneId) !== Number(zone.id)) {
+                throw new UserInputError('楼栋不属于所选分区');
+            }
+            buildingId = String(bid);
+            if (!zone) {
+                const buildingZone = await this.connection.getRepository(ctx, CampusZone).findOne({
+                    where: { id: building.zoneId as any, channelId: ctx.channelId as any },
+                });
+                campusZone = buildingZone?.name ?? null;
+            }
+        }
         const order = await this.orderService.updateCustomFields(ctx, orderId, {
             orderKind: 'errand',
             fulfillmentRoute: 'R5',
-            errandKind: input.kind,
+            errandKind: kind,
             // R2 接力单：errandFrom 存原单号（campusR2Relay 反查键）；普通 R5 缺省落 A 点文字
-            errandFrom: input.errandFrom ?? input.fromText,
-            errandTo: input.toText,
-            errandNote: input.note ?? null,
+            errandFrom: errandFrom ?? fromText,
+            errandTo: toText,
+            errandNote: note,
             tip,
-            buildingId: input.buildingId ?? null,
-            campusZone: input.campusZone ?? null,
+            buildingId,
+            campusZone,
         } as any);
         // 小费 surcharge 幂等：先清本单全部旧小费，再按新 tip 加一条（tip=0 只清不加），
         // 防止同单重复设置（改小费/改地址/重复提交）叠加多条 surcharge 重复计费

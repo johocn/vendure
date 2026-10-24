@@ -1,10 +1,11 @@
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
 import { DeliveryStatsService } from '../delivery-stats.service';
+import { DispatchAdminService } from '../dispatch-admin.service';
 import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
-export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'close' | 'open' | 'unknown';
+export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'close' | 'open' | 'unknown';
 export interface ParsedCommand {
     name: FeishuCommandName;
     orderCode?: string;
@@ -31,10 +32,11 @@ export declare class FeishuCommandService {
     private requestContextService;
     private connection;
     private merchant;
+    private dispatchAdmin;
     private deliveryStats;
     private rate;
     private pendingReject;
-    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, deliveryStats: DeliveryStatsService);
+    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService);
     handleMessage(input: {
         chatId: string;
         openId: string;

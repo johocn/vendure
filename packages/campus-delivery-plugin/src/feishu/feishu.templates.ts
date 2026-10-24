@@ -332,11 +332,15 @@ export function buildOrderCard(o: OrderStatusInput): Record<string, unknown> {
 
     // 按钮：状态相关的 primary 放最左，其余次级按使用频率排
     const actions: any[] = [];
-    if (o.hallStatus === 'pending_merchant') actions.push(cardButton('接单', { a: 'accept', c: o.code }, 'primary'));
-    if (o.hallStatus === 'accepted') actions.push(cardButton('出餐', { a: 'cooking', c: o.code }, 'primary'));
+    if (exception) {
+        actions.push(cardButton('改派', { a: 'reassign', c: o.code }, 'primary'));
+        actions.push(cardButton('已处置', { a: 'handled', c: o.code }));
+    } else {
+        if (o.hallStatus === 'pending_merchant') actions.push(cardButton('接单', { a: 'accept', c: o.code }, 'primary'));
+        if (o.hallStatus === 'accepted') actions.push(cardButton('出餐', { a: 'cooking', c: o.code }, 'primary'));
+    }
     actions.push(cardButton('状态', { a: 'status', c: o.code }));
     actions.push(cardButton('快捷回复', { a: 'template', c: o.code }));
-    if (exception) actions.push(cardButton('报异常', { a: 'exception', c: o.code }, 'danger'));
     elements.push({ tag: 'action', actions });
 
     elements.push(cardNote(`短码 ${short} · ${o.store} · 引用本卡回复自动归入本订单`));

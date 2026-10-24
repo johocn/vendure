@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { R2MarkService } from './r2-mark.service';
 
-function makeEnv(opts: { order?: any; relay?: any } = {}) {
+function makeEnv(opts: { order?: any; relay?: any; casRows?: any[] } = {}) {
     const orderRepo: any = { update: vi.fn().mockResolvedValue({}) };
     orderRepo.createQueryBuilder = vi.fn(() => ({
         leftJoin: vi.fn().mockReturnThis(),
@@ -10,10 +10,12 @@ function makeEnv(opts: { order?: any; relay?: any } = {}) {
         orderBy: vi.fn().mockReturnThis(),
         getOne: vi.fn().mockResolvedValue(opts.relay ?? null),
     }));
-    const conn = { getRepository: vi.fn(() => orderRepo) } as any;
+    // markArrived 改裸 SQL 条件写（CAS）：默认命中一行
+    const rawQuery = vi.fn().mockResolvedValue([opts.casRows ?? [{ id: 6 }], []]);
+    const conn = { getRepository: vi.fn(() => orderRepo), rawConnection: { query: rawQuery } } as any;
     const orderSvc = { findOne: vi.fn().mockResolvedValue(opts.order ?? null) };
     const svc = new R2MarkService(conn, orderSvc as any);
-    return { svc, orderRepo, orderSvc };
+    return { svc, orderRepo, orderSvc, rawQuery };
 }
 
 describe('R2MarkService.markArrived', () => {
@@ -22,9 +24,10 @@ describe('R2MarkService.markArrived', () => {
             order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'preparing' }, customer: { user: { id: 9 } } },
         });
         const res = await env.svc.markArrived({ activeUserId: 9 } as any, 6);
-        expect(env.orderRepo.update).toHaveBeenCalledWith(6, expect.objectContaining({
-            customFields: expect.objectContaining({ leg1Status: 'arrived_gate' }),
-        }));
+        expect(env.rawQuery).toHaveBeenCalledWith(
+            expect.stringContaining('"customFieldsLeg1status" = $2'),
+            [6, 'arrived_gate', expect.any(Date)],
+        );
         expect(res).toEqual({ leg1Status: 'arrived_gate' });
     });
 
@@ -33,7 +36,7 @@ describe('R2MarkService.markArrived', () => {
             order: { id: 6, customFields: { fulfillmentRoute: 'R2' }, customer: { user: { id: 8 } } },
         });
         await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow();
-        expect(env.orderRepo.update).not.toHaveBeenCalled();
+        expect(env.rawQuery).not.toHaveBeenCalled();
     });
 
     it('非 R2 单拒绝（UserInputError）', async () => {
@@ -41,7 +44,7 @@ describe('R2MarkService.markArrived', () => {
             order: { id: 6, customFields: { fulfillmentRoute: 'R3' }, customer: { user: { id: 9 } } },
         });
         await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('仅 R2 快递单支持到校确认');
-        expect(env.orderRepo.update).not.toHaveBeenCalled();
+        expect(env.rawQuery).not.toHaveBeenCalled();
     });
 
     it('已 arrived_gate 幂等返回，不重复写 handoverAt', async () => {
@@ -50,7 +53,7 @@ describe('R2MarkService.markArrived', () => {
         });
         const res = await env.svc.markArrived({ activeUserId: 9 } as any, 6);
         expect(res).toEqual({ leg1Status: 'arrived_gate' });
-        expect(env.orderRepo.update).not.toHaveBeenCalled();
+        expect(env.rawQuery).not.toHaveBeenCalled();
     });
 
     it('leg1Status 非 preparing/arrived_gate 拒绝', async () => {
@@ -58,7 +61,15 @@ describe('R2MarkService.markArrived', () => {
             order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'picked' }, customer: { user: { id: 9 } } },
         });
         await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('当前状态不支持到校确认');
-        expect(env.orderRepo.update).not.toHaveBeenCalled();
+        expect(env.rawQuery).not.toHaveBeenCalled();
+    });
+
+    it('CAS 未命中（并发改状态/已取消）→ 报状态已变更', async () => {
+        const env = makeEnv({
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'preparing' }, customer: { user: { id: 9 } } },
+            casRows: [],
+        });
+        await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('订单状态已变更，请刷新');
     });
 });
 

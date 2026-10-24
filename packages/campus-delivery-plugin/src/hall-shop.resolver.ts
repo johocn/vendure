@@ -70,7 +70,9 @@ export class HallShopResolver {
         if (!order || cf.deliveryStaffId !== String(rider.id) || cf.deliveryStatus !== 'assigned') {
             throw new UserInputError('该订单未指派给您或已取货，不能拒单');
         }
-        await this.hall.backToHall(ctx, order.id as any);
+        // 回厅条件写可能失败（订单已取消/已终态）：失败时不能扣分，也不能假装成功
+        const moved = await this.hall.backToHall(ctx, order.id as any);
+        if (!moved) throw new UserInputError('订单已取消或已终态，无法拒单');
         await this.credit.adjust(ctx, rider.id as any, CREDIT_REJECT, 'reject_assign', order.id as any);
         return { backToHall: true };
     }
@@ -119,13 +121,15 @@ export class HallShopResolver {
         @Args('take', { nullable: true }) take?: number,
     ) {
         const rider = await this.riderService.assertApprovedRider(ctx);
+        const safeSkip = Math.max(0, skip ?? 0);
+        const safeTake = Math.min(Math.max(take ?? 20, 1), 200);
         return this.connection
             .getRepository(ctx, RiderEarning)
             .createQueryBuilder('earning')
             .where('earning.riderCustomerId = :id', { id: rider.id })
             .orderBy('earning.createdAt', 'DESC')
-            .skip(skip ?? 0)
-            .take(take ?? 20)
+            .skip(safeSkip)
+            .take(safeTake)
             .getMany();
     }
 }

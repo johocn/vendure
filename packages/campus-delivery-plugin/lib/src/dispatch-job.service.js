@@ -134,7 +134,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * （T4 退款扫描在 Task 8 追加到此方法）
      */
     async scan(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const repo = this.connection.getRepository(ctx, core_2.Order);
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -156,11 +156,21 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             core_2.Logger.warn(`channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`, 'CampusDispatch');
         }
         const now = Date.now();
+        // P1 骑手超时提前告警阈值：兜底前 3min 先告警
+        const notPickedAlertMs = Math.max(60000, (NOT_PICKED_TIMEOUT_MIN - 3) * 60000);
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分（逐单隔离：单笔异常不阻断本轮）
         for (const o of orders) {
             const cf = o.customFields;
+            // P1 提前告警：骑手接了单迟迟不来取货（dedupe 5min 窗口）
             if (cf.hallStatus === 'grabbed' && cf.deliveryStatus === 'assigned' && cf.assignedAt) {
-                if (now - new Date(cf.assignedAt).getTime() > NOT_PICKED_TIMEOUT_MIN * 60000) {
+                const elapsed = now - new Date(cf.assignedAt).getTime();
+                const alertMin = Math.round(notPickedAlertMs / 60000);
+                if (elapsed >= notPickedAlertMs && elapsed <= NOT_PICKED_TIMEOUT_MIN * 60000) {
+                    const mins = Math.round(elapsed / 60000);
+                    const dedupeKey = `rider_pick_alert:${o.code}`;
+                    void ((_a = this.feishu) === null || _a === void 0 ? void 0 : _a.pushEvent('alert', '⏱ 骑手取货超时', `订单 ${o.code} 骑手已抢单 ${mins} 分钟未取货，${NOT_PICKED_TIMEOUT_MIN} 分钟后将自动回大厅重派。`, o.code, dedupeKey));
+                }
+                if (elapsed > NOT_PICKED_TIMEOUT_MIN * 60000) {
                     try {
                         // 条件回厅：并发取消/送达时不得把终态单改回 open，也不应再扣骑手信用分
                         const back = await this.hall.backToHall(ctx, o.id);
@@ -168,9 +178,10 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                             continue;
                         await this.credit.adjust(ctx, Number(cf.deliveryStaffId), rider_credit_service_1.CREDIT_TIMEOUT, 'timeout_not_picked', o.id);
                         core_2.Logger.warn(`Order ${o.code} reassigned (rider ${cf.deliveryStaffId} not picked in ${NOT_PICKED_TIMEOUT_MIN}min)`, 'CampusDispatch');
+                        void ((_b = this.feishu) === null || _b === void 0 ? void 0 : _b.pushEvent('exception', '骑手取货超时自动回厅', `订单 ${o.code} 骑手 ${NOT_PICKED_TIMEOUT_MIN} 分钟未取货，已回抢单大厅。`, o.code, o.code));
                     }
                     catch (e) {
-                        core_2.Logger.error(`not-picked timeout failed for order ${(_a = o.code) !== null && _a !== void 0 ? _a : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                        core_2.Logger.error(`not-picked timeout failed for order ${(_c = o.code) !== null && _c !== void 0 ? _c : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                     }
                 }
             }
@@ -200,7 +211,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     cf.hallEnteredAt = new Date();
                 }
                 catch (e) {
-                    core_2.Logger.error(`scheduled release failed for order ${(_b = o.code) !== null && _b !== void 0 ? _b : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                    core_2.Logger.error(`scheduled release failed for order ${(_d = o.code) !== null && _d !== void 0 ? _d : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                 }
             }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
@@ -222,16 +233,26 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 for (const o of merchantStale) {
                     try {
                         const enteredAt = new Date();
-                        const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['pending_merchant', 'accepted'], { hallStatus: 'open', hallEnteredAt: enteredAt, campusCause: 'merchant_timeout' });
+                        const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['pending_merchant', 'accepted'], {
+                            hallStatus: 'open',
+                            hallEnteredAt: enteredAt,
+                            // 履约快照必须同步切换：否则 R1 单仍带着 merchant/to_campus_rider 进入抢单大厅，
+                            // C 端承运方展示、改址重推判定都会按旧计划走（与规则 1b/2 的兜底写法保持一致）
+                            deliveryPlan: 'campus_rider',
+                            handoverMode: '',
+                            campusCause: 'merchant_timeout',
+                        });
                         if (!moved)
                             continue; // 期间已被商家接单/取消
                         core_2.Logger.warn(`Order ${o.code} auto-opened (merchant not responding)`, 'CampusDispatch');
                         const cf = o.customFields;
                         cf.hallStatus = 'open';
                         cf.hallEnteredAt = enteredAt; // 同步锚点，避免同轮 T2 按旧锚点立即强派
+                        cf.deliveryPlan = 'campus_rider';
+                        cf.handoverMode = '';
                     }
                     catch (e) {
-                        core_2.Logger.error(`merchant stale auto-open failed for order ${(_c = o.code) !== null && _c !== void 0 ? _c : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                        core_2.Logger.error(`merchant stale auto-open failed for order ${(_e = o.code) !== null && _e !== void 0 ? _e : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                     }
                 }
             }
@@ -256,14 +277,14 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 const load = new Map();
                 for (const o of orders) {
                     const cf = o.customFields;
-                    const rid = Number((_d = cf.deliveryStaffId) !== null && _d !== void 0 ? _d : NaN);
+                    const rid = Number((_f = cf.deliveryStaffId) !== null && _f !== void 0 ? _f : NaN);
                     if (!Number.isFinite(rid) || !rid)
                         continue;
-                    const active = ['assigned', 'in_progress'].includes(String((_e = cf.deliveryStatus) !== null && _e !== void 0 ? _e : ''))
-                        || ['grabbed', 'owned_dispatched'].includes(String((_f = cf.hallStatus) !== null && _f !== void 0 ? _f : ''));
+                    const active = ['assigned', 'in_progress'].includes(String((_g = cf.deliveryStatus) !== null && _g !== void 0 ? _g : ''))
+                        || ['grabbed', 'owned_dispatched'].includes(String((_h = cf.hallStatus) !== null && _h !== void 0 ? _h : ''));
                     if (!active)
                         continue;
-                    load.set(rid, ((_g = load.get(rid)) !== null && _g !== void 0 ? _g : 0) + 1);
+                    load.set(rid, ((_j = load.get(rid)) !== null && _j !== void 0 ? _j : 0) + 1);
                 }
                 const pickRider = () => {
                     var _a, _b;
@@ -291,7 +312,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         const rider = pickRider();
                         const ok = await this.grab.grabByRider(ctx, o.id, rider);
                         if (ok) {
-                            load.set(Number(rider.id), ((_h = load.get(Number(rider.id))) !== null && _h !== void 0 ? _h : 0) + 1);
+                            load.set(Number(rider.id), ((_k = load.get(Number(rider.id))) !== null && _k !== void 0 ? _k : 0) + 1);
                             core_2.Logger.warn(`Order ${o.code} auto-assigned to rider ${rider.id} (T2)`, 'CampusDispatch');
                         }
                         // 无论成败，该单已离开 open 大厅（成功→grabbed；失败→已被抢/已退款），
@@ -299,7 +320,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         o.customFields.hallStatus = 'grabbed';
                     }
                     catch (e) {
-                        core_2.Logger.error(`T2 auto-assign failed for order ${(_j = o.code) !== null && _j !== void 0 ? _j : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                        core_2.Logger.error(`T2 auto-assign failed for order ${(_l = o.code) !== null && _l !== void 0 ? _l : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                     }
                 }
             }
@@ -315,7 +336,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     await this.refundNoRider(ctx, o, cfg);
                 }
                 catch (e) {
-                    core_2.Logger.error(`T4 auto-refund failed for order ${(_k = o.code) !== null && _k !== void 0 ? _k : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                    core_2.Logger.error(`T4 auto-refund failed for order ${(_m = o.code) !== null && _m !== void 0 ? _m : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                 }
             }
         }
@@ -444,8 +465,10 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     }
                     continue;
                 }
-                // 1b) R2 已接单但久未出餐（出餐闸门卡住）→ 降级传信者到店取餐直送
-                if (cf.hallStatus === 'accepted' && route === 'R2'
+                // 1b) 已接单但久未出餐（出餐闸门卡住）→ 降级传信者到店取餐直送。
+                //     R1/R2 都要兜底：R1 若只依赖上面的 merchantConfirmEnabled 开关块，渠道关闭确认模式后
+                //     遗留 accepted 单会永久卡死（不退款、不进墙、不告警）。
+                if (cf.hallStatus === 'accepted' && (route === 'R1' || route === 'R2')
                     && now - new Date((_h = cf.hallEnteredAt) !== null && _h !== void 0 ? _h : o.createdAt).getTime() > deliverMs) {
                     const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['accepted'], {
                         hallStatus: 'open',
@@ -456,10 +479,11 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     });
                     if (!moved)
                         continue;
-                    core_2.Logger.warn(`Order ${o.code} R2 cooking timeout → hall`, 'CampusDispatch');
-                    void ((_j = this.feishu) === null || _j === void 0 ? void 0 : _j.pushEvent('exception', '商户出餐超时', `订单 ${o.code} 商户 ${(_k = cfg.merchantAutoOpenMinutes) !== null && _k !== void 0 ? _k : 15} 分钟未出餐，已回抢单大厅。`, o.code, o.code));
+                    core_2.Logger.warn(`Order ${o.code} ${route} cooking timeout → hall`, 'CampusDispatch');
+                    void ((_j = this.feishu) === null || _j === void 0 ? void 0 : _j.pushEvent('exception', '商户出餐超时', `订单 ${o.code} 商户 ${(_k = cfg.merchantAutoOpenMinutes) !== null && _k !== void 0 ? _k : 15} 分钟未出餐（${route}），已回抢单大厅。`, o.code, o.code));
                     cf.hallStatus = 'open';
                     cf.deliveryPlan = 'campus_rider';
+                    cf.handoverMode = '';
                     cf.hallEnteredAt = new Date();
                     continue;
                 }
@@ -857,7 +881,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * 失败降级：同样写 campusCause='no_rider' + hallStatus='no_rider_final' 留人工，Logger 留痕，不抛出。
      */
     async refundNoRider(ctx, order, cfg) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const mark = () => this.hall.updateOrder(ctx, order.id, {
             customFields: { campusCause: 'no_rider', hallStatus: 'no_rider_final' },
         });
@@ -920,11 +944,20 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             }
             catch (e) {
                 core_2.Logger.error(`T4 refund failed for order ${order.code}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                // 退款失败绝不能写 no_rider_final：那是终态，调度墙/大厅/商家台会一起跳过，
+                // 已付款未送达的单会静默消失。改为独立的 refund_failed 状态退出自动重试，
+                // 由调度墙按告警暴露给运营人工退款/取消（条件写在取消竞态下不复活已取消单）。
                 try {
-                    await mark();
+                    const marked = await this.hall.transitionFrom(ctx, Number(order.id), ['open'], {
+                        hallStatus: 'refund_failed',
+                        campusCause: 'refund_failed',
+                    });
+                    if (marked) {
+                        void ((_g = this.feishu) === null || _g === void 0 ? void 0 : _g.pushEvent('exception', '无人接单自动退款失败', `订单 ${order.code} 超时无骑手且自动退款失败，请人工退款/取消。原因：${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`, order.code, `refund_failed:${order.code}`));
+                    }
                 }
                 catch (e2) {
-                    core_2.Logger.error(`T4 fallback mark failed for order ${order.code}: ${e2 === null || e2 === void 0 ? void 0 : e2.message}`, 'CampusDispatch');
+                    core_2.Logger.error(`T4 refund_failed mark failed for order ${order.code}: ${e2 === null || e2 === void 0 ? void 0 : e2.message}`, 'CampusDispatch');
                 }
             }
         }
@@ -932,7 +965,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             try {
                 await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
             }
-            catch (_g) {
+            catch (_j) {
                 // 释放失败交给连接回收兜底
             }
             await runner.release();

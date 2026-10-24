@@ -28,6 +28,11 @@ export declare class CampusConfigService {
         lng?: number | null;
     }): Promise<CampusBuilding>;
     getConfig(ctx: RequestContext): Promise<CampusFulfillmentConfig>;
+    /** 允许后台写入的字段白名单：不含 channelId/id/createdAt 等身份列，
+     * 防止渠道管理员通过 patch 注入主键或跨渠道绑定（resolver 入参为 any，服务层必须自守）。 */
+    private static readonly WRITABLE_FIELDS;
+    /** 整型配置的取值范围（分钟/百分比/分） */
+    private static readonly INT_RANGES;
     updateConfig(ctx: RequestContext, patch: Partial<CampusFulfillmentConfig>): Promise<CampusFulfillmentConfig>;
     createSlot(ctx: RequestContext, input: {
         slotDate: string;

@@ -215,8 +215,38 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         core_2.Logger.info(`订单 ${order.code} 已推送 ${provider}:${(_0 = delivery.thirdPartyNo) !== null && _0 !== void 0 ? _0 : delivery.code}`, loggerCtx);
         return { ok: true, thirdPartyNo: (_1 = delivery.thirdPartyNo) !== null && _1 !== void 0 ? _1 : delivery.code, provider };
     }
-    /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等 */
+    /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等。
+     * 与 dispatchExternal 共用订单级咨询锁：否则「推送中」被取消可能产生孤儿运单或取消不存在的单。 */
     async cancel(ctx, orderId, reason) {
+        var _a;
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:thirdparty:${orderId}`;
+        try {
+            // 推送临界区很短：短暂重试后仍拿不到锁才放弃（取消是订单终态动作，尽量别丢）
+            let locked = false;
+            for (let attempt = 0; attempt < 3 && !locked; attempt += 1) {
+                const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+                const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+                locked = !!((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.ok);
+                if (!locked)
+                    await new Promise(r => setTimeout(r, 300));
+            }
+            if (!locked)
+                throw new core_2.UserInputError('该订单正在推送/取消外部快递，请稍后重试');
+            return await this.doCancel(ctx, orderId, reason);
+        }
+        finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            }
+            catch (_b) {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
+    }
+    async doCancel(ctx, orderId, reason) {
         var _a, _b, _c, _d, _e, _f, _g;
         const order = await this.orderRepo(ctx).findOne({ where: { id: orderId }, relations: ['channels'] });
         if (!order)

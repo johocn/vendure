@@ -22,13 +22,11 @@ const INVOICE_ELIGIBLE_STATES = ['PaymentAuthorized', 'PaymentSettled', 'Shipped
  * 对已支付的历史订单写 invoiceApplied/invoiceInfo customFields（Vendure updateOrderCustomFields
  * 只作用于 activeOrder，历史单不可用，故加本 mutation）。幂等：invoiceApplied=true 再调报错。
  * 商家线下人工开票，B 端本期不动。
- * 写路径用 OrderService.updateCustomFields（同 after-sales-plugin 惯例）：裸 repo save 会因
- * Order.discounts getter 缺 lines 关联报 500。
+ * 写路径用条件 UPDATE（CAS）：先读后写会被并发双击/多端提交穿透，重复覆盖发票抬头。
  */
 let InvoiceShopResolver = class InvoiceShopResolver {
-    constructor(dataSource, orderService) {
+    constructor(dataSource) {
         this.dataSource = dataSource;
-        this.orderService = orderService;
     }
     async applyOrderInvoice(ctx, orderId, invoiceInfo) {
         var _a, _b;
@@ -62,7 +60,14 @@ let InvoiceShopResolver = class InvoiceShopResolver {
         if (!INVOICE_ELIGIBLE_STATES.includes(order.state)) {
             throw new core_1.UserInputError('ORDER_NOT_PAID');
         }
-        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo: info });
+        // 条件写（CAS）：invoiceApplied 仍为 false 且订单仍在可开票状态才写入，并发双击只有一次成功
+        const out = await this.dataSource.query('UPDATE "order" SET "customFieldsInvoiceapplied" = TRUE, "customFieldsInvoiceinfo" = $2 '
+            + 'WHERE id = $1 AND COALESCE("customFieldsInvoiceapplied", FALSE) = FALSE '
+            + 'AND "state" = ANY($3::text[]) RETURNING id', [orderId, info, INVOICE_ELIGIBLE_STATES]);
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new core_1.UserInputError('INVOICE_ALREADY_APPLIED');
+        }
         return true;
     }
 };
@@ -79,6 +84,6 @@ __decorate([
 ], InvoiceShopResolver.prototype, "applyOrderInvoice", null);
 exports.InvoiceShopResolver = InvoiceShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [typeorm_1.DataSource, core_1.OrderService])
+    __metadata("design:paramtypes", [typeorm_1.DataSource])
 ], InvoiceShopResolver);
 //# sourceMappingURL=campus-invoice.resolver.js.map

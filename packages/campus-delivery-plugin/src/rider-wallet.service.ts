@@ -61,14 +61,16 @@ export class RiderWalletService {
     async riderBalanceHistory(ctx: RequestContext, skip?: number, take?: number) {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const pc = await this.platformCtx();
+        const safeSkip = Math.max(0, skip ?? 0);
+        const safeTake = Math.min(Math.max(take ?? 20, 1), 200);
         return this.connection
             .getRepository(pc, BalanceTransaction)
             .createQueryBuilder('tx')
             .where('tx.customerId = :id', { id: rider.id })
             .andWhere('tx.channelId = :ch', { ch: pc.channelId })
             .orderBy('tx.createdAt', 'DESC')
-            .skip(skip ?? 0)
-            .take(take ?? 20)
+            .skip(safeSkip)
+            .take(safeTake)
             .getMany();
     }
 
@@ -76,13 +78,15 @@ export class RiderWalletService {
     async riderWithdrawRequests(ctx: RequestContext, skip?: number, take?: number) {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const pc = await this.platformCtx();
+        const safeSkip = Math.max(0, skip ?? 0);
+        const safeTake = Math.min(Math.max(take ?? 20, 1), 200);
         return this.connection
             .getRepository(pc, RiderWithdrawalRequest)
             .createQueryBuilder('w')
             .where('w.customerId = :id', { id: rider.id })
             .orderBy('w.createdAt', 'DESC')
-            .skip(skip ?? 0)
-            .take(take ?? 20)
+            .skip(safeSkip)
+            .take(safeTake)
             .getMany();
     }
 
@@ -93,6 +97,11 @@ export class RiderWalletService {
         if (!amount || amount < MIN_WITHDRAW_AMOUNT) throw new UserInputError('最低提现金额为 ¥10');
         if (!input.channel?.trim()) throw new UserInputError('请选择收款渠道');
         if (!input.account?.trim()) throw new UserInputError('请填写收款账号');
+        // 入参长度上限：账号/渠道名会原样落库并展示给审核人，防超长文本
+        const channelText = input.channel.trim();
+        const accountText = input.account.trim();
+        if (channelText.length > 30) throw new UserInputError('收款渠道名称过长');
+        if (accountText.length > 100) throw new UserInputError('收款账号过长');
         const pc = await this.platformCtx();
         const port = getCouponBalancePort();
         if (!port) throw new UserInputError('余额功能未开通');
@@ -115,8 +124,8 @@ export class RiderWalletService {
                 customerId: rider.id,
                 channelId: pc.channelId,
                 amount,
-                channel: input.channel.trim(),
-                account: input.account.trim(),
+                channel: channelText,
+                account: accountText,
                 status: 'PENDING',
             } as any);
         });
@@ -129,7 +138,9 @@ export class RiderWalletService {
         if (status && status !== 'ALL') {
             qb.andWhere('w.status = :s', { s: status });
         }
-        return qb.orderBy('w.createdAt', 'DESC').skip(skip ?? 0).take(take ?? 20).getMany();
+        const safeSkip = Math.max(0, skip ?? 0);
+        const safeTake = Math.min(Math.max(take ?? 20, 1), 200);
+        return qb.orderBy('w.createdAt', 'DESC').skip(safeSkip).take(safeTake).getMany();
     }
 
     /** 管理端：通过打款（仅留痕，金额已在申请时扣减） */

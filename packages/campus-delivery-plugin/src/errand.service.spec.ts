@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ErrandService } from './errand.service';
 
-function makeEnv(opts: { variant?: any; surcharges?: any[] } = {}) {
+function makeEnv(opts: { variant?: any; surcharges?: any[]; zone?: any; building?: any } = {}) {
     const orderSvc = {
         updateCustomFields: vi.fn().mockResolvedValue({ id: 5 }),
         addSurchargeToOrder: vi.fn().mockResolvedValue({ id: 5 }),
@@ -14,13 +14,20 @@ function makeEnv(opts: { variant?: any; surcharges?: any[] } = {}) {
     };
     const variantRepo = { findOne: vi.fn().mockResolvedValue(opts.variant ?? null) };
     const orderRepo = { findOne: vi.fn().mockResolvedValue({ id: 5, surcharges: opts.surcharges ?? [] }) };
+    // 分区/楼栋归属校验：默认落在本渠道（zone id=3 / building id=12 归属 zone 3）；显式传 null 表示查无
+    const zoneRepo = { findOne: vi.fn().mockResolvedValue(opts.zone === null ? null : (opts.zone ?? { id: 3, name: 'A区', channelId: 1 })) };
+    const buildingRepo = { findOne: vi.fn().mockResolvedValue(opts.building === null ? null : (opts.building ?? { id: 12, zoneId: 3, channelId: 1 })) };
     const conn = {
-        getRepository: vi.fn((_ctx: any, ent: any) =>
-            (ent as any).name === 'ProductVariant' ? variantRepo : orderRepo,
-        ),
+        getRepository: vi.fn((_ctx: any, ent: any) => {
+            const name = (ent as any).name;
+            if (name === 'ProductVariant') return variantRepo;
+            if (name === 'CampusZone') return zoneRepo;
+            if (name === 'CampusBuilding') return buildingRepo;
+            return orderRepo;
+        }),
     } as any;
     const svc = new ErrandService(conn, orderSvc as any, injector as any);
-    return { svc, orderSvc, injector, productService, variantService, variantRepo, orderRepo };
+    return { svc, orderSvc, injector, productService, variantService, variantRepo, orderRepo, zoneRepo, buildingRepo };
 }
 
 describe('ErrandService.ensureErrandProduct', () => {
@@ -114,6 +121,59 @@ describe('ErrandService.setErrandInfo 二期字段', () => {
         await env.svc.setErrandInfo(ctx, baseInput);
         expect(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(
             ctx, 5, expect.objectContaining({ errandFrom: '东门取件' }),
+        );
+    });
+});
+
+describe('ErrandService.setErrandInfo 入参校验（P2）', () => {
+    const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } } as any;
+    const base = { kind: 'pickup_express', fromText: '东门取件', toText: '12号楼501', tip: 0 };
+
+    it('kind 不在白名单 → 拒绝', async () => {
+        const env = makeEnv();
+        await expect(env.svc.setErrandInfo(ctx, { ...base, kind: 'hack' })).rejects.toThrow('跑腿类型不合法');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('起点/终点为空 → 拒绝', async () => {
+        const env = makeEnv();
+        await expect(env.svc.setErrandInfo(ctx, { ...base, fromText: '  ' })).rejects.toThrow('请填写跑腿起点和终点');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('起点超 100 字符 / 备注超 200 字符 → 拒绝', async () => {
+        const env = makeEnv();
+        await expect(env.svc.setErrandInfo(ctx, { ...base, toText: 'x'.repeat(101) }))
+            .rejects.toThrow('起点/终点不能超过 100 个字符');
+        await expect(env.svc.setErrandInfo(ctx, { ...base, note: 'x'.repeat(201) }))
+            .rejects.toThrow('备注不能超过 200 个字符');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('分区不属于当前店铺 → 拒绝', async () => {
+        const env = makeEnv({ zone: null });
+        await expect(env.svc.setErrandInfo(ctx, { ...base, campusZone: 'B区' })).rejects.toThrow('跑腿分区不属于当前店铺');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('楼栋不属于当前店铺 → 拒绝', async () => {
+        const env = makeEnv({ building: null });
+        await expect(env.svc.setErrandInfo(ctx, { ...base, buildingId: '12' })).rejects.toThrow('楼栋不属于当前店铺');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('楼栋与所选分区不一致 → 拒绝', async () => {
+        const env = makeEnv({ building: { id: 12, zoneId: 99, channelId: 1 } });
+        await expect(env.svc.setErrandInfo(ctx, { ...base, campusZone: 'A区', buildingId: '12' }))
+            .rejects.toThrow('楼栋不属于所选分区');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('仅传 buildingId → 按楼栋反查分区名回填', async () => {
+        const env = makeEnv({ building: { id: 12, zoneId: 3, channelId: 1 } });
+        await env.svc.setErrandInfo(ctx, { ...base, buildingId: '12' });
+        expect(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(
+            ctx, 5, expect.objectContaining({ buildingId: '12', campusZone: 'A区' }),
         );
     });
 });

@@ -126,6 +126,8 @@ let MerchantAdminService = class MerchantAdminService {
         const trimmed = (reason !== null && reason !== void 0 ? reason : '').trim();
         if (!trimmed)
             throw new core_1.UserInputError('请填写拒单原因');
+        if (trimmed.length > 200)
+            throw new core_1.UserInputError('拒单原因不能超过 200 个字符');
         const order = await this.assertChannelOrderState(ctx, orderId, ['pending_merchant', 'accepted']);
         // 并发防重退款：拒单是「查已退总额 → 退差额 → 取消」的复合动作，
         // 与 T4/运营处置并发时无锁会双退。用 PG 会话级咨询锁按订单串行化（同连接 runner 持有/释放）。

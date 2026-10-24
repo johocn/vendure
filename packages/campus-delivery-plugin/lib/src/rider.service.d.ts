@@ -13,6 +13,9 @@ export declare class RiderService {
     }): Promise<{
         status: string;
     }>;
+    /** 骑手归属渠守卫：Customer 的渠道是多对多，必须 join customer.channels。
+     * 否则 A 店审核员可按 customerId 查看/停用 B 店骑手（含学号、证件照）。 */
+    private assertCustomerInChannel;
     setRiderStatus(ctx: RequestContext, customerId: number, status: 'approved' | 'suspended' | 'none'): Promise<{
         status: "none" | "suspended" | "approved";
     }>;

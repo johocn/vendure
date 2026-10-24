@@ -3,6 +3,8 @@ import { ID, Order, OrderService, RequestContext, TransactionalConnection } from
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export declare const ERRAND_BASE_SKU = "CAMPUS-ERRAND-BASE";
 export declare const ERRAND_BASE_SLUG = "campus-errand-base";
+/** 跑腿类型白名单（与发单页/调度统计口径一致） */
+export declare const ERRAND_KINDS: string[];
 /** 小费 surcharge 标识（幂等清理键：同单重复设置按此描述清旧补新，防重复计费） */
 export declare const ERRAND_TIP_SURCHARGE_DESC = "\u8DD1\u817F\u5C0F\u8D39";
 /**
