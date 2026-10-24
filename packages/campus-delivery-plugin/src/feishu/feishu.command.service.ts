@@ -972,14 +972,15 @@ export class FeishuCommandService {
         return arr.length > RATE_LIMIT_PER_MIN;
     }
 
+    /** 安全 GC：数组收集 key + 遍历完统一 delete（避免 Bug 5 模式——遍历时 delete 跳元素） */
     private cleanupConfirmations(): void {
         const now = Date.now();
-        for (const [k, v] of this.pendingReject) {
-            if (now - v.at > CONFIRM_TTL_MS) this.pendingReject.delete(k);
-        }
-        for (const [k, v] of this.pendingRestore) {
-            if (now - v.at > CONFIRM_TTL_MS) this.pendingRestore.delete(k);
-        }
+        const expiredReject: string[] = [];
+        for (const [k, v] of this.pendingReject) if (now - v.at > CONFIRM_TTL_MS) expiredReject.push(k);
+        for (const k of expiredReject) this.pendingReject.delete(k);
+        const expiredRestore: string[] = [];
+        for (const [k, v] of this.pendingRestore) if (now - v.at > CONFIRM_TTL_MS) expiredRestore.push(k);
+        for (const k of expiredRestore) this.pendingRestore.delete(k);
     }
 
     private async reply(chatId: string, text: string): Promise<void> {

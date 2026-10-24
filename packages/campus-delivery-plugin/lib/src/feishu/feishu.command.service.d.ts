@@ -103,6 +103,7 @@ export declare class FeishuCommandService {
     private exceptionCount;
     private isOperator;
     private isRateLimited;
+    /** 安全 GC：数组收集 key + 遍历完统一 delete（避免 Bug 5 模式——遍历时 delete 跳元素） */
     private cleanupConfirmations;
     private reply;
     /** 优先回在订单话题里（引用卡片/线程），拿不到锚点消息时退回群消息 */

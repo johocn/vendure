@@ -913,16 +913,21 @@ let FeishuCommandService = class FeishuCommandService {
         this.rate.set(chatId, arr);
         return arr.length > RATE_LIMIT_PER_MIN;
     }
+    /** 安全 GC：数组收集 key + 遍历完统一 delete（避免 Bug 5 模式——遍历时 delete 跳元素） */
     cleanupConfirmations() {
         const now = Date.now();
-        for (const [k, v] of this.pendingReject) {
+        const expiredReject = [];
+        for (const [k, v] of this.pendingReject)
             if (now - v.at > CONFIRM_TTL_MS)
-                this.pendingReject.delete(k);
-        }
-        for (const [k, v] of this.pendingRestore) {
+                expiredReject.push(k);
+        for (const k of expiredReject)
+            this.pendingReject.delete(k);
+        const expiredRestore = [];
+        for (const [k, v] of this.pendingRestore)
             if (now - v.at > CONFIRM_TTL_MS)
-                this.pendingRestore.delete(k);
-        }
+                expiredRestore.push(k);
+        for (const k of expiredRestore)
+            this.pendingRestore.delete(k);
     }
     async reply(chatId, text) {
         await this.client.sendToChat(chatId, text);
