@@ -64,11 +64,12 @@ describe('RiderTaskService', () => {
         ]);
         expect(saved[0].amount).toBe(400); // 300 shipping + 100 tip
     });
-    it('并发双送达 → 认领失败拒绝，不写分成（防双入账）', async () => {
+    it('并发双送达/已取消 → 认领失败拒绝，不写分成（防双入账）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
         const { svc, saved, rawQuery } = make(inProg);
         rawQuery.mockResolvedValueOnce([[], []]);
-        await expect(svc.deliver({ channelId: 1 } as any, 10 as any, ['p1'])).rejects.toThrow('当前状态不允许该操作');
+        await expect(svc.deliver({ channelId: 1 } as any, 10 as any, ['p1'])).rejects.toThrow('订单已被取消或处理');
+        expect(rawQuery.mock.calls[0][0]).toContain(`"state" <> 'Cancelled'`);
         expect(saved).toHaveLength(0);
     });
     it('分成比例 80%', async () => {
@@ -127,14 +128,23 @@ describe('RiderTaskService', () => {
         await expect(svc.reportException({ channelId: 1 } as any, 10 as any, 'food_spilled', ['p1']))
             .rejects.toThrow('当前状态不允许上报异常');
     });
-    it('配送中上报异常 → 写入 exception 与上报时间', async () => {
+    it('配送中上报异常 → 条件写 exception（含骑手归属与未取消守卫）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
-        const { svc, repo } = make(inProg);
+        const { svc, rawQuery } = make(inProg);
         await svc.reportException({ channelId: 1 } as any, 10 as any, 'food_spilled', ['p1'], '洒漏');
-        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({
-            customFields: expect.objectContaining({
-                deliveryStatus: 'exception', exceptionType: 'food_spilled', exceptionReportedAt: expect.any(Date),
-            }),
-        }));
+        expect(rawQuery).toHaveBeenCalledTimes(1);
+        const [sql, params] = rawQuery.mock.calls[0];
+        expect(sql).toContain('"customFieldsExceptiontype"');
+        expect(sql).toContain(`"state" <> 'Cancelled'`);
+        expect(params).toEqual([
+            'exception', 'food_spilled', JSON.stringify(['p1']), '洒漏', expect.any(Date), 10, ['assigned', 'in_progress'], '9',
+        ]);
+    });
+    it('上报异常时订单已被取消/改派（条件写未命中）→ 拒绝', async () => {
+        const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
+        const { svc, rawQuery } = make(inProg);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await expect(svc.reportException({ channelId: 1 } as any, 10 as any, 'food_spilled', ['p1']))
+            .rejects.toThrow('订单已被取消或改派');
     });
 });

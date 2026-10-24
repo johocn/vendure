@@ -33,7 +33,7 @@ export declare class CampusConfigAdminResolver {
         variantId: ID;
         sku: string;
     }>;
-    /** 拾光达店铺配置：全店铺列表（跨租户视角） */
+    /** 拾光达店铺配置：平台超管看全店铺；租户管理员仅看本渠道 */
     campusStoreConfigs(ctx: RequestContext): Promise<import("./waimai-store.service").CampusStoreConfigWithChannel[]>;
     campusUpdateStoreConfig(ctx: RequestContext, channelId: ID, input: any): Promise<import("./waimai-store.service").CampusStoreConfigWithChannel>;
     /** 运营中心推送/重推外部快递（R2 待推送、R3 外部策略；复用商家侧同源实现，带渠道归属校验） */
@@ -60,4 +60,8 @@ export declare class CampusConfigAdminResolver {
     }>;
     /** R2/R4 档案冲突治本：get-or-create 渠道合并默认配送档案（store-pickup+courier-delivery）并补绑未绑档案变体 */
     campusEnsureDefaultShippingProfile(ctx: RequestContext, channelId: ID): Promise<import("./shipping-profile-ensure.service").CampusEnsureProfileResult>;
+    /** 平台超管（跨租户视角）判定：与 cjk wallet-admin 同口径 */
+    private isPlatformAdmin;
+    /** 租户隔离：平台超管可操作任意渠道，租户管理员只能操作当前渠道（防跨店铺改他人履约配置） */
+    private assertChannelScope;
 }

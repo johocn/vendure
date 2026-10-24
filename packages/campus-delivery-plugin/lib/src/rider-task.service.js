@@ -233,10 +233,11 @@ let RiderTaskService = class RiderTaskService {
         const claimed = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1, "customFieldsDeliveredat" = $2, '
             + '"customFieldsHallstatus" = $3, "customFieldsDeliveryphotos" = $4, "customFieldsDeliverynote" = $5, '
             + '"customFieldsRiderearning" = $6, "customFieldsRiderlat" = NULL, "customFieldsRiderlng" = NULL '
-            + 'WHERE id = $7 AND "customFieldsDeliverystatus" = $8 RETURNING id', ['delivered', deliveredAt, 'delivered', JSON.stringify(photos), note !== null && note !== void 0 ? note : null, earning, order.id, 'in_progress']);
+            // 已取消单绝不落 delivered（否则取消退款后仍会算作送达并入账分成）
+            + `WHERE id = $7 AND "customFieldsDeliverystatus" = $8 AND "state" <> 'Cancelled' RETURNING id`, ['delivered', deliveredAt, 'delivered', JSON.stringify(photos), note !== null && note !== void 0 ? note : null, earning, order.id, 'in_progress']);
         const claimedRows = Array.isArray(claimed) ? claimed[0] : claimed;
         if (!(claimedRows === null || claimedRows === void 0 ? void 0 : claimedRows.length))
-            throw new core_1.UserInputError('当前状态不允许该操作（订单已被处理）');
+            throw new core_1.UserInputError('订单已被取消或处理，无法送达');
         if (earning === 0) {
             // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错，
             // 且 0 金额 pending 行会在钱包补账时永久重试报错）。
@@ -289,21 +290,23 @@ let RiderTaskService = class RiderTaskService {
     }
     /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     async reportException(ctx, orderId, type, photos, note) {
-        var _a;
+        var _a, _b, _c;
         const order = await this.assertOwner(ctx, orderId);
         const status = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.deliveryStatus;
         if (status !== 'assigned' && status !== 'in_progress') {
             throw new core_1.UserInputError('当前状态不允许上报异常');
         }
-        await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
-            customFields: {
-                deliveryStatus: 'exception',
-                exceptionType: type,
-                exceptionPhotos: photos,
-                exceptionNote: note !== null && note !== void 0 ? note : null,
-                exceptionReportedAt: new Date(),
-            },
-        });
+        // 条件写：并发取消/改派时不得把非本人/已终态单改成 exception（原先读后写存在竞态）
+        const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1, "customFieldsExceptiontype" = $2, '
+            + '"customFieldsExceptionphotos" = $3, "customFieldsExceptionnote" = $4, '
+            + '"customFieldsExceptionreportedat" = $5 '
+            + 'WHERE id = $6 AND "customFieldsDeliverystatus" = ANY($7::text[]) '
+            + 'AND "customFieldsDeliverystaffid" = $8 AND "state" <> \'Cancelled\' RETURNING id', ['exception', type, JSON.stringify(photos !== null && photos !== void 0 ? photos : []), note !== null && note !== void 0 ? note : null, new Date(), order.id,
+            ['assigned', 'in_progress'], String((_c = (_b = order.customFields) === null || _b === void 0 ? void 0 : _b.deliveryStaffId) !== null && _c !== void 0 ? _c : '')]);
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new core_1.UserInputError('订单已被取消或改派，无法上报异常');
+        }
         return order;
     }
     calcEarning(order, cfg) {

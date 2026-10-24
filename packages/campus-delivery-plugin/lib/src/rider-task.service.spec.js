@@ -62,11 +62,12 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         ]);
         (0, vitest_1.expect)(saved[0].amount).toBe(400); // 300 shipping + 100 tip
     });
-    (0, vitest_1.it)('并发双送达 → 认领失败拒绝，不写分成（防双入账）', async () => {
+    (0, vitest_1.it)('并发双送达/已取消 → 认领失败拒绝，不写分成（防双入账）', async () => {
         const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
         const { svc, saved, rawQuery } = make(inProg);
         rawQuery.mockResolvedValueOnce([[], []]);
-        await (0, vitest_1.expect)(svc.deliver({ channelId: 1 }, 10, ['p1'])).rejects.toThrow('当前状态不允许该操作');
+        await (0, vitest_1.expect)(svc.deliver({ channelId: 1 }, 10, ['p1'])).rejects.toThrow('订单已被取消或处理');
+        (0, vitest_1.expect)(rawQuery.mock.calls[0][0]).toContain(`"state" <> 'Cancelled'`);
         (0, vitest_1.expect)(saved).toHaveLength(0);
     });
     (0, vitest_1.it)('分成比例 80%', async () => {
@@ -125,15 +126,24 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         await (0, vitest_1.expect)(svc.reportException({ channelId: 1 }, 10, 'food_spilled', ['p1']))
             .rejects.toThrow('当前状态不允许上报异常');
     });
-    (0, vitest_1.it)('配送中上报异常 → 写入 exception 与上报时间', async () => {
+    (0, vitest_1.it)('配送中上报异常 → 条件写 exception（含骑手归属与未取消守卫）', async () => {
         const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
-        const { svc, repo } = make(inProg);
+        const { svc, rawQuery } = make(inProg);
         await svc.reportException({ channelId: 1 }, 10, 'food_spilled', ['p1'], '洒漏');
-        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({
-            customFields: vitest_1.expect.objectContaining({
-                deliveryStatus: 'exception', exceptionType: 'food_spilled', exceptionReportedAt: vitest_1.expect.any(Date),
-            }),
-        }));
+        (0, vitest_1.expect)(rawQuery).toHaveBeenCalledTimes(1);
+        const [sql, params] = rawQuery.mock.calls[0];
+        (0, vitest_1.expect)(sql).toContain('"customFieldsExceptiontype"');
+        (0, vitest_1.expect)(sql).toContain(`"state" <> 'Cancelled'`);
+        (0, vitest_1.expect)(params).toEqual([
+            'exception', 'food_spilled', JSON.stringify(['p1']), '洒漏', vitest_1.expect.any(Date), 10, ['assigned', 'in_progress'], '9',
+        ]);
+    });
+    (0, vitest_1.it)('上报异常时订单已被取消/改派（条件写未命中）→ 拒绝', async () => {
+        const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
+        const { svc, rawQuery } = make(inProg);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await (0, vitest_1.expect)(svc.reportException({ channelId: 1 }, 10, 'food_spilled', ['p1']))
+            .rejects.toThrow('订单已被取消或改派');
     });
 });
 //# sourceMappingURL=rider-task.service.spec.js.map

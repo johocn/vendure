@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
+import { Allow, Ctx, ID, Permission, RequestContext, UserInputError } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { ErrandService } from './errand.service';
 import { MerchantAdminService } from './merchant-admin.service';
@@ -120,11 +120,13 @@ export class CampusConfigAdminResolver {
         return { variantId, sku };
     }
 
-    /** 拾光达店铺配置：全店铺列表（跨租户视角） */
+    /** 拾光达店铺配置：平台超管看全店铺；租户管理员仅看本渠道 */
     @Query()
     @Allow(CampusPermissions.CampusConfig as any)
     async campusStoreConfigs(@Ctx() ctx: RequestContext) {
-        return this.stores.listStoreConfigs(ctx);
+        const all = await this.stores.listStoreConfigs(ctx);
+        if (this.isPlatformAdmin(ctx)) return all;
+        return all.filter(s => Number(s.channelId) === Number(ctx.channelId));
     }
 
     @Mutation()
@@ -134,6 +136,7 @@ export class CampusConfigAdminResolver {
         @Args('channelId') channelId: ID,
         @Args('input') input: any,
     ) {
+        this.assertChannelScope(ctx, Number(channelId));
         return this.stores.updateStoreConfig(ctx, Number(channelId), input);
     }
 
@@ -163,6 +166,19 @@ export class CampusConfigAdminResolver {
     @Mutation()
     @Allow(CampusPermissions.CampusConfig as any)
     async campusEnsureDefaultShippingProfile(@Ctx() ctx: RequestContext, @Args('channelId') channelId: ID) {
+        this.assertChannelScope(ctx, Number(channelId));
         return this.profileEnsure.ensureDefaultShippingProfile(ctx, Number(channelId));
+    }
+
+    /** 平台超管（跨租户视角）判定：与 cjk wallet-admin 同口径 */
+    private isPlatformAdmin(ctx: RequestContext): boolean {
+        return ctx.userHasPermissions([Permission.SuperAdmin]);
+    }
+
+    /** 租户隔离：平台超管可操作任意渠道，租户管理员只能操作当前渠道（防跨店铺改他人履约配置） */
+    private assertChannelScope(ctx: RequestContext, channelId: number) {
+        if (this.isPlatformAdmin(ctx)) return;
+        if (Number(channelId) === Number(ctx.channelId)) return;
+        throw new UserInputError('无权操作其他店铺的履约配置');
     }
 }

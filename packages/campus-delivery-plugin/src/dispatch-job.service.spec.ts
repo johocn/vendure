@@ -311,6 +311,20 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         expect(orderSvc.refundOrder).not.toHaveBeenCalled();
         expect(env.hallSvc.updateOrder).not.toHaveBeenCalledWith(expect.anything(), 4, expect.anything());
     });
+
+    it('单笔退款异常不阻断本轮其余订单（逐单隔离）', async () => {
+        const env = makeEnv({
+            openOrders: [
+                { id: 4, code: 'T4A', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } },
+                { id: 5, code: 'T4B', customerId: 502, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(32) } },
+            ],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        injectT4Services(env.svc);
+        const refundSpy = vi.spyOn(env.svc as any, 'refundNoRider').mockRejectedValueOnce(new Error('refund boom'));
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(refundSpy).toHaveBeenCalledTimes(2); // 第二单仍继续处理
+    });
 });
 
 describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => {
@@ -596,10 +610,10 @@ describe('DispatchJobService 超时赔付（P0）', () => {
     it('超出承诺 + 宽限 → 先抢赔付闸（CAS）再发券并写归因', async () => {
         const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
         await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
-        // 先认领闸：UPDATE ... WHERE timeoutcompensatedat IS NULL
+        // 先认领闸：UPDATE ... WHERE timeoutcompensatedat IS NULL（或过期僵死认领）RETURNING id
         expect(env.rawQuery).toHaveBeenCalledWith(
             expect.stringContaining('"customFieldsTimeoutcompensatedat" IS NULL'),
-            [expect.any(Date), 31],
+            [expect.any(Date), 31, expect.any(Date)],
         );
         expect(env.coupon!.grantCoupon).toHaveBeenCalledWith(
             expect.anything(), 'T-LATE', ['5'],
@@ -673,6 +687,30 @@ describe('DispatchJobService 超时赔付（P0）', () => {
         // 认领 + 释放两次 SQL：第二次把闸清空
         expect(env.rawQuery).toHaveBeenCalledTimes(2);
         expect(env.rawQuery.mock.calls[1][0]).toContain('"customFieldsTimeoutcompensatedat" = NULL');
+    });
+
+    it('发券返回空数组 → 释放赔付闸、不写留痕（避免空券把闸占死永久漏赔）', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder()], cfg: cfgOn,
+            coupon: { grantCoupon: vi.fn().mockResolvedValue([]) },
+        });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+        expect(env.rawQuery).toHaveBeenCalledTimes(2);
+        expect(env.rawQuery.mock.calls[1][0]).toContain('"customFieldsTimeoutcompensatedat" = NULL');
+    });
+
+    it('赔付闸过期回收：扫描与认领均允许「券 id 为空且认领超 15min」重新赔付', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        const whereSql = env.repo.createQueryBuilder.mock.results[0].value.andWhere.mock.calls
+            .map((c: any[]) => String(c[0]))
+            .join('\n');
+        expect(whereSql).toContain('timeoutCompensationCouponId IS NULL');
+        expect(whereSql).toContain('staleBefore');
+        expect(env.rawQuery.mock.calls[0][0]).toContain('"customFieldsTimeoutcompensationcouponid" IS NULL');
+        const staleBefore = env.rawQuery.mock.calls[0][1][2] as Date;
+        expect(now - staleBefore.getTime()).toBe(15 * 60_000);
     });
 
     it('已全额退款订单在查询层剔除（不参与赔付）', async () => {

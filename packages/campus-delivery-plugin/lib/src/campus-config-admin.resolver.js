@@ -70,11 +70,15 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
         const { variantId, sku } = await this.errand.ensureErrandProduct(ctx);
         return { variantId, sku };
     }
-    /** 拾光达店铺配置：全店铺列表（跨租户视角） */
+    /** 拾光达店铺配置：平台超管看全店铺；租户管理员仅看本渠道 */
     async campusStoreConfigs(ctx) {
-        return this.stores.listStoreConfigs(ctx);
+        const all = await this.stores.listStoreConfigs(ctx);
+        if (this.isPlatformAdmin(ctx))
+            return all;
+        return all.filter(s => Number(s.channelId) === Number(ctx.channelId));
     }
     async campusUpdateStoreConfig(ctx, channelId, input) {
+        this.assertChannelScope(ctx, Number(channelId));
         return this.stores.updateStoreConfig(ctx, Number(channelId), input);
     }
     /** 运营中心推送/重推外部快递（R2 待推送、R3 外部策略；复用商家侧同源实现，带渠道归属校验） */
@@ -87,7 +91,20 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     }
     /** R2/R4 档案冲突治本：get-or-create 渠道合并默认配送档案（store-pickup+courier-delivery）并补绑未绑档案变体 */
     async campusEnsureDefaultShippingProfile(ctx, channelId) {
+        this.assertChannelScope(ctx, Number(channelId));
         return this.profileEnsure.ensureDefaultShippingProfile(ctx, Number(channelId));
+    }
+    /** 平台超管（跨租户视角）判定：与 cjk wallet-admin 同口径 */
+    isPlatformAdmin(ctx) {
+        return ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+    }
+    /** 租户隔离：平台超管可操作任意渠道，租户管理员只能操作当前渠道（防跨店铺改他人履约配置） */
+    assertChannelScope(ctx, channelId) {
+        if (this.isPlatformAdmin(ctx))
+            return;
+        if (Number(channelId) === Number(ctx.channelId))
+            return;
+        throw new core_1.UserInputError('无权操作其他店铺的履约配置');
     }
 };
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver;

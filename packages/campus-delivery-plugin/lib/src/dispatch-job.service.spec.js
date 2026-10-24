@@ -294,6 +294,19 @@ function injectT4Services(svc) {
         (0, vitest_1.expect)(orderSvc.refundOrder).not.toHaveBeenCalled();
         (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.anything());
     });
+    (0, vitest_1.it)('单笔退款异常不阻断本轮其余订单（逐单隔离）', async () => {
+        const env = makeEnv({
+            openOrders: [
+                { id: 4, code: 'T4A', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } },
+                { id: 5, code: 'T4B', customerId: 502, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(32) } },
+            ],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        injectT4Services(env.svc);
+        const refundSpy = vitest_1.vi.spyOn(env.svc, 'refundNoRider').mockRejectedValueOnce(new Error('refund boom'));
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(refundSpy).toHaveBeenCalledTimes(2); // 第二单仍继续处理
+    });
 });
 (0, vitest_1.describe)('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => {
     const fresh = (id, cf) => ({
@@ -546,8 +559,8 @@ function makeTimeoutEnv(opts) {
     (0, vitest_1.it)('超出承诺 + 宽限 → 先抢赔付闸（CAS）再发券并写归因', async () => {
         const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
         await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
-        // 先认领闸：UPDATE ... WHERE timeoutcompensatedat IS NULL
-        (0, vitest_1.expect)(env.rawQuery).toHaveBeenCalledWith(vitest_1.expect.stringContaining('"customFieldsTimeoutcompensatedat" IS NULL'), [vitest_1.expect.any(Date), 31]);
+        // 先认领闸：UPDATE ... WHERE timeoutcompensatedat IS NULL（或过期僵死认领）RETURNING id
+        (0, vitest_1.expect)(env.rawQuery).toHaveBeenCalledWith(vitest_1.expect.stringContaining('"customFieldsTimeoutcompensatedat" IS NULL'), [vitest_1.expect.any(Date), 31, vitest_1.expect.any(Date)]);
         (0, vitest_1.expect)(env.coupon.grantCoupon).toHaveBeenCalledWith(vitest_1.expect.anything(), 'T-LATE', ['5']);
         (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 31, {
             customFields: vitest_1.expect.objectContaining({
@@ -609,6 +622,28 @@ function makeTimeoutEnv(opts) {
         // 认领 + 释放两次 SQL：第二次把闸清空
         (0, vitest_1.expect)(env.rawQuery).toHaveBeenCalledTimes(2);
         (0, vitest_1.expect)(env.rawQuery.mock.calls[1][0]).toContain('"customFieldsTimeoutcompensatedat" = NULL');
+    });
+    (0, vitest_1.it)('发券返回空数组 → 释放赔付闸、不写留痕（避免空券把闸占死永久漏赔）', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder()], cfg: cfgOn,
+            coupon: { grantCoupon: vitest_1.vi.fn().mockResolvedValue([]) },
+        });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(env.rawQuery).toHaveBeenCalledTimes(2);
+        (0, vitest_1.expect)(env.rawQuery.mock.calls[1][0]).toContain('"customFieldsTimeoutcompensatedat" = NULL');
+    });
+    (0, vitest_1.it)('赔付闸过期回收：扫描与认领均允许「券 id 为空且认领超 15min」重新赔付', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        const whereSql = env.repo.createQueryBuilder.mock.results[0].value.andWhere.mock.calls
+            .map((c) => String(c[0]))
+            .join('\n');
+        (0, vitest_1.expect)(whereSql).toContain('timeoutCompensationCouponId IS NULL');
+        (0, vitest_1.expect)(whereSql).toContain('staleBefore');
+        (0, vitest_1.expect)(env.rawQuery.mock.calls[0][0]).toContain('"customFieldsTimeoutcompensationcouponid" IS NULL');
+        const staleBefore = env.rawQuery.mock.calls[0][1][2];
+        (0, vitest_1.expect)(now - staleBefore.getTime()).toBe(15 * 60000);
     });
     (0, vitest_1.it)('已全额退款订单在查询层剔除（不参与赔付）', async () => {
         const env = makeTimeoutEnv({ orders: [], cfg: cfgOn });
