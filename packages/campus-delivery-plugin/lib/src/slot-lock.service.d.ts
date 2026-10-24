@@ -6,8 +6,8 @@ export declare class SlotLockService {
     /**
      * 支付成功后锁位：UPDATE ... WHERE lockedCount < capacity 乐观锁，affected=0 即满。
      * 返回 false 时调用方标 campusCause='slot_full' 进调度告警，不阻断订单。
-     * 锁位成功写 slotLocked=true，取消时只有带此标记的单才归还容量（否则未支付/锁位失败单
-     * 取消会把已满时段「放空」，造成容量虚增与超卖）。
+     * 幂等：先原子认领订单 slotLocked(false→true)，认领失败=已锁过（支付事件重放/并发二次入厅），
+     * 直接返回 true 不再递增容量；若容量已满则回滚认领，避免取消时误减造成容量虚增。
      */
     lock(ctx: RequestContext, order: Order | null): Promise<boolean>;
     /**

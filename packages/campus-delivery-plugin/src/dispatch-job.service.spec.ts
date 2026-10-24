@@ -16,14 +16,20 @@ function makeEnv(opts: {
         }),
     };
     const creditSvc = { adjust: vi.fn().mockResolvedValue(95) };
+    const allOrders = [...(opts.openOrders ?? []), ...(opts.assignedOrders ?? [])];
     const hallSvc = {
-        backToHall: vi.fn().mockResolvedValue({}),
+        backToHall: vi.fn().mockResolvedValue(true),
         updateOrder: vi.fn().mockResolvedValue({}),
-        releaseScheduled: vi.fn().mockResolvedValue({}),
+        // 状态迁移改走条件写（CAS）；默认命中，用例可 mockResolvedValueOnce(false) 模拟并发脱厅
+        transitionFrom: vi.fn().mockResolvedValue(true),
+        releaseScheduled: vi.fn().mockResolvedValue(true),
     };
     const capacitySvc = { listOnlineRiders: vi.fn().mockResolvedValue(opts.onlineRiders ?? []) };
     const orderRepo = {
-        findOne: vi.fn(),
+        // T4 锁内复查 / 商家拒单复查用：默认回放扫描到的订单快照
+        findOne: vi.fn().mockImplementation(({ where }: any) => Promise.resolve(
+            allOrders.find(o => String(o.id) === String(where?.id)) ?? null,
+        )),
         update: vi.fn().mockResolvedValue({}),
         createQueryBuilder: () => ({
             leftJoin: vi.fn().mockReturnThis(),
@@ -31,7 +37,7 @@ function makeEnv(opts: {
             andWhere: vi.fn().mockReturnThis(),
             orderBy: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),
-            getMany: vi.fn().mockResolvedValue([...(opts.openOrders ?? []), ...(opts.assignedOrders ?? [])]),
+            getMany: vi.fn().mockResolvedValue([...allOrders]),
         }),
     };
     const configRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? { autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 }) };
@@ -204,9 +210,16 @@ describe('DispatchJobService.scan 异常超时升级', () => {
             }],
         });
         await svc.scan({ channelId: 1 } as any);
-        expect(hallSvc.backToHall).toHaveBeenCalledWith(expect.anything(), 9);
-        expect(hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 9, expect.objectContaining({
-            customFields: expect.objectContaining({ campusCause: 'exception_timeout' }),
+        expect(hallSvc.backToHall).not.toHaveBeenCalled();
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 9, expect.any(Array), expect.objectContaining({
+            hallStatus: 'open',
+            campusCause: 'exception_timeout',
+            // 重派即新骑手接手：旧异常痕迹必须清空，否则新骑手端仍显示异常单
+            exceptionReportedAt: null,
+            exceptionType: null,
+            exceptionPhotos: null,
+            deliveryStatus: null,
+            deliveryStaffId: null,
         }));
     });
 
@@ -218,7 +231,7 @@ describe('DispatchJobService.scan 异常超时升级', () => {
             }],
         });
         await svc.scan({ channelId: 1 } as any);
-        expect(hallSvc.backToHall).not.toHaveBeenCalled();
+        expect(hallSvc.transitionFrom).not.toHaveBeenCalled();
     });
 });
 
@@ -275,6 +288,19 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
             customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));
+    });
+
+    it('锁内复查：等锁期间订单已被抢单/取消 → 不退款也不标记', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 4, code: 'T4', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        injectT4Services(env.svc);
+        const orderSvc = (env.svc as any).orderSvc;
+        env.orderRepo.findOne.mockResolvedValueOnce({ id: 4, customFields: { hallStatus: 'grabbed' } });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(orderSvc.refundOrder).not.toHaveBeenCalled();
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalledWith(expect.anything(), 4, expect.anything());
     });
 });
 
@@ -356,13 +382,11 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, merchantAcceptMinutes: 5 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 21, {
-            customFields: expect.objectContaining({
-                hallStatus: 'owned_dispatched',
-                deliveryPlan: 'owned',
-                campusCause: 'merchant_accept_timeout',
-            }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 21, ['pending_merchant'], expect.objectContaining({
+            hallStatus: 'owned_dispatched',
+            deliveryPlan: 'owned',
+            campusCause: 'merchant_accept_timeout',
+        }));
     });
 
     it('R2 商户接单超时 → 降级传信者到店取餐直送（open）', async () => {
@@ -371,13 +395,11 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, merchantAcceptMinutes: 5 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 24, {
-            customFields: expect.objectContaining({
-                hallStatus: 'open',
-                deliveryPlan: 'campus_rider',
-                campusCause: 'merchant_accept_timeout',
-            }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 24, ['pending_merchant'], expect.objectContaining({
+            hallStatus: 'open',
+            deliveryPlan: 'campus_rider',
+            campusCause: 'merchant_accept_timeout',
+        }));
     });
 
     it('R2 已接单但久未出餐 → 降级传信者到店取餐直送（open）', async () => {
@@ -386,13 +408,11 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 25, {
-            customFields: expect.objectContaining({
-                hallStatus: 'open',
-                deliveryPlan: 'campus_rider',
-                campusCause: 'merchant_cooking_timeout',
-            }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 25, ['accepted'], expect.objectContaining({
+            hallStatus: 'open',
+            deliveryPlan: 'campus_rider',
+            campusCause: 'merchant_cooking_timeout',
+        }));
     });
 
     it('R1 商户久未送达交接点 → 回大厅由传信者取餐', async () => {
@@ -401,13 +421,11 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 22, {
-            customFields: expect.objectContaining({
-                hallStatus: 'open',
-                deliveryPlan: 'campus_rider',
-                campusCause: 'merchant_deliver_timeout',
-            }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 22, ['merchant_delivering'], expect.objectContaining({
+            hallStatus: 'open',
+            deliveryPlan: 'campus_rider',
+            campusCause: 'merchant_deliver_timeout',
+        }));
     });
 
     it('R2 迟迟未推送外部快递 → 回大厅', async () => {
@@ -416,9 +434,9 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, externalPushTimeoutMinutes: 10 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 23, {
-            customFields: expect.objectContaining({ hallStatus: 'open', campusCause: 'external_push_timeout' }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 23, ['pending_dispatch'], expect.objectContaining({
+            hallStatus: 'open', campusCause: 'external_push_timeout',
+        }));
     });
 
     it('R3 外部快递久未接单 → 取消并回抢单大厅；R2 回待推送', async () => {
@@ -430,12 +448,28 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, externalFallbackMinutes: 20 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 24, {
-            customFields: expect.objectContaining({ hallStatus: 'open', campusCause: 'external_fallback' }),
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 24, ['third_party'], expect.objectContaining({
+            hallStatus: 'open', campusCause: 'external_fallback',
+        }));
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 25, ['third_party'], expect.objectContaining({
+            hallStatus: 'pending_dispatch', campusCause: 'external_fallback',
+        }));
+    });
+
+    it('外部取消失败 → 保持 third_party 不回落重推（防双运单双份运费）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 30, code: 'R3C', createdAt: minAgo(40), customFields: { hallStatus: 'third_party', fulfillmentRoute: 'R3', deliveryPlan: 'external_courier', thirdPartyDispatchAt: minAgo(30) } }],
+            cfg: { ...cfg, externalFallbackMinutes: 20 },
         });
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 25, {
-            customFields: expect.objectContaining({ hallStatus: 'pending_dispatch', campusCause: 'external_fallback' }),
+        // 注入外部网关：取消返回失败
+        (env.svc as any).thirdParty = { cancel: vi.fn().mockResolvedValue({ ok: false, reason: 'platform busy' }) };
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 30, ['third_party'], {
+            campusCause: 'external_cancel_failed',
         });
+        expect(env.hallSvc.transitionFrom).not.toHaveBeenCalledWith(
+            expect.anything(), 30, ['third_party'], expect.objectContaining({ hallStatus: 'open' }),
+        );
     });
 
     it('外部已接单/取货 → 超 fallback 也不取消（避免干掉在途骑手）', async () => {
@@ -444,7 +478,7 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, externalFallbackMinutes: 20 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+        expect(env.hallSvc.transitionFrom).not.toHaveBeenCalled();
     });
 
     it('外部接单后超 3×fallback → 硬上限仍取消回落', async () => {
@@ -453,9 +487,9 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, externalFallbackMinutes: 20 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 27, {
-            customFields: expect.objectContaining({ hallStatus: 'open', campusCause: 'external_fallback' }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 27, ['third_party'], expect.objectContaining({
+            hallStatus: 'open', campusCause: 'external_fallback',
+        }));
     });
 
     it('自营快递池久无人接单 → 回抢单大厅（传信者兜底）', async () => {
@@ -464,9 +498,9 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 28, {
-            customFields: expect.objectContaining({ hallStatus: 'open', campusCause: 'owned_pool_timeout' }),
-        });
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 28, ['owned_pool'], expect.objectContaining({
+            hallStatus: 'open', campusCause: 'owned_pool_timeout',
+        }));
     });
 
     it('自营快递已派出久未送达 → 回抢单大厅并清空骑手', async () => {
@@ -475,12 +509,34 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
             cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
         });
         await env.svc.scan({ channelId: 1 } as any);
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 29, {
-            customFields: expect.objectContaining({
-                hallStatus: 'open', campusCause: 'owned_deliver_timeout',
-                deliveryStaffId: null, assignedAt: null,
-            }),
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledWith(expect.anything(), 29, ['owned_dispatched'], expect.objectContaining({
+            hallStatus: 'open', campusCause: 'owned_deliver_timeout',
+            deliveryStaffId: null, assignedAt: null,
+        }));
+    });
+
+    it('预约单刚放量：按 hallEnteredAt 计时，不被 createdAt 误判商家超时', async () => {
+        const env = makeEnv({
+            openOrders: [{
+                id: 31, code: 'SCH', createdAt: minAgo(300), // 预约单很早下单
+                customFields: { hallStatus: 'scheduled', fulfillmentRoute: 'R1', scheduledFor: new Date(now + 10 * 60_000) },
+            }],
+            cfg: { ...cfg, merchantAcceptMinutes: 5 },
         });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.releaseScheduled).toHaveBeenCalledOnce();
+        // 放量后锚点为当前时刻：不应同一轮触发 merchant_accept_timeout
+        expect(env.hallSvc.transitionFrom).not.toHaveBeenCalled();
+    });
+
+    it('CAS 未命中（并发取消/已改派）→ 跳过且不再继续后续兜底', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 32, code: 'CAS', createdAt: minAgo(40), customFields: { hallStatus: 'owned_pool', fulfillmentRoute: 'R3', deliveryPlan: 'owned' } }],
+            cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
+        });
+        env.hallSvc.transitionFrom.mockResolvedValueOnce(false);
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.transitionFrom).toHaveBeenCalledOnce();
     });
 });
 
@@ -492,19 +548,19 @@ function makeTimeoutEnv(opts: {
 }) {
     const env = makeEnv({ cfg: { channelId: 1, ...opts.cfg } });
     const repo = {
-        createQueryBuilder: () => ({
+        createQueryBuilder: vi.fn(() => ({
             leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
             andWhere: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),
             getMany: vi.fn().mockResolvedValue(opts.orders),
-        }),
+        })),
     };
     // 券服务 mock 需固定实例（services() 每次调用都会重建对象，不能在里面新建 spy）
     const coupon = opts.coupon === null ? null : (opts.coupon ?? { grantCoupon: vi.fn().mockResolvedValue(['coupon-1']) });
     (env.svc as any).connection = { getRepository: vi.fn(() => repo) };
     (env.svc as any).services = () => ({ order: null, coupon });
-    return { ...env, coupon };
+    return { ...env, coupon, repo };
 }
 
 describe('DispatchJobService 超时赔付（P0）', () => {
@@ -582,6 +638,17 @@ describe('DispatchJobService 超时赔付（P0）', () => {
         });
         await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
         expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('已全额退款订单在查询层剔除（不参与赔付）', async () => {
+        const env = makeTimeoutEnv({ orders: [], cfg: cfgOn });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        // 断言扫描 SQL 带「已全额退款排除」子查询（退款单未必是 Cancelled，仅靠 state 过滤不够）
+        const whereSql = env.repo.createQueryBuilder.mock.results[0].value.andWhere.mock.calls
+            .map((c: any[]) => String(c[0]))
+            .join('\n');
+        expect(whereSql).toContain('NOT EXISTS');
+        expect(whereSql).toContain('"refund"');
     });
 });
 

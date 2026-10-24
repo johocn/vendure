@@ -162,7 +162,7 @@ describe('RiderTaskService.transfer', () => {
             update: vi.fn().mockResolvedValue({}),
         };
         const conn = { getRepository: vi.fn(() => orderRepo) } as any;
-        const hall = { backToHall: vi.fn().mockResolvedValue(undefined) };
+        const hall = { backToHall: vi.fn().mockResolvedValue(true) };
         const svc = new RiderTaskService(
             conn,
             { assertApprovedRider: vi.fn().mockResolvedValue({ id: 7 }) } as any,
@@ -200,5 +200,12 @@ describe('RiderTaskService.transfer', () => {
     it('delivered 状态拒绝转单', async () => {
         const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered' } } });
         await expect(env.svc.transfer({} as any, 5, [])).rejects.toThrow('当前状态不允许转单');
+    });
+
+    it('订单已被取消/改派（条件回厅不命中）→ 拒绝转单，不复活订单', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } } });
+        env.hall.backToHall.mockResolvedValueOnce(false);
+        await expect(env.svc.transfer({} as any, 5, [])).rejects.toThrow('订单已被取消或改派');
+        expect(env.orderRepo.update).not.toHaveBeenCalled();
     });
 });

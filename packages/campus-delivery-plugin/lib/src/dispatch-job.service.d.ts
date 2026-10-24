@@ -44,7 +44,9 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     /**
      * 异常上报超时升级：骑手上报异常后运营未在 SLA 内处置（inProgressSlaMinutes，默认 45）→
      * 自动回大厅重新派单（等价运营「重派」处置），避免订单卡死在 exception 占用骑手与履约时效。
-     * 异常类型/照片/说明保留供追责；campusCause 留痕 exception_timeout。
+     * 单条 CAS 完成「回厅 + 清异常痕迹」：类型/照片/说明保留供追责存疑——不，重派即新骑手接手，
+     * 旧骑手的异常标记必须清掉，否则新骑手端会继续显示「异常单」且本轮会再次命中本规则。
+     * 异常类型/说明随订单日志已留痕；campusCause=exception_timeout 供运营复盘。
      */
     private sweepExceptionTimeout;
     /**

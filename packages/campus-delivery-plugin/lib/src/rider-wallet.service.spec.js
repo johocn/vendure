@@ -20,6 +20,14 @@ const platformCtx = { channelId: 1, apiType: 'admin' };
 function make() {
     const riderSvc = { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 9 }) };
     const saved = [];
+    // 提现审核原子认领：UPDATE ... WHERE status='PENDING'（条件必须在 where 里，affected=0 即已被处理）
+    const qb = {
+        update: vitest_1.vi.fn().mockReturnThis(),
+        set: vitest_1.vi.fn().mockReturnThis(),
+        where: vitest_1.vi.fn().mockReturnThis(),
+        andWhere: vitest_1.vi.fn().mockReturnThis(),
+        execute: vitest_1.vi.fn().mockResolvedValue({ affected: 1 }),
+    };
     const repo = {
         save: vitest_1.vi.fn().mockImplementation((v) => {
             saved.push(v);
@@ -29,6 +37,7 @@ function make() {
         find: vitest_1.vi.fn().mockResolvedValue([]),
         update: vitest_1.vi.fn().mockResolvedValue({ affected: 1 }),
         count: vitest_1.vi.fn().mockResolvedValue(0),
+        createQueryBuilder: vitest_1.vi.fn(() => qb),
     };
     // em 仓储：rawConnection 事务内使用（Customer 行锁 / PENDING 防重 count / PENDING 落库 save）
     const emRepo = {
@@ -48,7 +57,7 @@ function make() {
         rawConnection: { transaction: vitest_1.vi.fn((fn) => fn(em)) },
     };
     const reqCtxSvc = { create: vitest_1.vi.fn().mockResolvedValue(platformCtx) };
-    return { svc: new rider_wallet_service_1.RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn };
+    return { svc: new rider_wallet_service_1.RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn, qb };
 }
 (0, vitest_1.describe)('RiderWalletService', () => {
     // mocks.port 为模块级共享 spy：清除跨用例调用记录，
@@ -85,19 +94,27 @@ function make() {
         (0, vitest_1.expect)(saved).toHaveLength(1);
     });
     (0, vitest_1.it)('reject 解冻退回：先原子认领（REJECTED）再 addBalance(+amount)（资金走默认渠道上下文）', async () => {
-        const { svc, repo } = make();
+        const { svc, repo, qb } = make();
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
         await svc.adminReject(ctx, 5, '信息不符');
-        // F3：认领在前，退回在后
-        (0, vitest_1.expect)(repo.update.mock.calls[0][0]).toBe(5);
-        (0, vitest_1.expect)(repo.update.mock.calls[0][1]).toEqual(vitest_1.expect.objectContaining({ status: 'REJECTED', remark: '信息不符' }));
+        // 条件更新：条件必须在 where 里，affected=0 即已被处理
+        (0, vitest_1.expect)(qb.where).toHaveBeenCalledWith('id = :id', { id: 5 });
+        (0, vitest_1.expect)(qb.andWhere).toHaveBeenCalledWith('status = :s', { s: 'PENDING' });
+        (0, vitest_1.expect)(qb.set).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: 'REJECTED', remark: '信息不符' }));
         (0, vitest_1.expect)(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
     });
     (0, vitest_1.it)('reject 并发已处理（条件更新 affected=0）抛错且不退回', async () => {
-        const { svc, repo } = make();
+        const { svc, repo, qb } = make();
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
-        repo.update.mockResolvedValueOnce({ affected: 0 });
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
         await (0, vitest_1.expect)(svc.adminReject(ctx, 5, '信息不符')).rejects.toThrow('该申请已处理');
+        (0, vitest_1.expect)(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('approve 并发已处理（条件更新 affected=0）抛错，不会又打款又退款', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        await (0, vitest_1.expect)(svc.adminApprove(ctx, 5, '已打款')).rejects.toThrow('该申请已处理');
         (0, vitest_1.expect)(mocks.port.addBalance).not.toHaveBeenCalled();
     });
     (0, vitest_1.it)('reject 退回失败：补偿恢复 PENDING 并抛「退回失败」以便重试', async () => {
@@ -105,16 +122,17 @@ function make() {
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
         mocks.port.addBalance.mockRejectedValueOnce(new Error('db down'));
         await (0, vitest_1.expect)(svc.adminReject(ctx, 5, '信息不符')).rejects.toThrow('退回失败');
-        (0, vitest_1.expect)(repo.update).toHaveBeenLastCalledWith(5, { status: 'PENDING' });
+        // 仅当本次认领仍为 REJECTED 时才恢复 PENDING（条件写，防并发改成 PAID 后回滚错状态）
+        (0, vitest_1.expect)(repo.update).toHaveBeenLastCalledWith({ id: 5, status: 'REJECTED' }, { status: 'PENDING' });
     });
     (0, vitest_1.it)('管理端跨渠道可审核：查询不限定 channelId，退回资金固定默认渠道，留痕记审核人', async () => {
-        const { svc, repo } = make();
+        const { svc, repo, qb } = make();
         const adminCtx = { channelId: 2, activeUserId: 7 };
         repo.findOne.mockResolvedValue({ id: 6, customerId: 9, amount: 1000, status: 'PENDING', channelId: 1 });
         await svc.adminReject(adminCtx, 6, '冒烟驳回');
         (0, vitest_1.expect)(repo.findOne).toHaveBeenCalledWith({ where: { id: 6 } });
         (0, vitest_1.expect)(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 1000);
-        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(6, vitest_1.expect.objectContaining({ status: 'REJECTED', reviewedBy: '7' }));
+        (0, vitest_1.expect)(qb.set).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: 'REJECTED', reviewedBy: '7' }));
     });
     (0, vitest_1.it)('withdraw 已有 PENDING 申请时拒绝（事务内防重检查，扣款不发生）', async () => {
         const { svc, emRepo } = make();

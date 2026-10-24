@@ -444,23 +444,32 @@ let AddressChangeService = class AddressChangeService {
             && String((_l = cf.deliveryPlan) !== null && _l !== void 0 ? _l : '') === 'external_courier'
             && ['pending', 'accepted', 'pickup'].includes(tpState);
         if (externalInFlight) {
+            let cancelled = false;
             try {
                 const res = await this.thirdParty.cancel(ctx, Number(order.id), 'address changed');
-                if (res === null || res === void 0 ? void 0 : res.ok) {
-                    // cancel 按路线回落（R2 待推送 / R3 大厅且 deliveryPlan 改回 campus_rider）；
-                    // 改址场景统一恢复外部快递计划并回待推送，等运营按新址重推。
-                    await this.orderService.updateCustomFields(ctx, order.id, {
-                        hallStatus: 'pending_dispatch',
-                        deliveryPlan: 'external_courier',
-                        handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
-                        thirdPartyState: 'cancelled',
-                        thirdPartyDispatchAt: new Date(),
-                        campusCause: 'address_changed_repush',
-                    });
-                }
+                cancelled = !!(res === null || res === void 0 ? void 0 : res.ok);
             }
             catch (e) {
-                core_1.Logger.warn(`address change repush failed for ${order.code}: ${(_m = e === null || e === void 0 ? void 0 : e.message) !== null && _m !== void 0 ? _m : e}`, loggerCtx);
+                core_1.Logger.error(`address change: cancel external failed for ${order.code}: ${(_m = e === null || e === void 0 ? void 0 : e.message) !== null && _m !== void 0 ? _m : e}`, loggerCtx);
+            }
+            if (cancelled) {
+                // cancel 按路线回落（R2 待推送 / R3 大厅且 deliveryPlan 改回 campus_rider）；
+                // 改址场景统一恢复外部快递计划并回待推送，等运营按新址重推。
+                await this.orderService.updateCustomFields(ctx, order.id, {
+                    hallStatus: 'pending_dispatch',
+                    deliveryPlan: 'external_courier',
+                    handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
+                    thirdPartyState: 'cancelled',
+                    thirdPartyDispatchAt: new Date(),
+                    campusCause: 'address_changed_repush',
+                });
+            }
+            else {
+                // 旧运单未确认取消：仍会按旧地址送达，新址无人处理。留痕给运营人工取消/改址，不可静默。
+                await this.orderService.updateCustomFields(ctx, order.id, {
+                    campusCause: 'address_change_cancel_failed',
+                });
+                core_1.Logger.error(`address change: external delivery for ${order.code} NOT cancelled, still routed to old address; manual follow-up required`, loggerCtx);
             }
         }
         core_1.Logger.info(`address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`, loggerCtx);

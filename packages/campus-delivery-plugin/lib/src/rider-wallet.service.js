@@ -145,37 +145,51 @@ let RiderWalletService = class RiderWalletService {
     }
     /** 管理端：通过打款（仅留痕，金额已在申请时扣减） */
     async adminApprove(ctx, id, remark) {
+        var _a;
         const req = await this.getForReview(id);
         const pc = await this.platformCtx();
         const repo = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest);
-        // 原子认领：条件更新仅当仍为 PENDING 时生效，防并发双审
-        const claim = await repo.update(req.id, {
+        // 原子认领：UPDATE ... WHERE status='PENDING'（条件必须在 where 里才生效，
+        // 仅按 id 更新的 affected 恒为 1，并发「通过 + 驳回」都会成功 → 可能又退款又标记已打款）
+        const claim = await repo
+            .createQueryBuilder()
+            .update(rider_withdrawal_entity_1.RiderWithdrawalRequest)
+            .set({
             status: 'PAID',
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || req.remark || null,
             reviewedBy: this.reviewer(ctx),
             reviewedAt: new Date(),
-        });
-        if (claim && claim.affected === 0)
+        })
+            .where('id = :id', { id: req.id })
+            .andWhere('status = :s', { s: 'PENDING' })
+            .execute();
+        if (!((_a = claim === null || claim === void 0 ? void 0 : claim.affected) !== null && _a !== void 0 ? _a : 0))
             throw new core_1.UserInputError('该申请已处理');
         return repo.findOne({ where: { id: req.id } });
     }
     /** 管理端：驳回（退回冻结金额 + 留痕；退回资金固定默认渠道，与申请扣款同渠道） */
     async adminReject(ctx, id, remark) {
-        var _a;
+        var _a, _b;
         const pc = await this.platformCtx();
         const repo = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest);
         const req = await repo.findOne({ where: { id } });
         if (!req)
             throw new core_1.UserInputError('提现申请不存在');
-        // F3 原子认领：条件更新仅当仍为 PENDING 时生效，防并发双审 → 双重退回；
+        // F3 原子认领：UPDATE ... WHERE status='PENDING'，防并发双审 → 双重退回；
         // 先改状态再退回，退回失败补偿恢复 PENDING 以便重试（避免「已驳回但钱未退」）
-        const claim = await repo.update(req.id, {
+        const claim = await repo
+            .createQueryBuilder()
+            .update(rider_withdrawal_entity_1.RiderWithdrawalRequest)
+            .set({
             status: 'REJECTED',
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || req.remark || null,
             reviewedBy: this.reviewer(ctx),
             reviewedAt: new Date(),
-        });
-        if (claim && claim.affected === 0)
+        })
+            .where('id = :id', { id: req.id })
+            .andWhere('status = :s', { s: 'PENDING' })
+            .execute();
+        if (!((_a = claim === null || claim === void 0 ? void 0 : claim.affected) !== null && _a !== void 0 ? _a : 0))
             throw new core_1.UserInputError('该申请已处理');
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (port) {
@@ -183,8 +197,11 @@ let RiderWalletService = class RiderWalletService {
                 await port.addBalance(pc, req.customerId, req.amount);
             }
             catch (e) {
-                await repo.update(req.id, { status: 'PENDING' }).catch(() => undefined);
-                common_1.Logger.error(`驳回退回失败（已恢复 PENDING 可重试）：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'RiderWallet');
+                // 仅当本次认领仍为 REJECTED 时恢复（防已被并发改为 PAID 时回滚错状态）
+                await repo
+                    .update({ id: req.id, status: 'REJECTED' }, { status: 'PENDING' })
+                    .catch(() => undefined);
+                common_1.Logger.error(`驳回退回失败（已恢复 PENDING 可重试）：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'RiderWallet');
                 throw new core_1.UserInputError('退回失败，请稍后重试');
             }
         }

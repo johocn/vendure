@@ -3,6 +3,9 @@ import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
+/** 仍在履约链路上的大厅状态（取消脱厅/回厅/条件状态迁移共用）。
+ * 终态（delivered/cancelled/no_rider_final/exception_final）不在其中，任何写入都不应把终态单改回流转态。 */
+export declare const ACTIVE_HALL_STATUSES: string[];
 /**
  * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在**支付成功后**自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
@@ -29,13 +32,26 @@ export declare class HallService {
      */
     private resolvePromise;
     onOrderPlaced(ctx: RequestContext, orderInput: Order): Promise<void>;
-    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
-    releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;
+    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流。
+     * 放量即写 hallEnteredAt 作为「商家/运力计时锚点」：预约单 createdAt 可能早于放量数小时甚至数天，
+     * 若下游超时兜底沿用 createdAt，一放量就会被判定超时（R1 直接转自营、R2 直接进大厅、跳过商家确认）。
+     * 条件写（仅 scheduled 态）：与用户取消并发时不把已取消单复活。返回是否真正放量。 */
+    releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<boolean>;
+    /** 放量目标态（put 与调度 job 共用；job 用它在内存里同步订单快照，避免同轮二次误判） */
+    static releaseTarget(cf: any, cfg: CampusFulfillmentConfig | null): string;
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
     enterHallForHandover(ctx: RequestContext, orderId: number, cause: string): Promise<string>;
-    /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
-    backToHall(ctx: RequestContext, orderId: number): Promise<void>;
+    /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
+     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
+    backToHall(ctx: RequestContext, orderId: number): Promise<boolean>;
+    /**
+     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内时才写入 patch，返回 affected>0。
+     * 调度扫描/商家操作都是「先读后写」，若期间用户取消并脱厅（hallStatus=cancelled），
+     * 无条件 update 会把已退款单改回 open/pending_merchant 重新进入大厅被抢。
+     * 用单条 UPDATE + hallStatus 条件把「校验与写入」合并成一个原子动作。
+     */
+    transitionFrom(_ctx: RequestContext, orderId: number, from: string[], patch: Record<string, unknown>): Promise<boolean>;
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
      * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
     exitHall(ctx: RequestContext, order: Order): Promise<void>;

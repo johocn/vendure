@@ -8,6 +8,17 @@ import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
 import { resolveHandoverPoint, resolveRoutePlan } from './route-matrix';
 
+/** 仍在履约链路上的大厅状态（取消脱厅/回厅/条件状态迁移共用）。
+ * 终态（delivered/cancelled/no_rider_final/exception_final）不在其中，任何写入都不应把终态单改回流转态。 */
+export const ACTIVE_HALL_STATUSES = [
+    'open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed', 'third_party',
+    'merchant_delivering', 'owned_pool', 'owned_dispatched', 'pending_dispatch',
+];
+
+/** customFields 字段名 → 物理列名（Vendure 规则：customFields + 首字母大写 + 其余小写）
+ * 例：hallStatus → customFieldsHallstatus；thirdPartyDispatchAt → customFieldsThirdpartydispatchat */
+const orderColumn = (field: string) => `"customFields${field.charAt(0).toUpperCase()}${field.slice(1).toLowerCase()}"`;
+
 /**
  * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在**支付成功后**自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
@@ -167,24 +178,34 @@ export class HallService {
         this.notifyRiders(ctx, order);
     }
 
-    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
-    async releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null) {
+    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流。
+     * 放量即写 hallEnteredAt 作为「商家/运力计时锚点」：预约单 createdAt 可能早于放量数小时甚至数天，
+     * 若下游超时兜底沿用 createdAt，一放量就会被判定超时（R1 直接转自营、R2 直接进大厅、跳过商家确认）。
+     * 条件写（仅 scheduled 态）：与用户取消并发时不把已取消单复活。返回是否真正放量。 */
+    async releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<boolean> {
         const cf = order.customFields as any;
-        const route = String(cf.fulfillmentRoute ?? '');
-        let next = 'open';
-        if (route === 'R1') next = 'pending_merchant';
-        else if (route === 'R2') next = 'pending_merchant'; // 出餐闸门：放量后先等商户接单/出餐
-        else if (cf.deliveryPlan === 'external_courier') next = 'pending_dispatch';
-        else if (cf.deliveryPlan === 'owned') next = 'owned_pool';
-        else if (cfg?.merchantConfirmEnabled) next = 'pending_merchant';
-
-        await this.connection.getRepository(ctx, Order).update(order.id, {
-            customFields: next === 'open'
-                ? { hallStatus: next, hallEnteredAt: new Date() }
-                : { hallStatus: next },
-        } as any);
+        const next = HallService.releaseTarget(cf, cfg);
+        const released = await this.transitionFrom(ctx, Number(order.id), ['scheduled'], {
+            hallStatus: next,
+            hallEnteredAt: new Date(),
+        });
+        if (!released) {
+            Logger.info(`Order ${order.code} scheduled release skipped (hall status changed)`, 'CampusHall');
+            return false;
+        }
         Logger.info(`Order ${order.code} scheduled → ${next}`, 'CampusHall');
-        if (next === 'open') this.notifyRiders(ctx, order);
+        // 无人接单的渠道保持原行为：放量即提醒在线骑手
+        if (next === 'open' || next === 'owned_pool') this.notifyRiders(ctx, order);
+        return true;
+    }
+
+    /** 放量目标态（put 与调度 job 共用；job 用它在内存里同步订单快照，避免同轮二次误判） */
+    static releaseTarget(cf: any, cfg: CampusFulfillmentConfig | null): string {
+        const route = String(cf.fulfillmentRoute ?? '');
+        if (route === 'R1' || route === 'R2') return 'pending_merchant'; // 出餐闸门：先等商户接单/出餐
+        if (cf.deliveryPlan === 'external_courier') return 'pending_dispatch';
+        if (cf.deliveryPlan === 'owned') return 'owned_pool';
+        return cfg?.merchantConfirmEnabled ? 'pending_merchant' : 'open';
     }
 
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。
@@ -216,11 +237,41 @@ export class HallService {
         return handoverCode;
     }
 
-    /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
-    async backToHall(ctx: RequestContext, orderId: number) {
-        await this.connection.getRepository(ctx, Order).update(orderId, {
-            customFields: { hallStatus: 'open', deliveryStaffId: null, deliveryStatus: null, assignedAt: null },
-        } as any);
+    /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
+     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
+    async backToHall(ctx: RequestContext, orderId: number): Promise<boolean> {
+        return this.transitionFrom(ctx, orderId, ACTIVE_HALL_STATUSES, {
+            hallStatus: 'open',
+            deliveryStaffId: null,
+            deliveryStatus: null,
+            assignedAt: null,
+        });
+    }
+
+    /**
+     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内时才写入 patch，返回 affected>0。
+     * 调度扫描/商家操作都是「先读后写」，若期间用户取消并脱厅（hallStatus=cancelled），
+     * 无条件 update 会把已退款单改回 open/pending_merchant 重新进入大厅被抢。
+     * 用单条 UPDATE + hallStatus 条件把「校验与写入」合并成一个原子动作。
+     */
+    async transitionFrom(
+        _ctx: RequestContext,
+        orderId: number,
+        from: string[],
+        patch: Record<string, unknown>,
+    ): Promise<boolean> {
+        const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
+        if (!entries.length || !from.length) return false;
+        const sets = entries.map(([k], i) => `${orderColumn(k)} = $${i + 2}`).join(', ');
+        const values = entries.map(([, v]) => (Array.isArray(v) ? JSON.stringify(v) : v));
+        const out: any = await this.connection.rawConnection.query(
+            `UPDATE "order" SET ${sets} `
+            + `WHERE id = $1 AND COALESCE("customFieldsHallstatus", '') = ANY($${entries.length + 2}::text[]) `
+            + 'RETURNING id',
+            [orderId, ...values, from],
+        );
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        return Array.isArray(rows) && rows.length > 0;
     }
 
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
@@ -228,8 +279,7 @@ export class HallService {
     async exitHall(ctx: RequestContext, order: Order) {
         const cur = await this.connection.getRepository(ctx, Order).findOne({ where: { id: order.id as any } });
         const hs = (cur?.customFields as any)?.hallStatus as string | undefined;
-        const active = ['open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed', 'third_party', 'merchant_delivering', 'owned_pool', 'owned_dispatched', 'pending_dispatch'];
-        if (!hs || !active.includes(hs)) return;
+        if (!hs || !ACTIVE_HALL_STATUSES.includes(hs)) return;
         await this.connection.getRepository(ctx, Order).update(order.id as any, {
             customFields: {
                 hallStatus: 'cancelled',

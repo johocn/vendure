@@ -178,7 +178,9 @@ export class RiderTaskService {
         if (status !== 'assigned' && status !== 'in_progress') {
             throw new UserInputError('当前状态不允许转单');
         }
-        await this.hall.backToHall(ctx, order.id as any);
+        // 条件回厅：订单若已被取消/退款脱厅（hallStatus 已终态），不得再改回 open 复活
+        const back = await this.hall.backToHall(ctx, order.id as any);
+        if (!back) throw new UserInputError('订单已被取消或改派，无法转单');
         // 转单即清除位置残留（plan 2.2 隐私：位置只跟随当前配送骑手）
         await this.connection.getRepository(ctx, Order).update(order.id, {
             customFields: { riderLat: null, riderLng: null },
@@ -229,32 +231,42 @@ export class RiderTaskService {
         );
         const claimedRows = Array.isArray(claimed) ? claimed[0] : claimed;
         if (!claimedRows?.length) throw new UserInputError('当前状态不允许该操作（订单已被处理）');
-        if (earning === 0 && tip === 0) {
-            // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错）
+        if (earning === 0) {
+            // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错，
+            // 且 0 金额 pending 行会在钱包补账时永久重试报错）。
+            // 判据只看 earning（小费已计入 calcEarning），避免 earning=0 但 tip>0 时仍落 0 元 pending。
             Logger.log(`订单 ${order.code ?? order.id} 0 分成，跳过入账`, 'RiderTask');
         } else {
             // 先落 earning（pending），入账成功才置 credited：addBalance 失败时订单已终态、
-            // 骑手重试会被状态机挡住，留 pending 供 myRiderWallet 读取时补账（避免「有分成记录但钱未到」）
-            const earningRow = await this.connection.getRepository(ctx, RiderEarning).save({
-                orderId: order.id,
-                riderCustomerId: rider.id,
-                amount: earning,
-                tip,
-                status: 'pending',
-                channelId: ctx.channelId,
-            } as any);
-            const port = getCouponBalancePort();
-            if (port) {
-                try {
-                    await port.addBalance(ctx, rider.id as number, earning);
-                    await this.connection.getRepository(ctx, RiderEarning).update(earningRow.id, {
-                        status: 'credited',
-                    } as any);
-                } catch (e: any) {
-                    Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${e?.message ?? e}`, 'RiderTask');
+            // 骑手重试会被状态机挡住，留 pending 供 myRiderWallet 读取时补账（避免「有分成记录但钱未到」）。
+            // 外层兜底：earning 行落库失败时订单已送达（客户端重试会被状态机挡住），只记错误日志供人工补账。
+            try {
+                const earningRow = await this.connection.getRepository(ctx, RiderEarning).save({
+                    orderId: order.id,
+                    riderCustomerId: rider.id,
+                    amount: earning,
+                    tip,
+                    status: 'pending',
+                    channelId: ctx.channelId,
+                } as any);
+                const port = getCouponBalancePort();
+                if (port) {
+                    try {
+                        await port.addBalance(ctx, rider.id as number, earning);
+                        await this.connection.getRepository(ctx, RiderEarning).update(earningRow.id, {
+                            status: 'credited',
+                        } as any);
+                    } catch (e: any) {
+                        Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${e?.message ?? e}`, 'RiderTask');
+                    }
+                } else {
+                    Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
                 }
-            } else {
-                Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+            } catch (e: any) {
+                Logger.error(
+                    `分成落库失败（订单已送达 ${order.code ?? order.id}，需人工补账 ${earning} 分）：${e?.message ?? e}`,
+                    'RiderTask',
+                );
             }
         }
         // 完单信用加分（+2）；非资金项，失败不阻断送达

@@ -10,7 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 var HallService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HallService = void 0;
+exports.HallService = exports.ACTIVE_HALL_STATUSES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
@@ -20,6 +20,15 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
 const slot_lock_service_1 = require("./slot-lock.service");
 const route_matrix_1 = require("./route-matrix");
+/** 仍在履约链路上的大厅状态（取消脱厅/回厅/条件状态迁移共用）。
+ * 终态（delivered/cancelled/no_rider_final/exception_final）不在其中，任何写入都不应把终态单改回流转态。 */
+exports.ACTIVE_HALL_STATUSES = [
+    'open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed', 'third_party',
+    'merchant_delivering', 'owned_pool', 'owned_dispatched', 'pending_dispatch',
+];
+/** customFields 字段名 → 物理列名（Vendure 规则：customFields + 首字母大写 + 其余小写）
+ * 例：hallStatus → customFieldsHallstatus；thirdPartyDispatchAt → customFieldsThirdpartydispatchat */
+const orderColumn = (field) => `"customFields${field.charAt(0).toUpperCase()}${field.slice(1).toLowerCase()}"`;
 /**
  * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在**支付成功后**自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
@@ -154,30 +163,38 @@ let HallService = HallService_1 = class HallService {
         core_2.Logger.info(`Order ${order.code} entered hall (${route}, slotLocked=${locked})`, 'CampusHall');
         this.notifyRiders(ctx, order);
     }
-    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
+    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流。
+     * 放量即写 hallEnteredAt 作为「商家/运力计时锚点」：预约单 createdAt 可能早于放量数小时甚至数天，
+     * 若下游超时兜底沿用 createdAt，一放量就会被判定超时（R1 直接转自营、R2 直接进大厅、跳过商家确认）。
+     * 条件写（仅 scheduled 态）：与用户取消并发时不把已取消单复活。返回是否真正放量。 */
     async releaseScheduled(ctx, order, cfg) {
-        var _a;
         const cf = order.customFields;
-        const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
-        let next = 'open';
-        if (route === 'R1')
-            next = 'pending_merchant';
-        else if (route === 'R2')
-            next = 'pending_merchant'; // 出餐闸门：放量后先等商户接单/出餐
-        else if (cf.deliveryPlan === 'external_courier')
-            next = 'pending_dispatch';
-        else if (cf.deliveryPlan === 'owned')
-            next = 'owned_pool';
-        else if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled)
-            next = 'pending_merchant';
-        await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-            customFields: next === 'open'
-                ? { hallStatus: next, hallEnteredAt: new Date() }
-                : { hallStatus: next },
+        const next = HallService_1.releaseTarget(cf, cfg);
+        const released = await this.transitionFrom(ctx, Number(order.id), ['scheduled'], {
+            hallStatus: next,
+            hallEnteredAt: new Date(),
         });
+        if (!released) {
+            core_2.Logger.info(`Order ${order.code} scheduled release skipped (hall status changed)`, 'CampusHall');
+            return false;
+        }
         core_2.Logger.info(`Order ${order.code} scheduled → ${next}`, 'CampusHall');
-        if (next === 'open')
+        // 无人接单的渠道保持原行为：放量即提醒在线骑手
+        if (next === 'open' || next === 'owned_pool')
             this.notifyRiders(ctx, order);
+        return true;
+    }
+    /** 放量目标态（put 与调度 job 共用；job 用它在内存里同步订单快照，避免同轮二次误判） */
+    static releaseTarget(cf, cfg) {
+        var _a;
+        const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
+        if (route === 'R1' || route === 'R2')
+            return 'pending_merchant'; // 出餐闸门：先等商户接单/出餐
+        if (cf.deliveryPlan === 'external_courier')
+            return 'pending_dispatch';
+        if (cf.deliveryPlan === 'owned')
+            return 'owned_pool';
+        return (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) ? 'pending_merchant' : 'open';
     }
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
@@ -207,11 +224,33 @@ let HallService = HallService_1 = class HallService {
         core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
         return handoverCode;
     }
-    /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
+    /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
+     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
     async backToHall(ctx, orderId) {
-        await this.connection.getRepository(ctx, core_2.Order).update(orderId, {
-            customFields: { hallStatus: 'open', deliveryStaffId: null, deliveryStatus: null, assignedAt: null },
+        return this.transitionFrom(ctx, orderId, exports.ACTIVE_HALL_STATUSES, {
+            hallStatus: 'open',
+            deliveryStaffId: null,
+            deliveryStatus: null,
+            assignedAt: null,
         });
+    }
+    /**
+     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内时才写入 patch，返回 affected>0。
+     * 调度扫描/商家操作都是「先读后写」，若期间用户取消并脱厅（hallStatus=cancelled），
+     * 无条件 update 会把已退款单改回 open/pending_merchant 重新进入大厅被抢。
+     * 用单条 UPDATE + hallStatus 条件把「校验与写入」合并成一个原子动作。
+     */
+    async transitionFrom(_ctx, orderId, from, patch) {
+        const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
+        if (!entries.length || !from.length)
+            return false;
+        const sets = entries.map(([k], i) => `${orderColumn(k)} = $${i + 2}`).join(', ');
+        const values = entries.map(([, v]) => (Array.isArray(v) ? JSON.stringify(v) : v));
+        const out = await this.connection.rawConnection.query(`UPDATE "order" SET ${sets} `
+            + `WHERE id = $1 AND COALESCE("customFieldsHallstatus", '') = ANY($${entries.length + 2}::text[]) `
+            + 'RETURNING id', [orderId, ...values, from]);
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        return Array.isArray(rows) && rows.length > 0;
     }
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
      * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
@@ -219,8 +258,7 @@ let HallService = HallService_1 = class HallService {
         var _a;
         const cur = await this.connection.getRepository(ctx, core_2.Order).findOne({ where: { id: order.id } });
         const hs = (_a = cur === null || cur === void 0 ? void 0 : cur.customFields) === null || _a === void 0 ? void 0 : _a.hallStatus;
-        const active = ['open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed', 'third_party', 'merchant_delivering', 'owned_pool', 'owned_dispatched', 'pending_dispatch'];
-        if (!hs || !active.includes(hs))
+        if (!hs || !exports.ACTIVE_HALL_STATUSES.includes(hs))
             return;
         await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
             customFields: Object.assign({ hallStatus: 'cancelled' }, (hs === 'grabbed' ? { deliveryStaffId: null, deliveryStatus: null, assignedAt: null } : {})),

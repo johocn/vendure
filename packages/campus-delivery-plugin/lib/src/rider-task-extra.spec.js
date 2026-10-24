@@ -154,7 +154,7 @@ function makeEnv(opts = {}) {
             update: vitest_1.vi.fn().mockResolvedValue({}),
         };
         const conn = { getRepository: vitest_1.vi.fn(() => orderRepo) };
-        const hall = { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) };
+        const hall = { backToHall: vitest_1.vi.fn().mockResolvedValue(true) };
         const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, hall, { user: vitest_1.vi.fn() });
         return { svc, orderRepo, hall };
     }
@@ -183,6 +183,12 @@ function makeEnv(opts = {}) {
     (0, vitest_1.it)('delivered 状态拒绝转单', async () => {
         const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered' } } });
         await (0, vitest_1.expect)(env.svc.transfer({}, 5, [])).rejects.toThrow('当前状态不允许转单');
+    });
+    (0, vitest_1.it)('订单已被取消/改派（条件回厅不命中）→ 拒绝转单，不复活订单', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } } });
+        env.hall.backToHall.mockResolvedValueOnce(false);
+        await (0, vitest_1.expect)(env.svc.transfer({}, 5, [])).rejects.toThrow('订单已被取消或改派');
+        (0, vitest_1.expect)(env.orderRepo.update).not.toHaveBeenCalled();
     });
 });
 //# sourceMappingURL=rider-task-extra.spec.js.map

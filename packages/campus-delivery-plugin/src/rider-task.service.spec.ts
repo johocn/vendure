@@ -86,12 +86,11 @@ describe('RiderTaskService', () => {
         expect(order).toBeTruthy();
         expect(saved).toHaveLength(0); // 未写 RiderEarning
     });
-    it('有运费但分成 0（rate=0）仍写 earning 走入账分支', async () => {
+    it('有运费但分成 0（rate=0）也跳过入账（0 金额 pending 会触发余额端口报错）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
         const { svc, saved } = make(inProg, { riderCommissionRate: 0 });
         await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
-        expect(saved).toHaveLength(1);
-        expect(saved[0].amount).toBe(0);
+        expect(saved).toHaveLength(0);
     });
     it('大厅阶段（尚无 deliveryStatus）也可催单', async () => {
         const hallOrder = {

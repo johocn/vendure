@@ -23,6 +23,14 @@ const platformCtx = { channelId: 1, apiType: 'admin' } as any;
 function make() {
     const riderSvc = { assertApprovedRider: vi.fn().mockResolvedValue({ id: 9 }) } as any;
     const saved: any[] = [];
+    // 提现审核原子认领：UPDATE ... WHERE status='PENDING'（条件必须在 where 里，affected=0 即已被处理）
+    const qb = {
+        update: vi.fn().mockReturnThis(),
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        execute: vi.fn().mockResolvedValue({ affected: 1 }),
+    };
     const repo = {
         save: vi.fn().mockImplementation((v: any) => {
             saved.push(v);
@@ -32,6 +40,7 @@ function make() {
         find: vi.fn().mockResolvedValue([]),
         update: vi.fn().mockResolvedValue({ affected: 1 }),
         count: vi.fn().mockResolvedValue(0),
+        createQueryBuilder: vi.fn(() => qb),
     };
     // em 仓储：rawConnection 事务内使用（Customer 行锁 / PENDING 防重 count / PENDING 落库 save）
     const emRepo = {
@@ -51,7 +60,7 @@ function make() {
         rawConnection: { transaction: vi.fn((fn: any) => fn(em)) },
     } as any;
     const reqCtxSvc = { create: vi.fn().mockResolvedValue(platformCtx) } as any;
-    return { svc: new RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn };
+    return { svc: new RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn, qb };
 }
 
 describe('RiderWalletService', () => {
@@ -97,20 +106,29 @@ describe('RiderWalletService', () => {
     });
 
     it('reject 解冻退回：先原子认领（REJECTED）再 addBalance(+amount)（资金走默认渠道上下文）', async () => {
-        const { svc, repo } = make();
+        const { svc, repo, qb } = make();
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
         await svc.adminReject(ctx, 5 as any, '信息不符');
-        // F3：认领在前，退回在后
-        expect(repo.update.mock.calls[0][0]).toBe(5);
-        expect(repo.update.mock.calls[0][1]).toEqual(expect.objectContaining({ status: 'REJECTED', remark: '信息不符' }));
+        // 条件更新：条件必须在 where 里，affected=0 即已被处理
+        expect(qb.where).toHaveBeenCalledWith('id = :id', { id: 5 });
+        expect(qb.andWhere).toHaveBeenCalledWith('status = :s', { s: 'PENDING' });
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'REJECTED', remark: '信息不符' }));
         expect(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
     });
 
     it('reject 并发已处理（条件更新 affected=0）抛错且不退回', async () => {
-        const { svc, repo } = make();
+        const { svc, repo, qb } = make();
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
-        repo.update.mockResolvedValueOnce({ affected: 0 });
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
         await expect(svc.adminReject(ctx, 5 as any, '信息不符')).rejects.toThrow('该申请已处理');
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    it('approve 并发已处理（条件更新 affected=0）抛错，不会又打款又退款', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        await expect(svc.adminApprove(ctx, 5 as any, '已打款')).rejects.toThrow('该申请已处理');
         expect(mocks.port.addBalance).not.toHaveBeenCalled();
     });
 
@@ -119,20 +137,21 @@ describe('RiderWalletService', () => {
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
         mocks.port.addBalance.mockRejectedValueOnce(new Error('db down'));
         await expect(svc.adminReject(ctx, 5 as any, '信息不符')).rejects.toThrow('退回失败');
-        expect(repo.update).toHaveBeenLastCalledWith(5, { status: 'PENDING' });
+        // 仅当本次认领仍为 REJECTED 时才恢复 PENDING（条件写，防并发改成 PAID 后回滚错状态）
+        expect(repo.update).toHaveBeenLastCalledWith(
+            { id: 5, status: 'REJECTED' },
+            { status: 'PENDING' },
+        );
     });
 
     it('管理端跨渠道可审核：查询不限定 channelId，退回资金固定默认渠道，留痕记审核人', async () => {
-        const { svc, repo } = make();
+        const { svc, repo, qb } = make();
         const adminCtx = { channelId: 2, activeUserId: 7 } as any;
         repo.findOne.mockResolvedValue({ id: 6, customerId: 9, amount: 1000, status: 'PENDING', channelId: 1 });
         await svc.adminReject(adminCtx, 6 as any, '冒烟驳回');
         expect(repo.findOne).toHaveBeenCalledWith({ where: { id: 6 } });
         expect(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 1000);
-        expect(repo.update).toHaveBeenCalledWith(
-            6,
-            expect.objectContaining({ status: 'REJECTED', reviewedBy: '7' }),
-        );
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'REJECTED', reviewedBy: '7' }));
     });
 
     it('withdraw 已有 PENDING 申请时拒绝（事务内防重检查，扣款不发生）', async () => {

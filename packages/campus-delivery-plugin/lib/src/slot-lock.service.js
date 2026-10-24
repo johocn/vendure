@@ -12,7 +12,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SlotLockService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
-const core_2 = require("@vendure/core");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
 let SlotLockService = class SlotLockService {
     constructor(connection) {
@@ -21,11 +20,11 @@ let SlotLockService = class SlotLockService {
     /**
      * 支付成功后锁位：UPDATE ... WHERE lockedCount < capacity 乐观锁，affected=0 即满。
      * 返回 false 时调用方标 campusCause='slot_full' 进调度告警，不阻断订单。
-     * 锁位成功写 slotLocked=true，取消时只有带此标记的单才归还容量（否则未支付/锁位失败单
-     * 取消会把已满时段「放空」，造成容量虚增与超卖）。
+     * 幂等：先原子认领订单 slotLocked(false→true)，认领失败=已锁过（支付事件重放/并发二次入厅），
+     * 直接返回 true 不再递增容量；若容量已满则回滚认领，避免取消时误减造成容量虚增。
      */
     async lock(ctx, order) {
-        var _a, _b;
+        var _a, _b, _c;
         const slotId = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.deliverySlotId;
         if (!slotId)
             return true; // 未选时段（立即单）跳过
@@ -34,6 +33,14 @@ let SlotLockService = class SlotLockService {
             core_1.Logger.warn(`Order ${order === null || order === void 0 ? void 0 : order.code} slot ${slotId} not found, skip lock`, 'CampusSlot');
             return true; // 时段被管理员删除：不阻断，靠 T3 告警人工跟进
         }
+        const orderId = Number((_b = order === null || order === void 0 ? void 0 : order.id) !== null && _b !== void 0 ? _b : NaN);
+        if (Number.isFinite(orderId)) {
+            const claim = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsSlotlocked" = true '
+                + 'WHERE id = $1 AND COALESCE("customFieldsSlotlocked", false) = false RETURNING id', [orderId]);
+            const claimed = Array.isArray(claim) && Array.isArray(claim[0]) ? claim[0] : claim;
+            if (!Array.isArray(claimed) || !claimed.length)
+                return true; // 已锁位：幂等跳过
+        }
         const res = await this.connection
             .getRepository(ctx, delivery_slot_entity_1.DeliverySlot)
             .createQueryBuilder()
@@ -41,12 +48,10 @@ let SlotLockService = class SlotLockService {
             .set({ lockedCount: () => '"lockedCount" + 1' })
             .where('id = :id AND "lockedCount" < :cap', { id: slot.id, cap: slot.capacity })
             .execute();
-        const ok = ((_b = res.affected) !== null && _b !== void 0 ? _b : 0) > 0;
-        if (ok && (order === null || order === void 0 ? void 0 : order.id)) {
-            // 锁位成功标记：与容量递增同源，供取消时幂等释放
-            await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-                customFields: { slotLocked: true },
-            });
+        const ok = ((_c = res.affected) !== null && _c !== void 0 ? _c : 0) > 0;
+        if (!ok && Number.isFinite(orderId)) {
+            // 时段已满：回滚认领标记（未真正占位，取消时不得释放名额）
+            await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsSlotlocked" = false WHERE id = $1', [orderId]);
         }
         return ok;
     }

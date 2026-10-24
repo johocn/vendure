@@ -13,16 +13,19 @@ function makeEnv(opts: { cfg?: any; slotLocked?: boolean; curHs?: string } = {})
         ),
     };
     const cfgRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? null) };
+    // transitionFrom 走裸 SQL（条件状态迁移），默认命中 1 行
+    const rawQuery = vi.fn().mockResolvedValue([[{ id: 9 }]]);
     const conn = {
         getRepository: vi.fn((_ctx: any, ent: any) => {
             const name = (ent as any).name;
             if (name === 'CampusFulfillmentConfig') return cfgRepo;
             return orderRepo;
         }),
+        rawConnection: { query: rawQuery },
     } as any;
     const slotLock = { lock: vi.fn().mockResolvedValue(opts.slotLocked ?? true) };
     const svc = new HallService(conn, slotLock as any, { get: vi.fn() } as any, { listOnlineRiders: vi.fn().mockResolvedValue([]) } as any);
-    return { svc, orderRepo, cfgRepo, updates };
+    return { svc, orderRepo, cfgRepo, updates, rawQuery };
 }
 
 const future = (min: number) => new Date(Date.now() + min * 60_000);
@@ -149,31 +152,56 @@ describe('HallService 承诺送达时间固化（P0 超时赔付）', () => {
 
 describe('HallService.releaseScheduled', () => {
     const order = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } } as unknown as Order;
+    /** 断言一次 CAS 放量：从 scheduled 条件写、目标态与计时锚点 */
+    const expectRelease = (env: ReturnType<typeof makeEnv>, target: string) => {
+        const [sql, params] = env.rawQuery.mock.calls[0];
+        expect(sql).toContain('"customFieldsHallstatus" = $2');
+        expect(sql).toContain('"customFieldsHallenteredat" = $3');
+        expect(sql).toContain('= ANY($4::text[])');
+        expect(params).toEqual([9, target, expect.any(Date), ['scheduled']]);
+    };
 
     it('商家确认模式 → pending_merchant', async () => {
         const env = makeEnv();
         await env.svc.releaseScheduled({ channelId: 1 } as any, order, { merchantConfirmEnabled: true } as CampusFulfillmentConfig);
-        expect(env.updates[0].customFields).toEqual({ hallStatus: 'pending_merchant' });
+        expectRelease(env, 'pending_merchant');
     });
 
     it('非确认模式 → 直接 open + hallEnteredAt 重置', async () => {
         const env = makeEnv();
-        await env.svc.releaseScheduled({ channelId: 1 } as any, order, { merchantConfirmEnabled: false } as CampusFulfillmentConfig);
-        expect(env.updates[0].customFields.hallStatus).toBe('open');
-        expect(env.updates[0].customFields.hallEnteredAt).toBeInstanceOf(Date);
+        const released = await env.svc.releaseScheduled(
+            { channelId: 1 } as any, order, { merchantConfirmEnabled: false } as CampusFulfillmentConfig,
+        );
+        expect(released).toBe(true);
+        expectRelease(env, 'open');
     });
 
-    it('R1 → pending_merchant；R2 → pending_merchant；R3 快照 owned → owned_pool', async () => {
+    it('R1 → pending_merchant；R2 → pending_merchant；R3 快照 owned → owned_pool；外部快递 → pending_dispatch', async () => {
         const env = makeEnv();
         await env.svc.releaseScheduled({ channelId: 1 } as any,
             { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R1' } } as any, null);
-        expect(env.updates[0].customFields).toEqual({ hallStatus: 'pending_merchant' });
+        expectRelease(env, 'pending_merchant');
+        env.rawQuery.mockClear();
         await env.svc.releaseScheduled({ channelId: 1 } as any,
             { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R2' } } as any, null);
-        expect(env.updates[1].customFields).toEqual({ hallStatus: 'pending_merchant' });
+        expectRelease(env, 'pending_merchant');
+        env.rawQuery.mockClear();
         await env.svc.releaseScheduled({ channelId: 1 } as any,
             { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned' } } as any, null);
-        expect(env.updates[2].customFields).toEqual({ hallStatus: 'owned_pool' });
+        expectRelease(env, 'owned_pool');
+        env.rawQuery.mockClear();
+        await env.svc.releaseScheduled({ channelId: 1 } as any,
+            { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'external_courier' } } as any, null);
+        expectRelease(env, 'pending_dispatch');
+    });
+
+    it('并发下已非 scheduled（取消/已放量）→ CAS 不命中，返回 false', async () => {
+        const env = makeEnv();
+        env.rawQuery.mockResolvedValueOnce([[]]);
+        const released = await env.svc.releaseScheduled(
+            { channelId: 1 } as any, order, { merchantConfirmEnabled: false } as CampusFulfillmentConfig,
+        );
+        expect(released).toBe(false);
     });
 });
 

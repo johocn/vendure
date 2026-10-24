@@ -151,7 +151,11 @@ export class MerchantAdminService {
     /** 商家接单确认：pending_merchant → accepted */
     async acceptOrder(ctx: RequestContext, orderId: ID) {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
-        await this.hall.updateOrder(ctx, order.id as any, { customFields: { hallStatus: 'accepted' } } as any);
+        // 条件写：与用户取消/调度商家超时兜底并发时，已脱厅单不得被改回 accepted
+        const moved = await this.hall.transitionFrom(ctx, Number(order.id), ['pending_merchant'], {
+            hallStatus: 'accepted',
+        });
+        if (!moved) throw new UserInputError('订单状态已变更，请刷新');
         this.notify.user(ctx, order.id as any, 'orderAccepted');
         return { ok: true };
     }
@@ -173,6 +177,15 @@ export class MerchantAdminService {
             const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
             const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
             if (!rows?.[0]?.ok) throw new UserInputError('该订单正在退款处理中，请稍后重试');
+            // 锁内复查：等待锁期间订单可能已被 T4/调度超时兜底改派或用户取消，
+            // 此时再退款+取消会把已流转的单重复退款
+            const fresh = await this.connection.getRepository(ctx, Order).findOne({
+                where: { id: order.id as any },
+            });
+            const freshHs = String((fresh?.customFields as any)?.hallStatus ?? '');
+            if (!['pending_merchant', 'accepted'].includes(freshHs)) {
+                throw new UserInputError('订单状态已变更，请刷新');
+            }
 
             const payment = await this.connection.rawConnection.getRepository(Payment).findOne({
                 where: { order: { id: order.id } },
@@ -232,42 +245,26 @@ export class MerchantAdminService {
         const route = String(cf.fulfillmentRoute ?? '');
         const plan = String(cf.deliveryPlan ?? '');
 
+        let patch: Record<string, unknown>;
         // R1：第一段由商户或自营快递完成，之后才进校园接力大厅
         if (route === 'R1') {
-            if (plan === 'owned') {
+            patch = plan === 'owned'
                 // 自营快递接单后送往交接点（cookingDone 即表示可以出发）
-                await this.hall.updateOrder(ctx, order.id as any, {
-                    customFields: { hallStatus: 'owned_dispatched', assignedAt: new Date() },
-                } as any);
-            } else {
-                await this.hall.updateOrder(ctx, order.id as any, {
-                    customFields: { hallStatus: 'merchant_delivering', assignedAt: new Date() },
-                } as any);
-            }
-            this.notify.user(ctx, order.id as any, 'cookingDone');
-            return { ok: true };
+                ? { hallStatus: 'owned_dispatched', assignedAt: new Date() }
+                : { hallStatus: 'merchant_delivering', assignedAt: new Date() };
+        } else if (plan === 'external_courier') {
+            // R2 与 R3-外部：等运营中心推送外部快递（assignedAt 标记出餐时刻，未推送超时从此计时）
+            patch = { hallStatus: 'pending_dispatch', assignedAt: new Date() };
+        } else if (plan === 'owned') {
+            // R3-自营：进自营快递池抢单
+            patch = { hallStatus: 'owned_pool' };
+        } else {
+            // R3-传信者：正常入抢单大厅
+            patch = { hallStatus: 'open', hallEnteredAt: new Date() };
         }
-
-        // R2 与 R3-外部：等运营中心推送外部快递（assignedAt 标记出餐时刻，未推送超时从此计时）
-        if (plan === 'external_courier') {
-            await this.hall.updateOrder(ctx, order.id as any, {
-                customFields: { hallStatus: 'pending_dispatch', assignedAt: new Date() },
-            } as any);
-            this.notify.user(ctx, order.id as any, 'cookingDone');
-            return { ok: true };
-        }
-        // R3-自营：进自营快递池抢单
-        if (plan === 'owned') {
-            await this.hall.updateOrder(ctx, order.id as any, {
-                customFields: { hallStatus: 'owned_pool' },
-            } as any);
-            this.notify.user(ctx, order.id as any, 'cookingDone');
-            return { ok: true };
-        }
-        // R3-传信者：正常入抢单大厅
-        await this.hall.updateOrder(ctx, order.id as any, {
-            customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
-        } as any);
+        // 条件写：与用户取消/调度超时兜底并发时，已脱厅单不得被改回流转态
+        const moved = await this.hall.transitionFrom(ctx, Number(order.id), ['accepted'], patch);
+        if (!moved) throw new UserInputError('订单状态已变更，请刷新');
         this.notify.user(ctx, order.id as any, 'cookingDone');
         return { ok: true };
     }
