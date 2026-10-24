@@ -16,12 +16,12 @@ describe('RiderCreditService.adjust', () => {
         return { svc: new RiderCreditService(conn), conn, logRepo, saved };
     };
 
-    it('正常完单 +2 → 单条原子 UPDATE 返回新分值', async () => {
+    it('正常完单 +2 → 单条原子 UPDATE 返回新分值（正分用 LEAST 100 封顶）', async () => {
         const { svc, conn, saved } = mk(102, 2);
         const next = await svc.adjust({ channelId: 1 } as any, 9, 2, 'complete', 10 as any);
         expect(next).toBe(102);
         expect(conn.rawConnection.query).toHaveBeenCalledWith(
-            expect.stringContaining('GREATEST(0, COALESCE("customFieldsRidercredit", 100) + $1)'),
+            expect.stringContaining('LEAST('),
             [2, 9],
         );
         expect(saved[0]).toEqual(expect.objectContaining({ delta: 2, reason: 'complete', orderId: 10 }));

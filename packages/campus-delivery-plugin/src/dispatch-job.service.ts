@@ -241,8 +241,15 @@ export class DispatchJobService implements OnApplicationShutdown {
             await this.sweepRouteTimeouts(ctx, cfg, orders, now);
             // 异常上报超时未处置：自动回大厅重派，避免卡死在 exception
             await this.sweepExceptionTimeout(ctx, cfg, orders, now);
-            // 超时赔付：送达超承诺 → 自动发定向券（开关默认关）
+            // 超时赔付：送达超承诺 → 自动发定向券（开关默认开，缺券模板时限频告警）
             await this.sweepTimeoutCompensation(ctx, cfg, now);
+
+            // 骑手信用自动恢复：7 天没 timeout 扣分的骑手 credit<100 时 +5 分
+            try {
+                await this.credit.sweepRecovery(ctx);
+            } catch (e: any) {
+                Logger.warn(`credit recovery sweep failed channel=${cfg.channelId}: ${e?.message}`, 'CampusDispatch');
+            }
 
             // 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
             // （跳过商家确认，campusCause 留痕；计时锚 hallEnteredAt：预约单 createdAt 可能早于放量数小时）
