@@ -117,7 +117,8 @@ let ShippingProfileEnsureService = class ShippingProfileEnsureService {
             .createQueryBuilder('v')
             .select('v.id', 'id')
             .innerJoin('v.channels', 'ch', 'ch.id = :channelId', { channelId })
-            .where('v.customFieldsShippingprofileid IS NULL')
+            // 列名必须双引号：PG 会把裸写 camelCase 折叠成小写 → column does not exist
+            .where('v."customFieldsShippingprofileid" IS NULL')
             .getRawMany();
         const ids = rows.map(r => Number(r.id));
         if (ids.length === 0)

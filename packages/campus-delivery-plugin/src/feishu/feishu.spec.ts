@@ -495,10 +495,15 @@ describe('feishu 零建表卡片', () => {
         expect(sql).not.toMatch(/exceptionfinal/i); // 不区分大小写
         expect(sql).not.toMatch(/exception_final/i);
         // 必须包含真正有用的清理字段
-        expect(sql).toContain('customFieldsHallstatus');
-        expect(sql).toContain('customFieldsExceptionaction');
-        expect(sql).toContain('customFieldsExceptionhandledat');
+        expect(sql).toContain('"customFieldsHallstatus"');
+        expect(sql).toContain('"customFieldsExceptionaction"');
+        expect(sql).toContain('"customFieldsExceptionhandledat"');
         expect(fields.length).toBeGreaterThanOrEqual(4);
+        // PG 回归：每个列名必须双引号（裸写会被折叠成小写 → column does not exist）
+        for (const f of fields) {
+            const col = f.split('=')[0];
+            expect(col).toMatch(/^"customFields[A-Za-z]+"$/);
+        }
     });
 
     it('Bug 9 回归：AUDIT_TABLE_SQL 建表语句合法且字段齐全', () => {

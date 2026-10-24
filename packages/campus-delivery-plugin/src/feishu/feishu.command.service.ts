@@ -106,14 +106,16 @@ export function requiredRole(cmd: FeishuCommandName): 'none' | 'operator' | 'own
 }
 
 /** Bug 9 回归测试入口：confirmRestore 的 UPDATE SQL 纯函数，spec 可直接断言不含幽灵列
- * 历史 bug: 曾硬写 customFieldsExceptionfinal=FLASE——custom-fields.ts 无此定义，恢复功能完全不可用 */
+ * 历史 bug: 曾硬写 customFieldsExceptionfinal=FLASE——custom-fields.ts 无此定义，恢复功能完全不可用
+ * PG 列名必须双引号：本 fork 物理列是 customFields 前缀带大写（customFieldsHallstatus），
+ * 裸写会被 PG 折叠成小写 → column does not exist（SQLite 单测不暴露，生产直接报错） */
 export function buildRestoreSQL(): { sql: string; fields: string[] } {
     const fields = [
-        'customFieldsHallstatus=\'open\'',
-        'customFieldsExceptionaction=NULL',
-        'customFieldsExceptionhandledat=NULL',
-        'customFieldsExceptionhandledby=NULL',
-        'customFieldsExceptionhandlednote=NULL',
+        '"customFieldsHallstatus"=\'open\'',
+        '"customFieldsExceptionaction"=NULL',
+        '"customFieldsExceptionhandledat"=NULL',
+        '"customFieldsExceptionhandledby"=NULL',
+        '"customFieldsExceptionhandlednote"=NULL',
     ];
     return {
         sql: `UPDATE "order" SET ${fields.join(', ')} WHERE id=$1`,

@@ -32,12 +32,13 @@ function makeEnv(opts: {
         }),
     };
     const rawUpdates: Array<{ sql: string; params: any[] }> = [];
+    const variantWheres: string[] = [];
     const variantRepo = {
         createQueryBuilder: () => {
             const qb: any = {};
             qb.select = () => qb;
             qb.innerJoin = () => qb;
-            qb.where = () => qb;
+            qb.where = (w: string) => { variantWheres.push(w); return qb; };
             qb.getRawMany = vi.fn().mockResolvedValue((opts.unboundVariantIds ?? []).map(id => ({ id })));
             return qb;
         },
@@ -51,7 +52,7 @@ function makeEnv(opts: {
             : variantRepo,
     };
     const svc = new ShippingProfileEnsureService({ rawConnection } as any);
-    return { svc, methodSaves, profileSaves, rawUpdates, clearDefaults, methodRepo, profileRepo, channelRepo };
+    return { svc, methodSaves, profileSaves, rawUpdates, variantWheres, clearDefaults, methodRepo, profileRepo, channelRepo };
 }
 
 // 工厂函数（勿用共享常量：服务会原地 mutate methods.channels，污染后续用例）
@@ -131,5 +132,12 @@ describe('ShippingProfileEnsureService.ensureDefaultShippingProfile', () => {
         const r = await svc.ensureDefaultShippingProfile({} as any, 113);
         expect(r.boundVariantCount).toBe(0);
         expect(rawUpdates).toHaveLength(0);
+    });
+
+    it('PG 回归：未绑变体过滤列名必须双引号（裸写会被折叠成小写报 column does not exist）', async () => {
+        const { svc, variantWheres } = makeEnv({ methods: [STORE_PICKUP(), COURIER()], unboundVariantIds: [87] });
+        await svc.ensureDefaultShippingProfile({} as any, 113);
+        expect(variantWheres.some(w => w.includes('"customFieldsShippingprofileid"'))).toBe(true);
+        expect(variantWheres.every(w => !/v\.customFields/i.test(w))).toBe(true);
     });
 });
