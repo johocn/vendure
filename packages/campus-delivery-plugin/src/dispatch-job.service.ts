@@ -150,7 +150,10 @@ export class DispatchJobService implements OnApplicationShutdown {
                 + 'THEN order.customFields.scheduledFor ELSE order.createdAt END',
                 'ASC',
             )
-            .take(SCAN_LIMIT)
+            // 用 limit 而非 take：take + join 会走 TypeORM 的 distinct 分页（子查询），
+            // 该路径把 CASE 表达式里的 "CASE WHEN order" 当成别名解析 → 每轮扫描全渠道报错。
+            // 本查询已按 channel.id 过滤（一单只命中一行），limit 不会产生重复行。
+            .limit(SCAN_LIMIT)
             .getMany();
         if (orders.length >= SCAN_LIMIT) {
             Logger.warn(

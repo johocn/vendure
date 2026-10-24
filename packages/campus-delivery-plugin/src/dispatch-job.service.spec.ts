@@ -37,7 +37,7 @@ function makeEnv(opts: {
             andWhere: vi.fn().mockReturnThis(),
             orderBy: vi.fn().mockReturnThis(),
             addOrderBy: vi.fn().mockReturnThis(),
-            take: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockReturnThis(),
             getMany: vi.fn().mockResolvedValue([...allOrders]),
         }),
     };
