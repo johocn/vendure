@@ -16,6 +16,7 @@ exports.aggregateStats = aggregateStats;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const campus_time_1 = require("./campus-time");
 const RANGE_MS = {
     '7d': 7 * 24 * 3600000,
     '30d': 30 * 24 * 3600000,
@@ -25,12 +26,10 @@ const DEFAULT_CHANNEL_CODE = '__default_channel__';
 function normalizeRange(v) {
     return v === 'today' || v === '30d' ? v : '7d';
 }
-/** 窗口起点：today=本地 0 点；7d/30d=滚动窗口 */
+/** 窗口起点：today=校园时区（UTC+8）0 点；7d/30d=滚动窗口 */
 function windowStartOf(range, now) {
     if (range === 'today') {
-        const d = new Date(now);
-        d.setHours(0, 0, 0, 0);
-        return d.getTime();
+        return (0, campus_time_1.startOfCampusDay)(now);
     }
     return now - RANGE_MS[range];
 }
@@ -38,9 +37,7 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const minOf = (ms) => round1(ms / 60000);
 const rateOf = (onTime, scored) => (scored > 0 ? round1((onTime / scored) * 100) : 0);
 function dayKeyOf(d) {
-    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
-    const dd = `${d.getDate()}`.padStart(2, '0');
-    return `${d.getFullYear()}-${mm}-${dd}`;
+    return (0, campus_time_1.campusDayKey)(d.getTime());
 }
 /** 纯函数聚合（单测注入时间/数据）。
  * 口径：单量=窗口内未取消订单；准点率=deliveredAt ≤ promisedAt + 各渠道 grace（有承诺且已送达才计分）；
@@ -60,7 +57,7 @@ function aggregateStats(args) {
     const bucketOf = (t) => {
         let key;
         if (range === 'today') {
-            key = `${new Date(t).getHours()}`.padStart(2, '0') + ':00';
+            key = `${(0, campus_time_1.campusHour)(t)}`.padStart(2, '0') + ':00';
         }
         else {
             key = dayKeyOf(new Date(t));
@@ -117,7 +114,7 @@ function aggregateStats(args) {
     // 趋势点：today 按小时（0 点→当前小时），滚动窗口按自然日
     const dailyTrend = [];
     if (range === 'today') {
-        const endHour = new Date(now).getHours();
+        const endHour = (0, campus_time_1.campusHour)(now);
         for (let h = 0; h <= endHour; h++) {
             const key = `${h}`.padStart(2, '0') + ':00';
             const b = buckets.get(key);
@@ -126,11 +123,10 @@ function aggregateStats(args) {
     }
     else {
         const dayCount = range === '7d' ? 7 : 30;
-        const today0 = new Date(now);
-        today0.setHours(0, 0, 0, 0);
+        const today0 = (0, campus_time_1.startOfCampusDay)(now);
         // UTC+8 无夏令时，逐日回退 24h 安全
         for (let i = dayCount - 1; i >= 0; i--) {
-            const key = dayKeyOf(new Date(today0.getTime() - i * 24 * 3600000));
+            const key = (0, campus_time_1.campusDayKey)(today0 - i * 24 * 3600000);
             const b = buckets.get(key);
             const label = key.slice(5); // MM-DD
             dailyTrend.push({ date: label, orders: (_k = b === null || b === void 0 ? void 0 : b.orders) !== null && _k !== void 0 ? _k : 0, onTimeRate: rateOf((_l = b === null || b === void 0 ? void 0 : b.onTime) !== null && _l !== void 0 ? _l : 0, (_m = b === null || b === void 0 ? void 0 : b.scored) !== null && _m !== void 0 ? _m : 0) });

@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_notify_service_1 = require("./campus-notify.service");
+const campus_time_1 = require("./campus-time");
 const hall_service_1 = require("./hall.service");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const waimai_store_service_1 = require("./waimai-store.service");
@@ -45,8 +46,8 @@ let MerchantAdminService = class MerchantAdminService {
             .leftJoinAndSelect('order.lines', 'lines')
             .leftJoinAndSelect('lines.productVariant', 'variant')
             .getMany();
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        // 今日已送达口径：按校园时区（UTC+8）日界，不随部署服务器时区漂移
+        const startOfDay = new Date((0, campus_time_1.startOfCampusDay)(Date.now()));
         const deliveredToday = await repo
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')

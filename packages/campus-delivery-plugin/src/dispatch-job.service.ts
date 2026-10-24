@@ -221,6 +221,27 @@ export class DispatchJobService implements OnApplicationShutdown {
                     return tb - ta; // 最近活跃优先
                 });
             if (eligible.length) {
+                // 在途负载：同一骑手已持有的配送中订单数（T2 轮转派单，避免所有超时单全塞给信用最高的一人）
+                const load = new Map<number, number>();
+                for (const o of orders) {
+                    const cf = o.customFields as any;
+                    const rid = Number(cf.deliveryStaffId ?? NaN);
+                    if (!Number.isFinite(rid) || !rid) continue;
+                    const active = ['assigned', 'in_progress'].includes(String(cf.deliveryStatus ?? ''))
+                        || ['grabbed', 'owned_dispatched'].includes(String(cf.hallStatus ?? ''));
+                    if (!active) continue;
+                    load.set(rid, (load.get(rid) ?? 0) + 1);
+                }
+                const pickRider = () => {
+                    // eligible 已按「信用分高→最近活跃」排序：仅负载严格更低时才换人，平局保持原优先级
+                    let best = eligible[0];
+                    let bestLoad = load.get(Number(best.id)) ?? 0;
+                    for (const r of eligible) {
+                        const l = load.get(Number(r.id)) ?? 0;
+                        if (l < bestLoad) { best = r; bestLoad = l; }
+                    }
+                    return best;
+                };
                 const stale = orders.filter(o => {
                     const cf = o.customFields as any;
                     return cf.hallStatus === 'open' && this.orderInChannel(o, cfg) && cf.hallEnteredAt
@@ -228,8 +249,12 @@ export class DispatchJobService implements OnApplicationShutdown {
                 }).sort((a, b) => new Date((a.customFields as any).hallEnteredAt).getTime()
                          - new Date((b.customFields as any).hallEnteredAt).getTime());
                 for (const o of stale) {
-                    const ok = await this.grab.grabByRider(ctx, o.id as any, eligible[0]);
-                    if (ok) Logger.warn(`Order ${o.code} auto-assigned to rider ${eligible[0].id} (T2)`, 'CampusDispatch');
+                    const rider = pickRider();
+                    const ok = await this.grab.grabByRider(ctx, o.id as any, rider);
+                    if (ok) {
+                        load.set(Number(rider.id), (load.get(Number(rider.id)) ?? 0) + 1);
+                        Logger.warn(`Order ${o.code} auto-assigned to rider ${rider.id} (T2)`, 'CampusDispatch');
+                    }
                     // 无论成败，该单已离开 open 大厅（成功→grabbed；失败→已被抢/已退款），
                     // 内存标记防止同轮 T4 对已派单误退款（grabByRider 事务内有二次校验兜底）。
                     (o.customFields as any).hallStatus = 'grabbed';

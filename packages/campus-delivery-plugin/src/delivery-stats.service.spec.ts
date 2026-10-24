@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { aggregateStats, windowStartOf, normalizeRange, DeliveryStatsService } from './delivery-stats.service';
+import { campusHour } from './campus-time';
 
 const now = new Date('2026-10-23T15:30:00+08:00').getTime();
 const min = (m: number, base = now) => new Date(base - m * 60_000);
@@ -20,12 +21,8 @@ describe('normalizeRange / windowStartOf', () => {
         expect(normalizeRange('today')).toBe('today');
         expect(normalizeRange('30d')).toBe('30d');
     });
-    it('today 窗口起点为本地 0 点', () => {
-        const ws = windowStartOf('today', now);
-        const d = new Date(ws);
-        expect(d.getHours()).toBe(0);
-        expect(d.getMinutes()).toBe(0);
-        expect(d.getDate()).toBe(23);
+    it('today 窗口起点为校园时区（UTC+8）0 点，不随服务器时区漂移', () => {
+        expect(windowStartOf('today', now)).toBe(new Date('2026-10-23T00:00:00+08:00').getTime());
     });
     it('7d 窗口起点为 now-7天', () => {
         expect(windowStartOf('7d', now)).toBe(now - 7 * 24 * 3600_000);
@@ -120,7 +117,7 @@ describe('aggregateStats', () => {
     });
 
     it('dailyTrend today：按小时出点至当前小时', () => {
-        const h = new Date(now).getHours();
+        const h = campusHour(now);
         const res = aggregateStats({
             orders: [order(1, 1, { promisedAt: min(30), deliveredAt: min(20), createdAt: min(5) })],
             graceByChannel: new Map([[1, 10]]),

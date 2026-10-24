@@ -15,6 +15,37 @@ describe('RiderService.assertApprovedRider', () => {
     it('信用分低于 60 拒绝', async () => expect(make({ riderStatus: 'approved', riderCredit: 59 })).rejects.toThrow());
 });
 
+// 入驻申请状态保护：待审可重新提交；已通过仅更新资料；已停用不得自助复申请
+describe('RiderService.applyRider 状态保护', () => {
+    const make = (riderStatus: string) => {
+        const update = vi.fn().mockResolvedValue({});
+        const svc = new RiderService(
+            { getRepository: vi.fn().mockReturnValue({ update }) } as any,
+            { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
+        );
+        return { svc, update };
+    };
+    const input = { realName: '张三', studentNo: '2024001', campus: '本部' };
+
+    it('首次申请（none）→ pending', async () => {
+        const { svc, update } = make('none');
+        await expect(svc.applyRider({ channelId: 1, activeUserId: 1 } as any, input)).resolves.toEqual({ status: 'pending' });
+        expect(update).toHaveBeenCalledWith(1, expect.objectContaining({ customFields: expect.objectContaining({ riderStatus: 'pending' }) }));
+    });
+
+    it('已通过审核重新提交 → 保留 approved（不被打回待审）', async () => {
+        const { svc, update } = make('approved');
+        await expect(svc.applyRider({ channelId: 1, activeUserId: 1 } as any, input)).resolves.toEqual({ status: 'approved' });
+        expect(update).toHaveBeenCalledWith(1, expect.objectContaining({ customFields: expect.objectContaining({ riderStatus: 'approved', riderRealName: '张三' }) }));
+    });
+
+    it('已停用 → 拒绝复申请（防绕过停用）', async () => {
+        const { svc, update } = make('suspended');
+        await expect(svc.applyRider({ channelId: 1, activeUserId: 1 } as any, input)).rejects.toThrow('骑手账号已停用');
+        expect(update).not.toHaveBeenCalled();
+    });
+});
+
 // F8 审核列表分页：skip/take 透传 QueryBuilder，返回 { items, total }
 describe('RiderService.listApplications（F8 分页）', () => {
     it('skip/take 透传并返回 items+total', async () => {

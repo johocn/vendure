@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { campusDayKey, campusHour, startOfCampusDay } from './campus-time';
 
 export type StatsRange = 'today' | '7d' | '30d';
 
@@ -73,12 +74,10 @@ export function normalizeRange(v?: string | null): StatsRange {
     return v === 'today' || v === '30d' ? v : '7d';
 }
 
-/** 窗口起点：today=本地 0 点；7d/30d=滚动窗口 */
+/** 窗口起点：today=校园时区（UTC+8）0 点；7d/30d=滚动窗口 */
 export function windowStartOf(range: StatsRange, now: number): number {
     if (range === 'today') {
-        const d = new Date(now);
-        d.setHours(0, 0, 0, 0);
-        return d.getTime();
+        return startOfCampusDay(now);
     }
     return now - RANGE_MS[range];
 }
@@ -88,9 +87,7 @@ const minOf = (ms: number) => round1(ms / 60_000);
 const rateOf = (onTime: number, scored: number) => (scored > 0 ? round1((onTime / scored) * 100) : 0);
 
 function dayKeyOf(d: Date): string {
-    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
-    const dd = `${d.getDate()}`.padStart(2, '0');
-    return `${d.getFullYear()}-${mm}-${dd}`;
+    return campusDayKey(d.getTime());
 }
 
 /** 纯函数聚合（单测注入时间/数据）。
@@ -120,7 +117,7 @@ export function aggregateStats(args: {
     const bucketOf = (t: number): Bucket => {
         let key: string;
         if (range === 'today') {
-            key = `${new Date(t).getHours()}`.padStart(2, '0') + ':00';
+            key = `${campusHour(t)}`.padStart(2, '0') + ':00';
         } else {
             key = dayKeyOf(new Date(t));
         }
@@ -177,7 +174,7 @@ export function aggregateStats(args: {
     // 趋势点：today 按小时（0 点→当前小时），滚动窗口按自然日
     const dailyTrend: StatsDailyPoint[] = [];
     if (range === 'today') {
-        const endHour = new Date(now).getHours();
+        const endHour = campusHour(now);
         for (let h = 0; h <= endHour; h++) {
             const key = `${h}`.padStart(2, '0') + ':00';
             const b = buckets.get(key);
@@ -185,10 +182,10 @@ export function aggregateStats(args: {
         }
     } else {
         const dayCount = range === '7d' ? 7 : 30;
-        const today0 = new Date(now); today0.setHours(0, 0, 0, 0);
+        const today0 = startOfCampusDay(now);
         // UTC+8 无夏令时，逐日回退 24h 安全
         for (let i = dayCount - 1; i >= 0; i--) {
-            const key = dayKeyOf(new Date(today0.getTime() - i * 24 * 3600_000));
+            const key = campusDayKey(today0 - i * 24 * 3600_000);
             const b = buckets.get(key);
             const label = key.slice(5); // MM-DD
             dailyTrend.push({ date: label, orders: b?.orders ?? 0, onTimeRate: rateOf(b?.onTime ?? 0, b?.scored ?? 0) });

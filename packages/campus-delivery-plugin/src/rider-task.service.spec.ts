@@ -15,12 +15,13 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }) {
             return Promise.resolve(v);
         }),
     };
+    const rawQuery = vi.fn().mockResolvedValue([[{ id: 10 }], []]);
     const conn = {
         getRepository: () => repo,
         // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
-        rawConnection: { query: vi.fn().mockResolvedValue([[{ id: 10 }], []]) },
+        rawConnection: { query: rawQuery },
     } as any;
-    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any), repo, saved };
+    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any), repo, saved, rawQuery };
 }
 
 const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };
@@ -43,14 +44,24 @@ describe('RiderTaskService', () => {
         await expect(svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
         await expect(svc.start({ channelId: 1 } as any, 10 as any)).rejects.toThrow('交接码不正确');
     });
-    it('delivered 需照片且分成=配送费+小费', async () => {
+    it('delivered 需照片且分成=配送费+小费（单条原子写终态）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
-        const { svc, repo, saved } = make(inProg, { riderCommissionRate: 100 });
+        const { svc, saved, rawQuery } = make(inProg, { riderCommissionRate: 100 });
         await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
-        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({
-            customFields: expect.objectContaining({ deliveryStatus: 'delivered', hallStatus: 'delivered' }),
-        }));
+        // 认领与终态同一条 UPDATE：delivered + hallStatus=delivered + 照片 JSON + 分成 一次落库
+        expect(rawQuery).toHaveBeenCalledTimes(1);
+        expect(rawQuery.mock.calls[0][0]).toContain('"customFieldsHallstatus"');
+        expect(rawQuery.mock.calls[0][1]).toEqual([
+            'delivered', expect.any(Date), 'delivered', JSON.stringify(['p1']), null, 400, 10, 'in_progress',
+        ]);
         expect(saved[0].amount).toBe(400); // 300 shipping + 100 tip
+    });
+    it('并发双送达 → 认领失败拒绝，不写分成（防双入账）', async () => {
+        const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
+        const { svc, saved, rawQuery } = make(inProg);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await expect(svc.deliver({ channelId: 1 } as any, 10 as any, ['p1'])).rejects.toThrow('当前状态不允许该操作');
+        expect(saved).toHaveLength(0);
     });
     it('分成比例 80%', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };

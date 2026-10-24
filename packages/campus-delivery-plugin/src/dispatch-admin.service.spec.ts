@@ -212,8 +212,8 @@ describe('DispatchAdminService.handleException', () => {
         const patch = orderRepo.update.mock.calls[0][1].customFields;
         expect(patch).toEqual(expect.objectContaining({ exceptionAction: 'reassign', exceptionHandledNote: '改派', exceptionHandledBy: '3' }));
         expect(patch.hallStatus).toBeUndefined();
-        // 处置完结 push：reassign 也通知
-        expect(notifySvc.user).toHaveBeenCalledWith(ctx, 6, 'exceptionHandled', '平台已重新安排配送');
+        // 处置完结 push：reassign 也通知（dedupe 后缀=本次异常上报时间）
+        expect(notifySvc.user).toHaveBeenCalledWith(ctx, 6, 'exceptionHandled', '平台已重新安排配送', undefined, expect.any(String));
     });
 
     it('refund_diff：部分退款（shipping/adjustment 显式 0）+ settleRefund + exception_final 留痕', async () => {
@@ -287,12 +287,29 @@ describe('DispatchAdminService.handleException', () => {
         orderRepo.findOne.mockResolvedValue(exceptionOrder(11, 'A11'));
         (svc as any).couponSvc = { grantCoupon: vi.fn().mockResolvedValue(['CODE1']) };
         await svc.handleException(ctx, 11 as any, 'coupon', undefined, '9' as any, '补偿');
-        expect(notifySvc.user).toHaveBeenCalledWith(ctx, 11, 'exceptionHandled', '异常已处理，补偿券已发放');
+        expect(notifySvc.user).toHaveBeenCalledWith(ctx, 11, 'exceptionHandled', '异常已处理，补偿券已发放', undefined, expect.any(String));
 
         const env2 = makeEnv({ payment: { id: 9, amount: 2300 }, refundedSum: 0 });
         env2.orderRepo.findOne.mockResolvedValue(exceptionOrder(12, 'A12'));
         await env2.svc.handleException(ctx, 12 as any, 'refund_diff', 300);
-        expect(env2.notifySvc.user).toHaveBeenCalledWith(ctx, 12, 'exceptionHandled', '异常已处理，差价原路退回');
+        expect(env2.notifySvc.user).toHaveBeenCalledWith(ctx, 12, 'exceptionHandled', '异常已处理，差价原路退回', undefined, expect.any(String));
+    });
+
+    it('同一单第二次异常处置 → dedupe 后缀不同（固定键会吞掉后续通知）', async () => {
+        const env1 = makeEnv();
+        env1.orderRepo.findOne.mockResolvedValue(
+            exceptionOrder(21, 'A21', { exceptionReportedAt: new Date('2026-10-24T01:00:00Z') }),
+        );
+        await env1.svc.handleException(ctx, 21 as any, 'reassign');
+        const env2 = makeEnv();
+        env2.orderRepo.findOne.mockResolvedValue(
+            exceptionOrder(21, 'A21', { exceptionReportedAt: new Date('2026-10-24T02:00:00Z') }),
+        );
+        await env2.svc.handleException(ctx, 21 as any, 'reassign');
+        const key1 = env1.notifySvc.user.mock.calls[0][5];
+        const key2 = env2.notifySvc.user.mock.calls[0][5];
+        expect(key1).toBe('1792803600000');
+        expect(key2).not.toBe(key1);
     });
 
     it('已取消订单 → 拒绝处置（防取消后退款/发券）', async () => {

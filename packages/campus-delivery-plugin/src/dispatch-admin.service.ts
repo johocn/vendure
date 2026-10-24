@@ -323,7 +323,16 @@ export class DispatchAdminService {
         await this.connection.getRepository(ctx, Order).update(order.id, { customFields: patch });
         Logger.info(`Order ${order.code} exception handled: ${action}`, 'CampusDispatch');
         // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
-        this.notify.user(ctx, order.id, 'exceptionHandled', EXCEPTION_NOTIFY_TEXT[action]);
+        // dedupe 后缀用本次异常上报时间：重派后再次异常处置各推一条（固定键会把第二次吞掉）
+        const occurrence = cf.exceptionReportedAt ? new Date(cf.exceptionReportedAt).getTime() : Date.now();
+        this.notify.user(
+            ctx,
+            order.id,
+            'exceptionHandled',
+            EXCEPTION_NOTIFY_TEXT[action],
+            undefined,
+            String(occurrence),
+        );
         return { ok: true, action };
     }
 

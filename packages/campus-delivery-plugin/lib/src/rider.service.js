@@ -30,18 +30,24 @@ let RiderService = class RiderService {
         return customer;
     }
     async applyRider(ctx, input) {
-        var _a;
+        var _a, _b, _c;
         const customer = await this.requireCustomer(ctx);
+        const current = String((_b = (_a = customer.customFields) === null || _a === void 0 ? void 0 : _a.riderStatus) !== null && _b !== void 0 ? _b : 'none');
+        // 已停用账号不得自助复申请（否则改回 pending 可绕过停用）；
+        // 已通过审核者仅更新资料，保留 approved（重新提交不能把在职骑手打回待审）
+        if (current === 'suspended')
+            throw new core_1.UserInputError('骑手账号已停用，请联系管理员');
+        const status = current === 'approved' ? 'approved' : 'pending';
         await this.connection.getRepository(ctx, core_1.Customer).update(customer.id, {
             customFields: {
-                riderStatus: 'pending',
+                riderStatus: status,
                 riderRealName: input.realName,
                 riderStudentNo: input.studentNo,
                 riderCampus: input.campus,
-                riderIdImg: (_a = input.idImg) !== null && _a !== void 0 ? _a : null,
+                riderIdImg: (_c = input.idImg) !== null && _c !== void 0 ? _c : null,
             },
         });
-        return { status: 'pending' };
+        return { status };
     }
     async setRiderStatus(ctx, customerId, status) {
         await this.connection.getRepository(ctx, core_1.Customer).update(customerId, {

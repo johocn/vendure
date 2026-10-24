@@ -14,7 +14,7 @@ export declare class RiderService {
         status: string;
     }>;
     setRiderStatus(ctx: RequestContext, customerId: number, status: 'approved' | 'suspended' | 'none'): Promise<{
-        status: "approved" | "suspended" | "none";
+        status: "none" | "suspended" | "approved";
     }>;
     assertApprovedRider(ctx: RequestContext): Promise<Customer>;
     myRiderProfile(ctx: RequestContext): Promise<{

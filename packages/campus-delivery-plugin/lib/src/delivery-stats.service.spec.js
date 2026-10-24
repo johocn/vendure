@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const delivery_stats_service_1 = require("./delivery-stats.service");
+const campus_time_1 = require("./campus-time");
 const now = new Date('2026-10-23T15:30:00+08:00').getTime();
 const min = (m, base = now) => new Date(base - m * 60000);
 const order = (id, ch, cf, extra = {}) => {
@@ -15,12 +16,8 @@ const order = (id, ch, cf, extra = {}) => {
         (0, vitest_1.expect)((0, delivery_stats_service_1.normalizeRange)('today')).toBe('today');
         (0, vitest_1.expect)((0, delivery_stats_service_1.normalizeRange)('30d')).toBe('30d');
     });
-    (0, vitest_1.it)('today 窗口起点为本地 0 点', () => {
-        const ws = (0, delivery_stats_service_1.windowStartOf)('today', now);
-        const d = new Date(ws);
-        (0, vitest_1.expect)(d.getHours()).toBe(0);
-        (0, vitest_1.expect)(d.getMinutes()).toBe(0);
-        (0, vitest_1.expect)(d.getDate()).toBe(23);
+    (0, vitest_1.it)('today 窗口起点为校园时区（UTC+8）0 点，不随服务器时区漂移', () => {
+        (0, vitest_1.expect)((0, delivery_stats_service_1.windowStartOf)('today', now)).toBe(new Date('2026-10-23T00:00:00+08:00').getTime());
     });
     (0, vitest_1.it)('7d 窗口起点为 now-7天', () => {
         (0, vitest_1.expect)((0, delivery_stats_service_1.windowStartOf)('7d', now)).toBe(now - 7 * 24 * 3600000);
@@ -109,7 +106,7 @@ const order = (id, ch, cf, extra = {}) => {
         (0, vitest_1.expect)(res.dailyTrend[0].onTimeRate).toBe(0);
     });
     (0, vitest_1.it)('dailyTrend today：按小时出点至当前小时', () => {
-        const h = new Date(now).getHours();
+        const h = (0, campus_time_1.campusHour)(now);
         const res = (0, delivery_stats_service_1.aggregateStats)({
             orders: [order(1, 1, { promisedAt: min(30), deliveredAt: min(20), createdAt: min(5) })],
             graceByChannel: new Map([[1, 10]]),

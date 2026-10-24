@@ -156,7 +156,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
                         : null;
             if (!text)
                 return;
-            void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url));
+            // dedupe 后缀用目标状态：同一售后单 Approved→Refunded 多条进度各推一条（固定键会把后续节点吞掉）
+            void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url, e.toState));
         });
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
     }

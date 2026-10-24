@@ -91,6 +91,40 @@ describe('DispatchJobService.scan', () => {
         expect(grabResults).toHaveLength(0);
     });
 
+    it('T2 轮转派单：多单超时不全部塞给信用最高的一人', async () => {
+        const { svc, grabResults } = makeEnv({
+            openOrders: [
+                { id: 1, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(20) } },
+                { id: 2, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(15) } },
+            ],
+            onlineRiders: [
+                { id: 7, customFields: { riderOnlineAt: minAgo(1), riderCredit: 100 } },
+                { id: 8, customFields: { riderOnlineAt: minAgo(1), riderCredit: 90 } },
+            ],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(grabResults).toEqual([
+            { orderId: 1, riderId: 7 }, // 同负载 → 信用高者优先
+            { orderId: 2, riderId: 8 }, // 7 已 +1 单，负载更低者接下一单
+        ]);
+    });
+
+    it('T2 负载均衡：信用最高者已有 2 单在途 → 新超时单派给空闲骑手', async () => {
+        const { svc, grabResults } = makeEnv({
+            assignedOrders: [
+                { id: 2, customFields: { hallStatus: 'grabbed', deliveryStatus: 'assigned', deliveryStaffId: '7', assignedAt: minAgo(5), hallEnteredAt: minAgo(6) } },
+                { id: 3, customFields: { hallStatus: 'grabbed', deliveryStatus: 'in_progress', deliveryStaffId: '7', assignedAt: minAgo(5), hallEnteredAt: minAgo(6) } },
+            ],
+            openOrders: [{ id: 1, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(11) } }],
+            onlineRiders: [
+                { id: 7, customFields: { riderOnlineAt: minAgo(1), riderCredit: 100 } },
+                { id: 8, customFields: { riderOnlineAt: minAgo(1), riderCredit: 90 } },
+            ],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(grabResults[0]).toEqual({ orderId: 1, riderId: 8 });
+    });
+
     it('assigned 超 15min 未取货 → 回大厅 + 扣 10 分', async () => {
         const { svc, hallSvc, creditSvc } = makeEnv({
             assignedOrders: [{ id: 2, customFields: { hallStatus: 'grabbed', deliveryStatus: 'assigned', deliveryStaffId: '9', assignedAt: minAgo(16), hallEnteredAt: minAgo(20) } }],

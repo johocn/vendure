@@ -12,6 +12,7 @@ import {
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { startOfCampusDay } from './campus-time';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
@@ -90,8 +91,8 @@ export class MerchantAdminService {
             .leftJoinAndSelect('order.lines', 'lines')
             .leftJoinAndSelect('lines.productVariant', 'variant')
             .getMany();
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        // 今日已送达口径：按校园时区（UTC+8）日界，不随部署服务器时区漂移
+        const startOfDay = new Date(startOfCampusDay(Date.now()));
         const deliveredToday = await repo
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')

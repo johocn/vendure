@@ -216,26 +216,17 @@ let RiderTaskService = class RiderTaskService {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const earning = this.calcEarning(order, await this.getConfig(ctx));
         const tip = (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0;
-        // 原子认领：条件更新仅当仍为 in_progress 时生效，防并发双送达 → 双分成入账
-        // （对齐 grab() 的锁语义；RETURNING id 以取 affected 行数）
-        const claimed = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1, "customFieldsDeliveredat" = $2 '
-            + 'WHERE id = $3 AND "customFieldsDeliverystatus" = $4 RETURNING id', ['delivered', new Date(), order.id, 'in_progress']);
+        const deliveredAt = new Date();
+        // 单条原子 UPDATE 完成「认领 + 终态」：deliveryStatus 条件更新与 hallStatus/照片/分成/位置清空
+        // 同语句落库（原两步写在两步之间宕机会留下 delivered 但 hallStatus 仍旧态的半完成单）。
+        // RETURNING id 取 affected 行数，防并发双送达 → 双分成入账（对齐 grab() 的锁语义）。
+        const claimed = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1, "customFieldsDeliveredat" = $2, '
+            + '"customFieldsHallstatus" = $3, "customFieldsDeliveryphotos" = $4, "customFieldsDeliverynote" = $5, '
+            + '"customFieldsRiderearning" = $6, "customFieldsRiderlat" = NULL, "customFieldsRiderlng" = NULL '
+            + 'WHERE id = $7 AND "customFieldsDeliverystatus" = $8 RETURNING id', ['delivered', deliveredAt, 'delivered', JSON.stringify(photos), note !== null && note !== void 0 ? note : null, earning, order.id, 'in_progress']);
         const claimedRows = Array.isArray(claimed) ? claimed[0] : claimed;
         if (!(claimedRows === null || claimedRows === void 0 ? void 0 : claimedRows.length))
             throw new core_1.UserInputError('当前状态不允许该操作（订单已被处理）');
-        await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
-            customFields: {
-                deliveryStatus: 'delivered',
-                // 终态：hallStatus 同步置 delivered，调度看板/骑手台按终态过滤，避免送达后仍挂在「配送中」
-                hallStatus: 'delivered',
-                deliveredAt: new Date(),
-                deliveryPhotos: photos,
-                deliveryNote: note !== null && note !== void 0 ? note : null,
-                riderEarning: earning,
-                riderLat: null,
-                riderLng: null,
-            },
-        });
         if (earning === 0 && tip === 0) {
             // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错）
             common_1.Logger.log(`订单 ${(_b = order.code) !== null && _b !== void 0 ? _b : order.id} 0 分成，跳过入账`, 'RiderTask');

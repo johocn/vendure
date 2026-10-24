@@ -5,6 +5,7 @@ import {
     ForbiddenError,
     RequestContext,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 
 const CREDIT_LIMIT = 60;
@@ -27,16 +28,21 @@ export class RiderService {
 
     async applyRider(ctx: RequestContext, input: { realName: string; studentNo: string; campus: string; idImg?: string }) {
         const customer = await this.requireCustomer(ctx);
+        const current = String((customer.customFields as any)?.riderStatus ?? 'none');
+        // 已停用账号不得自助复申请（否则改回 pending 可绕过停用）；
+        // 已通过审核者仅更新资料，保留 approved（重新提交不能把在职骑手打回待审）
+        if (current === 'suspended') throw new UserInputError('骑手账号已停用，请联系管理员');
+        const status = current === 'approved' ? 'approved' : 'pending';
         await this.connection.getRepository(ctx, Customer).update(customer.id, {
             customFields: {
-                riderStatus: 'pending',
+                riderStatus: status,
                 riderRealName: input.realName,
                 riderStudentNo: input.studentNo,
                 riderCampus: input.campus,
                 riderIdImg: input.idImg ?? null,
             },
         } as any);
-        return { status: 'pending' };
+        return { status };
     }
 
     async setRiderStatus(ctx: RequestContext, customerId: number, status: 'approved' | 'suspended' | 'none') {

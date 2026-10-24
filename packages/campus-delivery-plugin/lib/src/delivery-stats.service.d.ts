@@ -55,7 +55,7 @@ export interface DeliveryStatsPayload {
     storeComparison: StatsStoreLine[];
 }
 export declare function normalizeRange(v?: string | null): StatsRange;
-/** 窗口起点：today=本地 0 点；7d/30d=滚动窗口 */
+/** 窗口起点：today=校园时区（UTC+8）0 点；7d/30d=滚动窗口 */
 export declare function windowStartOf(range: StatsRange, now: number): number;
 /** 纯函数聚合（单测注入时间/数据）。
  * 口径：单量=窗口内未取消订单；准点率=deliveredAt ≤ promisedAt + 各渠道 grace（有承诺且已送达才计分）；

@@ -11,7 +11,7 @@ export declare class RiderAdminResolver {
         total: number;
     }>;
     campusSetRiderStatus(ctx: RequestContext, customerId: ID, status: 'approved' | 'suspended' | 'none'): Promise<{
-        status: "approved" | "suspended" | "none";
+        status: "none" | "suspended" | "approved";
     }>;
     /** 骑手提现申请列表（status=ALL/PENDING/PAID/REJECTED，渠道隔离） */
     riderWithdrawals(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<import("./rider-withdrawal.entity").RiderWithdrawalRequest[]>;

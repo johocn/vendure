@@ -15,12 +15,13 @@ function make(order, cfg = { riderCommissionRate: 100 }) {
             return Promise.resolve(v);
         }),
     };
+    const rawQuery = vitest_1.vi.fn().mockResolvedValue([[{ id: 10 }], []]);
     const conn = {
         getRepository: () => repo,
         // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
-        rawConnection: { query: vitest_1.vi.fn().mockResolvedValue([[{ id: 10 }], []]) },
+        rawConnection: { query: rawQuery },
     };
-    return { svc: new rider_task_service_1.RiderTaskService(conn, riderSvc, { adjust: vitest_1.vi.fn().mockResolvedValue(102) }, { backToHall: vitest_1.vi.fn() }, { user: vitest_1.vi.fn() }), repo, saved };
+    return { svc: new rider_task_service_1.RiderTaskService(conn, riderSvc, { adjust: vitest_1.vi.fn().mockResolvedValue(102) }, { backToHall: vitest_1.vi.fn() }, { user: vitest_1.vi.fn() }), repo, saved, rawQuery };
 }
 const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };
 (0, vitest_1.describe)('RiderTaskService', () => {
@@ -41,14 +42,24 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         await (0, vitest_1.expect)(svc.start({ channelId: 1 }, 10, '9999')).rejects.toThrow('交接码不正确');
         await (0, vitest_1.expect)(svc.start({ channelId: 1 }, 10)).rejects.toThrow('交接码不正确');
     });
-    (0, vitest_1.it)('delivered 需照片且分成=配送费+小费', async () => {
+    (0, vitest_1.it)('delivered 需照片且分成=配送费+小费（单条原子写终态）', async () => {
         const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
-        const { svc, repo, saved } = make(inProg, { riderCommissionRate: 100 });
+        const { svc, saved, rawQuery } = make(inProg, { riderCommissionRate: 100 });
         await svc.deliver({ channelId: 1 }, 10, ['p1']);
-        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({
-            customFields: vitest_1.expect.objectContaining({ deliveryStatus: 'delivered', hallStatus: 'delivered' }),
-        }));
+        // 认领与终态同一条 UPDATE：delivered + hallStatus=delivered + 照片 JSON + 分成 一次落库
+        (0, vitest_1.expect)(rawQuery).toHaveBeenCalledTimes(1);
+        (0, vitest_1.expect)(rawQuery.mock.calls[0][0]).toContain('"customFieldsHallstatus"');
+        (0, vitest_1.expect)(rawQuery.mock.calls[0][1]).toEqual([
+            'delivered', vitest_1.expect.any(Date), 'delivered', JSON.stringify(['p1']), null, 400, 10, 'in_progress',
+        ]);
         (0, vitest_1.expect)(saved[0].amount).toBe(400); // 300 shipping + 100 tip
+    });
+    (0, vitest_1.it)('并发双送达 → 认领失败拒绝，不写分成（防双入账）', async () => {
+        const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
+        const { svc, saved, rawQuery } = make(inProg);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await (0, vitest_1.expect)(svc.deliver({ channelId: 1 }, 10, ['p1'])).rejects.toThrow('当前状态不允许该操作');
+        (0, vitest_1.expect)(saved).toHaveLength(0);
     });
     (0, vitest_1.it)('分成比例 80%', async () => {
         const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
