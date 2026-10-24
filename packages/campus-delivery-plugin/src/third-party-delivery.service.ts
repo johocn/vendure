@@ -18,8 +18,16 @@ import { ExternalProviderCode, GeoPointLike, resolveDropoff, resolvePickup, reso
 
 const loggerCtx = 'ThirdPartyDelivery';
 
-/** 外部运单状态推进序（回调乱序时只接受前进，不接受回退） */
-const TP_STATUS_RANK: Record<string, number> = { pending: 0, accepted: 1, pickup: 2, delivered: 3 };
+/** 外部运单状态推进序（回调乱序时只接受前进，不接受回退）。
+ *  cancelled/exception 与 delivered 同属终态档：终态之后到达的任何回调一律忽略。 */
+const TP_STATUS_RANK: Record<string, number> = {
+    pending: 0,
+    accepted: 1,
+    pickup: 2,
+    delivered: 3,
+    cancelled: 4,
+    exception: 4,
+};
 
 /** 第一段完成后的本地状态（纯函数，便于单测）：只有「直送」才算完成，其余都进大厅接力 */
 export function nextHallStateAfterHandover(handover: string): { hallStatus: string; deliveryStatus: string | null } {
@@ -304,6 +312,15 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         const channelId = order.channels?.[0]?.id ?? ctx.channelId;
         const oCtx = await this.ctxForChannel(channelId);
         const cf = order.customFields as any;
+        // 旧运单迟到回调：订单重新推送过外部快递（cancelled/exception 后换运力）时，
+        // 旧运单号回调不得覆盖新运单状态。
+        if (cf.thirdPartyNo && update.thirdPartyNo && String(cf.thirdPartyNo) !== String(update.thirdPartyNo)) {
+            Logger.warn(
+                `订单 ${order.code} 回调运单号不匹配（当前 ${cf.thirdPartyNo}，回调 ${update.thirdPartyNo}），忽略`,
+                loggerCtx,
+            );
+            return;
+        }
         // 回调幂等/防回退：同状态重复、旧状态乱序、送达后的迟到回调一律忽略。
         // 否则重复 delivered 会把已进大厅/已被抢的单再次 enterHallForHandover
         //（清空骑手、重新生成交接码 → 可二次配送、二次分成）。

@@ -1,5 +1,14 @@
 import { Args, Int, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    ID,
+    Order,
+    Permission,
+    RequestContext,
+    TransactionalConnection,
+    UserInputError,
+} from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -42,12 +51,14 @@ export class HallShopResolver {
 
     /** grab 失败（已被抢/抢自己的/非骑手）由 service 抛 UserInputError/ForbiddenError，Vendure 转 GraphQL 错误。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusGrabOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.grab.grab(ctx, orderId);
     }
 
     /** 拒单：仅限被指派且未取货的骑手；订单回大厅 + 骑手扣分。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusRejectAssignment(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.rejectAssignment(ctx, orderId);
     }
@@ -65,6 +76,7 @@ export class HallShopResolver {
     }
 
     @Query()
+    @Allow(Permission.Authenticated)
     async campusHall(@Ctx() ctx: RequestContext) {
         // F4 收敛信息暴露面：大厅仅对已认证骑手开放（防匿名拉取全渠道单号/金额/楼栋）
         await this.riderService.assertApprovedRider(ctx);
@@ -73,6 +85,7 @@ export class HallShopResolver {
 
     /** F5 聚合大厅：一次带回全渠道 open 单（骑手端轮询从 N+1 请求降为 1 请求） */
     @Query()
+    @Allow(Permission.Authenticated)
     async campusHallAll(@Ctx() ctx: RequestContext) {
         await this.riderService.assertApprovedRider(ctx);
         return this.grab.hallAll(ctx);
@@ -80,11 +93,14 @@ export class HallShopResolver {
 
     /** 公开只读：选时段前预检余量 */
     @Query()
+    @Allow(Permission.Public)
     async campusShopSlots(@Ctx() ctx: RequestContext) {
         return this.config.slotsForShop(ctx);
     }
 
+    /** 写 activeOrder 的配送目标（分区/楼栋/路线/时段）：按 Owner 校验，游客会话同样可用 */
     @Mutation()
+    @Allow(Permission.Owner)
     async campusSetDeliveryTarget(
         @Ctx() ctx: RequestContext,
         @Args('zoneId') zoneId: ID,
@@ -96,6 +112,7 @@ export class HallShopResolver {
     }
 
     @Query()
+    @Allow(Permission.Authenticated)
     async myRiderEarnings(
         @Ctx() ctx: RequestContext,
         @Args('skip', { nullable: true }) skip?: number,

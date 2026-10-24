@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, RequestContext } from '@vendure/core';
+import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
 import { R2MarkService } from './r2-mark.service';
 import { RiderTaskService } from './rider-task.service';
 
@@ -9,18 +9,21 @@ export class RiderTaskShopResolver {
 
     /** 需登录骑手：service 内部 assertApprovedRider，未登录/未批准/信用分不足抛 ForbiddenError。 */
     @Query()
+    @Allow(Permission.Authenticated)
     async campusMyTasks(@Ctx() ctx: RequestContext, @Args('status', { nullable: true }) status?: string) {
         return this.riderTaskService.myTasks(ctx, status);
     }
 
-    /** 公开只读：C 端订单跟踪骑手卡（姓名+信用分，不含联系方式） */
+    /** 需登录：仅下单人本人可查（service 内归属校验） */
     @Query()
+    @Allow(Permission.Authenticated)
     async campusOrderRider(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.riderTaskService.orderRider(ctx, orderId);
     }
 
     /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusStartTask(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,
@@ -31,6 +34,7 @@ export class RiderTaskShopResolver {
 
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusTransferTask(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,
@@ -41,6 +45,7 @@ export class RiderTaskShopResolver {
     }
 
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusDeliverTask(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,
@@ -52,6 +57,7 @@ export class RiderTaskShopResolver {
 
     /** 骑手位置上报（配送中 10s 一次）：本人 + assigned/in_progress 才写，送达/转单由 service 清除。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusRiderReportLocation(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,
@@ -62,6 +68,7 @@ export class RiderTaskShopResolver {
     }
 
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusReportException(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,
@@ -74,12 +81,14 @@ export class RiderTaskShopResolver {
 
     /** R2 快递单到校确认：本人 + fulfillmentRoute='R2'，service 内校验，违规抛 Forbidden/UserInputError。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusMarkArrived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.r2Mark.markArrived(ctx, orderId);
     }
 
     /** 用户催单（plan 2.4）：状态/频率校验在 service，标记 urged=true + urgedAt。 */
     @Mutation()
+    @Allow(Permission.Authenticated)
     async campusUrgeOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.riderTaskService.urgeOrder(ctx, orderId);
     }

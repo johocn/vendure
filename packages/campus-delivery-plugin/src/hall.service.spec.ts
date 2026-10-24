@@ -208,32 +208,26 @@ describe('HallService.releaseScheduled', () => {
 describe('HallService.exitHall 取消脱厅（3.3）', () => {
     const order = { id: 9, code: 'S1' } as unknown as Order;
 
-    it('大厅流转态 open → 清为 cancelled，不碰指派字段', async () => {
-        const env = makeEnv({ curHs: 'open' });
-        await env.svc.exitHall({ channelId: 1 } as any, order);
-        expect(env.updates[0].customFields).toEqual({ hallStatus: 'cancelled' });
-    });
-
-    it('grabbed → 连带清骑手指派字段（任务卡不残留）', async () => {
-        const env = makeEnv({ curHs: 'grabbed' });
-        await env.svc.exitHall({ channelId: 1 } as any, order);
-        expect(env.updates[0].customFields).toEqual({
-            hallStatus: 'cancelled',
-            deliveryStaffId: null,
-            deliveryStatus: null,
-            assignedAt: null,
-        });
-    });
-
-    it('no_rider_final（T4 终态）→ 跳过不写，防竞态覆盖', async () => {
-        const env = makeEnv({ curHs: 'no_rider_final' });
-        await env.svc.exitHall({ channelId: 1 } as any, order);
-        expect(env.updates).toHaveLength(0);
-    });
-
-    it('DB 无记录/无 hallStatus → 幂等跳过', async () => {
+    it('单条条件写 → cancelled；grabbed 用 CASE 清指派字段（不覆盖 T4 终态）', async () => {
         const env = makeEnv();
         await env.svc.exitHall({ channelId: 1 } as any, order);
-        expect(env.updates).toHaveLength(0);
+        expect(env.rawQuery).toHaveBeenCalledTimes(1);
+        const [sql, params] = env.rawQuery.mock.calls[0];
+        expect(sql).toContain(`"customFieldsHallstatus" = 'cancelled'`);
+        expect(sql).toContain(`CASE WHEN "customFieldsHallstatus" = 'grabbed' THEN NULL`);
+        expect(sql).toContain('"customFieldsDeliverystaffid"');
+        expect(sql).toContain('"customFieldsDeliverystatus"');
+        expect(sql).toContain('"customFieldsAssignedat"');
+        // 仅活跃流转态可脱厅：no_rider_final / delivered 等终态不在条件里，不会被覆盖
+        expect(params[1]).toContain('grabbed');
+        expect(params[1]).not.toContain('no_rider_final');
+        expect(params[1]).not.toContain('delivered');
+        expect(env.orderRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('无命中行（已终态/已取消/无记录）→ 幂等跳过不报错', async () => {
+        const env = makeEnv();
+        env.rawQuery.mockResolvedValueOnce([[], []]);
+        await expect(env.svc.exitHall({} as any, order)).resolves.toBeUndefined();
     });
 });

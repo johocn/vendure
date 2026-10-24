@@ -183,4 +183,23 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
             expect.objectContaining({ hallStatus: 'open', hallEnteredAt: expect.any(Date) }),
         );
     });
+    it('旧运单号迟到回调（已换运力重推）→ 忽略，不污染新运单状态', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyNo: 'TP2', thirdPartyState: 'pending', hallStatus: 'third_party' },
+        });
+        await svc.onDeliveryStatus(ctx, { ...update('delivered'), thirdPartyNo: 'TP1' });
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(hall.transitionFrom).not.toHaveBeenCalled();
+    });
+
+    it('已取消终态后的迟到回调 → 忽略（cancelled/exception 同属终态档）', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyNo: 'TP1', thirdPartyState: 'cancelled', hallStatus: 'open' },
+        });
+        await svc.onDeliveryStatus(ctx, update('delivered'));
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(hall.enterHallForHandover).not.toHaveBeenCalled();
+    });
 });

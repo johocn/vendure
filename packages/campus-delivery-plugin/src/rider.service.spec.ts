@@ -46,6 +46,57 @@ describe('RiderService.applyRider 状态保护', () => {
     });
 });
 
+// 入参校验 + 状态白名单（P3-12）：无长度约束的 customFields 不得被超长/空值写入
+describe('RiderService.applyRider 入参校验 / setRiderStatus（P3）', () => {
+    const make = (riderStatus = 'none') => {
+        const update = vi.fn().mockResolvedValue({});
+        const svc = new RiderService(
+            { getRepository: vi.fn().mockReturnValue({ update }) } as any,
+            { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
+        );
+        return { svc, update };
+    };
+
+    it('姓名/学号/校区为空（含纯空格）→ 拒绝', async () => {
+        const { svc, update } = make();
+        await expect(
+            svc.applyRider({ channelId: 1, activeUserId: 1 } as any, { realName: '  ', studentNo: '2024001', campus: '本部' }),
+        ).rejects.toThrow('请填写姓名、学号和校区');
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('超长字段 → 拒绝；正常入参 trim 后落库', async () => {
+        const { svc, update } = make();
+        await expect(
+            svc.applyRider({ channelId: 1, activeUserId: 1 } as any, {
+                realName: 'a'.repeat(31), studentNo: '2024001', campus: '本部',
+            }),
+        ).rejects.toThrow('30 个字符');
+        await expect(
+            svc.applyRider({ channelId: 1, activeUserId: 1 } as any, {
+                realName: '张三', studentNo: '2024001', campus: '本部', idImg: 'x'.repeat(501),
+            }),
+        ).rejects.toThrow('证件图片地址不合法');
+        await svc.applyRider({ channelId: 1, activeUserId: 1 } as any, { realName: ' 张三 ', studentNo: ' 2024001 ', campus: ' 本部 ' });
+        expect(update).toHaveBeenCalledWith(1, {
+            customFields: expect.objectContaining({ riderRealName: '张三', riderStudentNo: '2024001', riderCampus: '本部', riderIdImg: null }),
+        });
+    });
+
+    it('setRiderStatus 非白名单状态 → 拒绝', async () => {
+        const { svc, update } = make();
+        await expect(svc.setRiderStatus({ channelId: 1 } as any, 1, 'hacked' as any)).rejects.toThrow('骑手状态不合法');
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('setRiderStatus 停用/重置 → 同时清 riderOnlineAt 强制下线', async () => {
+        const { svc, update } = make('approved');
+        await svc.setRiderStatus({ channelId: 1 } as any, 1, 'suspended');
+        expect(update).toHaveBeenCalledWith(1, { customFields: { riderStatus: 'suspended', riderOnlineAt: null } });
+        await svc.setRiderStatus({ channelId: 1 } as any, 1, 'approved');
+        expect(update).toHaveBeenLastCalledWith(1, { customFields: { riderStatus: 'approved' } });
+    });
+});
 // F8 审核列表分页：skip/take 透传 QueryBuilder，返回 { items, total }
 describe('RiderService.listApplications（F8 分页）', () => {
     it('skip/take 透传并返回 items+total', async () => {

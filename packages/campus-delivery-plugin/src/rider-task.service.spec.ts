@@ -61,6 +61,7 @@ describe('RiderTaskService', () => {
         expect(rawQuery.mock.calls[0][0]).toContain('"customFieldsHallstatus"');
         expect(rawQuery.mock.calls[0][1]).toEqual([
             'delivered', expect.any(Date), 'delivered', JSON.stringify(['p1']), null, 400, 10, 'in_progress',
+            '9', 'grabbed',
         ]);
         expect(saved[0].amount).toBe(400); // 300 shipping + 100 tip
     });

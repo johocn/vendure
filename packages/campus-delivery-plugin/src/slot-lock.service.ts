@@ -31,12 +31,13 @@ export class SlotLockService {
             const claimed = Array.isArray(claim) && Array.isArray(claim[0]) ? claim[0] : claim;
             if (!Array.isArray(claimed) || !claimed.length) return true; // 已锁位：幂等跳过
         }
+        // 容量条件直接用列比较：先用读到快照做条件时，管理员并发调低 capacity 会超额锁位
         const res = await this.connection
             .getRepository(ctx, DeliverySlot)
             .createQueryBuilder()
             .update(DeliverySlot)
             .set({ lockedCount: () => '"lockedCount" + 1' })
-            .where('id = :id AND "lockedCount" < :cap', { id: slot.id, cap: slot.capacity })
+            .where('id = :id AND "lockedCount" < "capacity"', { id: slot.id })
             .execute();
         const ok = (res.affected ?? 0) > 0;
         if (!ok && Number.isFinite(orderId)) {

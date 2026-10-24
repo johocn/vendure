@@ -236,10 +236,23 @@ export class DispatchAdminService {
     }
 
     /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open。
-     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。 */
-    async backToHall(ctx: RequestContext, orderId: ID) {
-        await this.assertOrderInChannel(ctx, orderId);
-        const moved = await this.hall.backToHall(ctx, orderId as any);
+     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。
+     * 骑手已取货（in_progress）时强制回厅等于让其白跑，必须带交接说明并留痕（transferNote/transferAt）。 */
+    async backToHall(ctx: RequestContext, orderId: ID, note?: string) {
+        const order = await this.assertOrderInChannel(ctx, orderId);
+        const cf = (order.customFields ?? {}) as any;
+        const trimmed = String(note ?? '').trim();
+        if (cf.deliveryStatus === 'in_progress' && !trimmed) {
+            throw new UserInputError('骑手已取货，强制回大厅需填写交接说明');
+        }
+        const extra: Record<string, unknown> = trimmed
+            ? {
+                  transferNote: trimmed.slice(0, 200),
+                  transferAt: new Date(),
+                  campusCause: 'admin_force_back',
+              }
+            : {};
+        const moved = await this.hall.backToHall(ctx, orderId as any, extra);
         if (!moved) throw new UserInputError('订单已取消或已不在履约流程中，无法回大厅');
         return { backToHall: true };
     }

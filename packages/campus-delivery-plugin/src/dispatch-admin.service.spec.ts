@@ -351,3 +351,40 @@ describe('DispatchAdminService.handleException', () => {
         expect(env.orderRepo.update).not.toHaveBeenCalled();
     });
 });
+
+// 后台强制回厅（P2-4）：已取货单必须带交接说明，说明与复位字段同语句落库
+describe('DispatchAdminService.backToHall 交接说明', () => {
+    const ctx = { channelId: 1 } as any;
+
+    it('未取货（assigned）无需说明 → 复位到 open', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ id: 7, channels: [{ id: 1 }], customFields: { deliveryStatus: 'assigned' } });
+        await expect(env.svc.backToHall(ctx, 7 as any)).resolves.toEqual({ backToHall: true });
+        expect(env.hallSvc.backToHall).toHaveBeenCalledWith(ctx, 7, {});
+    });
+
+    it('已取货（in_progress）无说明 → 拒绝，不回厅', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ id: 7, channels: [{ id: 1 }], customFields: { deliveryStatus: 'in_progress' } });
+        await expect(env.svc.backToHall(ctx, 7 as any)).rejects.toThrow('需填写交接说明');
+        expect(env.hallSvc.backToHall).not.toHaveBeenCalled();
+    });
+
+    it('已取货带说明 → 说明/时间/原因与回厅同语句落库', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ id: 7, channels: [{ id: 1 }], customFields: { deliveryStatus: 'in_progress' } });
+        await env.svc.backToHall(ctx, 7 as any, '  餐已取出，交回门店  ');
+        expect(env.hallSvc.backToHall).toHaveBeenCalledWith(ctx, 7, {
+            transferNote: '餐已取出，交回门店',
+            transferAt: expect.any(Date),
+            campusCause: 'admin_force_back',
+        });
+    });
+
+    it('订单已取消/已终态（条件写未命中）→ 明确报错', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ id: 7, channels: [{ id: 1 }], customFields: {} });
+        env.hallSvc.backToHall.mockResolvedValueOnce(false);
+        await expect(env.svc.backToHall(ctx, 7 as any)).rejects.toThrow('无法回大厅');
+    });
+});

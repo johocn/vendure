@@ -7,7 +7,12 @@ function makeEnv(opts: { order?: any; rider?: any; building?: any } = {}) {
         Customer: { findOne: vi.fn().mockResolvedValue(opts.rider ?? null) },
         CampusBuilding: { findOne: vi.fn().mockResolvedValue(opts.building ?? null) },
     };
-    const conn = { getRepository: vi.fn((_ctx: any, ent: any) => repoByEntity[ent.name ?? String(ent)]) } as any;
+    // 位置上报/送达均走条件写（RETURNING id）：默认命中 1 行
+    const rawQuery = vi.fn().mockResolvedValue([[{ id: 5 }], []]);
+    const conn = {
+        getRepository: vi.fn((_ctx: any, ent: any) => repoByEntity[ent.name ?? String(ent)]),
+        rawConnection: { query: rawQuery },
+    } as any;
     const svc = new RiderTaskService(
         conn,
         { assertApprovedRider: vi.fn().mockResolvedValue({ id: 7 }) } as any,
@@ -15,7 +20,7 @@ function makeEnv(opts: { order?: any; rider?: any; building?: any } = {}) {
         { backToHall: vi.fn().mockResolvedValue(undefined) } as any,
         { user: vi.fn() } as any,
     );
-    return { svc, repoByEntity };
+    return { svc, repoByEntity, rawQuery };
 }
 
 describe('RiderTaskService.orderRider', () => {
@@ -105,20 +110,31 @@ describe('RiderTaskService.orderRider', () => {
 });
 
 describe('RiderTaskService.reportLocation', () => {
-    it('配送中本人订单写入 riderLat/riderLng', async () => {
+    it('配送中本人订单按条件写落 riderLat/riderLng', async () => {
         const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
         await env.svc.reportLocation({} as any, 5, 30.1, 120.2);
-        expect(env.repoByEntity.Order.update).toHaveBeenCalledWith(5, expect.objectContaining({
-            customFields: { riderLat: 30.1, riderLng: 120.2 },
-        }));
+        expect(env.rawQuery).toHaveBeenCalledTimes(1);
+        const [sql, params] = env.rawQuery.mock.calls[0];
+        expect(sql).toContain('"customFieldsRiderlat"');
+        expect(sql).toContain('"customFieldsDeliverystaffid"');
+        expect(sql).toContain('"state" <> \'Cancelled\'');
+        expect(params).toEqual([30.1, 120.2, 5, '7', ['assigned', 'in_progress']]);
+        expect(env.repoByEntity.Order.update).not.toHaveBeenCalled();
+    });
+    it('坐标非法直接拒绝（不查库）', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
+        await expect(env.svc.reportLocation({} as any, 5, NaN, 120.2)).rejects.toThrow('位置坐标不合法');
+        await expect(env.svc.reportLocation({} as any, 5, 30.1, 181)).rejects.toThrow('位置坐标不合法');
+        expect(env.rawQuery).not.toHaveBeenCalled();
     });
     it('非本人订单抛 ForbiddenError', async () => {
         const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '99', deliveryStatus: 'in_progress' } } });
         await expect(env.svc.reportLocation({} as any, 5, 30.1, 120.2)).rejects.toThrow();
     });
-    it('delivered 状态拒绝上报', async () => {
+    it('已送达/已取消（条件写未命中）→ 拒绝上报', async () => {
         const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered' } } });
-        await expect(env.svc.reportLocation({} as any, 5, 30.1, 120.2)).rejects.toThrow('仅配送中的订单可上报位置');
+        env.rawQuery.mockResolvedValueOnce([[], []]);
+        await expect(env.svc.reportLocation({} as any, 5, 30.1, 120.2)).rejects.toThrow('订单已被取消或改派');
     });
 });
 

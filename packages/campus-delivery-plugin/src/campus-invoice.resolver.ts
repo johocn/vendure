@@ -1,5 +1,5 @@
 import { Args, Mutation, Resolver } from '@nestjs/graphql';
-import { Ctx, Order, OrderService, RequestContext, UserInputError } from '@vendure/core';
+import { Allow, Ctx, Order, OrderService, Permission, RequestContext, UserInputError } from '@vendure/core';
 import { DataSource } from 'typeorm';
 
 const INVOICE_ELIGIBLE_STATES = ['PaymentAuthorized', 'PaymentSettled', 'Shipped', 'Delivered'];
@@ -17,6 +17,7 @@ export class InvoiceShopResolver {
     constructor(private dataSource: DataSource, private orderService: OrderService) {}
 
     @Mutation()
+    @Allow(Permission.Authenticated)
     async applyOrderInvoice(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: string,
@@ -24,6 +25,14 @@ export class InvoiceShopResolver {
     ): Promise<boolean> {
         if (!ctx.activeUserId) {
             throw new UserInputError('NOT_LOGGED_IN');
+        }
+        // 入参收敛：发票信息为自由文本，限长防超大字段污染订单表/前端渲染
+        const info = String(invoiceInfo ?? '').trim();
+        if (!info) {
+            throw new UserInputError('INVOICE_INFO_REQUIRED');
+        }
+        if (info.length > 500) {
+            throw new UserInputError('INVOICE_INFO_TOO_LONG');
         }
         const order = await this.dataSource.getRepository(Order).findOne({
             where: { id: orderId as any },
@@ -44,7 +53,7 @@ export class InvoiceShopResolver {
         if (!INVOICE_ELIGIBLE_STATES.includes(order.state)) {
             throw new UserInputError('ORDER_NOT_PAID');
         }
-        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo });
+        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo: info });
         return true;
     }
 }

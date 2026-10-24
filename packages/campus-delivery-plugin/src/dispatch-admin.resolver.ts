@@ -25,8 +25,12 @@ export class DispatchAdminResolver {
 
     @Mutation()
     @Allow(CampusPermissions.CampusDispatch as any)
-    async campusBackToHall(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
-        return this.dispatchAdmin.backToHall(ctx, orderId);
+    async campusBackToHall(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string,
+    ) {
+        return this.dispatchAdmin.backToHall(ctx, orderId, note);
     }
 
     /** 异常处置（plan 3.4）：reassign 回大厅 / refund_diff 退差价 / coupon 发补偿券 / refund_all 全额退单 */

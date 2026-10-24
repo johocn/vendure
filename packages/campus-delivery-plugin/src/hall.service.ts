@@ -253,9 +253,15 @@ export class HallService {
     }
 
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
-     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
-    async backToHall(ctx: RequestContext, orderId: number): Promise<boolean> {
+     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；extra 与复位字段同语句落库（后台强制回厅留痕）。
+     *  返回是否命中。 */
+    async backToHall(
+        ctx: RequestContext,
+        orderId: number,
+        extra?: Record<string, unknown>,
+    ): Promise<boolean> {
         return this.transitionFrom(ctx, orderId, ACTIVE_HALL_STATUSES, {
+            ...(extra ?? {}),
             hallStatus: 'open',
             deliveryStaffId: null,
             deliveryStatus: null,
@@ -292,18 +298,22 @@ export class HallService {
     }
 
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
-     * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
-    async exitHall(ctx: RequestContext, order: Order) {
-        const cur = await this.connection.getRepository(ctx, Order).findOne({ where: { id: order.id as any } });
-        const hs = (cur?.customFields as any)?.hallStatus as string | undefined;
-        if (!hs || !ACTIVE_HALL_STATUSES.includes(hs)) return;
-        await this.connection.getRepository(ctx, Order).update(order.id as any, {
-            customFields: {
-                hallStatus: 'cancelled',
-                ...(hs === 'grabbed' ? { deliveryStaffId: null, deliveryStatus: null, assignedAt: null } : {}),
-            },
-        } as any);
-        Logger.info(`Order ${order.code} exited hall (${hs} → cancelled)`, 'CampusHall');
+     * 单条条件写：仅活跃流转态可脱厅——先读后写会被 T4 mark() 写 no_rider_final 的竞态覆盖；
+     * grabbed 单连带清骑手指派字段（CASE 表达式读同一语句的旧值）。 */
+    async exitHall(_ctx: RequestContext, order: Order) {
+        const hsCol = orderColumn('hallStatus');
+        const clearIfGrabbed = (field: string) =>
+            `${orderColumn(field)} = CASE WHEN ${hsCol} = 'grabbed' THEN NULL ELSE ${orderColumn(field)} END`;
+        const out: any = await this.connection.rawConnection.query(
+            `UPDATE "order" SET ${hsCol} = 'cancelled', `
+            + `${clearIfGrabbed('deliveryStaffId')}, ${clearIfGrabbed('deliveryStatus')}, `
+            + `${clearIfGrabbed('assignedAt')} `
+            + `WHERE id = $1 AND COALESCE(${hsCol}, '') = ANY($2::text[]) RETURNING id`,
+            [order.id, ACTIVE_HALL_STATUSES],
+        );
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        if (!Array.isArray(rows) || !rows.length) return;
+        Logger.info(`Order ${order.code} exited hall (→ cancelled)`, 'CampusHall');
     }
 
     /** 通用订单更新（T4 退款终态标记等复用） */

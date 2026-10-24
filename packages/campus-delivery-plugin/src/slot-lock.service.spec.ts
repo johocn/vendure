@@ -40,6 +40,8 @@ describe('SlotLockService.lock', () => {
         expect(rawQuery).toHaveBeenCalledOnce();
         expect(rawQuery.mock.calls[0][0]).toContain('COALESCE("customFieldsSlotlocked", false) = false');
         expect(qb.set).toHaveBeenCalledWith({ lockedCount: expect.anything() });
+        // 容量条件用列比较（并发调低 capacity 也不会超额锁位）
+        expect(qb.where).toHaveBeenCalledWith('id = :id AND "lockedCount" < "capacity"', { id: 5 });
         expect(qb.execute).toHaveBeenCalledOnce();
     });
 
