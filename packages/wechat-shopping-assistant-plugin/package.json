@@ -15,12 +15,14 @@
   },
   "dependencies": {},
   "peerDependencies": {
+    "@vendure/address-plugin": "workspace:*",
     "@vendure/common": "^3.6.0",
     "@vendure/core": "^3.6.0",
     "@vendure/meilisearch-plugin": "^0.0.1",
     "@vendure/wechat-auth-plugin": "^0.0.1"
   },
   "devDependencies": {
+    "@vendure/address-plugin": "workspace:*",
     "@vendure/common": "workspace:*",
     "@vendure/core": "workspace:*",
     "@vendure/meilisearch-plugin": "workspace:*",
