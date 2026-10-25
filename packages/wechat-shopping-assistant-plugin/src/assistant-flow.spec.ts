@@ -1007,6 +1007,25 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         expect(last.content).toContain('400-800-1234');
     });
 
+    test('会话已过期（旧行未清理）→ 客服仍可回复，不因唯一索引报错', async () => {
+        const { svc, connection, outbound } = makeService({});
+        connection.sessions.set('openid-user-1', {
+            id: 's-old',
+            openid: 'openid-user-1',
+            channelId: '2',
+            results: [],
+            query: null,
+            state: null,
+            draft: {},
+            expireAt: new Date(Date.now() - 60_000),
+        });
+        await svc.onMessage(textEvent('客服', 'M1'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('400-800-1234');
+        // 旧行被原地重置并续期
+        expect(connection.sessions.get('openid-user-1').expireAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
     test('下单确认态回复「客服」→ 带这单商品上下文，且状态保留可继续下单', async () => {
         const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store: makeStoreStub(STORES) });
         connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });

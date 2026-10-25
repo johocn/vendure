@@ -41,10 +41,23 @@ export class SessionService {
 
     /** 确保存在会话行（无搜索记录时先建空会话），返回当前会话或 null */
     async ensureSession(openid: string, channelId: string, ttlMinutes: number): Promise<WechatShoppingSession | null> {
-        const existing = await this.getActive(openid);
-        if (existing) return existing;
         const repo = this.connection.getRepository(WechatShoppingSession);
         const expireAt = new Date(Date.now() + ttlMinutes * 60_000);
+        const existing = await repo.findOne({ where: { openid } });
+        if (existing) {
+            // openid 唯一索引：过期但未清理的旧行不能重复插入，原地重置即可
+            if (existing.expireAt.getTime() < Date.now()) {
+                await repo.update(existing.id, {
+                    channelId,
+                    results: [],
+                    query: null,
+                    state: null,
+                    draft: null,
+                    expireAt,
+                });
+            }
+            return this.getActive(openid);
+        }
         await repo.insert(repo.create({ openid, channelId, results: [], query: null, expireAt }));
         return this.getActive(openid);
     }
