@@ -47,6 +47,8 @@ export declare function buildOrderSuccessText(touser: string, input: {
     payUrl?: string;
     /** 确认时选定的支付方式展示名（渠道配置） */
     paymentName?: string;
+    /** 门店预计送达分钟数（渠道配置），缺省时提示电话确认 */
+    etaMinutes?: number | null;
 }): TextMessage;
 export declare function buildWelcomeText(touser: string, storefrontUrl?: string): TextMessage;
 export declare function buildSessionExpiredText(touser: string): TextMessage;
@@ -220,4 +222,12 @@ export declare function buildSupportNoteTooLongText(touser: string, length: numb
 export declare function buildSupportNoteSavedText(touser: string, ticketId: string): TextMessage;
 /** 取消留言：恢复留言前的流程状态 */
 export declare function buildSupportNoteCancelledText(touser: string): TextMessage;
+/** 地址超出配送范围：说明原因 + 可服务区域 + 出口，不出现「下单失败」 */
+export declare function buildOutOfRangeText(touser: string, input: {
+    address: string;
+    serviceAreaText: string;
+    channelName?: string | null;
+}): TextMessage;
+/** 已切换到目标租户：提示价格已更新、需重新选编号 */
+export declare function buildChannelSwitchText(touser: string, channelName: string): TextMessage;
 export {};

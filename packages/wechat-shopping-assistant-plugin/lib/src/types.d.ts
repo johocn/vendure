@@ -103,6 +103,14 @@ export interface AssistantFlowDraft {
         code: string;
         name: string;
     }> | null;
+    /** 已确认城市码（6 位区县码 → 城市码） */
+    cityCode?: string | null;
+    /** 当前实际履约渠道 id（可能与公众号默认渠道不同） */
+    resolvedChannelId?: string | null;
+    /** 切店后用于重搜的原始关键词 */
+    pendingQuery?: string | null;
+    /** 地址解析结果（含区划码与缺失字段） */
+    addressCandidate?: import('./city/address-parser').ParsedAddress | null;
 }
 /** 3km 内门店（含距离与熟店标记），用于客服消息列表与选择 */
 export interface NearbyStore {
