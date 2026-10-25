@@ -1,4 +1,5 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { GeocodeInput, GeocodeResult, MapService } from '@vendure/cjk-plugin';
 import { Logger, RequestContext } from '@vendure/core';
 
@@ -37,8 +38,29 @@ export interface ReverseAddressResult {
 export class GeoService {
     private geocodeCache = new Map<string, CacheEntry<GeocodeResult>>();
     private reverseCache = new Map<string, CacheEntry<ReverseAddressResult>>();
+    /** cjk-plugin 的 MapService 在根容器注册，跨模块懒解析并缓存；缺失时降级为不编码 */
+    private mapServiceRef?: MapService;
+    private mapServiceWarned = false;
 
-    constructor(@Optional() private mapService?: MapService) {}
+    constructor(private readonly moduleRef: ModuleRef) {}
+
+    /**
+     * 懒解析 MapService（strict:false 全局搜索，避免插件模块作用域内解析不到）。
+     * 地图插件未启用/未注册时只告警一次并返回 undefined，聊天链路继续走文本降级。
+     */
+    private getMapService(): MapService | undefined {
+        if (this.mapServiceRef) return this.mapServiceRef;
+        try {
+            this.mapServiceRef = this.moduleRef.get(MapService, { strict: false });
+            return this.mapServiceRef;
+        } catch (e) {
+            if (!this.mapServiceWarned) {
+                this.mapServiceWarned = true;
+                Logger.warn(`MapService 不可用，地理编码/位置解析降级：${String(e)}`, loggerCtx);
+            }
+            return undefined;
+        }
+    }
 
     /** 坐标是否可用：有限数值、非 0,0、在中国范围内 */
     static isValidCoordinate(lat: number, lng: number): boolean {
@@ -70,7 +92,8 @@ export class GeoService {
         hint?: { city?: string | null; district?: string | null },
     ): Promise<GeocodeResult | null> {
         const text = normalizeAddressText(address);
-        if (!text || text.length < 6 || !this.mapService) return null;
+        const mapService = this.getMapService();
+        if (!text || text.length < 6 || !mapService) return null;
         const cityHint = hint?.city?.trim() || undefined;
         const key = `g:${cityHint ?? ''}|${text}`;
         const cached = this.readCache(this.geocodeCache, key);
@@ -79,7 +102,7 @@ export class GeoService {
         let lastError: unknown;
         for (const candidate of buildCandidates(text, cityHint)) {
             try {
-                const result = await this.mapService.geocode(ctx, candidate, CHAT_TIMEOUT_MS);
+                const result = await mapService.geocode(ctx, candidate, CHAT_TIMEOUT_MS);
                 if (result && GeoService.isValidCoordinate(result.lat, result.lng)) {
                     this.writeCache(this.geocodeCache, key, result, SUCCESS_TTL);
                     return result;
@@ -98,13 +121,14 @@ export class GeoService {
 
     /** 微信位置坐标 → 结构化地址；失败返回 null */
     async reverse(ctx: RequestContext, lat: number, lng: number): Promise<ReverseAddressResult | null> {
-        if (!this.mapService || !GeoService.isValidCoordinate(lat, lng)) return null;
+        const mapService = this.getMapService();
+        if (!mapService || !GeoService.isValidCoordinate(lat, lng)) return null;
         // 约 11m 精度取整，避免同一点重复请求
         const key = `r:${lat.toFixed(4)},${lng.toFixed(4)}`;
         const cached = this.readCache(this.reverseCache, key);
         if (cached !== undefined) return cached;
         try {
-            const result = await this.mapService.reverseGeocode(ctx, lat, lng);
+            const result = await mapService.reverseGeocode(ctx, lat, lng);
             if (!result) return null;
             this.writeCache(this.reverseCache, key, result, SUCCESS_TTL);
             return result;

@@ -8,15 +8,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 var GeoService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GeoService = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const cjk_plugin_1 = require("@vendure/cjk-plugin");
-const core_1 = require("@vendure/core");
+const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 /** 中国陆地经纬度范围（不含港澳台细化边界），用于挡掉 0,0 与境外坐标 */
 const CHINA_BOUNDS = { minLat: 3.86, maxLat: 53.55, minLng: 73.66, maxLng: 135.09 };
@@ -33,10 +31,30 @@ const CHAT_TIMEOUT_MS = 1200;
  * 所有方法失败返回 null，不向上抛错（聊天链路不因地图服务异常中断）。
  */
 let GeoService = GeoService_1 = class GeoService {
-    constructor(mapService) {
-        this.mapService = mapService;
+    constructor(moduleRef) {
+        this.moduleRef = moduleRef;
         this.geocodeCache = new Map();
         this.reverseCache = new Map();
+        this.mapServiceWarned = false;
+    }
+    /**
+     * 懒解析 MapService（strict:false 全局搜索，避免插件模块作用域内解析不到）。
+     * 地图插件未启用/未注册时只告警一次并返回 undefined，聊天链路继续走文本降级。
+     */
+    getMapService() {
+        if (this.mapServiceRef)
+            return this.mapServiceRef;
+        try {
+            this.mapServiceRef = this.moduleRef.get(cjk_plugin_1.MapService, { strict: false });
+            return this.mapServiceRef;
+        }
+        catch (e) {
+            if (!this.mapServiceWarned) {
+                this.mapServiceWarned = true;
+                core_2.Logger.warn(`MapService 不可用，地理编码/位置解析降级：${String(e)}`, constants_1.loggerCtx);
+            }
+            return undefined;
+        }
     }
     /** 坐标是否可用：有限数值、非 0,0、在中国范围内 */
     static isValidCoordinate(lat, lng) {
@@ -63,7 +81,8 @@ let GeoService = GeoService_1 = class GeoService {
     async geocode(ctx, address, hint) {
         var _a;
         const text = normalizeAddressText(address);
-        if (!text || text.length < 6 || !this.mapService)
+        const mapService = this.getMapService();
+        if (!text || text.length < 6 || !mapService)
             return null;
         const cityHint = ((_a = hint === null || hint === void 0 ? void 0 : hint.city) === null || _a === void 0 ? void 0 : _a.trim()) || undefined;
         const key = `g:${cityHint !== null && cityHint !== void 0 ? cityHint : ''}|${text}`;
@@ -73,7 +92,7 @@ let GeoService = GeoService_1 = class GeoService {
         let lastError;
         for (const candidate of buildCandidates(text, cityHint)) {
             try {
-                const result = await this.mapService.geocode(ctx, candidate, CHAT_TIMEOUT_MS);
+                const result = await mapService.geocode(ctx, candidate, CHAT_TIMEOUT_MS);
                 if (result && GeoService_1.isValidCoordinate(result.lat, result.lng)) {
                     this.writeCache(this.geocodeCache, key, result, SUCCESS_TTL);
                     return result;
@@ -84,12 +103,13 @@ let GeoService = GeoService_1 = class GeoService {
             }
         }
         this.writeCache(this.geocodeCache, key, null, FAIL_TTL);
-        core_1.Logger.warn(`Assistant geocode failed: "${text.slice(0, 40)}" ${lastError ? String(lastError) : ''}`, constants_1.loggerCtx);
+        core_2.Logger.warn(`Assistant geocode failed: "${text.slice(0, 40)}" ${lastError ? String(lastError) : ''}`, constants_1.loggerCtx);
         return null;
     }
     /** 微信位置坐标 → 结构化地址；失败返回 null */
     async reverse(ctx, lat, lng) {
-        if (!this.mapService || !GeoService_1.isValidCoordinate(lat, lng))
+        const mapService = this.getMapService();
+        if (!mapService || !GeoService_1.isValidCoordinate(lat, lng))
             return null;
         // 约 11m 精度取整，避免同一点重复请求
         const key = `r:${lat.toFixed(4)},${lng.toFixed(4)}`;
@@ -97,14 +117,14 @@ let GeoService = GeoService_1 = class GeoService {
         if (cached !== undefined)
             return cached;
         try {
-            const result = await this.mapService.reverseGeocode(ctx, lat, lng);
+            const result = await mapService.reverseGeocode(ctx, lat, lng);
             if (!result)
                 return null;
             this.writeCache(this.reverseCache, key, result, SUCCESS_TTL);
             return result;
         }
         catch (e) {
-            core_1.Logger.warn(`Assistant reverse geocode failed: ${String(e)}`, constants_1.loggerCtx);
+            core_2.Logger.warn(`Assistant reverse geocode failed: ${String(e)}`, constants_1.loggerCtx);
             this.writeCache(this.reverseCache, key, null, FAIL_TTL);
             return null;
         }
@@ -132,8 +152,7 @@ let GeoService = GeoService_1 = class GeoService {
 exports.GeoService = GeoService;
 exports.GeoService = GeoService = GeoService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, common_1.Optional)()),
-    __metadata("design:paramtypes", [cjk_plugin_1.MapService])
+    __metadata("design:paramtypes", [core_1.ModuleRef])
 ], GeoService);
 /** 地址文本清洗：去首尾空白、压缩连续空白、去常见备注括号 */
 function normalizeAddressText(address) {

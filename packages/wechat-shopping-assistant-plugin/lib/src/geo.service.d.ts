@@ -1,4 +1,5 @@
-import { GeocodeResult, MapService } from '@vendure/cjk-plugin';
+import { ModuleRef } from '@nestjs/core';
+import { GeocodeResult } from '@vendure/cjk-plugin';
 import { RequestContext } from '@vendure/core';
 export interface ReverseAddressResult {
     province: string | null;
@@ -15,10 +16,18 @@ export interface ReverseAddressResult {
  * 所有方法失败返回 null，不向上抛错（聊天链路不因地图服务异常中断）。
  */
 export declare class GeoService {
-    private mapService?;
+    private readonly moduleRef;
     private geocodeCache;
     private reverseCache;
-    constructor(mapService?: MapService | undefined);
+    /** cjk-plugin 的 MapService 在根容器注册，跨模块懒解析并缓存；缺失时降级为不编码 */
+    private mapServiceRef?;
+    private mapServiceWarned;
+    constructor(moduleRef: ModuleRef);
+    /**
+     * 懒解析 MapService（strict:false 全局搜索，避免插件模块作用域内解析不到）。
+     * 地图插件未启用/未注册时只告警一次并返回 undefined，聊天链路继续走文本降级。
+     */
+    private getMapService;
     /** 坐标是否可用：有限数值、非 0,0、在中国范围内 */
     static isValidCoordinate(lat: number, lng: number): boolean;
     /** 逆向结果拼成一句话地址；优先地图格式化地址，缺失时用省市区 + 用户上报描述兜底 */
