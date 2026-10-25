@@ -27,6 +27,7 @@ import {
     buildAwaitingAddressText,
     buildBindGuideText,
     buildBindSuccessText,
+    buildChannelSwitchText,
     buildFlowCancelledText,
     buildGuideText,
     buildInvalidAddrIndexText,
@@ -46,6 +47,7 @@ import {
     buildOrderConfirmCard,
     buildOrderFailText,
     buildOrderSuccessText,
+    buildOutOfRangeText,
     buildOutOfStockText,
     buildPaymentMethodsInfoText,
     buildPaymentPickText,
@@ -71,6 +73,8 @@ import {
     buildWelcomeText,
     formatPrice,
 } from './card-builder';
+import { DeliveryGuardService } from './city/delivery-guard.service';
+import { TenantRouterService } from './city/tenant-router.service';
 import { loggerCtx, WECHAT_ASSISTANT_PLUGIN_OPTIONS } from './constants';
 import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
@@ -121,6 +125,8 @@ export class AssistantService {
         private geoService: GeoService,
         private storeLocator: StoreLocatorService,
         private supportTickets: SupportTicketService,
+        private readonly deliveryGuard: DeliveryGuardService,
+        private readonly tenantRouter: TenantRouterService,
     ) {}
 
     async onMessage(event: WechatMessageEvent): Promise<void> {
@@ -1414,6 +1420,73 @@ export class AssistantService {
         if (addrItem) {
             Logger.info(`Assistant order shipping address: addressId=${addrItem.id}`, loggerCtx);
         }
+        // 城市路由：解析地址 → 匹配租户 → 切换或校验范围（可用 ASSISTANT_CITY_ROUTING=off 关闭）
+        const routingOn = process.env.ASSISTANT_CITY_ROUTING !== 'off';
+        if (routingOn && addrItem?.streetLine1) {
+            const parsed = await this.deliveryGuard.parse(ctx, addrItem.streetLine1);
+            if (!parsed) {
+                return buildOrderFailText(touser, '配送校验暂时不可用，请稍后再试');
+            }
+            const route = await this.tenantRouter.resolve(ctx, {
+                cityCode: parsed.cityCode,
+                currentChannelId: String(ctx.channelId),
+                lat: parsed.lat,
+                lng: parsed.lng,
+            });
+            // 排序第一的渠道不是当前渠道 → 切店（当前渠道即使也在候选内，精度/优先级更低时也要让位）
+            const target =
+                route.chosen && route.chosen.channelId !== String(ctx.channelId) ? route.chosen : null;
+            if (target) {
+                // 切店：用原关键词在新渠道重搜，结果写回会话（channelId 一并切换），让用户重新回编号
+                const session = await this.sessionService.getActive(touser);
+                const query = session?.query?.trim() ?? '';
+                await this.sessionService.saveDraft(
+                    touser,
+                    { cityCode: parsed.cityCode, resolvedChannelId: target.channelId, pendingQuery: query || null },
+                    this.opts.sessionTtlMinutes ?? 30,
+                );
+                if (query) {
+                    try {
+                        const hits = await this.searchService.searchProducts({
+                            query,
+                            channelId: target.channelId,
+                            locale: this.opts.searchLocale ?? 'zh',
+                            limit: this.opts.searchLimit ?? 5,
+                            storefrontUrl: this.storefront(),
+                            productUrlTemplate: this.opts.productUrlTemplate,
+                        });
+                        if (hits.length) {
+                            await this.sessionService.saveResults(
+                                touser,
+                                target.channelId,
+                                hits.map(h => ({ ...h, quantity: picked[0]?.quantity ?? 1 })),
+                                query,
+                                this.opts.sessionTtlMinutes ?? 30,
+                            );
+                        }
+                    } catch (e) {
+                        Logger.warn(`Assistant switch-channel search failed: ${String(e)}`, loggerCtx);
+                    }
+                }
+                await this.sessionService.clearFlow(touser);
+                Logger.info(
+                    `Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode}`,
+                    loggerCtx,
+                );
+                return buildChannelSwitchText(touser, target.channelName);
+            }
+            const guard = await this.deliveryGuard.checkParsed(ctx, String(ctx.channelId), parsed);
+            if (guard.status === 'UNKNOWN') {
+                return buildOrderFailText(touser, '配送校验暂时不可用，请稍后再试');
+            }
+            if (guard.status === 'OUT_OF_RANGE') {
+                return buildOutOfRangeText(touser, {
+                    address: addrItem.streetLine1,
+                    serviceAreaText: guard.serviceAreaText,
+                    channelName: await this.channelName(String(ctx.channelId)),
+                });
+            }
+        }
         const outcome = await this.orderService.createOrder(
             ctx,
             customer,
@@ -1431,6 +1504,7 @@ export class AssistantService {
                     items: outcome.items,
                     payUrl,
                     paymentName: selected.name,
+                    etaMinutes: await this.channelDeliveryMinutes(String(ctx.channelId)),
                 });
             }
             case 'out_of_stock':
@@ -1442,6 +1516,20 @@ export class AssistantService {
     }
 
     // ============ 基础设施 ============
+
+    /** 渠道展示名：装修 shopName → channel.code */
+    private async channelName(channelId: string): Promise<string | null> {
+        const ch = await this.connection.getRepository(Channel).findOne({ where: { id: channelId as any } });
+        const cf = (ch?.customFields ?? {}) as any;
+        return cf.shopName ? String(cf.shopName) : ch?.code ?? null;
+    }
+
+    /** 渠道预计送达分钟数（未配置返回 null → 文案提示电话确认） */
+    private async channelDeliveryMinutes(channelId: string): Promise<number | null> {
+        const ch = await this.connection.getRepository(Channel).findOne({ where: { id: channelId as any } });
+        const cf = (ch?.customFields ?? {}) as any;
+        return cf.deliveryMinutes != null ? Number(cf.deliveryMinutes) : null;
+    }
 
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     private async claimDedup(msg: WechatInboundMessage): Promise<boolean> {

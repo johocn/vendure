@@ -179,6 +179,8 @@ function makeService(
         geo?: any;
         store?: any;
         supportTickets?: any;
+        guard?: any;
+        route?: any;
     } = {},
 ) {
     const connection = makeConnection();
@@ -196,6 +198,13 @@ function makeService(
     const geo = overrides.geo ?? { geocode: async () => null, reverse: async () => null };
     const store = overrides.store ?? makeStoreStub();
     const supportTickets = overrides.supportTickets ?? makeSupportTicketsStub();
+    const guard = overrides.guard ?? { status: 'OK', serviceAreaText: '', parsed: null };
+    const route = overrides.route ?? { chosen: null, candidates: [], ambiguous: false, currentInCandidates: true };
+    const guardStub = {
+        parse: async () => ({ cityCode: '220200', districtCode: '220211', phoneNumber: '13800138000' }),
+        checkParsed: async () => guard,
+        check: async () => guard,
+    };
     const svc = new AssistantService(
         { storefrontUrl: 'https://shop.example.com', searchLocale: 'zh', sessionTtlMinutes: 30, searchLimit: 5 } as any,
         connection as any,
@@ -211,6 +220,8 @@ function makeService(
         geo as any,
         store as any,
         supportTickets as any,
+        guardStub as any,
+        { resolve: async () => route } as any,
     );
     return { svc, connection, outbound, addressBook, store, supportTickets };
 }
@@ -1308,5 +1319,63 @@ describe('AssistantService 支付方式（按租户渠道配置）', () => {
         await svc.onMessage(textEvent('0', 'M6'));
         expect(outbound[outbound.length - 1].content).toContain('请选择收货地址');
         expect(connection.sessions.get('openid-user-1').state).toBe('addr_pick');
+    });
+});
+
+describe('AssistantService 城市路由与配送守卫', () => {
+    test('地址超范围 → 超范围卡，不建单', async () => {
+        const order = makeOrderStub(null);
+        const { svc, outbound, connection } = makeService({
+            order,
+            guard: {
+                status: 'OUT_OF_RANGE',
+                reason: 'BEYOND_RANGE',
+                serviceAreaText: '本店配送范围为以门店为中心 3 公里内。',
+                parsed: null,
+            },
+        });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('1', 'M3')); // 选地址 → 确认卡
+        await svc.onMessage(textEvent('1', 'M4')); // 确认下单 → 被守卫拦截
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('不在配送范围');
+        expect(last.content).toContain('3 公里');
+        expect(order.calls.length).toBe(0);
+    });
+
+    test('地址属于其他租户 → 切换店铺并重搜，不直接下单', async () => {
+        const order = makeOrderStub(null);
+        const search = {
+            calls: [] as any[],
+            searchProducts: async (input: any) => {
+                search.calls.push(input);
+                return SEARCH_HITS.map((h, i) => ({ index: i + 1, quantity: 1, ...h }));
+            },
+        };
+        const { svc, outbound, connection } = makeService({
+            order,
+            search,
+            route: {
+                chosen: { channelId: '111', channelName: '东利民', channelToken: 'official-20' },
+                candidates: [],
+                ambiguous: false,
+                currentInCandidates: false,
+            },
+        });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('1', 'M3'));
+        await svc.onMessage(textEvent('1', 'M4'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('已为你切换到「东利民」');
+        expect(order.calls.length).toBe(0);
+        expect(search.calls.length).toBe(2);
+        expect(search.calls[1].channelId).toBe('111');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.channelId).toBe('111');
+        expect(session.results.length).toBeGreaterThan(0);
     });
 });
