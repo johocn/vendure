@@ -12,11 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RiderService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const rider_ops_service_1 = require("./rider-ops.service");
 const CREDIT_LIMIT = 60;
 let RiderService = class RiderService {
-    constructor(connection, customerService) {
+    constructor(connection, customerService, riderOps) {
         this.connection = connection;
         this.customerService = customerService;
+        this.riderOps = riderOps;
     }
     /** 当前登录顾客；未登录或无对应顾客一律 ForbiddenError。 */
     async requireCustomer(ctx) {
@@ -126,6 +128,8 @@ let RiderService = class RiderService {
         await this.connection.getRepository(ctx, core_1.Customer).update(customer.id, {
             customFields: { riderOnlineAt: online ? new Date() : null },
         });
+        // 在线会话：上线开/续、下线关账，用于统计实际在线时长
+        await this.riderOps.touchSession(ctx, Number(customer.id), online).catch(() => undefined);
         return { online };
     }
     /**
@@ -155,6 +159,8 @@ let RiderService = class RiderService {
 exports.RiderService = RiderService;
 exports.RiderService = RiderService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection, core_1.CustomerService])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        core_1.CustomerService,
+        rider_ops_service_1.RiderOpsService])
 ], RiderService);
 //# sourceMappingURL=rider.service.js.map

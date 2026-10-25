@@ -1,9 +1,11 @@
 import { Customer, RequestContext, TransactionalConnection } from '@vendure/core';
+import { RiderOpsService } from './rider-ops.service';
 import { RiderService } from './rider.service';
 export declare class CapacityService {
     private connection;
     private riderService;
-    constructor(connection: TransactionalConnection, riderService: RiderService);
+    private riderOps;
+    constructor(connection: TransactionalConnection, riderService: RiderService, riderOps: RiderOpsService);
     /** 在线骑手：approved 且 5min 内有心跳，**限当前渠道**。
      * 骑手资格本身按渠道生效（rider.service 用 findOneByUserId 默认按当前渠道过滤），
      * 不做渠道过滤会把 A 店的单派给 B 店骑手（其 assertApprovedRider 会直接拒绝）。

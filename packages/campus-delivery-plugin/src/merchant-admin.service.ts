@@ -3,6 +3,7 @@ import {
     ID,
     Order,
     OrderService,
+    Product,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -312,6 +313,60 @@ export class MerchantAdminService {
             customFields: { waimaiPrintedAt: new Date() },
         } as any);
         return { ok: true };
+    }
+
+    /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
+    async products(ctx: RequestContext, search?: string, skip?: number, take?: number) {
+        const q = String(search ?? '').trim();
+        const safeSkip = Math.max(0, Number(skip ?? 0) || 0);
+        const safeTake = Math.min(Math.max(Number(take ?? 50) || 50, 1), 200);
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT p.id AS "productId", COALESCE(pt.name, \'商品 #\' || p.id) AS name, '
+            + 'COALESCE(p."customFieldsWaimaisoldout", false) AS "soldOut", '
+            + 'COALESCE(p."customFieldsWaimaimonthlysales", 0) AS "monthlySales", '
+            + '(SELECT COUNT(*)::int FROM product_variant pv WHERE pv."productId" = p.id AND pv."deletedAt" IS NULL) AS "variantCount" '
+            + 'FROM product p '
+            + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
+            + 'LEFT JOIN LATERAL (SELECT name FROM product_translation pt WHERE pt."baseId" = p.id '
+            + 'ORDER BY (pt."languageCode" = \'zh_Hans\') DESC LIMIT 1) pt ON true '
+            + 'WHERE ($2 = \'\' OR pt.name ILIKE \'%\' || $2 || \'%\') '
+            + 'ORDER BY p.id DESC LIMIT $3 OFFSET $4',
+            [ctx.channelId, q, safeTake, safeSkip],
+        );
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const countRows: any = await this.connection.rawConnection.query(
+            'SELECT COUNT(*)::int AS n FROM product p '
+            + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
+            + 'LEFT JOIN LATERAL (SELECT name FROM product_translation pt WHERE pt."baseId" = p.id '
+            + 'ORDER BY (pt."languageCode" = \'zh_Hans\') DESC LIMIT 1) pt ON true '
+            + 'WHERE ($2 = \'\' OR pt.name ILIKE \'%\' || $2 || \'%\')',
+            [ctx.channelId, q],
+        );
+        const countList = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
+        return {
+            items: (list ?? []).map((r: any) => ({
+                productId: r.productId,
+                name: r.name,
+                soldOut: Boolean(r.soldOut),
+                monthlySales: Number(r.monthlySales ?? 0),
+                variantCount: Number(r.variantCount ?? 0),
+            })),
+            total: Number(countList?.[0]?.n ?? 0),
+        };
+    }
+
+    /** 沽清开关：售罄仍展示、不可加购；下单前置闸门二次校验 */
+    async setProductSoldOut(ctx: RequestContext, productId: ID, soldOut: boolean) {
+        const inChannel = await this.connection.getRepository(ctx, Product).createQueryBuilder('product')
+            .leftJoin('product.channels', 'channel')
+            .where('product.id = :id', { id: productId as any })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId as any })
+            .getOne();
+        if (!inChannel) throw new UserInputError('商品不存在或不属于当前店铺');
+        await this.connection.getRepository(ctx, Product).update(productId, {
+            customFields: { waimaiSoldOut: Boolean(soldOut) },
+        } as any);
+        return { ok: true, soldOut: Boolean(soldOut) };
     }
 
     private async assertAnyChannelOrder(ctx: RequestContext, orderId: ID) {

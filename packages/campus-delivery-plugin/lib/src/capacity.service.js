@@ -13,12 +13,14 @@ exports.CapacityService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const rider_ops_service_1 = require("./rider-ops.service");
 const rider_service_1 = require("./rider.service");
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 let CapacityService = class CapacityService {
-    constructor(connection, riderService) {
+    constructor(connection, riderService, riderOps) {
         this.connection = connection;
         this.riderService = riderService;
+        this.riderOps = riderOps;
     }
     /** 在线骑手：approved 且 5min 内有心跳，**限当前渠道**。
      * 骑手资格本身按渠道生效（rider.service 用 findOneByUserId 默认按当前渠道过滤），
@@ -57,6 +59,7 @@ let CapacityService = class CapacityService {
         await this.connection.getRepository(ctx, core_1.Customer).update(rider.id, {
             customFields: { riderOnlineAt: new Date() },
         });
+        await this.riderOps.heartbeatSession(ctx, Number(rider.id)).catch(() => undefined);
         return { online: true };
     }
 };
@@ -64,6 +67,7 @@ exports.CapacityService = CapacityService;
 exports.CapacityService = CapacityService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        rider_service_1.RiderService])
+        rider_service_1.RiderService,
+        rider_ops_service_1.RiderOpsService])
 ], CapacityService);
 //# sourceMappingURL=capacity.service.js.map

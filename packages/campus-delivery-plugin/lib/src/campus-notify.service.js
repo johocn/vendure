@@ -13,6 +13,7 @@ exports.CampusNotifyService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
+const campus_sms_service_1 = require("./campus-sms.service");
 /** 触点 → 配置实体模板字段（值 = SSO msg-template 的 templateCode；未配置 = 该节点静默跳过） */
 const TEMPLATE_FIELD = {
     orderAccepted: 'notifyTemplateAccepted',
@@ -31,6 +32,19 @@ const AFTER_SALE_TYPE = {
     exceptionHandled: '异常已处理',
     afterSales: '进度更新',
 };
+/** 短信兜底文案（公众号模板消息不可用时发送，未配置短信网关则静默跳过） */
+const SMS_EVENT_LABEL = {
+    orderAccepted: '商家已接单',
+    riderAssigned: '骑手已接单',
+    cookingDone: '餐品已出餐',
+    orderDelivered: '订单已送达',
+    exceptionHandled: '异常已处理',
+    orderPlaced: '下单成功',
+    paymentPending: '待付款提醒',
+    orderCancelled: '订单已取消',
+    afterSales: '售后进度更新',
+    addressChanged: '收货地址已变更',
+};
 // F7 最小补发：进程内重试 + 退避（首推失败不再只留一条日志）。
 // 不落库（1G 小机避免加表/迁移）；dedupe_key 固定为 campus:{event}:{orderId}，
 // SSO msg-job 侧按 key 幂等 → 超时重发不会产生重复消息。
@@ -46,9 +60,10 @@ const SEND_TIMEOUT_MS = 10000;
  * 微信模板占位符映射由 SSO msg-template 的 wxTemplateFields 配置（name=微信占位符，key=本服务 params 键）。
  */
 let CampusNotifyService = class CampusNotifyService {
-    constructor(connection, config) {
+    constructor(connection, config, sms) {
         this.connection = connection;
         this.config = config;
+        this.sms = sms;
     }
     /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果/改址新址，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页；dedupeSuffix：同一订单多次同类事件（如多次改址）的幂等键后缀 */
     user(ctx, orderId, event, text, h5BaseUrl, dedupeSuffix) {
@@ -60,12 +75,14 @@ let CampusNotifyService = class CampusNotifyService {
                 const appSecret = process.env.SSO_NOTIFY_APP_SECRET;
                 if (!baseUrl || !appCode || !appSecret) {
                     core_1.Logger.debug('SSO notify env not configured (SSO_NOTIFY_BASE_URL/APP_CODE/APP_SECRET), skip', 'CampusNotify');
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 const cfg = await this.config.getConfig(ctx);
                 const templateCode = cfg[TEMPLATE_FIELD[event]];
                 if (!templateCode) {
                     core_1.Logger.debug(`channel ${ctx.channelId} has no ${TEMPLATE_FIELD[event]}, skip user notify`, 'CampusNotify');
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
@@ -75,12 +92,14 @@ let CampusNotifyService = class CampusNotifyService {
                 const ssoId = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.ssoId;
                 if (!order || ssoId == null || ssoId === '') {
                     core_1.Logger.debug(`order ${orderId} customer has no ssoId, skip user notify (${event})`, 'CampusNotify');
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 // sso_user_id 必须是数字：非数字（脏数据/占位串）会让下游按 NaN 落库，这里提前拦下
                 const ssoUserId = Number(ssoId);
                 if (!Number.isFinite(ssoUserId)) {
                     core_1.Logger.warn(`order ${orderId} customer ssoId is not numeric (${String(ssoId)}), skip user notify (${event})`, 'CampusNotify');
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 // 微信模板字段必填：按事件分型组装 params（与 sso_msg_templates.wx_template_fields 的 key 对应）
@@ -129,11 +148,35 @@ let CampusNotifyService = class CampusNotifyService {
                     }
                 }
                 core_1.Logger.error(`user notify ${event} for order ${orderId} dropped after ${SEND_ATTEMPTS} attempts: ${lastErr instanceof Error ? lastErr.message : lastErr}`, 'CampusNotify');
+                await this.smsFallback(ctx, orderId, event, text);
             }
             catch (e) {
                 core_1.Logger.warn(`user notify ${event} for order ${orderId} failed: ${(_v = e === null || e === void 0 ? void 0 : e.message) !== null && _v !== void 0 ? _v : e}`, 'CampusNotify');
             }
         })();
+    }
+    /** 短信兜底：公众号模板消息不可用（未配模板/无 ssoId/发送失败）时补发一条短信；未配网关静默跳过 */
+    async smsFallback(ctx, orderId, event, text) {
+        var _a, _b;
+        if (!this.sms.configured)
+            return;
+        try {
+            const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+                where: { id: orderId },
+                relations: ['customer'],
+            });
+            const phone = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.phoneNumber;
+            if (!order || !phone)
+                return;
+            const extra = text ? `，${text}` : '';
+            const content = `【校园外卖】${SMS_EVENT_LABEL[event]}：订单 ${order.code}${extra}，详情请打开小程序查看。`;
+            const ok = await this.sms.send(phone, content.slice(0, 120));
+            if (ok)
+                core_1.Logger.info(`sms fallback sent for ${order.code} (${event})`, 'CampusNotify');
+        }
+        catch (e) {
+            core_1.Logger.warn(`sms fallback failed for order ${orderId} (${event}): ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'CampusNotify');
+        }
     }
     /** 单次发送（10s 超时）；非 2xx 或响应体异常抛错由上层重试 */
     async sendOnce(baseUrl, payload) {
@@ -155,6 +198,7 @@ exports.CampusNotifyService = CampusNotifyService;
 exports.CampusNotifyService = CampusNotifyService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        campus_config_service_1.CampusConfigService])
+        campus_config_service_1.CampusConfigService,
+        campus_sms_service_1.CampusSmsService])
 ], CampusNotifyService);
 //# sourceMappingURL=campus-notify.service.js.map

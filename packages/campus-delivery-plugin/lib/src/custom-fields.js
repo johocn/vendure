@@ -78,6 +78,7 @@ exports.campusCustomFields = {
     ],
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0
+        { name: 'waimaiSoldOut', type: 'boolean', nullable: true, defaultValue: false }, // 一键沽清：售罄仍展示、不可加购
     ],
     Customer: [
         { name: 'riderStatus', type: 'string', nullable: true }, // none/pending/approved/suspended

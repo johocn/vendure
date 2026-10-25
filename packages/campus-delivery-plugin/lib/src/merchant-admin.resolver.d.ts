@@ -23,6 +23,16 @@ export declare class MerchantAdminResolver {
     campusMerchantMarkPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 一键沽清：本店商品列表（含售罄标记） */
+    campusMerchantProducts(ctx: RequestContext, search?: string, skip?: number, take?: number): Promise<{
+        items: any;
+        total: number;
+    }>;
+    /** 沽清 / 取消沽清（售罄仍展示、不可加购） */
+    campusMerchantSetProductSoldOut(ctx: RequestContext, productId: ID, soldOut: boolean): Promise<{
+        ok: boolean;
+        soldOut: boolean;
+    }>;
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     campusMerchantDispatchExternal(ctx: RequestContext, orderId: ID, provider: string): Promise<{
         ok: boolean;

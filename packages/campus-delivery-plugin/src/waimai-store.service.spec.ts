@@ -45,6 +45,7 @@ describe('WaimaiStoreService.listStores', () => {
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             businessHours: null,
+            openNow: true,
             errandBaseFee: 300,
             freeShippingThreshold: 1800,
         });

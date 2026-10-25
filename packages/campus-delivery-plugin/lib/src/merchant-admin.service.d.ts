@@ -119,6 +119,16 @@ export declare class MerchantAdminService {
     markPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
+    products(ctx: RequestContext, search?: string, skip?: number, take?: number): Promise<{
+        items: any;
+        total: number;
+    }>;
+    /** 沽清开关：售罄仍展示、不可加购；下单前置闸门二次校验 */
+    setProductSoldOut(ctx: RequestContext, productId: ID, soldOut: boolean): Promise<{
+        ok: boolean;
+        soldOut: boolean;
+    }>;
     private assertAnyChannelOrder;
     private assertChannelOrder;
     private assertChannelOrderState;

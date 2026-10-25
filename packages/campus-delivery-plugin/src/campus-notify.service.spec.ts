@@ -43,6 +43,8 @@ describe('CampusNotifyService', () => {
                     notifyTemplateAddressChanged: opts.templateCode ?? null,
                 }),
             } as any,
+            // 短信兜底通道：既有用例只验证公众号链路，这里按「网关未配置」静默跳过
+            { configured: false, send: vi.fn() } as any,
         );
         return { svc, findOne, fetchMock };
     }

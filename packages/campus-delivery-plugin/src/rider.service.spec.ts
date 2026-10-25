@@ -2,11 +2,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RiderService } from './rider.service';
 
+/** 骑手在线会话服务桩：上下线会调用 touchSession，单测只验证心跳写库 */
+const riderOpsStub = () => ({ touchSession: vi.fn().mockResolvedValue(undefined) }) as any;
+
 describe('RiderService.assertApprovedRider', () => {
     const make = (cf: any) => {
         const svc = new RiderService({} as any, {
             findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: cf }),
-        } as any);
+        } as any, riderOpsStub());
         return svc.assertApprovedRider({ channelId: 1, activeUserId: 1 } as any);
     };
     it('approved 且信用分达标通过', async () =>
@@ -22,6 +25,7 @@ describe('RiderService.setOnline 审核态防护', () => {
         const svc = new RiderService(
             { getRepository: vi.fn().mockReturnValue({ update }) } as any,
             { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
+            riderOpsStub(),
         );
         return { svc, update };
     };
@@ -56,6 +60,7 @@ describe('RiderService.applyRider 状态保护', () => {
         const svc = new RiderService(
             { getRepository: vi.fn().mockReturnValue({ update }) } as any,
             { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
+            riderOpsStub(),
         );
         return { svc, update };
     };
@@ -99,6 +104,7 @@ describe('RiderService.applyRider 入参校验 / setRiderStatus（P3）', () => 
                 }),
             } as any,
             { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
+            riderOpsStub(),
         );
         return { svc, update, qb };
     };
@@ -164,7 +170,7 @@ describe('RiderService.listApplications（F8 分页）', () => {
         const conn = {
             getRepository: vi.fn().mockReturnValue({ createQueryBuilder: () => qb }),
         } as any;
-        const svc = new RiderService(conn, {} as any);
+        const svc = new RiderService(conn, {} as any, riderOpsStub());
         const out = await svc.listApplications({ channelId: 1 } as any, 'pending', 50, 25);
         expect(qb.skip).toHaveBeenCalledWith(50);
         expect(qb.take).toHaveBeenCalledWith(25);
@@ -183,7 +189,7 @@ describe('RiderService.listApplications（F8 分页）', () => {
             getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
         };
         const conn = { getRepository: vi.fn().mockReturnValue({ createQueryBuilder: () => qb }) } as any;
-        const svc = new RiderService(conn, {} as any);
+        const svc = new RiderService(conn, {} as any, riderOpsStub());
         await svc.listApplications({ channelId: 1 } as any, 'approved');
         expect(qb.skip).toHaveBeenCalledWith(0);
         expect(qb.take).toHaveBeenCalledWith(200);
@@ -200,7 +206,7 @@ describe('RiderService.listApplications（F8 分页）', () => {
             getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
         };
         const conn = { getRepository: vi.fn().mockReturnValue({ createQueryBuilder: () => qb }) } as any;
-        const svc = new RiderService(conn, {} as any);
+        const svc = new RiderService(conn, {} as any, riderOpsStub());
         await svc.listApplications({ channelId: 1 } as any, 'approved', -5, -1);
         expect(qb.skip).toHaveBeenCalledWith(0);
         expect(qb.take).toHaveBeenCalledWith(1);

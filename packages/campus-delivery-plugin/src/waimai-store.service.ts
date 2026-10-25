@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Channel, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusRoute, normalizeRouteFirstLeg, ROUTE_FIRST_LEG_OPTIONS } from './route-matrix';
+import { isWithinBusinessHours } from './business-hours';
 
 export interface WaimaiStore {
     channelId: number;
@@ -20,6 +21,8 @@ export interface WaimaiStore {
     storePhone: string | null;
     storeNotice: string | null;
     businessHours: string | null;
+    /** 当前是否可下单（营业时段内 且 未暂停营业） */
+    openNow: boolean;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
 }
@@ -138,6 +141,8 @@ export class WaimaiStoreService {
                 storePhone: cfg.storePhone ?? null,
                 storeNotice: cfg.storeNotice ?? null,
                 businessHours: cf.waimaiBusinessHours ?? null,
+                // 营业状态（服务端按校园时区判定，与 C 端展示/下单闸门同口径）
+                openNow: isWithinBusinessHours(cf.waimaiBusinessHours ?? null) && !cfg.paused,
                 errandBaseFee: cfg.errandBaseFee ?? null,
                 freeShippingThreshold: cfg.freeShippingThreshold ?? null,
             });

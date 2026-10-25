@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Customer, RequestContext, TransactionalConnection } from '@vendure/core';
 
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { RiderOpsService } from './rider-ops.service';
 import { RiderService } from './rider.service';
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -11,6 +12,7 @@ export class CapacityService {
     constructor(
         private connection: TransactionalConnection,
         private riderService: RiderService,
+        private riderOps: RiderOpsService,
     ) {}
 
     /** 在线骑手：approved 且 5min 内有心跳，**限当前渠道**。
@@ -50,6 +52,7 @@ export class CapacityService {
         await this.connection.getRepository(ctx, Customer).update(rider.id, {
             customFields: { riderOnlineAt: new Date() },
         } as any);
+        await this.riderOps.heartbeatSession(ctx, Number(rider.id)).catch(() => undefined);
         return { online: true };
     }
 }

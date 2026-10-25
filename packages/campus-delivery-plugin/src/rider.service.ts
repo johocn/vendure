@@ -8,11 +8,17 @@ import {
     UserInputError,
 } from '@vendure/core';
 
+import { RiderOpsService } from './rider-ops.service';
+
 const CREDIT_LIMIT = 60;
 
 @Injectable()
 export class RiderService {
-    constructor(private connection: TransactionalConnection, private customerService: CustomerService) {}
+    constructor(
+        private connection: TransactionalConnection,
+        private customerService: CustomerService,
+        private riderOps: RiderOpsService,
+    ) {}
 
     /** 当前登录顾客；未登录或无对应顾客一律 ForbiddenError。 */
     private async requireCustomer(ctx: RequestContext): Promise<Customer> {
@@ -120,6 +126,8 @@ export class RiderService {
         await this.connection.getRepository(ctx, Customer).update(customer.id, {
             customFields: { riderOnlineAt: online ? new Date() : null },
         } as any);
+        // 在线会话：上线开/续、下线关账，用于统计实际在线时长
+        await this.riderOps.touchSession(ctx, Number(customer.id), online).catch(() => undefined);
         return { online };
     }
 

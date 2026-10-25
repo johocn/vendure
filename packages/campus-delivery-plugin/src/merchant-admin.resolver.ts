@@ -51,6 +51,29 @@ export class MerchantAdminResolver {
         return this.merchant.markPrinted(ctx, orderId);
     }
 
+    /** 一键沽清：本店商品列表（含售罄标记） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantProducts(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'search', type: () => String, nullable: true }) search?: string,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number,
+    ) {
+        return this.merchant.products(ctx, search, skip, take);
+    }
+
+    /** 沽清 / 取消沽清（售罄仍展示、不可加购） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetProductSoldOut(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+        @Args('soldOut') soldOut: boolean,
+    ) {
+        return this.merchant.setProductSoldOut(ctx, productId, soldOut);
+    }
+
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

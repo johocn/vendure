@@ -43,6 +43,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantMarkPrinted(ctx, orderId) {
         return this.merchant.markPrinted(ctx, orderId);
     }
+    /** 一键沽清：本店商品列表（含售罄标记） */
+    async campusMerchantProducts(ctx, search, skip, take) {
+        return this.merchant.products(ctx, search, skip, take);
+    }
+    /** 沽清 / 取消沽清（售罄仍展示、不可加购） */
+    async campusMerchantSetProductSoldOut(ctx, productId, soldOut) {
+        return this.merchant.setProductSoldOut(ctx, productId, soldOut);
+    }
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     async campusMerchantDispatchExternal(ctx, orderId, provider) {
         return this.merchant.dispatchExternal(ctx, orderId, provider);
@@ -119,6 +127,27 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantMarkPrinted", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'search', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantProducts", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __param(2, (0, graphql_1.Args)('soldOut')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Boolean]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetProductSoldOut", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

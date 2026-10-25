@@ -16,7 +16,8 @@ describe('CapacityService', () => {
         const conn = { getRepository: vi.fn((_ctx: any, ent: any) =>
             (ent as any).name === 'CampusFulfillmentConfig' ? configRepo : customerRepo) } as any;
         const riderService = { assertApprovedRider: vi.fn().mockResolvedValue({ id: 9 }) } as any;
-        return { svc: new CapacityService(conn, riderService), customerRepo, configRepo, riderService };
+        const riderOps = { heartbeatSession: vi.fn().mockResolvedValue(undefined), touchSession: vi.fn().mockResolvedValue(undefined) } as any;
+        return { svc: new CapacityService(conn, riderService, riderOps), customerRepo, configRepo, riderService };
     };
 
     it('在线 = approved 且心跳在 5min 内', async () => {

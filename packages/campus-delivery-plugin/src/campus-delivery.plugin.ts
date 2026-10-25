@@ -15,13 +15,23 @@ import { ModuleRef } from '@nestjs/core';
 import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { AdminNotifyEvent } from '@vendure/notification-plugin';
 import { CampusBuilding } from './campus-building.entity';
+import { CapacityAlertJob } from './capacity-alert.job';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
 import { CampusConfigService } from './campus-config.service';
+import { CampusSmsService } from './campus-sms.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
 import { DeliverySlot } from './delivery-slot.entity';
+import { bindOrderGateConnection, campusOrderGateProcess } from './order-gate.process';
+import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './support.entities';
+import { CampusRiderReview, CampusRiderSession, CampusRiderShift } from './rider-ops.entities';
+import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
+import { RiderOpsService } from './rider-ops.service';
+import { SupportAdminResolver } from './support-admin.resolver';
+import { SupportService } from './support.service';
+import { SupportShopResolver } from './support-shop.resolver';
 import { DispatchAdminResolver } from './dispatch-admin.resolver';
 import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
@@ -93,7 +103,7 @@ import { WaimaiStoreService } from './waimai-store.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusRiderShift, CampusRiderSession, CampusRiderReview],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -104,9 +114,14 @@ import { WaimaiStoreService } from './waimai-store.service';
         P4OpsHardeningMigration,
         P5TimestampTimezoneMigration,
         P6DefaultCompensationMigration,
+        P7OpsTablesMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
+        RiderOpsService,
+        SupportService,
+        CampusSmsService,
+        CapacityAlertJob,
         RiderService,
         CapacityService,
         SlotLockService,
@@ -479,6 +494,138 @@ import { WaimaiStoreService } from './waimai-store.service';
                     total: Int!
                 }
 
+                type CampusSupportTicket {
+                    id: ID!
+                    customerId: ID!
+                    customerName: String
+                    customerPhone: String
+                    orderCode: String
+                    category: String!
+                    content: String!
+                    images: [String!]
+                    status: String!
+                    reply: String
+                    repliedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type CampusSupportTicketList {
+                    items: [CampusSupportTicket!]!
+                    total: Int!
+                }
+
+                type CampusRiderAppeal {
+                    id: ID!
+                    riderCustomerId: ID!
+                    riderName: String
+                    riderPhone: String
+                    orderId: ID
+                    orderCode: String
+                    reason: String!
+                    images: [String!]
+                    status: String!
+                    creditDelta: Int!
+                    reviewNote: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type CampusRiderAppealList {
+                    items: [CampusRiderAppeal!]!
+                    total: Int!
+                }
+
+                type CampusBlacklistEntry {
+                    id: ID!
+                    type: String!
+                    customerId: ID
+                    phone: String
+                    reason: String
+                    createdBy: String
+                    active: Boolean!
+                    createdAt: DateTime!
+                }
+
+                type CampusBlacklistList {
+                    items: [CampusBlacklistEntry!]!
+                    total: Int!
+                }
+
+                type CampusRemoveResult {
+                    ok: Boolean!
+                }
+
+                type CampusRiderShift {
+                    id: ID!
+                    riderCustomerId: ID!
+                    realName: String
+                    shiftDate: String!
+                    startTime: String!
+                    endTime: String!
+                    note: String
+                    onlineMinutes: Int
+                    shiftMinutes: Int
+                }
+
+                type CampusRiderShiftList {
+                    date: String!
+                    items: [CampusRiderShift!]!
+                }
+
+                input CampusRiderShiftInput {
+                    id: ID
+                    riderCustomerId: ID!
+                    shiftDate: String!
+                    startTime: String!
+                    endTime: String!
+                    note: String
+                }
+
+                type CampusRiderOnlineStat {
+                    riderCustomerId: ID!
+                    realName: String!
+                    onlineMinutes: Int!
+                }
+
+                type CampusRiderOnlineStatList {
+                    date: String!
+                    items: [CampusRiderOnlineStat!]!
+                }
+
+                type CampusRiderReviewRow {
+                    id: ID!
+                    riderCustomerId: ID!
+                    orderId: ID!
+                    rating: Int!
+                    tags: [String!]
+                    comment: String
+                    createdAt: DateTime!
+                }
+
+                type CampusRiderRating {
+                    riderCustomerId: ID!
+                    avgRating: Float!
+                    ratingCount: Int!
+                }
+
+                type CampusMerchantProduct {
+                    productId: ID!
+                    name: String!
+                    soldOut: Boolean!
+                    monthlySales: Int!
+                    variantCount: Int!
+                }
+
+                type CampusMerchantProductList {
+                    items: [CampusMerchantProduct!]!
+                    total: Int!
+                }
+
+                type CampusMerchantSoldOutResult {
+                    ok: Boolean!
+                    soldOut: Boolean!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -494,6 +641,14 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
+                    campusSupportTickets(status: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusRiderAppeals(status: String, skip: Int, take: Int): CampusRiderAppealList!
+                    campusBlacklist(skip: Int, take: Int): CampusBlacklistList!
+                    campusRiderShifts(date: String!): CampusRiderShiftList!
+                    campusRiderOnlineStats(date: String): CampusRiderOnlineStatList!
+                    campusRiderReviews(riderCustomerId: ID, skip: Int, take: Int): [CampusRiderReviewRow!]!
+                    campusRiderRating(riderCustomerId: ID!): CampusRiderRating!
+                    campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -682,6 +837,13 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusMerchantMarkOwnedArrived(orderId: ID!): CampusFirstLegResult!
                     approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+                    campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
+                    campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
+                    campusAddBlacklist(type: String!, value: String!, reason: String): CampusBlacklistEntry!
+                    campusRemoveBlacklist(id: ID!): CampusRemoveResult!
+                    campusSaveRiderShift(input: CampusRiderShiftInput!): CampusRiderShift!
+                    campusDeleteRiderShift(id: ID!): CampusRemoveResult!
+                    campusMerchantSetProductSoldOut(productId: ID!, soldOut: Boolean!): CampusMerchantSoldOutResult!
                 }
 
                 type CampusMerchantOpResult {
@@ -755,7 +917,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -881,6 +1043,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storePhone: String
                     storeNotice: String
                     businessHours: String
+                    """当前是否可下单（营业时段内且未暂停营业，服务端按 UTC+8 判定）"""
+                    openNow: Boolean!
                     errandBaseFee: Int
                     freeShippingThreshold: Int
                 }
@@ -995,6 +1159,67 @@ import { WaimaiStoreService } from './waimai-store.service';
                     channelId: ID!
                 }
 
+                type CampusMySupportTicket {
+                    id: ID!
+                    orderCode: String
+                    category: String!
+                    content: String!
+                    images: [String!]
+                    status: String!
+                    reply: String
+                    repliedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type CampusMyRiderAppeal {
+                    id: ID!
+                    orderCode: String
+                    reason: String!
+                    images: [String!]
+                    status: String!
+                    creditDelta: Int
+                    reviewNote: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type CampusRiderRating {
+                    riderCustomerId: ID!
+                    avgRating: Float!
+                    ratingCount: Int!
+                }
+
+                type CampusRateRiderResult {
+                    ok: Boolean!
+                    rating: Int!
+                }
+
+                type CampusRiderShiftRow {
+                    id: ID!
+                    shiftDate: String!
+                    startTime: String!
+                    endTime: String!
+                    note: String
+                }
+
+                """骑手配送导航坐标（gcj02，供 uni.openLocation）"""
+                type CampusRiderNav {
+                    orderId: ID!
+                    orderCode: String!
+                    storeName: String
+                    storeAddress: String
+                    storePhone: String
+                    storeLat: Float
+                    storeLng: Float
+                    buildingName: String
+                    buildingDetail: String
+                    buildingLat: Float
+                    buildingLng: Float
+                    campusZone: String
+                    note: String
+                    deliveryStatus: String
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -1016,6 +1241,11 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusFavoriteVariants: [CampusFavoriteVariant!]!
                     """本单最近一次改址的差额状态（待补/待退/已结清）"""
                     campusMyAddressChange(orderId: ID!): CampusMyAddressChange
+                    campusMySupportTickets(skip: Int, take: Int): [CampusMySupportTicket!]!
+                    campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
+                    campusMyRiderRating: CampusRiderRating!
+                    campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
+                    campusRiderNav(orderId: ID!): CampusRiderNav
                 }
 
                 type CampusMyAddressChange {
@@ -1059,10 +1289,13 @@ import { WaimaiStoreService } from './waimai-store.service';
                     riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
                     campusToggleFavoriteStore(channelId: ID!): [String!]!
                     campusToggleFavoriteVariant(variantId: ID!, channelId: ID!): [CampusFavoriteVariant!]!
+                    campusCreateSupportTicket(category: String!, content: String!, images: [String!], orderCode: String): CampusMySupportTicket!
+                    campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
+                    campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
@@ -1085,7 +1318,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         // 取消守卫：C 端在骑手已接单/配送中/已送达时不可自助取消（后台强制路径不受限）
         config.orderOptions = {
             ...(config.orderOptions ?? {}),
-            process: [...(config.orderOptions?.process ?? []), campusMinOrderProcess, campusCancelGuardProcess],
+            process: [...(config.orderOptions?.process ?? []), campusMinOrderProcess, campusOrderGateProcess, campusCancelGuardProcess],
         } as any;
         // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
         // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
@@ -1121,6 +1354,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     onApplicationBootstrap(): void {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
         bindMinOrderConnection(this.injector.get(TransactionalConnection));
+        bindOrderGateConnection(this.injector.get(TransactionalConnection));
         // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
         void this.grantDispatchPermission().catch(e =>
             Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'),
@@ -1187,6 +1421,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             );
         });
         this.injector.get(DispatchJobService).start();
+        // 运力预警：在线会话收口 + 待抢单量/在线骑手数告警（自管定时器，生产无 worker）
+        this.injector.get(CapacityAlertJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
             void this.injector.get(FeishuNotifyService).onAdminNotify(event);

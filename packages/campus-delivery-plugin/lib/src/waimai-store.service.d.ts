@@ -16,6 +16,8 @@ export interface WaimaiStore {
     storePhone: string | null;
     storeNotice: string | null;
     businessHours: string | null;
+    /** 当前是否可下单（营业时段内 且 未暂停营业） */
+    openNow: boolean;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
 }

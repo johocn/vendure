@@ -1,8 +1,10 @@
 import { Customer, CustomerService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { RiderOpsService } from './rider-ops.service';
 export declare class RiderService {
     private connection;
     private customerService;
-    constructor(connection: TransactionalConnection, customerService: CustomerService);
+    private riderOps;
+    constructor(connection: TransactionalConnection, customerService: CustomerService, riderOps: RiderOpsService);
     /** 当前登录顾客；未登录或无对应顾客一律 ForbiddenError。 */
     private requireCustomer;
     applyRider(ctx: RequestContext, input: {
@@ -17,7 +19,7 @@ export declare class RiderService {
      * 否则 A 店审核员可按 customerId 查看/停用 B 店骑手（含学号、证件照）。 */
     private assertCustomerInChannel;
     setRiderStatus(ctx: RequestContext, customerId: number, status: 'approved' | 'suspended' | 'none'): Promise<{
-        status: "none" | "suspended" | "approved";
+        status: "approved" | "none" | "suspended";
     }>;
     assertApprovedRider(ctx: RequestContext): Promise<Customer>;
     myRiderProfile(ctx: RequestContext): Promise<{

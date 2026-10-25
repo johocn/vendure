@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
+import { CampusSmsService } from './campus-sms.service';
 
 /** 用户侧节点通知触点（履约 5 + 用户订单域 4 + 改址 1） */
 export type CampusNotifyEvent =
@@ -27,6 +28,20 @@ const AFTER_SALE_TYPE: Partial<Record<CampusNotifyEvent, string>> = {
     afterSales: '进度更新',
 };
 
+/** 短信兜底文案（公众号模板消息不可用时发送，未配置短信网关则静默跳过） */
+const SMS_EVENT_LABEL: Record<CampusNotifyEvent, string> = {
+    orderAccepted: '商家已接单',
+    riderAssigned: '骑手已接单',
+    cookingDone: '餐品已出餐',
+    orderDelivered: '订单已送达',
+    exceptionHandled: '异常已处理',
+    orderPlaced: '下单成功',
+    paymentPending: '待付款提醒',
+    orderCancelled: '订单已取消',
+    afterSales: '售后进度更新',
+    addressChanged: '收货地址已变更',
+};
+
 // F7 最小补发：进程内重试 + 退避（首推失败不再只留一条日志）。
 // 不落库（1G 小机避免加表/迁移）；dedupe_key 固定为 campus:{event}:{orderId}，
 // SSO msg-job 侧按 key 幂等 → 超时重发不会产生重复消息。
@@ -47,6 +62,7 @@ export class CampusNotifyService {
     constructor(
         private connection: TransactionalConnection,
         private config: CampusConfigService,
+        private sms: CampusSmsService,
     ) {}
 
     /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果/改址新址，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页；dedupeSuffix：同一订单多次同类事件（如多次改址）的幂等键后缀 */
@@ -65,12 +81,14 @@ export class CampusNotifyService {
                 const appSecret = process.env.SSO_NOTIFY_APP_SECRET;
                 if (!baseUrl || !appCode || !appSecret) {
                     Logger.debug('SSO notify env not configured (SSO_NOTIFY_BASE_URL/APP_CODE/APP_SECRET), skip', 'CampusNotify');
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 const cfg = await this.config.getConfig(ctx);
                 const templateCode = (cfg as any)[TEMPLATE_FIELD[event]] as string | null | undefined;
                 if (!templateCode) {
                     Logger.debug(`channel ${ctx.channelId} has no ${TEMPLATE_FIELD[event]}, skip user notify`, 'CampusNotify');
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 const order = await this.connection.getRepository(ctx, Order).findOne({
@@ -83,6 +101,7 @@ export class CampusNotifyService {
                         `order ${orderId} customer has no ssoId, skip user notify (${event})`,
                         'CampusNotify',
                     );
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 // sso_user_id 必须是数字：非数字（脏数据/占位串）会让下游按 NaN 落库，这里提前拦下
@@ -92,6 +111,7 @@ export class CampusNotifyService {
                         `order ${orderId} customer ssoId is not numeric (${String(ssoId)}), skip user notify (${event})`,
                         'CampusNotify',
                     );
+                    await this.smsFallback(ctx, orderId, event, text);
                     return;
                 }
                 // 微信模板字段必填：按事件分型组装 params（与 sso_msg_templates.wx_template_fields 的 key 对应）
@@ -149,6 +169,7 @@ export class CampusNotifyService {
                     `user notify ${event} for order ${orderId} dropped after ${SEND_ATTEMPTS} attempts: ${lastErr instanceof Error ? lastErr.message : lastErr}`,
                     'CampusNotify',
                 );
+                await this.smsFallback(ctx, orderId, event, text);
             } catch (e: any) {
                 Logger.warn(
                     `user notify ${event} for order ${orderId} failed: ${e?.message ?? e}`,
@@ -156,6 +177,30 @@ export class CampusNotifyService {
                 );
             }
         })();
+    }
+
+    /** 短信兜底：公众号模板消息不可用（未配模板/无 ssoId/发送失败）时补发一条短信；未配网关静默跳过 */
+    private async smsFallback(
+        ctx: RequestContext,
+        orderId: number | string,
+        event: CampusNotifyEvent,
+        text?: string,
+    ): Promise<void> {
+        if (!this.sms.configured) return;
+        try {
+            const order = await this.connection.getRepository(ctx, Order).findOne({
+                where: { id: orderId as any },
+                relations: ['customer'],
+            });
+            const phone = order?.customer?.phoneNumber;
+            if (!order || !phone) return;
+            const extra = text ? `，${text}` : '';
+            const content = `【校园外卖】${SMS_EVENT_LABEL[event]}：订单 ${order.code}${extra}，详情请打开小程序查看。`;
+            const ok = await this.sms.send(phone, content.slice(0, 120));
+            if (ok) Logger.info(`sms fallback sent for ${order.code} (${event})`, 'CampusNotify');
+        } catch (e: any) {
+            Logger.warn(`sms fallback failed for order ${orderId} (${event}): ${e?.message ?? e}`, 'CampusNotify');
+        }
     }
 
     /** 单次发送（10s 超时）；非 2xx 或响应体异常抛错由上层重试 */
