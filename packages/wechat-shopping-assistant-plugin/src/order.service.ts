@@ -98,7 +98,8 @@ export class AssistantOrderService {
                 items.push({
                     title: pick.title,
                     quantity: pick.quantity,
-                    price: line?.unitPrice ?? pick.variant.listPrice ?? 0,
+                    // 与「合计」（totalWithTax）口径一致：取含税单价，避免行价显示比合计少税额
+                    price: line?.unitPriceWithTax ?? pick.variant.listPrice ?? 0,
                 });
             }
 

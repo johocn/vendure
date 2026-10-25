@@ -60,7 +60,8 @@ let AssistantOrderService = class AssistantOrderService {
                 items.push({
                     title: pick.title,
                     quantity: pick.quantity,
-                    price: (_c = (_b = line === null || line === void 0 ? void 0 : line.unitPrice) !== null && _b !== void 0 ? _b : pick.variant.listPrice) !== null && _c !== void 0 ? _c : 0,
+                    // 与「合计」（totalWithTax）口径一致：取含税单价，避免行价显示比合计少税额
+                    price: (_c = (_b = line === null || line === void 0 ? void 0 : line.unitPriceWithTax) !== null && _b !== void 0 ? _b : pick.variant.listPrice) !== null && _c !== void 0 ? _c : 0,
                 });
             }
             // 落收货地址（含电话）：对话选址后写入订单 shippingAddress；失败不阻塞下单
