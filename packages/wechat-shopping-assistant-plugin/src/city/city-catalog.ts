@@ -27,40 +27,18 @@ export interface ChannelLike {
     deliveryMinutes?: number | null;
 }
 
-export interface RangeLike {
-    channelId: number | string;
-    shopId: number | string;
-    rangeType: 'all' | 'circle' | 'district' | string;
-    districtCodes: string | null;
-    radiusKm: number | null;
-    centerLat: number | null;
-    centerLng: number | null;
-    enabled: boolean;
-}
-
 export interface CityIndex {
     byCity: Map<string, CatalogChannel[]>;
     allChannels: CatalogChannel[];
 }
 
-function parseCodes(raw: string | null): string[] {
-    if (!raw) return [];
-    try {
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr.map(String) : [];
-    } catch {
-        return [];
-    }
-}
-
-export function buildCityIndex(channels: ChannelLike[], ranges: RangeLike[]): CityIndex {
+/**
+ * 渠道 → 城市索引：只读渠道 `servingCities`（运营显式配置的城市码）。
+ * 未配置服务城市的渠道视为「不限城市」（线上历史渠道均未配置），进 allChannels 兜底。
+ */
+export function buildCityIndex(channels: ChannelLike[]): CityIndex {
     const byCity = new Map<string, CatalogChannel[]>();
     const allChannels: CatalogChannel[] = [];
-    const push = (city: string, item: CatalogChannel) => {
-        const list = byCity.get(city) ?? [];
-        list.push(item);
-        byCity.set(city, list);
-    };
 
     for (const ch of channels) {
         const base = {
@@ -75,28 +53,15 @@ export function buildCityIndex(channels: ChannelLike[], ranges: RangeLike[]): Ci
             centerLng: null as number | null,
             distanceKm: null as number | null,
         };
-        for (const city of ch.servingCities ?? []) {
-            push(city, { ...base, precision: 'explicit' });
-        }
-        const range = ranges.find(r => String(r.channelId) === String(ch.id));
-        if (!range || !range.enabled) continue;
-
-        if (range.rangeType === 'all') {
+        const cities = ch.servingCities ?? [];
+        if (cities.length === 0) {
             allChannels.push({ ...base, precision: 'all' });
-        } else if (range.rangeType === 'district') {
-            for (const code of parseCodes(range.districtCodes)) {
-                const cityCode = code.length === 6 ? `${code.slice(0, 4)}00` : code;
-                push(cityCode, { ...base, precision: 'district', storeId: String(range.shopId) });
-            }
-        } else if (range.rangeType === 'circle') {
-            // 半径覆盖需要用户坐标：索引阶段带上圆心，距离由 TenantRouterService 计算
-            allChannels.push({
-                ...base,
-                precision: 'circle',
-                storeId: String(range.shopId),
-                centerLat: range.centerLat,
-                centerLng: range.centerLng,
-            });
+            continue;
+        }
+        for (const city of cities) {
+            const list = byCity.get(city) ?? [];
+            list.push({ ...base, precision: 'explicit' });
+            byCity.set(city, list);
         }
     }
     return { byCity, allChannels };

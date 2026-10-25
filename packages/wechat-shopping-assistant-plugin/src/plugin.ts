@@ -6,6 +6,9 @@ import { WechatAuthPlugin, WechatMessageEvent } from '@vendure/wechat-auth-plugi
 import { AddressBookService } from './address.service';
 import { AssistantService } from './assistant.service';
 import { AssistantHttpController } from './assistant-http.controller';
+import { CityCatalogService } from './city/city-catalog.service';
+import { DeliveryGuardService } from './city/delivery-guard.service';
+import { TenantRouterService } from './city/tenant-router.service';
 import { loggerCtx, WECHAT_ASSISTANT_PLUGIN_OPTIONS } from './constants';
 import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
@@ -79,6 +82,9 @@ const adminSchema = () => gql`
         StoreLocatorService,
         SupportTicketService,
         ShoppingSessionFlowColumnsMigration,
+        CityCatalogService,
+        TenantRouterService,
+        DeliveryGuardService,
     ],
     compatibility: '^3.0.0',
 })

@@ -10,7 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-25-wechat-text-order-city-tenant-routing-design.md`
 
-**范围调整（相对 spec）:** 本期门店 `deliveryRadiusKm` 通过 `DeliveryRange(type=circle)` 已覆盖，暂不直接读 `MerchantStore` 实体；`servingCities`、`DeliveryRange`、渠道字段 `minOrderAmount/deliveryMinutes` 为 P0 数据源。门店实体直读放到 P1。
+**范围调整（相对 spec）:** 本期不做门店实体直读与区县/半径级判定；P0 数据源为渠道字段 `servingCities`、`minOrderAmount`、`deliveryMinutes`（`MerchantStore`、`DeliveryRange` 放到 P1）。
+
+**实施修正（2026-10-25）:** 经仓库核实，渠道原本**没有** `minOrderAmount` / `deliveryMinutes` 字段（同名配置在 campus-delivery 的门店配置里），已在 Task 1 一并补为渠道 customField：`minOrderAmount`（int，单位分）、`deliveryMinutes`（int，分钟）。Task 4 的城市目录服务从渠道 customFields 读取这两个值，语义成立。
+
+**实施修正二（2026-10-25，Task 10 前）:** 核对线上部署（`/www/apps/vendure` → pm2 `vendure` → Postgres 库 `vendure`）确认：**不存在 `delivery_range` 表，`AddressPlugin` 从未在 `dev-config.ts` 注册，`merchant-plugin` 也未上线**。原 Task 4/6 依赖的 `DeliveryRange` / `DeliveryService` 在线上不可用，若按原样注册 provider 会因实体元数据缺失导致下单链路抛错。经确认改为**城市级校验**：城市索引只读渠道 `servingCities`（未配置的渠道视为不限，进 `allChannels` 兜底）；配送守卫判定「地址城市码是否在渠道服务城市内」，不再引入 address-plugin（`package.json`/lockfile 中的 `@vendure/address-plugin` 依赖已同步移除）。P1 若上线地址/范围插件，再补区县与半径精度。
 
 ---
 
@@ -23,19 +27,19 @@
 | `.../src/city/address-parser.spec.ts`（新） | 上述纯函数单测 |
 | `.../src/city/city-catalog.ts`（新） | `buildCityIndex()` 纯函数 + 类型 |
 | `.../src/city/city-catalog.spec.ts`（新） | 索引构建单测 |
-| `.../src/city/city-catalog.service.ts`（新） | 读取 Channel / DeliveryRange 并缓存索引 |
+| `.../src/city/city-catalog.service.ts`（新） | 读取 Channel 并缓存城市索引 |
 | `.../src/city/tenant-router.ts`（新） | `rankCandidates()` 纯函数 |
 | `.../src/city/tenant-router.spec.ts`（新） | 排序单测 |
 | `.../src/city/tenant-router.service.ts`（新） | 解析城市 + 选租户 |
-| `.../src/city/delivery-guard.service.ts`（新） | 地址→坐标→区划码→`validateDelivery` |
-| `.../src/city/delivery-guard.spec.ts`（新） | 守卫分支单测（stub DeliveryService/GeoService） |
+| `.../src/city/delivery-guard.service.ts`（新） | 地址→区划码→渠道服务城市校验 |
+| `.../src/city/delivery-guard.spec.ts`（新） | 守卫分支单测（stub Channel/GeoService） |
 | `.../src/card-builder.ts`（改） | 超范围卡、切店提示、ETA |
 | `.../src/card-builder.spec.ts`（改） | 新文案单测 |
 | `.../src/types.ts`（改） | draft 扩展 |
 | `.../src/assistant.service.ts`（改） | `placeOrder` 前置编排、切店重搜 |
 | `.../src/assistant-flow.spec.ts`（改） | 主/异常路径 |
 | `.../src/plugin.ts`（改） | 注册新 provider |
-| `.../package.json`（改） | 新增 `@vendure/address-plugin` peer/dev 依赖 |
+| `.../package.json`（改） | 渠道字段依赖（无新增外部依赖） |
 
 ---
 
@@ -275,15 +279,15 @@ const ranges = [
 describe('buildCityIndex', () => {
     test('显式 servingCities 优先', () => {
         const index = buildCityIndex(channels, ranges);
-        expect(index.get('220200')?.[0]).toMatchObject({ channelId: '111', precision: 'explicit' });
+        expect(index.byCity.get('220200')?.[0]).toMatchObject({ channelId: '111', precision: 'explicit' });
     });
 
     test('district 白名单推导上级城市码', () => {
         const index = buildCityIndex(
-            [{ ...channels[0], servingCities: [] }],
+            [{ ...channels[0], id: '333', servingCities: [] }],
             [{ channelId: 333, shopId: 333, rangeType: 'district', districtCodes: '["220202"]', radiusKm: null, centerLat: null, centerLng: null, enabled: true }],
         );
-        expect(index.get('220200')?.[0]).toMatchObject({ channelId: '333', precision: 'district' });
+        expect(index.byCity.get('220200')?.[0]).toMatchObject({ channelId: '333', precision: 'district' });
     });
 
     test('all 标记 allChannels，不产生城市键', () => {
@@ -1226,7 +1230,7 @@ git commit -m "feat(assistant): 下单前配送守卫与跨租户切店重搜"
 
 - [ ] **Step 1: 注册 provider**
 
-前置确认：部署配置的 `plugins` 已包含 `AddressPlugin.init({})`（本仓库 address-plugin 已上线，`DeliveryService` 可注入）；若未注册，Nest 启动会报 `DeliveryService` 依赖无法解析，需先在配置中注册。
+无需注册 `AddressPlugin`：城市索引与守卫只依赖 `Channel` 实体（Vendure 核心）与 `GeoService`（本插件既有 provider）。
 
 在 `providers` 数组追加：
 
@@ -1257,9 +1261,9 @@ Expected: 编译成功、测试全绿。
 每个渠道（tenant-channel）逐项确认：
 
 1. 渠道装修 → 服务城市 `servingCities`：填 6 位城市码（如吉林市 220200 = 区县码前 4 位 + 00），至少覆盖主力城市。
-2. 配送范围 `DeliveryRange`：区县白名单或半径，二选一；未配置视为不可配送。
+2. 未配置 `servingCities` 的渠道视为**不限城市**（保留原有下单能力）；配置后该渠道只接服务城市内的地址，其他城市会收到「不在配送范围」提示。
 3. 渠道 `deliveryMinutes`：填写后订单确认显示「约 X 分钟送达」；不填显示「电话确认」。
-4. 门店 `supportsDelivery` 与 `cityCode`：与 `servingCities` 保持一致（P1 直读门店后生效）。
+4. 渠道 `minOrderAmount`：租户排序用（分）；不填按 0 处理。
 5. 回滚开关：`ASSISTANT_CITY_ROUTING=off` → 关闭守卫与切店，恢复原下单链路。
 ```
 
@@ -1322,5 +1326,5 @@ git commit -m "docs: 城市路由线上冒烟记录"
 - **地址补全**：复用现有地址流程（新增地址已含电话询问、地理编码失败回「地址无法识别」），P0 不新增补问状态机；`ParsedAddress.missing` 仅作为诊断字段，暂无消费方（不做无用文案）。
 - **未覆盖（P1）**：跨渠道订单状态推送、最近租户推荐、门店实体直读、城市主数据后台。
 - **类型一致性**：`ParsedAddress.cityCode`、`Candidate.precision/centerLat/centerLng/distanceKm`、`GuardResult.status` 在 Task 2/5/6/9 中名称一致；`DeliveryGuardService.parse/checkParsed/check` 三方法在 Task 6 定义、Task 9 调用，签名一致。
-- **已核实**：`placeOrder` 无 session 入参 → 切换租户时用 `this.sessionService.getActive(touser)` 取 `query`（已写入 Task 9）；`AssistantSearchService.searchProducts` 入参为 `{query, channelId, locale, limit, storefrontUrl, productUrlTemplate}`；`DeliveryService.validateDelivery` 的 `AddressInput` 必填 `fullName/phone`（Task 6 已补齐）；`AddressInput` 字段名是 `phone` 而非 `phoneNumber`。
-- **已知取舍**：`circle` 门店缺圆心坐标时不参与租户排序（distanceKm 为 null 被过滤），交由 delivery-guard 明确拒绝，不做猜测。
+- **已核实**：`placeOrder` 无 session 入参 → 切换租户时用 `this.sessionService.getActive(touser)` 取 `query`（已写入 Task 9）；`AssistantSearchService.searchProducts` 入参为 `{query, channelId, locale, limit, storefrontUrl, productUrlTemplate}`；线上无 `DeliveryRange` 表 → 守卫改为渠道 `servingCities` 城市级判定（见「实施修正二」）。
+- **已知取舍**：`ParsedAddress.cityCode` 缺失（地理编码只给到区县以外）时守卫按「城市不在服务范围」拒绝，不做猜测；渠道未配置 `servingCities` 时放行以保留原有下单能力。

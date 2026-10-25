@@ -1,6 +1,8 @@
 import { ChannelService, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { WechatInboundMessage, WechatMessageEvent } from '@vendure/wechat-auth-plugin';
 import { AddressBookService } from './address.service';
+import { DeliveryGuardService } from './city/delivery-guard.service';
+import { TenantRouterService } from './city/tenant-router.service';
 import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
 import { GeoService } from './geo.service';
@@ -32,7 +34,9 @@ export declare class AssistantService {
     private geoService;
     private storeLocator;
     private supportTickets;
-    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService, storeLocator: StoreLocatorService, supportTickets: SupportTicketService);
+    private readonly deliveryGuard;
+    private readonly tenantRouter;
+    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService, storeLocator: StoreLocatorService, supportTickets: SupportTicketService, deliveryGuard: DeliveryGuardService, tenantRouter: TenantRouterService);
     onMessage(event: WechatMessageEvent): Promise<void>;
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
@@ -115,6 +119,10 @@ export declare class AssistantService {
      * 选定地址含收货人/电话，随 setShippingAddress 写入订单。
      */
     private placeOrder;
+    /** 渠道展示名：装修 shopName → channel.code */
+    private channelName;
+    /** 渠道预计送达分钟数（未配置返回 null → 文案提示电话确认） */
+    private channelDeliveryMinutes;
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     private claimDedup;
     private resolveChannelId;

@@ -21,6 +21,9 @@ const wechat_auth_plugin_1 = require("@vendure/wechat-auth-plugin");
 const address_service_1 = require("./address.service");
 const assistant_service_1 = require("./assistant.service");
 const assistant_http_controller_1 = require("./assistant-http.controller");
+const city_catalog_service_1 = require("./city/city-catalog.service");
+const delivery_guard_service_1 = require("./city/delivery-guard.service");
+const tenant_router_service_1 = require("./city/tenant-router.service");
 const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
 const customer_binding_service_1 = require("./customer-binding.service");
@@ -111,6 +114,9 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
             store_locator_service_1.StoreLocatorService,
             support_ticket_service_1.SupportTicketService,
             shopping_session_flow_columns_migration_1.ShoppingSessionFlowColumnsMigration,
+            city_catalog_service_1.CityCatalogService,
+            tenant_router_service_1.TenantRouterService,
+            delivery_guard_service_1.DeliveryGuardService,
         ],
         compatibility: '^3.0.0',
     }),

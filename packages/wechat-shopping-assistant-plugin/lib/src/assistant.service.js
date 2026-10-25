@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const address_service_1 = require("./address.service");
 const card_builder_1 = require("./card-builder");
+const delivery_guard_service_1 = require("./city/delivery-guard.service");
+const tenant_router_service_1 = require("./city/tenant-router.service");
 const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
 const customer_binding_service_1 = require("./customer-binding.service");
@@ -38,7 +40,7 @@ const SUPPORT_REPEAT_WINDOW_MS = 10 * 60 * 1000;
  * 重复推送由 MsgId 去重表挡住）。
  */
 let AssistantService = class AssistantService {
-    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook, geoService, storeLocator, supportTickets) {
+    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook, geoService, storeLocator, supportTickets, deliveryGuard, tenantRouter) {
         this.opts = opts;
         this.connection = connection;
         this.sessionService = sessionService;
@@ -53,6 +55,8 @@ let AssistantService = class AssistantService {
         this.geoService = geoService;
         this.storeLocator = storeLocator;
         this.supportTickets = supportTickets;
+        this.deliveryGuard = deliveryGuard;
+        this.tenantRouter = tenantRouter;
     }
     async onMessage(event) {
         const msg = event.message;
@@ -1085,7 +1089,7 @@ let AssistantService = class AssistantService {
      * 选定地址含收货人/电话，随 setShippingAddress 写入订单。
      */
     async placeOrder(ctx, touser, customer, picked, addressId, payment) {
-        var _a, _b;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         // 渠道未配置可用支付方式 → 不建单（后台关闭后下一次会话立即生效）
         const methods = await this.orderService.listPaymentMethods(ctx);
         if (!methods.length) {
@@ -1101,6 +1105,60 @@ let AssistantService = class AssistantService {
         if (addrItem) {
             core_1.Logger.info(`Assistant order shipping address: addressId=${addrItem.id}`, constants_1.loggerCtx);
         }
+        // 城市路由：解析地址 → 匹配租户 → 切换或校验范围（可用 ASSISTANT_CITY_ROUTING=off 关闭）
+        const routingOn = process.env.ASSISTANT_CITY_ROUTING !== 'off';
+        if (routingOn && (addrItem === null || addrItem === void 0 ? void 0 : addrItem.streetLine1)) {
+            const parsed = await this.deliveryGuard.parse(ctx, addrItem.streetLine1);
+            if (!parsed) {
+                return (0, card_builder_1.buildOrderFailText)(touser, '配送校验暂时不可用，请稍后再试');
+            }
+            const route = await this.tenantRouter.resolve(ctx, {
+                cityCode: parsed.cityCode,
+                currentChannelId: String(ctx.channelId),
+                lat: parsed.lat,
+                lng: parsed.lng,
+            });
+            // 排序第一的渠道不是当前渠道 → 切店（当前渠道即使也在候选内，精度/优先级更低时也要让位）
+            const target = route.chosen && route.chosen.channelId !== String(ctx.channelId) ? route.chosen : null;
+            if (target) {
+                // 切店：用原关键词在新渠道重搜，结果写回会话（channelId 一并切换），让用户重新回编号
+                const session = await this.sessionService.getActive(touser);
+                const query = (_d = (_c = session === null || session === void 0 ? void 0 : session.query) === null || _c === void 0 ? void 0 : _c.trim()) !== null && _d !== void 0 ? _d : '';
+                await this.sessionService.saveDraft(touser, { cityCode: parsed.cityCode, resolvedChannelId: target.channelId, pendingQuery: query || null }, (_e = this.opts.sessionTtlMinutes) !== null && _e !== void 0 ? _e : 30);
+                if (query) {
+                    try {
+                        const hits = await this.searchService.searchProducts({
+                            query,
+                            channelId: target.channelId,
+                            locale: (_f = this.opts.searchLocale) !== null && _f !== void 0 ? _f : 'zh',
+                            limit: (_g = this.opts.searchLimit) !== null && _g !== void 0 ? _g : 5,
+                            storefrontUrl: this.storefront(),
+                            productUrlTemplate: this.opts.productUrlTemplate,
+                        });
+                        if (hits.length) {
+                            await this.sessionService.saveResults(touser, target.channelId, hits.map(h => { var _a, _b; return (Object.assign(Object.assign({}, h), { quantity: (_b = (_a = picked[0]) === null || _a === void 0 ? void 0 : _a.quantity) !== null && _b !== void 0 ? _b : 1 })); }), query, (_h = this.opts.sessionTtlMinutes) !== null && _h !== void 0 ? _h : 30);
+                        }
+                    }
+                    catch (e) {
+                        core_1.Logger.warn(`Assistant switch-channel search failed: ${String(e)}`, constants_1.loggerCtx);
+                    }
+                }
+                await this.sessionService.clearFlow(touser);
+                core_1.Logger.info(`Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode}`, constants_1.loggerCtx);
+                return (0, card_builder_1.buildChannelSwitchText)(touser, target.channelName);
+            }
+            const guard = await this.deliveryGuard.checkParsed(ctx, String(ctx.channelId), parsed);
+            if (guard.status === 'UNKNOWN') {
+                return (0, card_builder_1.buildOrderFailText)(touser, '配送校验暂时不可用，请稍后再试');
+            }
+            if (guard.status === 'OUT_OF_RANGE') {
+                return (0, card_builder_1.buildOutOfRangeText)(touser, {
+                    address: addrItem.streetLine1,
+                    serviceAreaText: guard.serviceAreaText,
+                    channelName: await this.channelName(String(ctx.channelId)),
+                });
+            }
+        }
         const outcome = await this.orderService.createOrder(ctx, customer, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }), address);
         switch (outcome.status) {
             case 'ok': {
@@ -1112,6 +1170,7 @@ let AssistantService = class AssistantService {
                     items: outcome.items,
                     payUrl,
                     paymentName: selected.name,
+                    etaMinutes: await this.channelDeliveryMinutes(String(ctx.channelId)),
                 });
             }
             case 'out_of_stock':
@@ -1122,6 +1181,20 @@ let AssistantService = class AssistantService {
         }
     }
     // ============ 基础设施 ============
+    /** 渠道展示名：装修 shopName → channel.code */
+    async channelName(channelId) {
+        var _a, _b;
+        const ch = await this.connection.getRepository(core_1.Channel).findOne({ where: { id: channelId } });
+        const cf = ((_a = ch === null || ch === void 0 ? void 0 : ch.customFields) !== null && _a !== void 0 ? _a : {});
+        return cf.shopName ? String(cf.shopName) : (_b = ch === null || ch === void 0 ? void 0 : ch.code) !== null && _b !== void 0 ? _b : null;
+    }
+    /** 渠道预计送达分钟数（未配置返回 null → 文案提示电话确认） */
+    async channelDeliveryMinutes(channelId) {
+        var _a;
+        const ch = await this.connection.getRepository(core_1.Channel).findOne({ where: { id: channelId } });
+        const cf = ((_a = ch === null || ch === void 0 ? void 0 : ch.customFields) !== null && _a !== void 0 ? _a : {});
+        return cf.deliveryMinutes != null ? Number(cf.deliveryMinutes) : null;
+    }
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     async claimDedup(msg) {
         const dedupKey = (0, intent_1.buildDedupKey)(msg);
@@ -1214,7 +1287,9 @@ exports.AssistantService = AssistantService = __decorate([
         address_service_1.AddressBookService,
         geo_service_1.GeoService,
         store_locator_service_1.StoreLocatorService,
-        support_ticket_service_1.SupportTicketService])
+        support_ticket_service_1.SupportTicketService,
+        delivery_guard_service_1.DeliveryGuardService,
+        tenant_router_service_1.TenantRouterService])
 ], AssistantService);
 /** 微信位置坐标 + 逆地理行政区 → 可写入草稿/地址的坐标对象 */
 function geoPointFromReverse(reverse, lat, lng) {

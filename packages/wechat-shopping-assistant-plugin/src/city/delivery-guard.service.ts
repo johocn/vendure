@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RequestContext, TransactionalConnection } from '@vendure/core';
-import { DeliveryRange, DeliveryService } from '@vendure/address-plugin';
+import { Channel, RequestContext, TransactionalConnection } from '@vendure/core';
 
 import { GeoService } from '../geo.service';
 import { buildParsedAddress, ParsedAddress } from './address-parser';
@@ -16,10 +15,13 @@ export interface GuardResult {
     parsed: ParsedAddress | null;
 }
 
+/**
+ * 配送守卫：地址解析 + 城市级范围判定。
+ * 判定依据为渠道 `servingCities`（服务城市码）；未配置的渠道视为不限（线上历史渠道均未配置）。
+ */
 @Injectable()
 export class DeliveryGuardService {
     constructor(
-        private readonly deliveryService: DeliveryService,
         private readonly connection: TransactionalConnection,
         private readonly geoService: GeoService,
     ) {}
@@ -41,56 +43,35 @@ export class DeliveryGuardService {
         return this.checkParsed(ctx, channelId, parsed);
     }
 
-    /** 已解析地址的范围判定：读该渠道配送档 → DeliveryService 判 rangeType */
+    /** 已解析地址的范围判定：地址城市码是否在渠道服务城市内 */
     async checkParsed(
         ctx: RequestContext,
         channelId: string,
         parsed: ParsedAddress,
     ): Promise<GuardResult> {
         // rawConnection：按显式 channelId 查，避免 ctx 通道过滤挡住跨租户校验
-        const range = await this.connection.rawConnection
-            .getRepository(DeliveryRange)
-            .findOne({ where: { channelId: Number(channelId), enabled: true } as any });
-        if (!range) {
-            return {
-                status: 'OUT_OF_RANGE',
-                reason: 'NO_DELIVERY',
-                serviceAreaText: '该店铺暂未开通配送，回复「客服」可咨询。',
-                parsed,
-            };
+        const channel = await this.connection.rawConnection
+            .getRepository(Channel)
+            .findOne({ where: { id: Number(channelId) } });
+        const servingCities = this.servingCities(channel);
+        if (!servingCities.length) return { status: 'OK', serviceAreaText: '', parsed };
+        if (parsed.cityCode && servingCities.includes(parsed.cityCode)) {
+            return { status: 'OK', serviceAreaText: '', parsed };
         }
-        const [result] = await this.deliveryService.validateDelivery(
-            ctx,
-            {
-                fullName: '',
-                phone: parsed.phoneNumber ?? '',
-                provinceCode: parsed.provinceCode,
-                cityCode: parsed.cityCode,
-                districtCode: parsed.districtCode,
-                detail: parsed.streetLine1,
-                lat: parsed.lat,
-                lng: parsed.lng,
-            },
-            [String(range.shopId)],
+        Logger.log(
+            `Delivery out of range: channel=${channelId} city=${parsed.cityCode ?? '-'}`,
+            loggerCtx,
         );
-        if (result?.inRange) return { status: 'OK', serviceAreaText: '', parsed };
-        Logger.log(`Delivery out of range: channel=${channelId} reason=${result?.reason}`, loggerCtx);
         return {
             status: 'OUT_OF_RANGE',
-            reason: result?.reason,
-            serviceAreaText: this.describeArea(range),
+            reason: 'CITY_NOT_SERVED',
+            serviceAreaText: `本店目前不服务「${parsed.city || parsed.cityCode || '该'}」地区的地址。`,
             parsed,
         };
     }
 
-    private describeArea(range: any): string {
-        if (!range) return '该店铺暂未开通配送。';
-        if (range.rangeType === 'circle') {
-            return `本店配送范围为以门店为中心 ${range.radiusKm ?? 0} 公里内。`;
-        }
-        if (range.rangeType === 'district') {
-            return '本店目前仅服务指定区县，回复「客服」可查询具体配送区域。';
-        }
-        return '本店配送范围以门店确认为准，回复「客服」可查询。';
+    private servingCities(channel: Channel | null): string[] {
+        const raw = (channel?.customFields as any)?.servingCities;
+        return Array.isArray(raw) ? raw.map(String) : [];
     }
 }
