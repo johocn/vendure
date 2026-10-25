@@ -81,6 +81,13 @@ describe('recognizeIntent', () => {
         expect(recognizeIntent('反馈')).toEqual({ kind: 'support_note' });
         expect(recognizeIntent('留言说这个商品有货吗')).toEqual({ kind: 'search', query: '留言说这个商品有货吗' });
     });
+
+    test('payment method intents（支付方式列表）', () => {
+        expect(recognizeIntent('支付方式')).toEqual({ kind: 'payment_methods' });
+        expect(recognizeIntent('怎么付款？')).toEqual({ kind: 'payment_methods' });
+        expect(recognizeIntent('可以怎么付。')).toEqual({ kind: 'payment_methods' });
+        expect(recognizeIntent('支付方式看看有什么')).toEqual({ kind: 'search', query: '支付方式看看有什么' });
+    });
 });
 
 describe('buildDedupKey', () => {

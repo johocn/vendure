@@ -45,6 +45,8 @@ export declare function buildOrderSuccessText(touser: string, input: {
         price: number;
     }>;
     payUrl?: string;
+    /** 确认时选定的支付方式展示名（渠道配置） */
+    paymentName?: string;
 }): TextMessage;
 export declare function buildWelcomeText(touser: string, storefrontUrl?: string): TextMessage;
 export declare function buildSessionExpiredText(touser: string): TextMessage;
@@ -66,7 +68,7 @@ export declare function buildAddrOpMenu(touser: string, item: {
     streetLine1: string;
     isDefault: boolean;
 }): TextMessage;
-/** 下单二次确认卡：商品明细 + 收货信息 */
+/** 下单二次确认卡：商品明细 + 收货信息 + 支付方式（渠道配置） */
 export declare function buildOrderConfirmCard(touser: string, input: {
     items: Array<{
         title: string;
@@ -80,7 +82,23 @@ export declare function buildOrderConfirmCard(touser: string, input: {
         streetLine1: string;
         isDefault: boolean;
     };
+    payment?: {
+        name: string;
+        canSwitch?: boolean;
+    };
 }): TextMessage;
+/** 选择支付方式：≥2 个可用时列出编号（0 返回重选地址） */
+export declare function buildPaymentPickText(touser: string, methods: Array<{
+    code: string;
+    name: string;
+}>, lead?: string): TextMessage;
+/** 支付方式查询（未进入下单流程时列出，按渠道配置） */
+export declare function buildPaymentMethodsInfoText(touser: string, methods: Array<{
+    code: string;
+    name: string;
+}>): TextMessage;
+/** 渠道未配置可用支付方式：不建单，引导联系门店 */
+export declare function buildNoPaymentMethodText(touser: string): TextMessage;
 /** 修改分支选择 */
 export declare function buildAddrEditFieldText(touser: string, index: number): TextMessage;
 /** 请回复新地址文本 */

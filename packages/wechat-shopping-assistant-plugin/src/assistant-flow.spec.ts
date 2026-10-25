@@ -72,10 +72,14 @@ function makeSearchStub(hits: any[] | 'error') {
     };
 }
 
-function makeOrderStub(outcome: any) {
+function makeOrderStub(
+    outcome: any,
+    paymentMethods: Array<{ code: string; name: string }> = [{ code: 'wechatpay', name: '微信支付' }],
+) {
     const calls: Array<{ selections: any[]; address?: any }> = [];
     return {
         calls,
+        listPaymentMethods: async () => paymentMethods.map(m => ({ ...m })),
         createOrder: async (_ctx: any, _customerId: number, selections: any[], address?: any) => {
             calls.push({ selections, address });
             if (outcome === 'stock') return { status: 'out_of_stock', title: '海天生抽酱油 500ml' };
@@ -1153,5 +1157,90 @@ describe('AssistantService 留言工单（≤200 字落库，保存后恢复原�
         const { svc, outbound } = makeService({});
         await svc.onMessage(textEvent('客服', 'M1'));
         expect(outbound[0].content).toContain('回复「留言」写清问题');
+    });
+});
+
+describe('AssistantService 支付方式（按租户渠道配置）', () => {
+    const TWO_METHODS = [
+        { code: 'wechatpay', name: '微信支付' },
+        { code: 'cash-on-delivery', name: '门店收银' },
+    ];
+
+    test('「支付方式」查询 → 按渠道配置列出编号', async () => {
+        const order = makeOrderStub(null, TWO_METHODS);
+        const { svc, outbound } = makeService({ order });
+        await svc.onMessage(textEvent('支付方式', 'M1'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('本店支持的支付方式');
+        expect(last.content).toContain('1 微信支付');
+        expect(last.content).toContain('2 门店收银');
+    });
+
+    test('渠道无可用支付方式 → 列空不建单，引导客服/留言', async () => {
+        const order = makeOrderStub(null, []);
+        const { svc, connection, outbound } = makeService({ order });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('支付方式', 'M1'));
+        expect(outbound[outbound.length - 1].content).toContain('本店暂未开通在线支付');
+
+        await svc.onMessage(textEvent('买一瓶酱油', 'M2'));
+        await svc.onMessage(textEvent('买1', 'M3'));
+        await svc.onMessage(textEvent('1', 'M4')); // 选地址 → 确认时发现无支付方式
+        expect(outbound[outbound.length - 1].content).toContain('本店暂未开通在线支付');
+        expect(order.calls).toHaveLength(0);
+        expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
+    });
+
+    test('多渠道：选址后先选支付方式（reply 2）→ 确认卡展示所选 → 下单成功带支付方式', async () => {
+        const order = makeOrderStub(null, TWO_METHODS);
+        const { svc, connection, outbound } = makeService({ order });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('1', 'M3')); // 选默认地址
+        let last = outbound[outbound.length - 1];
+        expect(last.content).toContain('请选择支付方式');
+        expect(connection.sessions.get('openid-user-1').state).toBe('pay_pick');
+        await svc.onMessage(textEvent('2', 'M4')); // 门店收银
+        last = outbound[outbound.length - 1];
+        expect(last.content).toContain('支付方式：门店收银');
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+        await svc.onMessage(textEvent('1', 'M5'));
+        last = outbound[outbound.length - 1];
+        expect(last.content).toContain('下单成功');
+        expect(last.content).toContain('支付方式：门店收银');
+        expect(order.calls).toHaveLength(1);
+    });
+
+    test('单一支付方式：确认页自动选中，无需额外选择', async () => {
+        const order = makeOrderStub(null, [{ code: 'wechatpay', name: '微信支付' }]);
+        const { svc, connection, outbound } = makeService({ order });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('1', 'M3'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('支付方式：微信支付');
+        expect(last.content).toContain('回复 1 确认下单');
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+    });
+
+    test('确认页回复 9 → 重新选择支付方式', async () => {
+        const order = makeOrderStub(null, TWO_METHODS);
+        const { svc, connection, outbound } = makeService({ order });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('1', 'M3'));
+        await svc.onMessage(textEvent('1', 'M4')); // 微信支付
+        let last = outbound[outbound.length - 1];
+        expect(last.content).toContain('支付方式：微信支付');
+        await svc.onMessage(textEvent('9', 'M5'));
+        last = outbound[outbound.length - 1];
+        expect(last.content).toContain('请选择支付方式');
+        expect(connection.sessions.get('openid-user-1').state).toBe('pay_pick');
+        await svc.onMessage(textEvent('0', 'M6'));
+        expect(outbound[outbound.length - 1].content).toContain('请选择收货地址');
+        expect(connection.sessions.get('openid-user-1').state).toBe('addr_pick');
     });
 });

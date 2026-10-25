@@ -5,6 +5,7 @@ import {
     Logger,
     Order,
     OrderService,
+    PaymentMethod,
     Product,
     ProductVariant,
     RequestContext,
@@ -30,6 +31,15 @@ export type CreateOrderOutcome =
     | { status: 'out_of_stock'; title: string }
     | { status: 'no_variant'; title: string }
     | { status: 'error'; message: string };
+
+/** 对话内展示的支付方式（渠道启用 + 后台配置展示名） */
+export interface PaymentMethodOption {
+    code: string;
+    name: string;
+}
+
+/** 对话最多展示的支付方式数量（超出时联系客服到收银台选择） */
+const PAYMENT_METHOD_LIMIT = 8;
 
 /**
  * 微信对话下单：
@@ -132,6 +142,54 @@ export class AssistantOrderService {
             Logger.error(`Assistant order creation failed: ${String(e)}`, loggerCtx);
             return { status: 'error', message: String((e as Error).message ?? e) };
         }
+    }
+
+    /**
+     * 渠道当前启用的支付方式（按后台展示名去重，最多 8 个）。
+     * 展示名取当前语言 → en → 首个翻译；未配置翻译时回退 code。
+     */
+    async listPaymentMethods(ctx: RequestContext): Promise<PaymentMethodOption[]> {
+        const channelId = Number(ctx.channelId ?? 0);
+        if (!channelId) return [];
+        try {
+            const methods = await this.connection
+                .getRepository(ctx, PaymentMethod)
+                .createQueryBuilder('pm')
+                .leftJoinAndSelect('pm.translations', 't')
+                .leftJoin('pm.channels', 'ch')
+                .where('ch.id = :channelId', { channelId })
+                .andWhere('pm.enabled = :enabled', { enabled: true })
+                .orderBy('pm.id', 'ASC')
+                .getMany();
+            const options: PaymentMethodOption[] = [];
+            const seen = new Set<string>();
+            for (const pm of methods) {
+                const name = this.paymentMethodName(pm, ctx.languageCode) || pm.code;
+                if (seen.has(name)) continue;
+                seen.add(name);
+                options.push({ code: pm.code, name });
+                if (options.length >= PAYMENT_METHOD_LIMIT) break;
+            }
+            return options;
+        } catch (e) {
+            Logger.warn(`Assistant list payment methods failed: ${String(e)}`, loggerCtx);
+            return [];
+        }
+    }
+
+    /** 支付方式展示名（当前语言 → en → 首个翻译） */
+    private paymentMethodName(method: PaymentMethod, languageCode: string): string {
+        const translations = method.translations ?? [];
+        const pick =
+            translations.find(t => t.languageCode === languageCode) ??
+            translations.find(t => t.languageCode === 'en') ??
+            translations[0];
+        const name = (pick as any)?.name;
+        if (typeof name === 'string') return name;
+        if (name && typeof name === 'object') {
+            return String(name[languageCode] ?? name.en ?? Object.values(name)[0] ?? '');
+        }
+        return '';
     }
 
     /**

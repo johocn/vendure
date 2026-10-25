@@ -63,7 +63,7 @@ export type OutboundMessage = {
  * - awaiting_phone / awaiting_address：未绑定建档补录（手机号 → 地址）
  * - addr_* / order_confirm：地址簿管理 + 下单选地址（方案 B 列表式逐轮问答）
  */
-export type AssistantFlowState = 'awaiting_phone' | 'awaiting_address' | 'addr_pick' | 'addr_op' | 'addr_edit_field' | 'addr_edit_text' | 'addr_edit_person' | 'addr_del_confirm' | 'addr_new_text' | 'addr_new_phone' | 'addr_new_phone_text' | 'addr_new_default' | 'store_pick' | 'support_note' | 'order_confirm' | null;
+export type AssistantFlowState = 'awaiting_phone' | 'awaiting_address' | 'addr_pick' | 'addr_op' | 'addr_edit_field' | 'addr_edit_text' | 'addr_edit_person' | 'addr_del_confirm' | 'addr_new_text' | 'addr_new_phone' | 'addr_new_phone_text' | 'addr_new_default' | 'store_pick' | 'support_note' | 'pay_pick' | 'order_confirm' | null;
 /** 状态机草稿：随 state 存取，各状态按需读写 */
 export interface AssistantFlowDraft {
     /** 补录/新增地址中的手机号 */
@@ -96,6 +96,13 @@ export interface AssistantFlowDraft {
     supportPhone?: string | null;
     /** 留言前所处的流程状态（留言保存后恢复，保证「每步」都不打断原流程） */
     supportReturnState?: AssistantFlowState;
+    /** 选定的支付方式 code（下单确认用） */
+    paymentMethodCode?: string | null;
+    /** 会话内缓存的渠道支付方式列表（pay_pick 编号回查） */
+    paymentMethods?: Array<{
+        code: string;
+        name: string;
+    }> | null;
 }
 /** 3km 内门店（含距离与熟店标记），用于客服消息列表与选择 */
 export interface NearbyStore {

@@ -18,6 +18,8 @@ const SUPPORT_RE = /^(客服|人工|人工客服|转人工|联系店家|找店�
 const SUPPORT_STORE_RE = /^客服(\d{1,2})[!！。.~]?$/;
 /** 留言工单入口（下一句作为留言正文） */
 const SUPPORT_NOTE_RE = /^(留言|给门店留言|意见反馈|反馈|建议|意见建议)[!！。.~]?$/;
+/** 支付方式查询（按渠道配置列出） */
+const PAYMENT_METHODS_RE = /^(支付方式|付款方式|支付渠道|怎么付款|怎么支付|能怎么付|可以怎么付)[!！。.~?？]?$/;
 const ORDER_HEAD = '(?:购买|下单|订购|买|要|来|购|拍)?';
 const SEARCH_HEAD = '(?:搜索|查询|想买|想要|看看|推荐|买|要|来|找|搜|查)';
 const QTY_UNIT = '(?:个|件|瓶|包|盒|罐|袋|听|支|条|份|箱|斤|克|毫升|升)';
@@ -65,6 +67,8 @@ function recognizeIntent(raw) {
         return { kind: 'support', storeIndex: Number(supportStore[1]) };
     if (SUPPORT_NOTE_RE.test(text))
         return { kind: 'support_note' };
+    if (PAYMENT_METHODS_RE.test(text))
+        return { kind: 'payment_methods' };
     // 编号下单：纯编号或「买/来/下单 + 编号（可多个，支持分隔符）」
     const orderMatch = text.match(new RegExp(`^${ORDER_HEAD}(\\d{1,2}(?:[,，、和&]\\d{1,2})*)(?:号|楼)?$`));
     if (orderMatch) {

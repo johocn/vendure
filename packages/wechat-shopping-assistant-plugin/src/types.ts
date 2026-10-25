@@ -73,7 +73,8 @@ export type AssistantFlowState =
     | 'addr_new_default' // 等是否设默认（是/否）
     | 'store_pick' // 3km 门店列表选择（draft.nearbyStores）
     | 'support_note' // 等留言正文（≤200 字），保存后恢复 supportReturnState
-    | 'order_confirm' // 下单二次确认（1 确认 / 0 重选地址）
+    | 'pay_pick' // 下单选支付方式（draft.paymentMethods 编号选择）
+    | 'order_confirm' // 下单二次确认（1 确认 / 0 重选地址 / 9 换支付方式）
     | null;
 
 /** 状态机草稿：随 state 存取，各状态按需读写 */
@@ -108,6 +109,10 @@ export interface AssistantFlowDraft {
     supportPhone?: string | null;
     /** 留言前所处的流程状态（留言保存后恢复，保证「每步」都不打断原流程） */
     supportReturnState?: AssistantFlowState;
+    /** 选定的支付方式 code（下单确认用） */
+    paymentMethodCode?: string | null;
+    /** 会话内缓存的渠道支付方式列表（pay_pick 编号回查） */
+    paymentMethods?: Array<{ code: string; name: string }> | null;
 }
 
 /** 3km 内门店（含距离与熟店标记），用于客服消息列表与选择 */

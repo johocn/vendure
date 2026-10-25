@@ -95,8 +95,12 @@ export declare class AssistantService {
     private resolveSupportStore;
     /** 工单上下文摘要：当前这单商品/合计 + 城市（便于客服定位问题） */
     private supportSummary;
-    /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
+    /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导；并按渠道配置选支付方式 */
     private orderConfirmCard;
+    /** pay_pick：回复编号选支付方式 → 回下单确认；0 返回地址列表 */
+    private onPayPick;
+    /** 「支付方式」查询：按当前渠道配置列出（不改变会话状态） */
+    private handlePaymentMethodsInfo;
     private handleSearch;
     private handleOrder;
     /**

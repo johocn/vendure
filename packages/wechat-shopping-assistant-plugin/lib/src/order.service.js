@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
+/** 对话最多展示的支付方式数量（超出时联系客服到收银台选择） */
+const PAYMENT_METHOD_LIMIT = 8;
 /**
  * 微信对话下单：
  * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑顾客 → 加购物车 → ArrangingPayment。
@@ -101,6 +103,56 @@ let AssistantOrderService = class AssistantOrderService {
             core_1.Logger.error(`Assistant order creation failed: ${String(e)}`, constants_1.loggerCtx);
             return { status: 'error', message: String((_g = e.message) !== null && _g !== void 0 ? _g : e) };
         }
+    }
+    /**
+     * 渠道当前启用的支付方式（按后台展示名去重，最多 8 个）。
+     * 展示名取当前语言 → en → 首个翻译；未配置翻译时回退 code。
+     */
+    async listPaymentMethods(ctx) {
+        var _a;
+        const channelId = Number((_a = ctx.channelId) !== null && _a !== void 0 ? _a : 0);
+        if (!channelId)
+            return [];
+        try {
+            const methods = await this.connection
+                .getRepository(ctx, core_1.PaymentMethod)
+                .createQueryBuilder('pm')
+                .leftJoinAndSelect('pm.translations', 't')
+                .leftJoin('pm.channels', 'ch')
+                .where('ch.id = :channelId', { channelId })
+                .andWhere('pm.enabled = :enabled', { enabled: true })
+                .orderBy('pm.id', 'ASC')
+                .getMany();
+            const options = [];
+            const seen = new Set();
+            for (const pm of methods) {
+                const name = this.paymentMethodName(pm, ctx.languageCode) || pm.code;
+                if (seen.has(name))
+                    continue;
+                seen.add(name);
+                options.push({ code: pm.code, name });
+                if (options.length >= PAYMENT_METHOD_LIMIT)
+                    break;
+            }
+            return options;
+        }
+        catch (e) {
+            core_1.Logger.warn(`Assistant list payment methods failed: ${String(e)}`, constants_1.loggerCtx);
+            return [];
+        }
+    }
+    /** 支付方式展示名（当前语言 → en → 首个翻译） */
+    paymentMethodName(method, languageCode) {
+        var _a, _b, _c, _d, _e, _f;
+        const translations = (_a = method.translations) !== null && _a !== void 0 ? _a : [];
+        const pick = (_c = (_b = translations.find(t => t.languageCode === languageCode)) !== null && _b !== void 0 ? _b : translations.find(t => t.languageCode === 'en')) !== null && _c !== void 0 ? _c : translations[0];
+        const name = pick === null || pick === void 0 ? void 0 : pick.name;
+        if (typeof name === 'string')
+            return name;
+        if (name && typeof name === 'object') {
+            return String((_f = (_e = (_d = name[languageCode]) !== null && _d !== void 0 ? _d : name.en) !== null && _e !== void 0 ? _e : Object.values(name)[0]) !== null && _f !== void 0 ? _f : '');
+        }
+        return '';
     }
     /**
      * 渠道默认变体：商品已发布 → 取该渠道有价格且启用、按价格升序的第一个变体。

@@ -28,6 +28,10 @@ export type AssistantIntent = {
 /** 留言工单：下一句作为留言正文提交 */
  | {
     kind: 'support_note';
+}
+/** 支付方式列表（按租户渠道配置） */
+ | {
+    kind: 'payment_methods';
 };
 /** 全角数字/字母转半角，去空白，统一分隔符 */
 export declare function normalizeInput(raw: string): string;

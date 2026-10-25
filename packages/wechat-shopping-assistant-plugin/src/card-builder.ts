@@ -159,10 +159,18 @@ export function buildOrderFailText(touser: string, reason?: string): TextMessage
 
 export function buildOrderSuccessText(
     touser: string,
-    input: { orderCode: string; total: number; items: Array<{ title: string; quantity: number; price: number }>; payUrl?: string },
+    input: {
+        orderCode: string;
+        total: number;
+        items: Array<{ title: string; quantity: number; price: number }>;
+        payUrl?: string;
+        /** 确认时选定的支付方式展示名（渠道配置） */
+        paymentName?: string;
+    },
 ): TextMessage {
     const lines = ['下单成功！', ...input.items.map(i => `· ${i.title} ×${i.quantity}  ${formatPrice(i.price * i.quantity)}`)];
     lines.push(`合计：${formatPrice(input.total)}`);
+    if (input.paymentName) lines.push(`支付方式：${input.paymentName}`);
     lines.push(`订单号：${input.orderCode}`);
     if (input.payUrl) lines.push(`点击支付：${input.payUrl}`);
     return { kind: 'text', touser, content: lines.join('\n') };
@@ -230,13 +238,14 @@ export function buildAddrOpMenu(
     };
 }
 
-/** 下单二次确认卡：商品明细 + 收货信息 */
+/** 下单二次确认卡：商品明细 + 收货信息 + 支付方式（渠道配置） */
 export function buildOrderConfirmCard(
     touser: string,
     input: {
         items: Array<{ title: string; quantity: number; price: number }>;
         total: number;
         address: { fullName: string; phoneNumber: string; streetLine1: string; isDefault: boolean };
+        payment?: { name: string; canSwitch?: boolean };
     },
 ): TextMessage {
     const lines = input.items.map(i => `${i.title} ×${i.quantity}  ${formatPrice(i.price * i.quantity)}`);
@@ -246,8 +255,53 @@ export function buildOrderConfirmCard(
     lines.push(`电话：${maskPhone(input.address.phoneNumber)}`);
     lines.push(`地址：${input.address.streetLine1}`);
     lines.push('────────');
-    lines.push('回复 1 确认下单，回复 0 重选地址');
+    if (input.payment) {
+        lines.push(`支付方式：${input.payment.name}${input.payment.canSwitch ? '（回复 9 更换）' : ''}`);
+    }
+    lines.push(
+        input.payment?.canSwitch
+            ? '回复 1 确认下单，回复 0 重选地址，回复 9 换支付方式'
+            : '回复 1 确认下单，回复 0 重选地址',
+    );
     return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 选择支付方式：≥2 个可用时列出编号（0 返回重选地址） */
+export function buildPaymentPickText(
+    touser: string,
+    methods: Array<{ code: string; name: string }>,
+    lead?: string,
+): TextMessage {
+    const lines = methods.map((m, i) => `${i + 1} ${m.name}`);
+    const content = [
+        ...(lead ? [lead] : ['请选择支付方式：']),
+        ...lines,
+        '────────',
+        '回复编号选择支付方式，回复 0 重选地址',
+    ].join('\n');
+    return { kind: 'text', touser, content };
+}
+
+/** 支付方式查询（未进入下单流程时列出，按渠道配置） */
+export function buildPaymentMethodsInfoText(
+    touser: string,
+    methods: Array<{ code: string; name: string }>,
+): TextMessage {
+    const lines = methods.map((m, i) => `${i + 1} ${m.name}`);
+    return {
+        kind: 'text',
+        touser,
+        content: `本店支持的支付方式：\n${lines.join('\n')}\n────────\n下单确认时选择，实际支付在收银台完成。\n${SUPPORT_HINT}`,
+    };
+}
+
+/** 渠道未配置可用支付方式：不建单，引导联系门店 */
+export function buildNoPaymentMethodText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `本店暂未开通在线支付。\n回复「客服」联系门店安排，或回复「留言」留言给门店。\n${SUPPORT_HINT}`,
+    };
 }
 
 /** 修改分支选择 */

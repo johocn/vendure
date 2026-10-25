@@ -102,12 +102,14 @@ let AssistantService = class AssistantService {
         // 留言输入态：这句话就是留言正文，不再识别指令（取消例外，见 onSupportNote）
         if ((session === null || session === void 0 ? void 0 : session.state) === 'support_note')
             return this.onSupportNote(msg, session);
-        // 全局「一键客服 / 留言」：任何状态下优先响应，不打断原流程
+        // 全局「一键客服 / 留言 / 支付方式」：任何状态下优先响应，不打断原流程
         const earlyIntent = (0, intent_1.recognizeIntent)(msg.content);
         if (earlyIntent.kind === 'support')
             return this.handleSupport(msg, earlyIntent.storeIndex);
         if (earlyIntent.kind === 'support_note')
             return this.handleSupportNoteStart(msg, session);
+        if (earlyIntent.kind === 'payment_methods')
+            return this.handlePaymentMethodsInfo(msg, session);
         // 补录状态机优先：处于手机号/地址补录中的用户，输入不走意图识别
         if (session === null || session === void 0 ? void 0 : session.state) {
             return this.handleFlowStep(msg, session);
@@ -155,12 +157,14 @@ let AssistantService = class AssistantService {
                 return this.handleAddressAdd(msg);
             case 'nearby_stores':
                 return this.handleNearbyStores(msg);
+            case 'payment_methods':
+                return this.handlePaymentMethodsInfo(msg, session);
         }
         return null;
     }
     // ============ 状态机：补录（awaiting_*）+ 地址簿/选址（addr_* / order_confirm） ============
     async handleFlowStep(msg, session) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
         const text = (msg.content || '').trim();
         if (/^(取消|退出)[!！。.~]?$/.test(text)) {
             await this.sessionService.clearFlow(msg.fromUserName);
@@ -169,7 +173,9 @@ let AssistantService = class AssistantService {
         // 地址流程态（addr_* / order_confirm）放行显式指令（状态机优先但指令不放行会成死胡同：
         // 重发「地址管理」被当无效编号；「买N」无法重新下单；补录态（awaiting_*）不放行）。
         // 新增入口保留 order 流程上下文。
-        const inAddrFlow = ((_a = session.state) === null || _a === void 0 ? void 0 : _a.startsWith('addr_')) || session.state === 'order_confirm';
+        const inAddrFlow = ((_a = session.state) === null || _a === void 0 ? void 0 : _a.startsWith('addr_')) ||
+            session.state === 'order_confirm' ||
+            session.state === 'pay_pick';
         if (inAddrFlow) {
             const flowIntent = (0, intent_1.recognizeIntent)(text);
             if (flowIntent.kind === 'address_manage')
@@ -410,6 +416,9 @@ let AssistantService = class AssistantService {
             await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
             return (0, card_builder_1.buildAddrSavedText)(msg.fromUserName, item);
         }
+        if (session.state === 'pay_pick') {
+            return this.onPayPick(msg, session, text, draft, ttl);
+        }
         if (session.state === 'order_confirm') {
             const input = (0, intent_1.normalizeInput)(text);
             const ctx = await this.createShopCtx(session.channelId);
@@ -423,8 +432,25 @@ let AssistantService = class AssistantService {
                 const items = await this.addressBook.list(ctx, customer.id);
                 return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, items, 'order');
             }
+            // 换支付方式：仅 ≥2 个可用时有意义
+            const methods = await this.orderService.listPaymentMethods(ctx);
+            if (!methods.length) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildNoPaymentMethodText)(msg.fromUserName);
+            }
+            if (input === '9' && methods.length > 1) {
+                await this.sessionService.setFlow(msg.fromUserName, 'pay_pick', Object.assign(Object.assign({}, draft), { paymentMethodCode: null, paymentMethods: methods }), ttl);
+                return (0, card_builder_1.buildPaymentPickText)(msg.fromUserName, methods);
+            }
             if (input !== '1') {
                 return this.orderConfirmCard(ctx, msg.fromUserName, session, draft);
+            }
+            // 确认时点复核：选中的支付方式可能刚被后台关闭
+            const selected = (_r = methods.find(m => m.code === draft.paymentMethodCode)) !== null && _r !== void 0 ? _r : methods[0];
+            if (draft.paymentMethodCode && !methods.some(m => m.code === draft.paymentMethodCode)) {
+                const closedName = (_u = (_t = (_s = draft.paymentMethods) === null || _s === void 0 ? void 0 : _s.find(m => m.code === draft.paymentMethodCode)) === null || _t === void 0 ? void 0 : _t.name) !== null && _u !== void 0 ? _u : draft.paymentMethodCode;
+                await this.sessionService.setFlow(msg.fromUserName, 'pay_pick', Object.assign(Object.assign({}, draft), { paymentMethodCode: null, paymentMethods: methods }), ttl);
+                return (0, card_builder_1.buildPaymentPickText)(msg.fromUserName, methods, `「${closedName}」刚关闭了，当前可用：`);
             }
             const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
             if (!customer) {
@@ -436,7 +462,7 @@ let AssistantService = class AssistantService {
                 await this.sessionService.clearFlow(msg.fromUserName);
                 return (0, card_builder_1.buildSessionExpiredText)(msg.fromUserName);
             }
-            const out = await this.placeOrder(ctx, msg.fromUserName, customer, picked, (_r = draft.pickAddressId) !== null && _r !== void 0 ? _r : undefined);
+            const out = await this.placeOrder(ctx, msg.fromUserName, customer, picked, (_v = draft.pickAddressId) !== null && _v !== void 0 ? _v : undefined, selected);
             await this.sessionService.clearFlow(msg.fromUserName);
             return out;
         }
@@ -871,9 +897,9 @@ let AssistantService = class AssistantService {
             parts.push(`城市：${draft.city}`);
         return parts.length ? parts.join('；').slice(0, 500) : null;
     }
-    /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
+    /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导；并按渠道配置选支付方式 */
     async orderConfirmCard(ctx, touser, session, draft) {
-        var _a, _b;
+        var _a, _b, _c;
         const picked = session.results.filter(r => { var _a; return ((_a = draft.indices) !== null && _a !== void 0 ? _a : []).includes(r.index); });
         if (!picked.length)
             return (0, card_builder_1.buildSessionExpiredText)(touser);
@@ -884,11 +910,65 @@ let AssistantService = class AssistantService {
         const address = (_b = (_a = (draft.pickAddressId ? items.find(a => a.id === draft.pickAddressId) : null)) !== null && _a !== void 0 ? _a : items.find(a => a.isDefault)) !== null && _b !== void 0 ? _b : items[0];
         if (!address)
             return (0, card_builder_1.buildAddressListCard)(touser, [], 'order');
+        // 支付方式完全由渠道配置驱动：0 个不建单；1 个自动选中；≥2 个先让用户选
+        const ttl = (_c = this.opts.sessionTtlMinutes) !== null && _c !== void 0 ? _c : 30;
+        const methods = await this.orderService.listPaymentMethods(ctx);
+        if (!methods.length) {
+            await this.sessionService.clearFlow(touser);
+            core_1.Logger.info(`Assistant no payment method: channel=${session.channelId}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildNoPaymentMethodText)(touser);
+        }
+        const current = methods.find(m => m.code === draft.paymentMethodCode);
+        if (!current && methods.length > 1) {
+            await this.sessionService.setFlow(touser, 'pay_pick', Object.assign(Object.assign({}, draft), { paymentMethodCode: null, paymentMethods: methods }), ttl);
+            return (0, card_builder_1.buildPaymentPickText)(touser, methods);
+        }
+        const selected = current !== null && current !== void 0 ? current : methods[0];
         return (0, card_builder_1.buildOrderConfirmCard)(touser, {
             items: picked.map(p => { var _a; return ({ title: p.title, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1, price: p.price }); }),
             total: picked.reduce((s, p) => { var _a; return s + p.price * ((_a = p.quantity) !== null && _a !== void 0 ? _a : 1); }, 0),
             address,
+            payment: { name: selected.name, canSwitch: methods.length > 1 },
         });
+    }
+    /** pay_pick：回复编号选支付方式 → 回下单确认；0 返回地址列表 */
+    async onPayPick(msg, session, text, draft, ttl) {
+        const ctx = await this.createShopCtx(session.channelId);
+        const methods = await this.orderService.listPaymentMethods(ctx);
+        if (!methods.length) {
+            await this.sessionService.clearFlow(msg.fromUserName);
+            return (0, card_builder_1.buildNoPaymentMethodText)(msg.fromUserName);
+        }
+        const input = (0, intent_1.normalizeInput)(text);
+        if (input === '0') {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', Object.assign(Object.assign({}, draft), { pickIndex: null, pickAddressId: null }), ttl);
+            const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            if (!customer) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            const items = await this.addressBook.list(ctx, customer.id);
+            return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, items, 'order');
+        }
+        const n = /^\d{1,2}$/.test(input) ? Number(input) : 0;
+        if (n < 1 || n > methods.length) {
+            return (0, card_builder_1.buildPaymentPickText)(msg.fromUserName, methods);
+        }
+        const selected = methods[n - 1];
+        const nextDraft = Object.assign(Object.assign({}, draft), { paymentMethodCode: selected.code, paymentMethods: methods });
+        await this.sessionService.setFlow(msg.fromUserName, 'order_confirm', nextDraft, ttl);
+        core_1.Logger.info(`Assistant payment method selected: ${selected.code} openid=${msg.fromUserName}`, constants_1.loggerCtx);
+        return this.orderConfirmCard(ctx, msg.fromUserName, session, nextDraft);
+    }
+    /** 「支付方式」查询：按当前渠道配置列出（不改变会话状态） */
+    async handlePaymentMethodsInfo(msg, session) {
+        var _a;
+        const channelId = (_a = session === null || session === void 0 ? void 0 : session.channelId) !== null && _a !== void 0 ? _a : (await this.resolveChannelId(msg.channelToken));
+        const ctx = await this.createShopCtx(channelId);
+        const methods = await this.orderService.listPaymentMethods(ctx);
+        return methods.length
+            ? (0, card_builder_1.buildPaymentMethodsInfoText)(msg.fromUserName, methods)
+            : (0, card_builder_1.buildNoPaymentMethodText)(msg.fromUserName);
     }
     // ============ 搜索：meili 检索 → 会话保存 → 卡片消息 ============
     async handleSearch(msg, query, quantity) {
@@ -966,8 +1046,15 @@ let AssistantService = class AssistantService {
      * 路径 A/B 刚建档的首地址即默认，直接落单保持零输入）。
      * 选定地址含收货人/电话，随 setShippingAddress 写入订单。
      */
-    async placeOrder(ctx, touser, customer, picked, addressId) {
+    async placeOrder(ctx, touser, customer, picked, addressId, payment) {
         var _a, _b;
+        // 渠道未配置可用支付方式 → 不建单（后台关闭后下一次会话立即生效）
+        const methods = await this.orderService.listPaymentMethods(ctx);
+        if (!methods.length) {
+            core_1.Logger.info(`Assistant order blocked: no payment method channel=${ctx.channelId}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildNoPaymentMethodText)(touser);
+        }
+        const selected = payment && methods.some(m => m.code === payment.code) ? payment : methods[0];
         const addressItems = await this.addressBook.list(ctx, customer.id);
         const addrItem = (_b = (_a = (addressId ? addressItems.find(a => a.id === addressId) : null)) !== null && _a !== void 0 ? _a : addressItems.find(a => a.isDefault)) !== null && _b !== void 0 ? _b : undefined;
         const address = addrItem
@@ -986,6 +1073,7 @@ let AssistantService = class AssistantService {
                     total: outcome.order.totalWithTax,
                     items: outcome.items,
                     payUrl,
+                    paymentName: selected.name,
                 });
             }
             case 'out_of_stock':
