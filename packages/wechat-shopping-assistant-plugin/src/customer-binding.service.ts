@@ -89,6 +89,8 @@ export class CustomerBindingService {
                     await this.channelService.assignToChannels(ctx, Customer, byPhone.id, [ctx.channelId]);
                 }
                 Logger.info(`Customer bound to wechat openid by phone: customerId=${byPhone.id}`, loggerCtx);
+                // 老顾客补绑定同样保存本次输入的地址：否则下单时无地址，城市路由/配送守卫会被整段跳过
+                await this.saveInitialAddress(ctx, byPhone, phone, addressText, geo);
                 return { status: 'ok', customer: byPhone };
             }
 
@@ -125,31 +127,41 @@ export class CustomerBindingService {
                 customFields: { wechatOpenid: openid },
             } as any);
 
-            // 4) 可选收货地址（路径 B 地址文本）；国家码缺失/无效时跳过（不阻塞下单）。
-            //    首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用
-            if (addressText) {
-                try {
-                    await this.customerService.createAddress(ctx, customer.id, {
-                        // fork 的 CreateAddressInput 字段为 streetLine1（上游为 streetLine）
-                        streetLine1: addressText.slice(0, 250),
-                        phoneNumber: phone,
-                        countryCode: 'CN',
-                        defaultShippingAddress: true,
-                        ...(geo?.province ? { province: geo.province } : {}),
-                        ...(geo?.city ? { city: geo.city } : {}),
-                        ...(geo
-                            ? { customFields: { latitude: geo.lat, longitude: geo.lng } }
-                            : {}),
-                    } as any);
-                } catch (e: any) {
-                    Logger.warn(`Assistant bind: create address skipped: ${e?.message}`, loggerCtx);
-                }
-            }
+            // 4) 可选收货地址（路径 B 地址文本）
+            await this.saveInitialAddress(ctx, customer, phone, addressText, geo);
             Logger.info(`Customer created via wechat assistant: customerId=${customer.id}`, loggerCtx);
             return { status: 'ok', customer };
         } catch (e: any) {
             Logger.error(`Assistant bindOrCreateCustomer failed: ${String(e?.message ?? e)}`, loggerCtx);
             return { status: 'error', message: String(e?.message ?? e) };
+        }
+    }
+
+    /**
+     * 保存本次输入的收货地址（建档与补绑定共用）；国家码缺失/无效时跳过，不阻塞下单。
+     * 首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用。
+     */
+    private async saveInitialAddress(
+        ctx: RequestContext,
+        customer: Customer,
+        phone: string,
+        addressText?: string,
+        geo?: { lat: number; lng: number; province?: string | null; city?: string | null } | null,
+    ): Promise<void> {
+        if (!addressText) return;
+        try {
+            await this.customerService.createAddress(ctx, customer.id, {
+                // fork 的 CreateAddressInput 字段为 streetLine1（上游为 streetLine）
+                streetLine1: addressText.slice(0, 250),
+                phoneNumber: phone,
+                countryCode: 'CN',
+                defaultShippingAddress: true,
+                ...(geo?.province ? { province: geo.province } : {}),
+                ...(geo?.city ? { city: geo.city } : {}),
+                ...(geo ? { customFields: { latitude: geo.lat, longitude: geo.lng } } : {}),
+            } as any);
+        } catch (e: any) {
+            Logger.warn(`Assistant bind: create address skipped: ${e?.message}`, loggerCtx);
         }
     }
 }

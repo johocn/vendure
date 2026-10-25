@@ -26,21 +26,57 @@ export class DeliveryGuardService {
         private readonly geoService: GeoService,
     ) {}
 
-    /** 只做地理编码 + 字段解析，不判定范围（供租户路由先用城市选店） */
-    async parse(ctx: RequestContext, addressText: string): Promise<ParsedAddress | null> {
+    /**
+     * 只做地理编码 + 字段解析，不判定范围（供租户路由先用城市选店）。
+     * coords 为地址簿已存坐标：地理编码超时/网络失败时用它逆地理取行政区，再补取区划码。
+     */
+    async parse(
+        ctx: RequestContext,
+        addressText: string,
+        coords?: { lat: number; lng: number } | null,
+    ): Promise<ParsedAddress | null> {
         const geo = await this.geoService.geocode(ctx, addressText);
-        if (!geo) {
-            Logger.warn(`Delivery guard geocode failed: "${addressText.slice(0, 40)}"`, loggerCtx);
-            return null;
-        }
-        return buildParsedAddress(geo, addressText);
+        if (geo) return buildParsedAddress(geo, addressText);
+
+        const fallback = await this.parseByCoordinates(ctx, addressText, coords);
+        if (fallback) return fallback;
+        Logger.warn(`Delivery guard geocode failed: "${addressText.slice(0, 40)}"`, loggerCtx);
+        return null;
     }
 
     /** 解析 + 校验（外部一律用这个方法，避免漏掉 geocode 失败分支） */
-    async check(ctx: RequestContext, channelId: string, addressText: string): Promise<GuardResult> {
-        const parsed = await this.parse(ctx, addressText);
+    async check(
+        ctx: RequestContext,
+        channelId: string,
+        addressText: string,
+        coords?: { lat: number; lng: number } | null,
+    ): Promise<GuardResult> {
+        const parsed = await this.parse(ctx, addressText, coords);
         if (!parsed) return { status: 'UNKNOWN', serviceAreaText: '', parsed: null };
         return this.checkParsed(ctx, channelId, parsed);
+    }
+
+    /**
+     * 坐标兜底：逆地理得到省/市/区文本，再用这段短文本取区划码（短文本命中快，规避长地址超时）。
+     * 逆地理本身失败时返回 null，调用方仍按 fail closed 处理。
+     */
+    private async parseByCoordinates(
+        ctx: RequestContext,
+        addressText: string,
+        coords?: { lat: number; lng: number } | null,
+    ): Promise<ParsedAddress | null> {
+        if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return null;
+        const reverse = await this.geoService.reverse(ctx, coords.lat, coords.lng);
+        const admin = [reverse?.province, reverse?.city, reverse?.district].filter(Boolean).join('');
+        if (admin.length < 2) return null;
+        const geo = await this.geoService.geocode(ctx, admin);
+        if (!geo) return null;
+        Logger.log(`Delivery guard geocode fallback by coordinates: ${admin}`, loggerCtx);
+        // 坐标以地址簿存值为准；格式化地址沿用用户填写的原文
+        return buildParsedAddress(
+            { ...geo, formattedAddress: addressText, lat: coords.lat, lng: coords.lng },
+            addressText,
+        );
     }
 
     /** 已解析地址的范围判定：地址城市码是否在渠道服务城市内 */

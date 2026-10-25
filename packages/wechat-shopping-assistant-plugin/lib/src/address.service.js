@@ -35,15 +35,18 @@ let AddressBookService = class AddressBookService {
         });
         const addresses = ((_a = customer === null || customer === void 0 ? void 0 : customer.addresses) !== null && _a !== void 0 ? _a : []).slice().sort((a, b) => (Number(a.id) < Number(b.id) ? -1 : 1));
         return addresses.map((a, i) => {
-            var _a, _b, _c;
-            return ({
+            var _a, _b, _c, _d;
+            const cf = ((_a = a.customFields) !== null && _a !== void 0 ? _a : {});
+            return {
                 id: String(a.id),
                 index: i + 1,
-                fullName: (_a = a.fullName) !== null && _a !== void 0 ? _a : '',
-                phoneNumber: (_b = a.phoneNumber) !== null && _b !== void 0 ? _b : '',
-                streetLine1: (_c = a.streetLine1) !== null && _c !== void 0 ? _c : '',
+                fullName: (_b = a.fullName) !== null && _b !== void 0 ? _b : '',
+                phoneNumber: (_c = a.phoneNumber) !== null && _c !== void 0 ? _c : '',
+                streetLine1: (_d = a.streetLine1) !== null && _d !== void 0 ? _d : '',
                 isDefault: !!a.defaultShippingAddress,
-            });
+                latitude: typeof cf.latitude === 'number' ? cf.latitude : null,
+                longitude: typeof cf.longitude === 'number' ? cf.longitude : null,
+            };
         });
     }
     /** 按 id 取单项（对话回显/确认卡用） */

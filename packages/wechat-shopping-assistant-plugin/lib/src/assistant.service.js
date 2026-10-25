@@ -1108,7 +1108,11 @@ let AssistantService = class AssistantService {
         // 城市路由：解析地址 → 匹配租户 → 切换或校验范围（可用 ASSISTANT_CITY_ROUTING=off 关闭）
         const routingOn = process.env.ASSISTANT_CITY_ROUTING !== 'off';
         if (routingOn && (addrItem === null || addrItem === void 0 ? void 0 : addrItem.streetLine1)) {
-            const parsed = await this.deliveryGuard.parse(ctx, addrItem.streetLine1);
+            const parsed = await this.deliveryGuard.parse(ctx, addrItem.streetLine1, 
+            // 地址簿已存坐标：地理编码超时/失败时用它兜底判定城市
+            addrItem.latitude != null && addrItem.longitude != null
+                ? { lat: Number(addrItem.latitude), lng: Number(addrItem.longitude) }
+                : null);
             if (!parsed) {
                 return (0, card_builder_1.buildOrderFailText)(touser, '配送校验暂时不可用，请稍后再试');
             }

@@ -72,6 +72,8 @@ let CustomerBindingService = class CustomerBindingService {
                     await this.channelService.assignToChannels(ctx, core_1.Customer, byPhone.id, [ctx.channelId]);
                 }
                 core_1.Logger.info(`Customer bound to wechat openid by phone: customerId=${byPhone.id}`, constants_1.loggerCtx);
+                // 老顾客补绑定同样保存本次输入的地址：否则下单时无地址，城市路由/配送守卫会被整段跳过
+                await this.saveInitialAddress(ctx, byPhone, phone, addressText, geo);
                 return { status: 'ok', customer: byPhone };
             }
             // 3) 全新建档：identifier 与 wechat-auth-strategy 的 H5 微信登录一致（wechat_mp_<openid>），
@@ -104,26 +106,30 @@ let CustomerBindingService = class CustomerBindingService {
                 id: customer.id,
                 customFields: { wechatOpenid: openid },
             });
-            // 4) 可选收货地址（路径 B 地址文本）；国家码缺失/无效时跳过（不阻塞下单）。
-            //    首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用
-            if (addressText) {
-                try {
-                    await this.customerService.createAddress(ctx, customer.id, Object.assign(Object.assign(Object.assign({ 
-                        // fork 的 CreateAddressInput 字段为 streetLine1（上游为 streetLine）
-                        streetLine1: addressText.slice(0, 250), phoneNumber: phone, countryCode: 'CN', defaultShippingAddress: true }, ((geo === null || geo === void 0 ? void 0 : geo.province) ? { province: geo.province } : {})), ((geo === null || geo === void 0 ? void 0 : geo.city) ? { city: geo.city } : {})), (geo
-                        ? { customFields: { latitude: geo.lat, longitude: geo.lng } }
-                        : {})));
-                }
-                catch (e) {
-                    core_1.Logger.warn(`Assistant bind: create address skipped: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
-                }
-            }
+            // 4) 可选收货地址（路径 B 地址文本）
+            await this.saveInitialAddress(ctx, customer, phone, addressText, geo);
             core_1.Logger.info(`Customer created via wechat assistant: customerId=${customer.id}`, constants_1.loggerCtx);
             return { status: 'ok', customer };
         }
         catch (e) {
             core_1.Logger.error(`Assistant bindOrCreateCustomer failed: ${String((_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e)}`, constants_1.loggerCtx);
             return { status: 'error', message: String((_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e) };
+        }
+    }
+    /**
+     * 保存本次输入的收货地址（建档与补绑定共用）；国家码缺失/无效时跳过，不阻塞下单。
+     * 首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用。
+     */
+    async saveInitialAddress(ctx, customer, phone, addressText, geo) {
+        if (!addressText)
+            return;
+        try {
+            await this.customerService.createAddress(ctx, customer.id, Object.assign(Object.assign(Object.assign({ 
+                // fork 的 CreateAddressInput 字段为 streetLine1（上游为 streetLine）
+                streetLine1: addressText.slice(0, 250), phoneNumber: phone, countryCode: 'CN', defaultShippingAddress: true }, ((geo === null || geo === void 0 ? void 0 : geo.province) ? { province: geo.province } : {})), ((geo === null || geo === void 0 ? void 0 : geo.city) ? { city: geo.city } : {})), (geo ? { customFields: { latitude: geo.lat, longitude: geo.lng } } : {})));
+        }
+        catch (e) {
+            core_1.Logger.warn(`Assistant bind: create address skipped: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
         }
     }
 };

@@ -38,4 +38,9 @@ export declare class CustomerBindingService {
         province?: string | null;
         city?: string | null;
     } | null): Promise<BindOrCreateOutcome>;
+    /**
+     * 保存本次输入的收货地址（建档与补绑定共用）；国家码缺失/无效时跳过，不阻塞下单。
+     * 首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用。
+     */
+    private saveInitialAddress;
 }

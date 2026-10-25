@@ -102,6 +102,17 @@ describe('CustomerBindingService', () => {
         expect(calls.channelAssigns[0].channels).toEqual(['2']);
     });
 
+    test('手机号已注册未绑微信 + 输入地址 → 补绑定同时保存默认地址', async () => {
+        const byPhone = { id: 88, customFields: {} };
+        const { svc, ctx, calls } = makeDeps({ byPhone });
+        const out = await svc.bindOrCreateCustomer(ctx, 'oX', '13800138000', '吉林市丰满区江南街1号');
+        expect(out.status).toBe('ok');
+        expect(calls.addresses.length).toBe(1);
+        expect(calls.addresses[0].customerId).toBe(88);
+        expect(calls.addresses[0].input.streetLine1).toBe('吉林市丰满区江南街1号');
+        expect(calls.addresses[0].input.defaultShippingAddress).toBe(true);
+    });
+
     test('全新建档 → User+Customer+openid+地址，identifier 对齐 wechat_mp 规则', async () => {
         const { svc, ctx, calls } = makeDeps();
         const out = await svc.bindOrCreateCustomer(ctx, 'oX', '13800138000', '北京市朝阳区建国路1号');

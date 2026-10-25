@@ -32,14 +32,19 @@ export class AddressBookService {
             relations: { addresses: true },
         });
         const addresses = (customer?.addresses ?? []).slice().sort((a, b) => (Number(a.id) < Number(b.id) ? -1 : 1));
-        return addresses.map((a, i) => ({
-            id: String(a.id),
-            index: i + 1,
-            fullName: a.fullName ?? '',
-            phoneNumber: a.phoneNumber ?? '',
-            streetLine1: a.streetLine1 ?? '',
-            isDefault: !!a.defaultShippingAddress,
-        }));
+        return addresses.map((a, i) => {
+            const cf = (a.customFields ?? {}) as any;
+            return {
+                id: String(a.id),
+                index: i + 1,
+                fullName: a.fullName ?? '',
+                phoneNumber: a.phoneNumber ?? '',
+                streetLine1: a.streetLine1 ?? '',
+                isDefault: !!a.defaultShippingAddress,
+                latitude: typeof cf.latitude === 'number' ? cf.latitude : null,
+                longitude: typeof cf.longitude === 'number' ? cf.longitude : null,
+            };
+        });
     }
 
     /** 按 id 取单项（对话回显/确认卡用） */

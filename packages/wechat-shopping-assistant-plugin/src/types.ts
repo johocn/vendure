@@ -167,6 +167,9 @@ export interface AddressBookItem {
     phoneNumber: string;
     streetLine1: string;
     isDefault: boolean;
+    /** 建档/改址时地理编码写入的坐标（地理编码超时兜底用，可能缺失） */
+    latitude?: number | null;
+    longitude?: number | null;
 }
 
 /** 入站消息的统一处理上下文 */
