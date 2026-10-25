@@ -44,7 +44,7 @@ let MeiliService = class MeiliService {
             });
             await this.req('PATCH', `/indexes/${uid}/settings`, {
                 searchableAttributes: ['title', 'body', 'tags'],
-                filterableAttributes: ['type', 'channelId', 'status', 'tags', 'collectionIds'],
+                filterableAttributes: ['type', 'channelId', 'channelIds', 'status', 'tags', 'collectionIds'],
                 sortableAttributes: ['updatedAt', 'price'],
             });
         }
@@ -62,8 +62,9 @@ let MeiliService = class MeiliService {
     async search(locale, params) {
         var _a, _b, _c, _d, _e, _f;
         const filter = ["type = 'product'", "status = 'published'"];
+        // 商品可归属多个渠道（含默认渠道）：按 channelIds 数组过滤，避免单渠道字段漏掉其它渠道的可见商品
         if (params.channelId)
-            filter.push(`channelId = '${String(params.channelId).replace(/'/g, "''")}'`);
+            filter.push(`channelIds = '${String(params.channelId).replace(/'/g, "''")}'`);
         const body = {
             q: params.q,
             limit: (_a = params.limit) !== null && _a !== void 0 ? _a : 10,

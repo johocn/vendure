@@ -4,6 +4,7 @@ import { productDocId, toProductDocuments, ProductProjection } from '../src/prod
 const base: ProductProjection = {
     productId: '42',
     channelId: '37',
+    channelIds: ['1', '37'],
     status: 'published',
     updatedAt: 1728777600000,
     nameZh: '温泉门票',
@@ -25,6 +26,7 @@ describe('product-document.mapper 投影', () => {
         expect(docs[0].id).toBe('product-42');
         expect(docs[0].type).toBe('product');
         expect(docs[0].channelId).toBe('37');
+        expect(docs[0].channelIds).toEqual(['1', '37']);
         expect(docs[0].title).toBe('温泉门票');
         expect(docs[1].title).toBe('Hot Spring Ticket');
         expect(docs[1].slug).toBe('hot-spring');

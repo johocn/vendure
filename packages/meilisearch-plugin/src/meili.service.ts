@@ -31,7 +31,7 @@ export class MeiliService {
             });
             await this.req('PATCH', `/indexes/${uid}/settings`, {
                 searchableAttributes: ['title', 'body', 'tags'],
-                filterableAttributes: ['type', 'channelId', 'status', 'tags', 'collectionIds'],
+                filterableAttributes: ['type', 'channelId', 'channelIds', 'status', 'tags', 'collectionIds'],
                 sortableAttributes: ['updatedAt', 'price'],
             });
         }
@@ -52,7 +52,8 @@ export class MeiliService {
         params: { q: string; channelId?: string; limit?: number; offset?: number },
     ): Promise<{ hits: KbDocument[]; total: number; processingTimeMs: number }> {
         const filter = ["type = 'product'", "status = 'published'"];
-        if (params.channelId) filter.push(`channelId = '${String(params.channelId).replace(/'/g, "''")}'`);
+        // 商品可归属多个渠道（含默认渠道）：按 channelIds 数组过滤，避免单渠道字段漏掉其它渠道的可见商品
+        if (params.channelId) filter.push(`channelIds = '${String(params.channelId).replace(/'/g, "''")}'`);
         const body = {
             q: params.q,
             limit: params.limit ?? 10,

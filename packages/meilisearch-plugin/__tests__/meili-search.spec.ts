@@ -39,7 +39,7 @@ describe('MeiliService.search', () => {
         expect(url).toBe('http://127.0.0.1:7700/indexes/kb-zh/search');
         expect(body.q).toBe('酱油');
         expect(body.limit).toBe(5);
-        expect(body.filter).toEqual(["type = 'product'", "status = 'published'", "channelId = '2'"]);
+        expect(body.filter).toEqual(["type = 'product'", "status = 'published'", "channelIds = '2'"]);
     });
 
     test('escapes single quotes in channelId and applies defaults', async () => {
@@ -47,7 +47,7 @@ describe('MeiliService.search', () => {
         const svc = new MeiliService(opts);
         await svc.search('en', { q: 'oBrien', channelId: "a'b" });
         const body = JSON.parse(calls[0].init.body);
-        expect(body.filter).toEqual(["type = 'product'", "status = 'published'", "channelId = 'a''b'"]);
+        expect(body.filter).toEqual(["type = 'product'", "status = 'published'", "channelIds = 'a''b'"]);
         expect(body.limit).toBe(10);
         expect(body.offset).toBe(0);
     });

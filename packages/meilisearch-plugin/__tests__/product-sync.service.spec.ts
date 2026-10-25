@@ -92,6 +92,7 @@ describe('ProductSyncService', () => {
             id: 'product-42',
             type: 'product',
             channelId: '37',
+            channelIds: ['1', '37'], // 全部所属渠道，供各渠道检索命中共用商品
             status: 'published',
             title: '温泉门票',
             price: 5800, // 两变体在该渠道价格的最低价
@@ -122,7 +123,7 @@ describe('ProductSyncService', () => {
         expect(meili.deleteDocuments).toHaveBeenCalledWith('en', ['product-42']);
     });
 
-    it('syncOne: 全无非默认渠道时 channelId 回退默认渠道 1', async () => {
+    it('syncOne: 仅有默认渠道时 channelIds/channelId 均为 1', async () => {
         const { service, meili } = makeService(async () =>
             makeProduct({
                 channels: [{ id: 1, code: '__default_channel__' }],
@@ -134,6 +135,7 @@ describe('ProductSyncService', () => {
 
         expect((meili.upsertDocuments.mock.calls[0][1] as unknown[])[0]).toMatchObject({
             channelId: '1',
+            channelIds: ['1'],
             price: 6600,
         });
     });

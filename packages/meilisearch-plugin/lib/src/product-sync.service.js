@@ -157,24 +157,27 @@ let ProductSyncService = class ProductSyncService {
         }
     }
     toProjection(product, urlBase) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const zh = (_a = product.translations) === null || _a === void 0 ? void 0 : _a.find(t => t.languageCode === core_1.LanguageCode.zh_Hans);
         const en = (_b = product.translations) === null || _b === void 0 ? void 0 : _b.find(t => t.languageCode === core_1.LanguageCode.en);
-        const channelId = this.resolveChannelId(product);
+        const channelIds = this.resolveChannelIds(product);
+        // 价格口径沿用既有规则：优先非默认渠道，全无则默认渠道
+        const priceChannelId = (_c = channelIds.find(id => id !== '1')) !== null && _c !== void 0 ? _c : channelIds[0];
         const assetBase = this.assetBase();
-        const preview = (_d = (_c = product.featuredAsset) === null || _c === void 0 ? void 0 : _c.preview) !== null && _d !== void 0 ? _d : '';
+        const preview = (_e = (_d = product.featuredAsset) === null || _d === void 0 ? void 0 : _d.preview) !== null && _e !== void 0 ? _e : '';
         const thumbnailUrl = assetBase && preview ? `${assetBase}/${preview.replace(/^\/+/, '')}` : '';
-        return Object.assign({ productId: String(product.id), channelId, status: product.enabled && !product.deletedAt ? 'published' : 'draft', updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(), nameZh: (_e = zh === null || zh === void 0 ? void 0 : zh.name) !== null && _e !== void 0 ? _e : '', nameEn: (_f = en === null || en === void 0 ? void 0 : en.name) !== null && _f !== void 0 ? _f : '', descZh: (_g = zh === null || zh === void 0 ? void 0 : zh.description) !== null && _g !== void 0 ? _g : '', descEn: (_h = en === null || en === void 0 ? void 0 : en.description) !== null && _h !== void 0 ? _h : '', slugZh: (_j = zh === null || zh === void 0 ? void 0 : zh.slug) !== null && _j !== void 0 ? _j : '', slugEn: (_k = en === null || en === void 0 ? void 0 : en.slug) !== null && _k !== void 0 ? _k : '', price: this.resolvePrice(product, channelId), collectionIds: [
-                ...new Set(((_l = product.variants) !== null && _l !== void 0 ? _l : []).flatMap(v => { var _a; return ((_a = v.collections) !== null && _a !== void 0 ? _a : []).map(c => String(c.id)); })),
+        return Object.assign({ productId: String(product.id), channelId: priceChannelId, channelIds, status: product.enabled && !product.deletedAt ? 'published' : 'draft', updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(), nameZh: (_f = zh === null || zh === void 0 ? void 0 : zh.name) !== null && _f !== void 0 ? _f : '', nameEn: (_g = en === null || en === void 0 ? void 0 : en.name) !== null && _g !== void 0 ? _g : '', descZh: (_h = zh === null || zh === void 0 ? void 0 : zh.description) !== null && _h !== void 0 ? _h : '', descEn: (_j = en === null || en === void 0 ? void 0 : en.description) !== null && _j !== void 0 ? _j : '', slugZh: (_k = zh === null || zh === void 0 ? void 0 : zh.slug) !== null && _k !== void 0 ? _k : '', slugEn: (_l = en === null || en === void 0 ? void 0 : en.slug) !== null && _l !== void 0 ? _l : '', price: this.resolvePrice(product, priceChannelId), collectionIds: [
+                ...new Set(((_m = product.variants) !== null && _m !== void 0 ? _m : []).flatMap(v => { var _a; return ((_a = v.collections) !== null && _a !== void 0 ? _a : []).map(c => String(c.id)); })),
             ], tags: [], urlBase }, (thumbnailUrl ? { thumbnailUrl } : {}));
     }
-    /** channelId：第一个非默认渠道 id（默认渠道 code '__default_channel__'）；全无则回退默认渠道 '1' */
-    resolveChannelId(product) {
+    /**
+     * 商品所属全部渠道（数值升序去重）；无关联时回退默认渠道 '1'。
+     * 商品常同时挂在默认渠道与多个租户渠道，只存单一渠道会导致其它渠道搜不到。
+     */
+    resolveChannelIds(product) {
         var _a;
-        const nonDefault = ((_a = product.channels) !== null && _a !== void 0 ? _a : []).find(c => c.code !== '__default_channel__');
-        if (nonDefault)
-            return String(nonDefault.id);
-        return '1';
+        const ids = [...new Set(((_a = product.channels) !== null && _a !== void 0 ? _a : []).map(c => String(c.id)))];
+        return ids.length ? ids.sort((a, b) => Number(a) - Number(b)) : ['1'];
     }
     /**
      * 取价照 vcash-pos-plugin 口径：ProductVariant.price 是 @Calculated 字段（依赖运行时 listPrice），

@@ -174,13 +174,16 @@ export class ProductSyncService {
     private toProjection(product: Product, urlBase: string): ProductProjection {
         const zh = product.translations?.find(t => t.languageCode === LanguageCode.zh_Hans);
         const en = product.translations?.find(t => t.languageCode === LanguageCode.en);
-        const channelId = this.resolveChannelId(product);
+        const channelIds = this.resolveChannelIds(product);
+        // 价格口径沿用既有规则：优先非默认渠道，全无则默认渠道
+        const priceChannelId = channelIds.find(id => id !== '1') ?? channelIds[0];
         const assetBase = this.assetBase();
         const preview = product.featuredAsset?.preview ?? '';
         const thumbnailUrl = assetBase && preview ? `${assetBase}/${preview.replace(/^\/+/, '')}` : '';
         return {
             productId: String(product.id),
-            channelId,
+            channelId: priceChannelId,
+            channelIds,
             status: product.enabled && !product.deletedAt ? 'published' : 'draft',
             updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(),
             nameZh: zh?.name ?? '',
@@ -189,7 +192,7 @@ export class ProductSyncService {
             descEn: en?.description ?? '',
             slugZh: zh?.slug ?? '',
             slugEn: en?.slug ?? '',
-            price: this.resolvePrice(product, channelId),
+            price: this.resolvePrice(product, priceChannelId),
             collectionIds: [
                 ...new Set(
                     (product.variants ?? []).flatMap(v => (v.collections ?? []).map(c => String(c.id))),
@@ -201,11 +204,13 @@ export class ProductSyncService {
         };
     }
 
-    /** channelId：第一个非默认渠道 id（默认渠道 code '__default_channel__'）；全无则回退默认渠道 '1' */
-    private resolveChannelId(product: Product): string {
-        const nonDefault = (product.channels ?? []).find(c => c.code !== '__default_channel__');
-        if (nonDefault) return String(nonDefault.id);
-        return '1';
+    /**
+     * 商品所属全部渠道（数值升序去重）；无关联时回退默认渠道 '1'。
+     * 商品常同时挂在默认渠道与多个租户渠道，只存单一渠道会导致其它渠道搜不到。
+     */
+    private resolveChannelIds(product: Product): string[] {
+        const ids = [...new Set((product.channels ?? []).map(c => String(c.id)))];
+        return ids.length ? ids.sort((a, b) => Number(a) - Number(b)) : ['1'];
     }
 
     /**

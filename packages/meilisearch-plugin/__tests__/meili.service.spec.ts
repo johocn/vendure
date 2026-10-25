@@ -57,6 +57,7 @@ function makeDoc(overrides: Partial<KbDocument> = {}): KbDocument {
         sourceSystem: 'vendure',
         url: 'https://www.example.com/zh/hot-spring',
         channelId: '37',
+        channelIds: ['1', '37'],
         status: 'published',
         tags: ['温泉'],
         title: '温泉门票',
@@ -94,6 +95,7 @@ describe('MeiliService 请求构造', () => {
         expect(settings.filterableAttributes).toEqual([
             'type',
             'channelId',
+            'channelIds',
             'status',
             'tags',
             'collectionIds',

@@ -34,8 +34,11 @@ export declare class ProductSyncService {
     private urlBase;
     private upsertInBatches;
     private toProjection;
-    /** channelId：第一个非默认渠道 id（默认渠道 code '__default_channel__'）；全无则回退默认渠道 '1' */
-    private resolveChannelId;
+    /**
+     * 商品所属全部渠道（数值升序去重）；无关联时回退默认渠道 '1'。
+     * 商品常同时挂在默认渠道与多个租户渠道，只存单一渠道会导致其它渠道搜不到。
+     */
+    private resolveChannelIds;
     /**
      * 取价照 vcash-pos-plugin 口径：ProductVariant.price 是 @Calculated 字段（依赖运行时 listPrice），
      * 原始查询下恒为 0，须读 productVariantPrices 关联按渠道匹配取真实价格。
