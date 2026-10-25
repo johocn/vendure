@@ -1,6 +1,6 @@
 import { ModuleRef } from '@nestjs/core';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
-import { NearbyStore } from './types';
+import { NearbyStore, StoreContact } from './types';
 /** 门店匹配半径（km） */
 export declare const STORE_RADIUS_KM = 3;
 /**
@@ -22,6 +22,8 @@ export declare class StoreLocatorService {
         radiusKm?: number;
         familiarStoreIds?: Set<string>;
     }): Promise<NearbyStore[]>;
+    /** 按 id 回查门店客服联系方式（复检渠道可见性，避免跨租户取到别家门店电话） */
+    findContact(ctx: RequestContext, storeId: string | number): Promise<StoreContact | null>;
     /** 顾客历史订单选过的门店 id（按使用次数降序），用于「熟店优先」 */
     familiarStoreIds(ctx: RequestContext, customerId: string | number | null | undefined): Promise<Set<string>>;
 }

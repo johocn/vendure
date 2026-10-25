@@ -7,6 +7,8 @@ type NewsMessage = Extract<OutboundMessage, {
 }>;
 /** 价格分 → 展示串：890 → '8.90'，0 → '价格面议' */
 export declare function formatPrice(price?: number): string;
+/** 一键客服提示行：异常/卡点消息统一附带（回复「客服」在任何状态下都生效） */
+export declare const SUPPORT_HINT = "\u56DE\u590D\u300C\u5BA2\u670D\u300D\u8054\u7CFB\u95E8\u5E97\u5BA2\u670D";
 /** 图文卡片消息（方案 A）。商品数 0 返回 null；微信 news 上限 8 条 */
 export declare function buildNewsMessage(touser: string, products: CardProduct[]): NewsMessage | null;
 /** 纯文本编号列表（方案 B，news 发送失败/无图时兜底） */
@@ -147,4 +149,36 @@ export declare function buildLocationFlowBusyText(touser: string): TextMessage;
 export declare function buildLocationUnavailableText(touser: string): TextMessage;
 /** 微信上报的经纬度不合法 */
 export declare function buildLocationInvalidText(touser: string): TextMessage;
+export interface SupportCardInput {
+    /** 门店客服信息（已选门店/候选唯一时） */
+    store?: {
+        name: string;
+        phoneNumber?: string | null;
+        businessHours?: string | null;
+    } | null;
+    /** 平台客服电话（门店未登记电话或未选门店时兜底） */
+    platformPhone?: string | null;
+    /** 当前这单的商品摘要（草稿中的下单商品） */
+    items?: Array<{
+        title: string;
+        quantity: number;
+        price: number;
+    }>;
+    /** 合计（分） */
+    total?: number;
+}
+/**
+ * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
+ * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。
+ */
+export declare function buildSupportCard(touser: string, input: SupportCardInput): TextMessage;
+/** 有多个候选门店：让用户用「客服N」指定要联系哪家店 */
+export declare function buildSupportStorePickText(touser: string, stores: NearbyStore[]): TextMessage;
+/** 「客服N」编号无效 */
+export declare function buildSupportInvalidStoreText(touser: string, count: number): TextMessage;
+/** 10 分钟内重复请求客服：只回短提示，不重复刷屏 */
+export declare function buildSupportRepeatText(touser: string, input: {
+    name?: string | null;
+    phoneNumber?: string | null;
+}): TextMessage;
 export {};

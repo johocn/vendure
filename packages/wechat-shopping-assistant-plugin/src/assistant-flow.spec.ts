@@ -43,7 +43,12 @@ function makeConnection() {
         findOne: async ({ where }: any) => customers.get(where.customFields.wechatOpenid) ?? null,
     };
     const channelRepo = {
-        findOne: async ({ where }: any) => ({ id: where.id, token: 'channel-token-a' }),
+        findOne: async ({ where }: any) => ({
+            id: where.id,
+            token: 'channel-token-a',
+            // 渠道装修客服电话（客服卡片无门店时兜底）
+            customFields: { servicePhone: '400-800-1234' },
+        }),
     };
     const repos = new Map<any, any>([
         [WechatProcessedMessage, processedRepo],
@@ -189,7 +194,7 @@ function makeService(
         sender as any,
         { resolveForChannel: async () => ({}) } as any,
         { findOne: async () => ({ id: '2' }) } as any,
-        { create: async () => ({ channelId: '2' }) } as any,
+        { create: async ({ channelOrToken }: any) => ({ channelId: '2', channel: channelOrToken }) } as any,
         (overrides.binding ?? makeBindingStub({}, connection)) as any,
         addressBook as any,
         geo as any,
@@ -202,14 +207,23 @@ function makeService(
  * 门店匹配假件：findNearby 按传入的熟店集合打标（排序/3km 过滤由 StoreLocatorService 单测覆盖）。
  */
 function makeStoreStub(
-    stores: Array<{ id: string; name: string; address?: string; distanceKm: number }> = [],
+    stores: Array<{
+        id: string;
+        name: string;
+        address?: string;
+        distanceKm: number;
+        phoneNumber?: string;
+        businessHours?: string;
+    }> = [],
     familiarIds: string[] = [],
 ) {
     const findCalls: Array<{ lat: number; lng: number; familiar: string[] }> = [];
     const familiarCalls: Array<any> = [];
+    const contactCalls: Array<any> = [];
     return {
         findCalls,
         familiarCalls,
+        contactCalls,
         familiarStoreIds: async (_ctx: any, customerId?: any) => {
             familiarCalls.push(customerId);
             return new Set(familiarIds);
@@ -218,6 +232,18 @@ function makeStoreStub(
             const familiar: Set<string> = options.familiarStoreIds ?? new Set<string>();
             findCalls.push({ lat, lng, familiar: [...familiar] });
             return stores.map(s => ({ address: '', ...s, familiar: familiar.has(s.id) }));
+        },
+        findContact: async (_ctx: any, id: string | number) => {
+            contactCalls.push(String(id));
+            const store = stores.find(s => s.id === String(id));
+            if (!store) return null;
+            return {
+                id: store.id,
+                name: store.name,
+                address: store.address ?? '',
+                phoneNumber: store.phoneNumber ?? null,
+                businessHours: store.businessHours ?? null,
+            };
         },
     };
 }
@@ -910,5 +936,125 @@ describe('AssistantService 城市识别 + 3km 门店匹配', () => {
         await svc.onMessage(textEvent('附近门店', 'M3'));
         expect(outbound[outbound.length - 1].content).toContain('当前正在地址操作中');
         expect(connection.sessions.get('openid-user-1').state).toBe('addr_op');
+    });
+});
+
+describe('AssistantService 一键客服（全局生效，不打断状态机）', () => {
+    const STORES = [
+        {
+            id: 's1',
+            name: '朝阳门市部',
+            address: '朝阳区建国路2号',
+            distanceKm: 0.4,
+            phoneNumber: '010-88881111',
+            businessHours: '09:00-21:00',
+        },
+        {
+            id: 's2',
+            name: '国贸店',
+            address: '朝阳区建国门外大街1号',
+            distanceKm: 2.6,
+            phoneNumber: '010-88882222',
+            businessHours: '09:00-22:00',
+        },
+    ];
+
+    test('已选门店后回复「客服」→ 门店客服卡（电话/营业时间）', async () => {
+        const store = makeStoreStub(STORES);
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store });
+        connection.customers.set('openid-user-1', { id: 42 });
+
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        await svc.onMessage(textEvent('门店2', 'M2'));
+        await svc.onMessage(textEvent('客服', 'M3'));
+
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('国贸店 · 门店客服');
+        expect(last.content).toContain('电话　010-88882222（点击拨打）');
+        expect(last.content).toContain('营业　09:00-22:00');
+        expect(last.content).toContain('打电话时说明来自微信购物助手');
+        // 不进入任何流程态
+        expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
+        expect(store.contactCalls).toContain('s2');
+    });
+
+    test('多候选未选门店 → 先让用户「客服N」指定，选中后给该店卡片', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store: makeStoreStub(STORES) });
+        connection.customers.set('openid-user-1', { id: 42 });
+
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        await svc.onMessage(textEvent('客服', 'M2'));
+
+        let last = outbound[outbound.length - 1];
+        expect(last.content).toContain('要联系哪家店？回复「客服N」选择');
+        expect(last.content).toContain('1. 朝阳门市部');
+        expect(last.content).toContain('2. 国贸店');
+        expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
+
+        await svc.onMessage(textEvent('客服2', 'M3'));
+        last = outbound[outbound.length - 1];
+        expect(last.content).toContain('国贸店 · 门店客服');
+        expect(last.content).toContain('010-88882222');
+    });
+
+    test('无门店上下文 → 平台客服电话兜底（渠道 servicePhone）', async () => {
+        const { svc, outbound } = makeService({});
+        await svc.onMessage(textEvent('客服', 'M1'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('平台客服');
+        expect(last.content).toContain('400-800-1234');
+    });
+
+    test('下单确认态回复「客服」→ 带这单商品上下文，且状态保留可继续下单', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store: makeStoreStub(STORES) });
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址 → 地址选址
+        await svc.onMessage(textEvent('1', 'M3')); // 选地址 → 下单确认
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+
+        await svc.onMessage(textEvent('客服', 'M4'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('关于这单：海天生抽酱油 500ml ×1');
+        // 状态机未被打断
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+
+        // 仍可继续确认下单
+        await svc.onMessage(textEvent('1', 'M5'));
+        expect(outbound[outbound.length - 1].content).toContain('下单成功');
+    });
+
+    test('10 分钟内重复「客服」→ 只回短提示，不重复刷屏', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store: makeStoreStub(STORES) });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        await svc.onMessage(textEvent('门店2', 'M2'));
+
+        await svc.onMessage(textEvent('客服', 'M3'));
+        const first = outbound[outbound.length - 1].content;
+        expect(first).toContain('国贸店 · 门店客服');
+
+        await svc.onMessage(textEvent('客服', 'M4'));
+        const second = outbound[outbound.length - 1].content;
+        expect(second).toContain('客服联系方式刚发过');
+        expect(second).not.toContain('国贸店 · 门店客服');
+    });
+
+    test('「客服9」超出候选范围 → 提示重新选择', async () => {
+        const { svc, outbound } = makeService({ store: makeStoreStub(STORES) });
+        await svc.onMessage(textEvent('客服9', 'M1'));
+        expect(outbound[0].content).toContain('没有找到这家店');
+    });
+
+    test('卡片/帮助文案带客服入口（消息末尾统一提示）', async () => {
+        const { svc, outbound } = makeService({
+            search: makeSearchStub('error'),
+        });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        expect(outbound[0].content).toContain('回复「客服」联系门店客服');
     });
 });

@@ -4,7 +4,7 @@ import { PickupLocationService } from '@vendure/cjk-plugin';
 import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 
 import { loggerCtx } from './constants';
-import { NearbyStore } from './types';
+import { NearbyStore, StoreContact } from './types';
 
 /** 门店匹配半径（km） */
 export const STORE_RADIUS_KM = 3;
@@ -72,10 +72,33 @@ export class StoreLocatorService {
                 address: l.address ?? '',
                 distanceKm: roundKm(haversineKm(lat, lng, Number(l.coordinates!.lat), Number(l.coordinates!.lng))),
                 familiar: familiar.has(String(l.id)),
+                phoneNumber: l.phoneNumber ?? null,
+                businessHours: l.businessHours ?? null,
             }))
             .filter(store => store.distanceKm <= radius)
             .sort((a, b) => Number(b.familiar) - Number(a.familiar) || a.distanceKm - b.distanceKm)
             .slice(0, MAX_STORES);
+    }
+
+    /** 按 id 回查门店客服联系方式（复检渠道可见性，避免跨租户取到别家门店电话） */
+    async findContact(ctx: RequestContext, storeId: string | number): Promise<StoreContact | null> {
+        const service = this.getPickupService();
+        if (!service) return null;
+        try {
+            const store = await service.findOne(ctx, storeId as any);
+            if (!store || store.enabled === false || store.type !== 'store') return null;
+            if (!isVisibleToChannel(store, ctx)) return null;
+            return {
+                id: String(store.id),
+                name: store.name,
+                address: store.address ?? '',
+                phoneNumber: store.phoneNumber ?? null,
+                businessHours: store.businessHours ?? null,
+            };
+        } catch (e) {
+            Logger.warn(`Assistant store contact failed: ${String(e)}`, loggerCtx);
+            return null;
+        }
     }
 
     /** 顾客历史订单选过的门店 id（按使用次数降序），用于「熟店优先」 */
@@ -105,6 +128,14 @@ export class StoreLocatorService {
 
 function isFiniteNumber(value: unknown): boolean {
     return Number.isFinite(Number(value));
+}
+
+/** 复刻 PickupLocationService 的可见规则（平台全可见；租户限公共/自建且已关联渠道） */
+function isVisibleToChannel(store: any, ctx: RequestContext): boolean {
+    if (String((ctx.channel as any)?.code ?? '') === '__default_channel__') return true;
+    const ownedOrPublic = store.isPublic === true || String(store.ownerChannelId ?? '') === String(ctx.channelId);
+    if (!ownedOrPublic) return false;
+    return (store.channels ?? []).some((channel: any) => String(channel.id) === String(ctx.channelId));
 }
 
 function roundKm(value: number): number {

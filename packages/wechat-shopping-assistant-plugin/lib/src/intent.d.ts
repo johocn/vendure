@@ -19,6 +19,11 @@ export type AssistantIntent = {
     kind: 'address_add';
 } | {
     kind: 'nearby_stores';
+}
+/** 一键客服：任何状态下生效，storeIndex 用于「客服2」选定候选门店 */
+ | {
+    kind: 'support';
+    storeIndex?: number;
 };
 /** 全角数字/字母转半角，去空白，统一分隔符 */
 export declare function normalizeInput(raw: string): string;

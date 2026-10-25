@@ -88,6 +88,12 @@ export interface AssistantFlowDraft {
     nearbyStores?: NearbyStore[] | null;
     /** 用户选定的门店 id（会话内保留，下单确认时展示） */
     storeId?: string | null;
+    /** 最近一次「客服」卡片下发时间（10 分钟内重复请求只回短提示） */
+    supportAt?: number | null;
+    /** 最近一次「客服」卡片对应的门店 id（判断是否同一门店重复请求） */
+    supportStoreId?: string | null;
+    /** 最近一次「客服」卡片的电话号码（重复请求时短提示用） */
+    supportPhone?: string | null;
 }
 /** 3km 内门店（含距离与熟店标记），用于客服消息列表与选择 */
 export interface NearbyStore {
@@ -98,6 +104,18 @@ export interface NearbyStore {
     distanceKm: number;
     /** 熟店：该顾客历史订单选过该门店（自提/门店配送） */
     familiar: boolean;
+    /** 门店客服电话（客服卡片用） */
+    phoneNumber?: string | null;
+    /** 营业时间（客服卡片用） */
+    businessHours?: string | null;
+}
+/** 门店客服联系方式（按 id 回查，客服卡片用） */
+export interface StoreContact {
+    id: string;
+    name: string;
+    address: string;
+    phoneNumber?: string | null;
+    businessHours?: string | null;
 }
 /** 地址坐标 + 行政区（GCJ-02），写入 Address.latitude/longitude/city/province */
 export interface AssistantAddressGeo {

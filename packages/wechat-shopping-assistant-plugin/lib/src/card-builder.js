@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.SUPPORT_HINT = void 0;
 exports.formatPrice = formatPrice;
 exports.buildNewsMessage = buildNewsMessage;
 exports.buildTextListMessage = buildTextListMessage;
@@ -45,12 +46,18 @@ exports.buildStoreFlowBusyText = buildStoreFlowBusyText;
 exports.buildLocationFlowBusyText = buildLocationFlowBusyText;
 exports.buildLocationUnavailableText = buildLocationUnavailableText;
 exports.buildLocationInvalidText = buildLocationInvalidText;
+exports.buildSupportCard = buildSupportCard;
+exports.buildSupportStorePickText = buildSupportStorePickText;
+exports.buildSupportInvalidStoreText = buildSupportInvalidStoreText;
+exports.buildSupportRepeatText = buildSupportRepeatText;
 /** 价格分 → 展示串：890 → '8.90'，0 → '价格面议' */
 function formatPrice(price) {
     if (!price || price <= 0)
         return '价格面议';
     return `¥${(price / 100).toFixed(2)}`;
 }
+/** 一键客服提示行：异常/卡点消息统一附带（回复「客服」在任何状态下都生效） */
+exports.SUPPORT_HINT = '回复「客服」联系门店客服';
 /** 图文卡片消息（方案 A）。商品数 0 返回 null；微信 news 上限 8 条 */
 function buildNewsMessage(touser, products) {
     if (!products.length)
@@ -75,14 +82,14 @@ function buildNoResultText(touser, query) {
     return {
         kind: 'text',
         touser,
-        content: `没有找到「${query}」相关的商品，换个说法试试？\n也可以回复「帮助」查看使用说明。`,
+        content: `没有找到「${query}」相关的商品，换个说法试试？\n也可以回复「帮助」查看使用说明。\n${exports.SUPPORT_HINT}`,
     };
 }
 function buildSearchErrorText(touser) {
     return {
         kind: 'text',
         touser,
-        content: '搜索服务开小差了，请稍后再试～',
+        content: `搜索服务开小差了，请稍后再试～\n${exports.SUPPORT_HINT}`,
     };
 }
 function buildGuideText(touser, storefrontUrl) {
@@ -92,6 +99,7 @@ function buildGuideText(touser, storefrontUrl) {
         '· 回复商品编号下单，如「买1」「2」',
         '· 一次买多件：「买2瓶酱油」',
         '· 找附近门店：「附近门店」（需先发送位置）',
+        '· 有问题随时回「客服」联系门店客服',
         '· 下单成功后会收到订单与支付链接',
     ];
     if (storefrontUrl)
@@ -165,17 +173,21 @@ function buildInvalidOrderText(touser, indices) {
     return {
         kind: 'text',
         touser,
-        content: `没有找到${indices.map(i => `「${i}」`).join('、')}对应的商品。\n最近一次搜索结果可能已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。`,
+        content: `没有找到${indices.map(i => `「${i}」`).join('、')}对应的商品。\n最近一次搜索结果可能已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。\n${exports.SUPPORT_HINT}`,
     };
 }
 function buildOutOfStockText(touser, title) {
-    return { kind: 'text', touser, content: `很抱歉，「${title}」库存不足，暂时无法下单。` };
+    return {
+        kind: 'text',
+        touser,
+        content: `很抱歉，「${title}」库存不足，暂时无法下单。\n${exports.SUPPORT_HINT}`,
+    };
 }
 function buildOrderFailText(touser, reason) {
     return {
         kind: 'text',
         touser,
-        content: `下单失败${reason ? `（${reason}）` : ''}，请稍后重试或联系客服。`,
+        content: `下单失败${reason ? `（${reason}）` : ''}，请稍后重试。\n${exports.SUPPORT_HINT}`,
     };
 }
 function buildOrderSuccessText(touser, input) {
@@ -197,7 +209,7 @@ function buildSessionExpiredText(touser) {
     return {
         kind: 'text',
         touser,
-        content: '最近的搜索结果已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。',
+        content: `最近的搜索结果已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。\n${exports.SUPPORT_HINT}`,
     };
 }
 // ============ 地址簿管理 + 下单选地址（方案 B 列表式逐轮问答） ============
@@ -395,7 +407,7 @@ function buildNoNearbyStoresText(touser, city) {
     return {
         kind: 'text',
         touser,
-        content: `${scope}暂未匹配到门店，仍可正常下单配送。\n发送想买的商品（如「买一瓶酱油」）即可继续。`,
+        content: `${scope}暂未匹配到门店，仍可正常下单配送。\n发送想买的商品（如「买一瓶酱油」）即可继续。\n${exports.SUPPORT_HINT}`,
     };
 }
 /** 未定位就查附近门店 */
@@ -451,7 +463,7 @@ function buildLocationUnavailableText(touser) {
     return {
         kind: 'text',
         touser,
-        content: '抱歉，暂时无法识别这个位置，请直接回复收货地址文本（含省市区 + 详细地址）。',
+        content: '抱歉，暂时无法识别这个位置，请直接回复收货地址文本（含省市区 + 详细地址）。\n回复「客服」可联系门店客服协助。',
     };
 }
 /** 微信上报的经纬度不合法 */
@@ -460,6 +472,75 @@ function buildLocationInvalidText(touser) {
         kind: 'text',
         touser,
         content: '位置信息不完整，请重新发送位置，或直接回复收货地址文本（含省市区 + 详细地址）。',
+    };
+}
+/**
+ * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
+ * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。
+ */
+function buildSupportCard(touser, input) {
+    var _a, _b, _c;
+    const lines = [];
+    const store = input.store;
+    const storePhone = String((_a = store === null || store === void 0 ? void 0 : store.phoneNumber) !== null && _a !== void 0 ? _a : '').trim();
+    const platformPhone = String((_b = input.platformPhone) !== null && _b !== void 0 ? _b : '').trim();
+    if (store) {
+        lines.push(`${store.name} · 门店客服`);
+        if (storePhone) {
+            lines.push(`电话　${storePhone}（点击拨打）`);
+        }
+        else if (platformPhone) {
+            lines.push(`门店电话暂未登记，可联系平台客服　${platformPhone}（点击拨打）`);
+        }
+        else {
+            lines.push('门店电话暂未登记，可在店铺页联系在线客服。');
+        }
+        if (store.businessHours)
+            lines.push(`营业　${store.businessHours}`);
+    }
+    else if (platformPhone) {
+        lines.push('平台客服');
+        lines.push(`电话　${platformPhone}（点击拨打）`);
+    }
+    else {
+        lines.push('暂未配置客服电话，可在店铺页联系在线客服，或稍后再回「客服」试试。');
+    }
+    if ((_c = input.items) === null || _c === void 0 ? void 0 : _c.length) {
+        const summary = input.items.map(i => `${i.title} ×${i.quantity}`).join('，');
+        const amount = input.total != null ? `，${formatPrice(input.total)}` : '';
+        lines.push(`关于这单：${summary}${amount}`);
+    }
+    if (store || platformPhone) {
+        lines.push('打电话时说明来自微信购物助手，客服可直接查这单。');
+    }
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+/** 有多个候选门店：让用户用「客服N」指定要联系哪家店 */
+function buildSupportStorePickText(touser, stores) {
+    const lines = [
+        '要联系哪家店？回复「客服N」选择：',
+        ...stores.map((store, i) => `${i + 1}. ${store.name}${store.address ? `（${store.address}）` : ''}`),
+    ];
+    lines.push('回复「客服」查看可选门店。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+/** 「客服N」编号无效 */
+function buildSupportInvalidStoreText(touser, count) {
+    const range = count > 0 ? `「客服1」到「客服${count}」` : '「客服」';
+    return {
+        kind: 'text',
+        touser,
+        content: `没有找到这家店，请回复${range}选择，或回复「客服」查看可选门店。`,
+    };
+}
+/** 10 分钟内重复请求客服：只回短提示，不重复刷屏 */
+function buildSupportRepeatText(touser, input) {
+    const name = input.name ? `${input.name} ` : '';
+    const phone = input.phoneNumber ? `${input.phoneNumber} ` : '';
+    return {
+        kind: 'text',
+        touser,
+        content: `客服联系方式刚发过：${name}${phone}可直接拨打。\n若暂时没接通，稍后再回「客服」即可。`,
     };
 }
 //# sourceMappingURL=card-builder.js.map

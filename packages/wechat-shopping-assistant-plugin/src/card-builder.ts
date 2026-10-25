@@ -9,6 +9,9 @@ export function formatPrice(price?: number): string {
     return `¥${(price / 100).toFixed(2)}`;
 }
 
+/** 一键客服提示行：异常/卡点消息统一附带（回复「客服」在任何状态下都生效） */
+export const SUPPORT_HINT = '回复「客服」联系门店客服';
+
 /** 图文卡片消息（方案 A）。商品数 0 返回 null；微信 news 上限 8 条 */
 export function buildNewsMessage(touser: string, products: CardProduct[]): NewsMessage | null {
     if (!products.length) return null;
@@ -36,7 +39,7 @@ export function buildNoResultText(touser: string, query: string): TextMessage {
     return {
         kind: 'text',
         touser,
-        content: `没有找到「${query}」相关的商品，换个说法试试？\n也可以回复「帮助」查看使用说明。`,
+        content: `没有找到「${query}」相关的商品，换个说法试试？\n也可以回复「帮助」查看使用说明。\n${SUPPORT_HINT}`,
     };
 }
 
@@ -44,7 +47,7 @@ export function buildSearchErrorText(touser: string): TextMessage {
     return {
         kind: 'text',
         touser,
-        content: '搜索服务开小差了，请稍后再试～',
+        content: `搜索服务开小差了，请稍后再试～\n${SUPPORT_HINT}`,
     };
 }
 
@@ -55,6 +58,7 @@ export function buildGuideText(touser: string, storefrontUrl?: string): TextMess
         '· 回复商品编号下单，如「买1」「2」',
         '· 一次买多件：「买2瓶酱油」',
         '· 找附近门店：「附近门店」（需先发送位置）',
+        '· 有问题随时回「客服」联系门店客服',
         '· 下单成功后会收到订单与支付链接',
     ];
     if (storefrontUrl) lines.push(`· 进店逛逛：${storefrontUrl}`);
@@ -133,19 +137,23 @@ export function buildInvalidOrderText(touser: string, indices: number[]): TextMe
     return {
         kind: 'text',
         touser,
-        content: `没有找到${indices.map(i => `「${i}」`).join('、')}对应的商品。\n最近一次搜索结果可能已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。`,
+        content: `没有找到${indices.map(i => `「${i}」`).join('、')}对应的商品。\n最近一次搜索结果可能已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。\n${SUPPORT_HINT}`,
     };
 }
 
 export function buildOutOfStockText(touser: string, title: string): TextMessage {
-    return { kind: 'text', touser, content: `很抱歉，「${title}」库存不足，暂时无法下单。` };
+    return {
+        kind: 'text',
+        touser,
+        content: `很抱歉，「${title}」库存不足，暂时无法下单。\n${SUPPORT_HINT}`,
+    };
 }
 
 export function buildOrderFailText(touser: string, reason?: string): TextMessage {
     return {
         kind: 'text',
         touser,
-        content: `下单失败${reason ? `（${reason}）` : ''}，请稍后重试或联系客服。`,
+        content: `下单失败${reason ? `（${reason}）` : ''}，请稍后重试。\n${SUPPORT_HINT}`,
     };
 }
 
@@ -172,7 +180,7 @@ export function buildSessionExpiredText(touser: string): TextMessage {
     return {
         kind: 'text',
         touser,
-        content: '最近的搜索结果已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。',
+        content: `最近的搜索结果已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。\n${SUPPORT_HINT}`,
     };
 }
 
@@ -424,7 +432,7 @@ export function buildNoNearbyStoresText(touser: string, city?: string | null): T
     return {
         kind: 'text',
         touser,
-        content: `${scope}暂未匹配到门店，仍可正常下单配送。\n发送想买的商品（如「买一瓶酱油」）即可继续。`,
+        content: `${scope}暂未匹配到门店，仍可正常下单配送。\n发送想买的商品（如「买一瓶酱油」）即可继续。\n${SUPPORT_HINT}`,
     };
 }
 
@@ -486,7 +494,7 @@ export function buildLocationUnavailableText(touser: string): TextMessage {
     return {
         kind: 'text',
         touser,
-        content: '抱歉，暂时无法识别这个位置，请直接回复收货地址文本（含省市区 + 详细地址）。',
+        content: '抱歉，暂时无法识别这个位置，请直接回复收货地址文本（含省市区 + 详细地址）。\n回复「客服」可联系门店客服协助。',
     };
 }
 
@@ -496,5 +504,87 @@ export function buildLocationInvalidText(touser: string): TextMessage {
         kind: 'text',
         touser,
         content: '位置信息不完整，请重新发送位置，或直接回复收货地址文本（含省市区 + 详细地址）。',
+    };
+}
+
+// ============ 一键客服（任何状态下回复「客服」生效，不打断原流程） ============
+
+export interface SupportCardInput {
+    /** 门店客服信息（已选门店/候选唯一时） */
+    store?: { name: string; phoneNumber?: string | null; businessHours?: string | null } | null;
+    /** 平台客服电话（门店未登记电话或未选门店时兜底） */
+    platformPhone?: string | null;
+    /** 当前这单的商品摘要（草稿中的下单商品） */
+    items?: Array<{ title: string; quantity: number; price: number }>;
+    /** 合计（分） */
+    total?: number;
+}
+
+/**
+ * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
+ * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。
+ */
+export function buildSupportCard(touser: string, input: SupportCardInput): TextMessage {
+    const lines: string[] = [];
+    const store = input.store;
+    const storePhone = String(store?.phoneNumber ?? '').trim();
+    const platformPhone = String(input.platformPhone ?? '').trim();
+
+    if (store) {
+        lines.push(`${store.name} · 门店客服`);
+        if (storePhone) {
+            lines.push(`电话　${storePhone}（点击拨打）`);
+        } else if (platformPhone) {
+            lines.push(`门店电话暂未登记，可联系平台客服　${platformPhone}（点击拨打）`);
+        } else {
+            lines.push('门店电话暂未登记，可在店铺页联系在线客服。');
+        }
+        if (store.businessHours) lines.push(`营业　${store.businessHours}`);
+    } else if (platformPhone) {
+        lines.push('平台客服');
+        lines.push(`电话　${platformPhone}（点击拨打）`);
+    } else {
+        lines.push('暂未配置客服电话，可在店铺页联系在线客服，或稍后再回「客服」试试。');
+    }
+
+    if (input.items?.length) {
+        const summary = input.items.map(i => `${i.title} ×${i.quantity}`).join('，');
+        const amount = input.total != null ? `，${formatPrice(input.total)}` : '';
+        lines.push(`关于这单：${summary}${amount}`);
+    }
+    if (store || platformPhone) {
+        lines.push('打电话时说明来自微信购物助手，客服可直接查这单。');
+    }
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 有多个候选门店：让用户用「客服N」指定要联系哪家店 */
+export function buildSupportStorePickText(touser: string, stores: NearbyStore[]): TextMessage {
+    const lines = [
+        '要联系哪家店？回复「客服N」选择：',
+        ...stores.map((store, i) => `${i + 1}. ${store.name}${store.address ? `（${store.address}）` : ''}`),
+    ];
+    lines.push('回复「客服」查看可选门店。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 「客服N」编号无效 */
+export function buildSupportInvalidStoreText(touser: string, count: number): TextMessage {
+    const range = count > 0 ? `「客服1」到「客服${count}」` : '「客服」';
+    return {
+        kind: 'text',
+        touser,
+        content: `没有找到这家店，请回复${range}选择，或回复「客服」查看可选门店。`,
+    };
+}
+
+/** 10 分钟内重复请求客服：只回短提示，不重复刷屏 */
+export function buildSupportRepeatText(touser: string, input: { name?: string | null; phoneNumber?: string | null }): TextMessage {
+    const name = input.name ? `${input.name} ` : '';
+    const phone = input.phoneNumber ? `${input.phoneNumber} ` : '';
+    return {
+        kind: 'text',
+        touser,
+        content: `客服联系方式刚发过：${name}${phone}可直接拨打。\n若暂时没接通，稍后再回「客服」即可。`,
     };
 }

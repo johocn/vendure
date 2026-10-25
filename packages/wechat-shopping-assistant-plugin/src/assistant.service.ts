@@ -53,6 +53,10 @@ import {
     buildStoreNeedLocationText,
     buildStoreSelectedText,
     buildStoreSelectionInvalidText,
+    buildSupportCard,
+    buildSupportInvalidStoreText,
+    buildSupportRepeatText,
+    buildSupportStorePickText,
     buildTextListMessage,
     buildWelcomeText,
 } from './card-builder';
@@ -73,10 +77,14 @@ import {
     AssistantFlowState,
     NearbyStore,
     OutboundMessage,
+    StoreContact,
     WechatCredentials,
     WechatShoppingAssistantOptions,
 } from './types';
 import { WechatSender } from './wechat-sender';
+
+/** 同一门店「客服」重复请求窗口：窗口内只回短提示，避免刷屏（PRD FR-07） */
+const SUPPORT_REPEAT_WINDOW_MS = 10 * 60 * 1000;
 
 /**
  * 微信购物助手编排器：
@@ -143,6 +151,10 @@ export class AssistantService {
         }
         if (msg.msgType === 'location') return this.handleLocationMessage(msg);
         if (msg.msgType !== 'text' || !msg.content) return null;
+
+        // 全局「一键客服」：任何状态下优先响应，且不改变会话状态（不打断原流程）
+        const earlyIntent = recognizeIntent(msg.content);
+        if (earlyIntent.kind === 'support') return this.handleSupport(msg, earlyIntent.storeIndex);
 
         const ttl = this.opts.sessionTtlMinutes ?? 30;
 
@@ -854,6 +866,92 @@ export class AssistantService {
         await this.sessionService.setFlow(msg.fromUserName, null, { ...draft, storeId: store.id }, ttl);
         Logger.info(`Assistant store selected: openid=${msg.fromUserName} storeId=${store.id}`, loggerCtx);
         return buildStoreSelectedText(msg.fromUserName, store);
+    }
+
+    // ============ 一键客服（全局，任何状态生效，不打断原流程） ============
+
+    /**
+     * 客服卡片：已选门店 → 门店电话/营业时间；多候选未选 → 「客服N」选择；
+     * 无门店 → 平台客服电话兜底；同一门店 10 分钟内重复只回短提示。
+     * 全程不改会话状态（用户下一次输入仍按原流程处理）。
+     */
+    private async handleSupport(msg: WechatInboundMessage, storeIndex?: number): Promise<OutboundMessage> {
+        const ttl = this.opts.sessionTtlMinutes ?? 30;
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        const draft: AssistantFlowDraft = session?.draft ?? {};
+        const stores = draft.nearbyStores ?? [];
+        const channelId = session?.channelId ?? (await this.resolveChannelId(msg.channelToken));
+        const ctx = await this.createShopCtx(channelId);
+        const platformPhone = this.platformServicePhone(ctx);
+
+        let contact: StoreContact | null = null;
+        if (storeIndex != null) {
+            const picked = stores[storeIndex - 1];
+            if (!picked) return buildSupportInvalidStoreText(msg.fromUserName, stores.length);
+            contact = (await this.storeLocator.findContact(ctx, picked.id)) ?? this.contactFromNearby(picked);
+        } else if (draft.storeId) {
+            contact =
+                (await this.storeLocator.findContact(ctx, draft.storeId)) ??
+                this.contactFromNearby(stores.find(store => store.id === draft.storeId));
+        } else if (stores.length === 1) {
+            contact = (await this.storeLocator.findContact(ctx, stores[0].id)) ?? this.contactFromNearby(stores[0]);
+        }
+
+        // 多个候选且未选门店：先让用户用「客服N」指定（不进入状态机）
+        if (!contact && stores.length > 1) {
+            return buildSupportStorePickText(msg.fromUserName, stores);
+        }
+
+        const now = Date.now();
+        const sameTarget = String(draft.supportStoreId ?? '') === String(contact?.id ?? '');
+        if (now - Number(draft.supportAt ?? 0) < SUPPORT_REPEAT_WINDOW_MS && sameTarget) {
+            return buildSupportRepeatText(msg.fromUserName, {
+                name: contact?.name ?? null,
+                phoneNumber: contact?.phoneNumber ?? draft.supportPhone ?? platformPhone,
+            });
+        }
+
+        await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        const picked = (session?.results ?? []).filter(r => (draft.indices ?? []).includes(r.index));
+        const items = picked.map(r => ({ title: r.title, quantity: r.quantity ?? 1, price: r.price }));
+        const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const phone = contact?.phoneNumber ?? platformPhone;
+        await this.sessionService.saveDraft(
+            msg.fromUserName,
+            { ...draft, supportAt: now, supportStoreId: contact?.id ?? null, supportPhone: phone ?? null },
+            ttl,
+        );
+        Logger.info(
+            `Assistant support card: openid=${msg.fromUserName} store=${contact?.id ?? 'none'} phone=${Boolean(phone)}`,
+            loggerCtx,
+        );
+        return buildSupportCard(msg.fromUserName, {
+            store: contact
+                ? { name: contact.name, phoneNumber: contact.phoneNumber, businessHours: contact.businessHours }
+                : null,
+            platformPhone,
+            items,
+            total: items.length ? total : undefined,
+        });
+    }
+
+    /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
+    private platformServicePhone(ctx: RequestContext): string | null {
+        const cf = (ctx.channel?.customFields as any) ?? {};
+        const phone = cf.servicePhone ?? cf.basicConfig?.contactPhone ?? null;
+        return phone ? String(phone) : null;
+    }
+
+    /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */
+    private contactFromNearby(store?: NearbyStore | null): StoreContact | null {
+        if (!store) return null;
+        return {
+            id: store.id,
+            name: store.name,
+            address: store.address,
+            phoneNumber: store.phoneNumber ?? null,
+            businessHours: store.businessHours ?? null,
+        };
     }
 
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */

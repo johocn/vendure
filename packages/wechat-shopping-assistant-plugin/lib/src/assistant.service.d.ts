@@ -75,6 +75,16 @@ export declare class AssistantService {
     private handleNearbyStores;
     /** store_pick：回复「门店N」/「N」选定门店（记入草稿，供后续下单就近安排） */
     private onStorePick;
+    /**
+     * 客服卡片：已选门店 → 门店电话/营业时间；多候选未选 → 「客服N」选择；
+     * 无门店 → 平台客服电话兜底；同一门店 10 分钟内重复只回短提示。
+     * 全程不改会话状态（用户下一次输入仍按原流程处理）。
+     */
+    private handleSupport;
+    /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
+    private platformServicePhone;
+    /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */
+    private contactFromNearby;
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     private orderConfirmCard;
     private handleSearch;

@@ -62,6 +62,17 @@ describe('recognizeIntent', () => {
         expect(recognizeIntent('添加地址。')).toEqual({ kind: 'address_add' });
         expect(recognizeIntent('新增')).toEqual({ kind: 'address_add' });
     });
+
+    test('support intents（全局指令）', () => {
+        expect(recognizeIntent('客服')).toEqual({ kind: 'support' });
+        expect(recognizeIntent('人工')).toEqual({ kind: 'support' });
+        expect(recognizeIntent('转人工！')).toEqual({ kind: 'support' });
+        expect(recognizeIntent('投诉')).toEqual({ kind: 'support' });
+        expect(recognizeIntent('客服2')).toEqual({ kind: 'support', storeIndex: 2 });
+        expect(recognizeIntent('客服 ３')).toEqual({ kind: 'support', storeIndex: 3 });
+        // 不是纯客服指令时仍走搜索
+        expect(recognizeIntent('客服电话是多少')).toEqual({ kind: 'search', query: '客服电话是多少' });
+    });
 });
 
 describe('buildDedupKey', () => {

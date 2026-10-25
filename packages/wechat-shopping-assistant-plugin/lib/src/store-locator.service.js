@@ -67,18 +67,45 @@ let StoreLocatorService = class StoreLocatorService {
         return locations
             .filter(l => l.coordinates && isFiniteNumber(l.coordinates.lat) && isFiniteNumber(l.coordinates.lng))
             .map(l => {
-            var _a;
+            var _a, _b, _c;
             return ({
                 id: String(l.id),
                 name: l.name,
                 address: (_a = l.address) !== null && _a !== void 0 ? _a : '',
                 distanceKm: roundKm(haversineKm(lat, lng, Number(l.coordinates.lat), Number(l.coordinates.lng))),
                 familiar: familiar.has(String(l.id)),
+                phoneNumber: (_b = l.phoneNumber) !== null && _b !== void 0 ? _b : null,
+                businessHours: (_c = l.businessHours) !== null && _c !== void 0 ? _c : null,
             });
         })
             .filter(store => store.distanceKm <= radius)
             .sort((a, b) => Number(b.familiar) - Number(a.familiar) || a.distanceKm - b.distanceKm)
             .slice(0, MAX_STORES);
+    }
+    /** 按 id 回查门店客服联系方式（复检渠道可见性，避免跨租户取到别家门店电话） */
+    async findContact(ctx, storeId) {
+        var _a, _b, _c;
+        const service = this.getPickupService();
+        if (!service)
+            return null;
+        try {
+            const store = await service.findOne(ctx, storeId);
+            if (!store || store.enabled === false || store.type !== 'store')
+                return null;
+            if (!isVisibleToChannel(store, ctx))
+                return null;
+            return {
+                id: String(store.id),
+                name: store.name,
+                address: (_a = store.address) !== null && _a !== void 0 ? _a : '',
+                phoneNumber: (_b = store.phoneNumber) !== null && _b !== void 0 ? _b : null,
+                businessHours: (_c = store.businessHours) !== null && _c !== void 0 ? _c : null,
+            };
+        }
+        catch (e) {
+            core_2.Logger.warn(`Assistant store contact failed: ${String(e)}`, constants_1.loggerCtx);
+            return null;
+        }
     }
     /** 顾客历史订单选过的门店 id（按使用次数降序），用于「熟店优先」 */
     async familiarStoreIds(ctx, customerId) {
@@ -114,6 +141,16 @@ exports.StoreLocatorService = StoreLocatorService = __decorate([
 ], StoreLocatorService);
 function isFiniteNumber(value) {
     return Number.isFinite(Number(value));
+}
+/** 复刻 PickupLocationService 的可见规则（平台全可见；租户限公共/自建且已关联渠道） */
+function isVisibleToChannel(store, ctx) {
+    var _a, _b, _c, _d;
+    if (String((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.code) !== null && _b !== void 0 ? _b : '') === '__default_channel__')
+        return true;
+    const ownedOrPublic = store.isPublic === true || String((_c = store.ownerChannelId) !== null && _c !== void 0 ? _c : '') === String(ctx.channelId);
+    if (!ownedOrPublic)
+        return false;
+    return ((_d = store.channels) !== null && _d !== void 0 ? _d : []).some((channel) => String(channel.id) === String(ctx.channelId));
 }
 function roundKm(value) {
     return Math.round(value * 10) / 10;
