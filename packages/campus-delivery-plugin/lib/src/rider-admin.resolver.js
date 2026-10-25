@@ -43,6 +43,10 @@ let RiderAdminResolver = class RiderAdminResolver {
     async rejectRiderWithdraw(ctx, id, remark) {
         return this.wallet.adminReject(ctx, id, remark);
     }
+    /** 打款失败回退：PAID → FAILED，退回冻结金额（转账被退回/账号错误时使用） */
+    async campusMarkWithdrawFailed(ctx, id, reason) {
+        return this.wallet.adminMarkFailed(ctx, id, reason);
+    }
 };
 exports.RiderAdminResolver = RiderAdminResolver;
 __decorate([
@@ -99,6 +103,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], RiderAdminResolver.prototype, "rejectRiderWithdraw", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusAuditRider),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], RiderAdminResolver.prototype, "campusMarkWithdrawFailed", null);
 exports.RiderAdminResolver = RiderAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [rider_service_1.RiderService,

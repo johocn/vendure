@@ -111,7 +111,11 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusAddressChange.prototype, "changedBy", void 0);
 exports.CampusAddressChange = CampusAddressChange = __decorate([
-    (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Entity)()
+    // 与迁移显式索引同名声明：否则 schema 校验会把这些索引判为多余并打印 DROP INDEX 噪音
+    ,
+    (0, typeorm_1.Index)('idx_campus_address_change_channel', ['channelId', 'status']),
+    (0, typeorm_1.Index)('idx_campus_address_change_order', ['orderId']),
     __metadata("design:paramtypes", [Object])
 ], CampusAddressChange);
 //# sourceMappingURL=campus-address-change.entity.js.map

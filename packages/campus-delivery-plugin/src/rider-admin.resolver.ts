@@ -69,4 +69,15 @@ export class RiderAdminResolver {
     ) {
         return this.wallet.adminReject(ctx, id, remark);
     }
+
+    /** 打款失败回退：PAID → FAILED，退回冻结金额（转账被退回/账号错误时使用） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusAuditRider as any)
+    async campusMarkWithdrawFailed(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('reason') reason: string,
+    ) {
+        return this.wallet.adminMarkFailed(ctx, id, reason);
+    }
 }

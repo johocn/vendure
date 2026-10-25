@@ -39,6 +39,11 @@ export declare class RiderWalletService {
     adminApprove(ctx: RequestContext, id: any, remark?: string, payoutRef?: string, payoutProof?: string): Promise<RiderWithdrawalRequest | null>;
     /** 管理端：驳回（退回冻结金额 + 留痕；退回资金固定默认渠道，与申请扣款同渠道） */
     adminReject(ctx: RequestContext, id: any, remark?: string): Promise<RiderWithdrawalRequest | null>;
+    /**
+     * 管理端：打款失败回退（已标记 PAID 但实际转账失败，如账号错误/被退回）。
+     * 置 FAILED + 必填失败原因留痕 + 退回冻结金额（骑手可重新申请）；PAID → FAILED 原子认领防双重退回。
+     */
+    adminMarkFailed(ctx: RequestContext, id: any, reason?: string): Promise<RiderWithdrawalRequest | null>;
     private reviewer;
     /** 审核前置校验（平台级：不限定 channelId） */
     private getForReview;

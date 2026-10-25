@@ -21,6 +21,9 @@ export declare class RiderService {
     setRiderStatus(ctx: RequestContext, customerId: number, status: 'approved' | 'suspended' | 'none'): Promise<{
         status: "approved" | "none" | "suspended";
     }>;
+    /** 回收某骑手名下在途任务回大厅（单条条件写，避免逐单先读后写）。
+     *  仅活跃流转态 + 仍指派本人 + 未取消的单被重置；已送达/异常终态不受影响。 */
+    private reclaimActiveTasks;
     assertApprovedRider(ctx: RequestContext): Promise<Customer>;
     myRiderProfile(ctx: RequestContext): Promise<{
         customerId: import("@vendure/core").ID;

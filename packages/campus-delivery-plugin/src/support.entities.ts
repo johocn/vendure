@@ -1,8 +1,9 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, Index } from 'typeorm';
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
 
 /** 客服工单（站内留言，非实时 IM）：顾客提交 → 运营回复 → 关闭。 */
 @Entity()
+@Index('idx_campus_support_ticket_channel', ['channelId', 'status'])
 export class CampusSupportTicket extends VendureEntity {
     [key: string]: any;
     @Column('int') channelId: ID;
@@ -25,6 +26,7 @@ export class CampusSupportTicket extends VendureEntity {
 
 /** 骑手申诉：信用扣分申诉单，后台审核通过后回补信用分。 */
 @Entity()
+@Index('idx_campus_rider_appeal_channel', ['channelId', 'status'])
 export class CampusRiderAppeal extends VendureEntity {
     [key: string]: any;
     @Column('int') channelId: ID;
@@ -47,6 +49,7 @@ export class CampusRiderAppeal extends VendureEntity {
 
 /** 下单黑名单：user（customerId）/ phone。命中后在支付前置闸门拦截。 */
 @Entity()
+@Index('idx_campus_blacklist_channel', ['channelId', 'active'])
 export class CampusBlacklist extends VendureEntity {
     [key: string]: any;
     @Column('int') channelId: ID;

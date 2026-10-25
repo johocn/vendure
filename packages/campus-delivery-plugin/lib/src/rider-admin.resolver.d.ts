@@ -20,4 +20,6 @@ export declare class RiderAdminResolver {
     approveRiderWithdraw(ctx: RequestContext, id: ID, remark?: string, payoutRef?: string, payoutProof?: string): Promise<import("./rider-withdrawal.entity").RiderWithdrawalRequest | null>;
     /** 驳回：状态 REJECTED 并退回冻结金额 */
     rejectRiderWithdraw(ctx: RequestContext, id: ID, remark?: string): Promise<import("./rider-withdrawal.entity").RiderWithdrawalRequest | null>;
+    /** 打款失败回退：PAID → FAILED，退回冻结金额（转账被退回/账号错误时使用） */
+    campusMarkWithdrawFailed(ctx: RequestContext, id: ID, reason: string): Promise<import("./rider-withdrawal.entity").RiderWithdrawalRequest | null>;
 }

@@ -90,7 +90,26 @@ let RiderService = class RiderService {
         await this.connection.getRepository(ctx, core_1.Customer).update(customerId, {
             customFields,
         });
+        // 停用/重置必须回收在途任务：否则已停用骑手名下的 assigned/in_progress 单会卡死，
+        // 只能靠运营手工回厅。复用回厅语义（活跃态→open、清骑手指派字段、不复活已取消/终态单）。
+        if (status !== 'approved')
+            await this.reclaimActiveTasks(customerId);
         return { status };
+    }
+    /** 回收某骑手名下在途任务回大厅（单条条件写，避免逐单先读后写）。
+     *  仅活跃流转态 + 仍指派本人 + 未取消的单被重置；已送达/异常终态不受影响。 */
+    async reclaimActiveTasks(customerId) {
+        const ACTIVE_HALL_STATUSES = [
+            'open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed', 'third_party',
+            'merchant_delivering', 'owned_pool', 'owned_dispatched', 'pending_dispatch',
+        ];
+        const out = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsHallstatus" = $1, "customFieldsDeliverystaffid" = NULL, '
+            + '"customFieldsDeliverystatus" = NULL, "customFieldsAssignedat" = NULL '
+            + 'WHERE "customFieldsDeliverystaffid" = $2 AND "customFieldsDeliverystatus" = ANY($3::text[]) '
+            + 'AND COALESCE("customFieldsHallstatus", \'\') = ANY($4::text[]) AND "state" <> \'Cancelled\' '
+            + 'RETURNING id', ['open', String(customerId), ['assigned', 'in_progress'], ACTIVE_HALL_STATUSES]);
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        return Array.isArray(rows) ? rows.length : 0;
     }
     async assertApprovedRider(ctx) {
         var _a;

@@ -499,6 +499,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     reviewedAt: DateTime
                     payoutRef: String
                     payoutProof: String
+                    failReason: String
                     createdAt: DateTime
                 }
 
@@ -856,6 +857,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusMerchantMarkOwnedArrived(orderId: ID!): CampusFirstLegResult!
                     approveRiderWithdraw(id: ID!, remark: String, payoutRef: String, payoutProof: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+                    """打款失败回退：PAID → FAILED 并退回骑手余额"""
+                    campusMarkWithdrawFailed(id: ID!, reason: String!): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
                     campusAddBlacklist(type: String!, value: String!, reason: String): CampusBlacklistEntry!
@@ -1141,6 +1144,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     reviewedAt: DateTime
                     payoutRef: String
                     payoutProof: String
+                    failReason: String
                     createdAt: DateTime
                 }
 

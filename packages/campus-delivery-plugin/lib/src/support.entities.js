@@ -61,6 +61,7 @@ __decorate([
 ], CampusSupportTicket.prototype, "repliedAt", void 0);
 exports.CampusSupportTicket = CampusSupportTicket = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)('idx_campus_support_ticket_channel', ['channelId', 'status']),
     __metadata("design:paramtypes", [Object])
 ], CampusSupportTicket);
 /** 骑手申诉：信用扣分申诉单，后台审核通过后回补信用分。 */
@@ -116,6 +117,7 @@ __decorate([
 ], CampusRiderAppeal.prototype, "reviewedAt", void 0);
 exports.CampusRiderAppeal = CampusRiderAppeal = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)('idx_campus_rider_appeal_channel', ['channelId', 'status']),
     __metadata("design:paramtypes", [Object])
 ], CampusRiderAppeal);
 /** 下单黑名单：user（customerId）/ phone。命中后在支付前置闸门拦截。 */
@@ -155,6 +157,7 @@ __decorate([
 ], CampusBlacklist.prototype, "active", void 0);
 exports.CampusBlacklist = CampusBlacklist = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)('idx_campus_blacklist_channel', ['channelId', 'active']),
     __metadata("design:paramtypes", [Object])
 ], CampusBlacklist);
 //# sourceMappingURL=support.entities.js.map

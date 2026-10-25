@@ -232,6 +232,53 @@ export class RiderWalletService {
         return repo.findOne({ where: { id: req.id as any } });
     }
 
+    /**
+     * 管理端：打款失败回退（已标记 PAID 但实际转账失败，如账号错误/被退回）。
+     * 置 FAILED + 必填失败原因留痕 + 退回冻结金额（骑手可重新申请）；PAID → FAILED 原子认领防双重退回。
+     */
+    async adminMarkFailed(ctx: RequestContext, id: any, reason?: string) {
+        const failReason = String(reason ?? '').trim();
+        if (!failReason) throw new UserInputError('请填写打款失败原因');
+        if (failReason.length > 255) throw new UserInputError('失败原因不能超过 255 个字符');
+        const pc = await this.platformCtx();
+        const repo = this.connection.getRepository(pc, RiderWithdrawalRequest);
+        const req = await repo.findOne({ where: { id } });
+        if (!req) throw new UserInputError('提现申请不存在');
+        if (req.status !== 'PAID') throw new UserInputError('仅已打款的申请可标记打款失败');
+        // 原子认领：仅 PAID 可转 FAILED，并发双标只有一个成功（否则会重复退回余额）
+        const claim = await repo
+            .createQueryBuilder()
+            .update(RiderWithdrawalRequest)
+            .set({
+                status: 'FAILED',
+                failReason,
+                reviewedBy: this.reviewer(ctx),
+                reviewedAt: new Date(),
+            } as any)
+            .where('id = :id', { id: req.id })
+            .andWhere('status = :s', { s: 'PAID' })
+            .execute();
+        if (!(claim?.affected ?? 0)) throw new UserInputError('该申请已处理');
+        const port = getCouponBalancePort();
+        if (!port) {
+            await repo
+                .update({ id: req.id, status: 'FAILED' } as any, { status: 'PAID' } as any)
+                .catch(() => undefined);
+            throw new UserInputError('余额功能未开通，无法退回，请人工处理');
+        }
+        try {
+            await port.addBalance(pc, req.customerId, req.amount);
+        } catch (e: any) {
+            // 退回失败恢复 PAID 以便重试（避免「标失败但钱没回到骑手」）
+            await repo
+                .update({ id: req.id, status: 'FAILED' } as any, { status: 'PAID' } as any)
+                .catch(() => undefined);
+            Logger.error(`打款失败退回失败（已恢复 PAID 可重试）：${e?.message ?? e}`, 'RiderWallet');
+            throw new UserInputError('退回失败，请稍后重试');
+        }
+        return repo.findOne({ where: { id: req.id as any } });
+    }
+
     private reviewer(ctx: RequestContext): string | null {
         return ctx.activeUserId ? String(ctx.activeUserId) : null;
     }

@@ -1,4 +1,4 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, Index } from 'typeorm';
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
 
 /**
@@ -6,6 +6,9 @@ import { DeepPartial, ID, VendureEntity } from '@vendure/core';
  * 差额不阻塞改址，运营在后台统一退款/补收后标记结清。
  */
 @Entity()
+// 与迁移显式索引同名声明：否则 schema 校验会把这些索引判为多余并打印 DROP INDEX 噪音
+@Index('idx_campus_address_change_channel', ['channelId', 'status'])
+@Index('idx_campus_address_change_order', ['orderId'])
 export class CampusAddressChange extends VendureEntity {
     @Column('int') channelId: ID;
     @Column('int') orderId: ID;

@@ -244,4 +244,49 @@ describe('RiderWalletService', () => {
         expect(repo.update).not.toHaveBeenCalledWith(14, { status: 'pending' });
         expect(mocks.port.addBalance).toHaveBeenCalledTimes(1);
     });
+
+    // P8：打款失败回退（PAID → FAILED 并退回余额），防「已打款但转账被退回」账实不符
+    it('markFailed 必填失败原因：缺失直接抛错且不进入状态更新', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PAID', channelId: 1 });
+        await expect(svc.adminMarkFailed(ctx, 5 as any, '   ')).rejects.toThrow('打款失败原因');
+        expect(qb.execute).not.toHaveBeenCalled();
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    it('markFailed 仅 PAID 可回退（PENDING 直接拒绝）', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        await expect(svc.adminMarkFailed(ctx, 5 as any, '账号错误')).rejects.toThrow('仅已打款的申请');
+        expect(qb.execute).not.toHaveBeenCalled();
+    });
+
+    it('markFailed 成功：FAILED + 原因留痕 + 原子认领（WHERE status=PAID）后退回余额', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PAID', channelId: 1 });
+        await svc.adminMarkFailed(ctx, 5 as any, '账号被退回');
+        expect(qb.where).toHaveBeenCalledWith('id = :id', { id: 5 });
+        expect(qb.andWhere).toHaveBeenCalledWith('status = :s', { s: 'PAID' });
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'FAILED', failReason: '账号被退回' }));
+        expect(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
+    });
+
+    it('markFailed 并发已处理（affected=0）抛错且不退回', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PAID', channelId: 1 });
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        await expect(svc.adminMarkFailed(ctx, 5 as any, '账号错误')).rejects.toThrow('该申请已处理');
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    it('markFailed 退回失败：补偿恢复 PAID 并抛「退回失败」以便重试', async () => {
+        const { svc, repo } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PAID', channelId: 1 });
+        mocks.port.addBalance.mockRejectedValueOnce(new Error('db down'));
+        await expect(svc.adminMarkFailed(ctx, 5 as any, '账号错误')).rejects.toThrow('退回失败');
+        expect(repo.update).toHaveBeenLastCalledWith(
+            { id: 5, status: 'FAILED' },
+            { status: 'PAID' },
+        );
+    });
 });

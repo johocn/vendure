@@ -1,8 +1,9 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, Index } from 'typeorm';
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
 
 /** 骑手排班：按日期 + 时段登记，后台视图展示「排班 vs 实际在线」。 */
 @Entity()
+@Index('idx_campus_rider_shift_day', ['channelId', 'shiftDate'])
 export class CampusRiderShift extends VendureEntity {
     [key: string]: any;
     @Column('int') channelId: ID;
@@ -20,6 +21,7 @@ export class CampusRiderShift extends VendureEntity {
 
 /** 骑手在线会话：上线开、下线/心跳超时关，用于统计实际在线时长。 */
 @Entity()
+@Index('idx_campus_rider_session_rider', ['channelId', 'riderCustomerId'])
 export class CampusRiderSession extends VendureEntity {
     [key: string]: any;
     @Column('int') channelId: ID;

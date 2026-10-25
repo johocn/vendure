@@ -102,6 +102,8 @@ describe('RiderService.applyRider 入参校验 / setRiderStatus（P3）', () => 
                     update,
                     createQueryBuilder: vi.fn().mockReturnValue(qb),
                 }),
+                // 停用/重置时回收在途任务：裸 SQL 更新 order 表
+                rawConnection: { query: vi.fn().mockResolvedValue([[], []]) },
             } as any,
             { findOneByUserId: vi.fn().mockResolvedValue({ id: 1, customFields: { riderStatus } }) } as any,
             riderOpsStub(),

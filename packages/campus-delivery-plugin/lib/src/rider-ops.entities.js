@@ -45,6 +45,7 @@ __decorate([
 ], CampusRiderShift.prototype, "note", void 0);
 exports.CampusRiderShift = CampusRiderShift = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)('idx_campus_rider_shift_day', ['channelId', 'shiftDate']),
     __metadata("design:paramtypes", [Object])
 ], CampusRiderShift);
 /** 骑手在线会话：上线开、下线/心跳超时关，用于统计实际在线时长。 */
@@ -80,6 +81,7 @@ __decorate([
 ], CampusRiderSession.prototype, "minutes", void 0);
 exports.CampusRiderSession = CampusRiderSession = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)('idx_campus_rider_session_rider', ['channelId', 'riderCustomerId']),
     __metadata("design:paramtypes", [Object])
 ], CampusRiderSession);
 /** 用户给骑手评分（1-5 + 标签，一单一条幂等）。 */
