@@ -6,10 +6,12 @@ import {
     buildAddrOpMenu,
     buildAwaitingAddressText,
     buildBindGuideText,
+    buildChannelSwitchText,
     buildInvalidOrderText,
     buildNewsMessage,
     buildOrderConfirmCard,
     buildOrderSuccessText,
+    buildOutOfRangeText,
     buildPhoneTakenText,
     buildShopInfoCard,
     buildSupportCard,
@@ -217,5 +219,31 @@ describe('地址簿管理 + 下单选址（方案 B）', () => {
         expect(withReg.content).toContain('回复 2 换新号码');
         const noReg = buildAddrNewPhoneText('oX');
         expect(noReg.content).toContain('请回复该地址的联系电话');
+    });
+});
+
+describe('城市路由相关文案', () => {
+    test('超范围卡：不出现下单失败，给可服务区域与出口', () => {
+        const msg = buildOutOfRangeText('oX', {
+            address: '北京市朝阳区建国路1号',
+            serviceAreaText: '本店配送范围为以门店为中心 3 公里内。',
+            channelName: '东利民粮油店',
+        });
+        expect(msg.content).toContain('不在配送范围');
+        expect(msg.content).toContain('3 公里');
+        expect(msg.content).toContain('东利民粮油店');
+        expect(msg.content).not.toContain('下单失败');
+        expect(msg.content).toContain('回复「客服」');
+    });
+
+    test('切店提示：说明已切换并请重新回复编号', () => {
+        const msg = buildChannelSwitchText('oX', '东利民粮油店');
+        expect(msg.content).toContain('已为你切换到「东利民粮油店」');
+        expect(msg.content).toContain('重新回复编号');
+    });
+
+    test('预计送达：有时效显示分钟，无则电话确认', () => {
+        expect(buildOrderSuccessText('oX', { orderCode: 'A1', total: 100, items: [], etaMinutes: 40 }).content).toContain('约 40 分钟');
+        expect(buildOrderSuccessText('oX', { orderCode: 'A1', total: 100, items: [] }).content).toContain('电话确认送达时间');
     });
 });

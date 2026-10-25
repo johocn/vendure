@@ -166,11 +166,18 @@ export function buildOrderSuccessText(
         payUrl?: string;
         /** 确认时选定的支付方式展示名（渠道配置） */
         paymentName?: string;
+        /** 门店预计送达分钟数（渠道配置），缺省时提示电话确认 */
+        etaMinutes?: number | null;
     },
 ): TextMessage {
     const lines = ['下单成功！', ...input.items.map(i => `· ${i.title} ×${i.quantity}  ${formatPrice(i.price * i.quantity)}`)];
     lines.push(`合计：${formatPrice(input.total)}`);
     if (input.paymentName) lines.push(`支付方式：${input.paymentName}`);
+    lines.push(
+        input.etaMinutes != null
+            ? `预计送达：约 ${input.etaMinutes} 分钟`
+            : '预计送达：下单后门店会电话确认送达时间',
+    );
     lines.push(`订单号：${input.orderCode}`);
     if (input.payUrl) lines.push(`点击支付：${input.payUrl}`);
     return { kind: 'text', touser, content: lines.join('\n') };
@@ -699,5 +706,28 @@ export function buildSupportNoteCancelledText(touser: string): TextMessage {
         kind: 'text',
         touser,
         content: '已取消留言，可继续刚才的操作。\n回复「客服」可查看联系方式。',
+    };
+}
+
+/** 地址超出配送范围：说明原因 + 可服务区域 + 出口，不出现「下单失败」 */
+export function buildOutOfRangeText(
+    touser: string,
+    input: { address: string; serviceAreaText: string; channelName?: string | null },
+): TextMessage {
+    const lines = [
+        `很抱歉，您填写的地址（${input.address}）不在配送范围。`,
+        input.serviceAreaText,
+    ];
+    if (input.channelName) lines.push(`当前店铺：${input.channelName}`);
+    lines.push('可以换个更近的收货地址，或回复「客服」/「留言」让我们帮您处理。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 已切换到目标租户：提示价格已更新、需重新选编号 */
+export function buildChannelSwitchText(touser: string, channelName: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `根据您的收货地址，已为你切换到「${channelName}」，商品与价格以该店为准。\n请重新回复编号下单。`,
     };
 }
