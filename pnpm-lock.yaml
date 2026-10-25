@@ -2747,6 +2747,9 @@ importers:
 
   packages/wechat-shopping-assistant-plugin:
     devDependencies:
+      '@vendure/address-plugin':
+        specifier: workspace:*
+        version: link:../address-plugin
       '@vendure/common':
         specifier: workspace:*
         version: link:../common
