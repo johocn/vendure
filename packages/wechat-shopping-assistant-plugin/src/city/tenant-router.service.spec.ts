@@ -32,6 +32,12 @@ describe('TenantRouterService.resolve', () => {
         expect(r.chosen).toBeNull();
     });
 
+    test('当前渠道不服务该城市、另有渠道显式服务 → 切到该渠道', async () => {
+        const router = makeRouter([channel('111', ['220200']), channel('222', ['220100'])]);
+        const r = await router.resolve({} as any, { cityCode: '220100', currentChannelId: '111' });
+        expect(r.chosen?.channelId).toBe('222');
+    });
+
     test('所有渠道都未配置服务城市 → 不切店', async () => {
         const router = makeRouter([channel('1', []), channel('7', [])]);
         const r = await router.resolve({} as any, { cityCode: '220200', currentChannelId: '1' });
