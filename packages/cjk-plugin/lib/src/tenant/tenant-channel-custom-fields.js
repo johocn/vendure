@@ -160,6 +160,30 @@ exports.tenantChannelCustomFields = {
             ],
         },
         {
+            name: 'minOrderAmount',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '起送价（分）' }],
+            description: [
+                {
+                    languageCode: core_1.LanguageCode.zh_Hans,
+                    value: '公众号文字订购租户排序用；单位分（如 2000 = 20 元），未配置按 0 处理',
+                },
+            ],
+        },
+        {
+            name: 'deliveryMinutes',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '预计送达（分钟）' }],
+            description: [
+                {
+                    languageCode: core_1.LanguageCode.zh_Hans,
+                    value: '下单成功消息展示「约 X 分钟送达」；未配置则提示「门店会电话确认送达时间」',
+                },
+            ],
+        },
+        {
             name: 'shopIntro',
             type: 'string',
             nullable: true,
