@@ -66,7 +66,7 @@ function createWechatpayHandler(options, code = 'wechatpay') {
             },
         },
         async createPayment(ctx, order, amount, args, metadata, method) {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
             try {
                 // Dev Bypass: 跳过真实微信 API 调用，返回模拟支付页面链接
                 // 注意：Shop API 的 Payment.metadata 字段 resolver 只返回 metadata.public
@@ -155,13 +155,15 @@ function createWechatpayHandler(options, code = 'wechatpay') {
                 }
                 if (tradeType === 'APP') {
                     const result = await pay.transactions_app(baseParams);
+                    // wechatpay-node-v3 v2.2 起：成功时 data 被替换为已签名参数（prepayid）
+                    const d = (_d = result.data) !== null && _d !== void 0 ? _d : {};
                     return {
                         amount,
                         state: 'Authorized',
                         transactionId: `WECHATPAY-${order.code}`,
                         metadata: {
                             public: {
-                                prepayId: (_d = result.data) === null || _d === void 0 ? void 0 : _d.prepay_id,
+                                prepayId: (_e = d.prepay_id) !== null && _e !== void 0 ? _e : d.prepayid,
                                 payType: 'app',
                             },
                         },
@@ -175,14 +177,20 @@ function createWechatpayHandler(options, code = 'wechatpay') {
                     throw new Error('微信 JSAPI 支付需在微信内完成：未获取到用户 openid，请在微信内打开订单页重试');
                 }
                 const result = await pay.transactions_jsapi(Object.assign(Object.assign({}, baseParams), { payer: { openid } }));
-                const prepayId = (_e = result.data) === null || _e === void 0 ? void 0 : _e.prepay_id;
+                // 成功时库会把 data 替换为已签名参数（package=prepay_id=xxx / paySign），
+                // 故 prepay_id 需从 package 反解，否则会把 200 成功误判为失败
+                const resultData = (_f = result.data) !== null && _f !== void 0 ? _f : {};
+                const prepayId = resultData.prepay_id ||
+                    (typeof resultData.package === 'string' && resultData.package.startsWith('prepay_id=')
+                        ? resultData.package.slice('prepay_id='.length)
+                        : undefined);
                 // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
                 // 不校验会产出 prepay_id=undefined 的假签名参数 + 订单假 Authorized（P2 实锤）
                 if (!prepayId) {
                     // 优先取微信返回的 {code,message}，避免长 JSON 截断后看不到真正的错误码
                     const detail = result.error ||
-                        ((_g = (_f = result.errRaw) === null || _f === void 0 ? void 0 : _f.response) === null || _g === void 0 ? void 0 : _g.text) ||
-                        JSON.stringify((_h = result.data) !== null && _h !== void 0 ? _h : result);
+                        ((_h = (_g = result.errRaw) === null || _g === void 0 ? void 0 : _g.response) === null || _h === void 0 ? void 0 : _h.text) ||
+                        JSON.stringify((_j = result.data) !== null && _j !== void 0 ? _j : result);
                     throw new Error(`微信 JSAPI 下单失败(status=${result.status}): ${String(detail !== null && detail !== void 0 ? detail : '').slice(0, 600)}`);
                 }
                 const jsapiAppId = (override === null || override === void 0 ? void 0 : override.appId) || args.appId;

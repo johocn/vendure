@@ -246,14 +246,23 @@ export class WechatpayService {
         }
         if (type === 'APP') {
             const r = (await pay.transactions_app(baseParams)) as any;
-            return { payType: 'app', prepayId: r?.data?.prepay_id };
+            // wechatpay-node-v3 v2.2 起：成功时会把 data 替换为已签名参数（prepayid），不再保留 prepay_id
+            const d = r?.data ?? {};
+            return { payType: 'app', prepayId: d.prepay_id ?? d.prepayid };
         }
         // JSAPI
         const r = (await pay.transactions_jsapi({
             ...baseParams,
             payer: { openid: input.openid || '' },
         })) as any;
-        const prepayId = r?.data?.prepay_id;
+        // 成功时库会把 data 替换为已签名参数（package=prepay_id=xxx / paySign），
+        // 故 prepay_id 需从 package 反解，否则会把 200 成功误判为失败（实测 t1 券支付踩中）
+        const data = r?.data ?? {};
+        const prepayId =
+            data.prepay_id ||
+            (typeof data.package === 'string' && data.package.startsWith('prepay_id=')
+                ? data.package.slice('prepay_id='.length)
+                : undefined);
         // 同 handler：微信失败响应不 reject，缺 prepay_id 时显式报错（勿产出 prepay_id=undefined 假参数）
         if (!prepayId) {
             throw new Error(`微信 JSAPI 下单失败(status=${r?.status}): ${this.wxErrorText(r)}`);

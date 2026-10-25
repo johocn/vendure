@@ -161,13 +161,15 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
 
                 if (tradeType === 'APP') {
                     const result = await pay.transactions_app(baseParams);
+                    // wechatpay-node-v3 v2.2 起：成功时 data 被替换为已签名参数（prepayid）
+                    const d: any = (result as any).data ?? {};
                     return {
                         amount,
                         state: 'Authorized' as const,
                         transactionId: `WECHATPAY-${order.code}`,
                         metadata: {
                             public: {
-                                prepayId: (result as any).data?.prepay_id,
+                                prepayId: d.prepay_id ?? d.prepayid,
                                 payType: 'app',
                             },
                         },
@@ -185,7 +187,14 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                     ...baseParams,
                     payer: { openid },
                 });
-                const prepayId = (result as any).data?.prepay_id;
+                // 成功时库会把 data 替换为已签名参数（package=prepay_id=xxx / paySign），
+                // 故 prepay_id 需从 package 反解，否则会把 200 成功误判为失败
+                const resultData: any = (result as any).data ?? {};
+                const prepayId =
+                    resultData.prepay_id ||
+                    (typeof resultData.package === 'string' && resultData.package.startsWith('prepay_id=')
+                        ? resultData.package.slice('prepay_id='.length)
+                        : undefined);
                 // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
                 // 不校验会产出 prepay_id=undefined 的假签名参数 + 订单假 Authorized（P2 实锤）
                 if (!prepayId) {
