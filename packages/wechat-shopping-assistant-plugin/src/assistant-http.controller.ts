@@ -13,6 +13,8 @@ import { loggerCtx } from './constants';
  *   /shop-api/* 前缀下的 POST 会被 Apollo GraphQL 中间件拦截，勿挂）
  *   header: x-zhao-secret（与 strapi 端 ZHAO_SEARCH_SHARED_SECRET 同值）
  *   body:   { openid, text, msgId?, createTime?, channelToken?, boundPhone? }
+ *           位置消息：{ openid, msgType: 'location', latitude, longitude, scale?, label? }
+ *           或 { openid, location: { latitude, longitude, scale?, label? } }
  *   返回:   { kind: 'text', content } | { kind: 'news', articles: [{title,description,pic_url,url}] }
  *           | { handled: false }（无需回复，sso 回 success）
  *
@@ -42,18 +44,37 @@ export class AssistantHttpController {
         }
         const openid = String(body.openid || body.fromUserName || '');
         const text = typeof body.text === 'string' ? body.text : '';
-        if (!openid || !text) {
+        // 位置消息：支持 sso 透传的 location 子对象，也兼容顶层经纬度
+        const locSource = body.location && typeof body.location === 'object' ? body.location : body;
+        const latitude = toNumber(locSource.latitude ?? locSource.Latitude ?? body.Latitude);
+        const longitude = toNumber(locSource.longitude ?? locSource.Longitude ?? body.Longitude);
+        const isLocation =
+            String(body.msgType || '').toLowerCase() === 'location' ||
+            (latitude !== undefined && longitude !== undefined);
+        if (!openid) {
+            res.status(400).json({ handled: false, error: 'openid is required' });
+            return;
+        }
+        if (isLocation && !(latitude !== undefined && longitude !== undefined)) {
+            res.status(400).json({ handled: false, error: 'latitude and longitude are required' });
+            return;
+        }
+        if (!isLocation && !text) {
             res.status(400).json({ handled: false, error: 'openid and text are required' });
             return;
         }
         const msg: WechatInboundMessage = {
             channelToken: String(body.channelToken || ''),
-            msgType: 'text',
+            msgType: isLocation ? 'location' : 'text',
             fromUserName: openid,
             toUserName: '',
             content: text,
             msgId: body.msgId != null ? String(body.msgId) : undefined,
             createTime: body.createTime != null ? Number(body.createTime) : undefined,
+            latitude: isLocation ? latitude : undefined,
+            longitude: isLocation ? longitude : undefined,
+            scale: toNumber(locSource.scale ?? locSource.Scale),
+            label: typeof (locSource.label ?? body.label) === 'string' ? (locSource.label ?? body.label) : undefined,
         };
         // sso 转调附带的绑定用户手机号（路径 A：vendure 未绑定时免输入自动建档）
         const boundPhone = String(body.boundPhone || '').trim() || undefined;
@@ -81,4 +102,11 @@ export class AssistantHttpController {
             res.json({ handled: false });
         }
     }
+}
+
+/** 宽松数字转换：空值/非数字返回 undefined */
+function toNumber(value: unknown): number | undefined {
+    if (value === null || value === undefined || value === '') return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
 }

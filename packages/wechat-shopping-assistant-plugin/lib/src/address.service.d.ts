@@ -21,9 +21,19 @@ export declare class AddressBookService {
         streetLine1: string;
         phoneNumber: string;
         setDefault: boolean;
+        fullName?: string;
+        province?: string | null;
+        city?: string | null;
+        latitude?: number | null;
+        longitude?: number | null;
     }): Promise<string | null>;
-    /** 改收货地址文本 */
-    updateText(ctx: RequestContext, addressId: string, text: string): Promise<boolean>;
+    /** 改收货地址文本（可同步坐标：地理编码结果回写 latitude/longitude） */
+    updateText(ctx: RequestContext, addressId: string, text: string, geo?: {
+        latitude?: number | null;
+        longitude?: number | null;
+        province?: string | null;
+        city?: string | null;
+    }): Promise<boolean>;
     /** 改收货人/电话（姓名可省略：只传电话即只改电话） */
     updatePerson(ctx: RequestContext, addressId: string, input: {
         fullName?: string;

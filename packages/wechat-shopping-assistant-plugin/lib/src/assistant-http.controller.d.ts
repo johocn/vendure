@@ -7,6 +7,8 @@ import { AssistantService } from './assistant.service';
  *   /shop-api/* 前缀下的 POST 会被 Apollo GraphQL 中间件拦截，勿挂）
  *   header: x-zhao-secret（与 strapi 端 ZHAO_SEARCH_SHARED_SECRET 同值）
  *   body:   { openid, text, msgId?, createTime?, channelToken?, boundPhone? }
+ *           位置消息：{ openid, msgType: 'location', latitude, longitude, scale?, label? }
+ *           或 { openid, location: { latitude, longitude, scale?, label? } }
  *   返回:   { kind: 'text', content } | { kind: 'news', articles: [{title,description,pic_url,url}] }
  *           | { handled: false }（无需回复，sso 回 success）
  *

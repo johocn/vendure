@@ -14,6 +14,9 @@ class BaiduProvider {
     async reverseGeocode(lat, lng, apiKey) {
         throw new Error('百度地图 Provider 尚未实现，请使用高德');
     }
+    async geocode(input, apiKey, timeoutMs) {
+        throw new Error('百度地图 Provider 尚未实现，请使用高德');
+    }
 }
 exports.BaiduProvider = BaiduProvider;
 //# sourceMappingURL=baidu-provider.js.map

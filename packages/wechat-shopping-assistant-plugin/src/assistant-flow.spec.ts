@@ -156,7 +156,9 @@ function makeAddressBookStub(initial: any[] = DEFAULT_ADDR_BOOK) {
     } as unknown as AddressBookService & { calls: any[]; items: () => any[] };
 }
 
-function makeService(overrides: { search?: any; order?: any; binding?: any; addressBook?: any } = {}) {
+function makeService(
+    overrides: { search?: any; order?: any; binding?: any; addressBook?: any; geo?: any } = {},
+) {
     const connection = makeConnection();
     const outbound: any[] = [];
     const sender = {
@@ -169,6 +171,7 @@ function makeService(overrides: { search?: any; order?: any; binding?: any; addr
         },
     };
     const addressBook = overrides.addressBook ?? makeAddressBookStub();
+    const geo = overrides.geo ?? { geocode: async () => null, reverse: async () => null };
     const svc = new AssistantService(
         { storefrontUrl: 'https://shop.example.com', searchLocale: 'zh', sessionTtlMinutes: 30, searchLimit: 5 } as any,
         connection as any,
@@ -181,6 +184,7 @@ function makeService(overrides: { search?: any; order?: any; binding?: any; addr
         { create: async () => ({ channelId: '2' }) } as any,
         (overrides.binding ?? makeBindingStub({}, connection)) as any,
         addressBook as any,
+        geo as any,
     );
     return { svc, connection, outbound, addressBook };
 }
@@ -194,16 +198,19 @@ function makeBindingStub(
     connection?: any,
 ) {
     const calls = overrides.calls ?? [];
+    const geoCalls: any[] = [];
     return {
         findCustomerByOpenid: async (openid: string) =>
             overrides.boundCustomer !== undefined
                 ? overrides.boundCustomer
                 : (connection?.customers.get(openid) ?? null),
-        bindOrCreateCustomer: async (_ctx: any, openid: string, phone: string, address?: string) => {
+        bindOrCreateCustomer: async (_ctx: any, openid: string, phone: string, address?: string, geo?: any) => {
             calls.push({ openid, phone, address });
+            geoCalls.push(geo);
             return overrides.bindOutcome ?? { status: 'ok', customer: { id: 42 } };
         },
         calls,
+        geoCalls,
     };
 }
 
@@ -218,6 +225,34 @@ function textEvent(content: string, msgId = 'M1'): WechatMessageEvent {
         createTime: 1728777600,
     });
 }
+
+function locationEvent(lat = 39.9087, lng = 116.3975, msgId = 'L1'): WechatMessageEvent {
+    return new WechatMessageEvent({
+        channelToken: 'channel-token-a',
+        msgType: 'location',
+        fromUserName: 'openid-user-1',
+        toUserName: 'gh_x',
+        latitude: lat,
+        longitude: lng,
+        scale: 15,
+        label: '北京市朝阳区建国路1号',
+        msgId,
+    });
+}
+
+/** 逆地理假件：北京市朝阳区建国路1号 */
+const REVERSE_RESULT = {
+    province: '北京市',
+    city: '北京市',
+    district: '朝阳区',
+    street: '建外街道',
+    formattedAddress: '北京市朝阳区建国路1号',
+};
+
+const GEO_STUB = {
+    reverse: async () => REVERSE_RESULT,
+    geocode: async () => null,
+};
 
 beforeEach(() => {
     vi.useRealTimers();
@@ -693,5 +728,65 @@ describe('AssistantService 地址簿管理 + 下单选址（方案 B）', () => 
         expect(session.state).toBe('addr_pick');
         expect(session.draft.flow).toBe('order');
         expect(session.draft.indices).toEqual([2]);
+    });
+});
+
+describe('AssistantService 位置消息（微信发送位置）', () => {
+    test('空闲态发位置 → 识别地址并缓存；「新增地址」直接复用（跳过地址文本）', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB });
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+        // 先搜索建立会话，再发位置（空闲态）
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        let last = outbound[outbound.length - 1];
+        expect(last.content).toContain('已定位到：北京市朝阳区建国路1号');
+        expect(last.content).toContain('回复「新增地址」');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state ?? null).toBeNull();
+        expect(session.draft.geo).toMatchObject({ lat: 39.9087, lng: 116.3975, city: '北京市', district: '朝阳区' });
+        expect(session.draft.pendingText).toBe('北京市朝阳区建国路1号');
+
+        // 新增地址：直接进入电话确认（有注册号），不再要求回复地址文本
+        await svc.onMessage(textEvent('新增地址', 'M2'));
+        last = outbound[outbound.length - 1];
+        expect(last.content).toContain('联系电话用注册手机号 138****8000 吗');
+        expect(connection.sessions.get('openid-user-1').state).toBe('addr_new_phone');
+    });
+
+    test('建档补录地址阶段发位置 → 逆地理作为地址建档，并带入坐标续下单', async () => {
+        const order = makeOrderStub(null);
+        const binding = makeBindingStub();
+        const { svc, outbound } = makeService({ order, binding, geo: GEO_STUB });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('13800138000', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('收货地址');
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        expect(binding.calls[0]).toEqual({
+            openid: 'openid-user-1',
+            phone: '13800138000',
+            address: '北京市朝阳区建国路1号',
+        });
+        expect(binding.geoCalls[0]).toMatchObject({ lat: 39.9087, lng: 116.3975, city: '北京市', district: '朝阳区' });
+        // 建档首地址即默认：直接续下单
+        expect(order.calls.length).toBe(1);
+        expect(order.calls[0].address.streetLine1).toBe('北京市朝阳区建国路1号');
+    });
+
+    test('坐标非法（0,0）→ 位置无效提示', async () => {
+        const { svc, outbound } = makeService({ geo: GEO_STUB });
+        await svc.onMessage(locationEvent(0, 0, 'L1'));
+        expect(outbound[0].content).toContain('位置信息不完整');
+    });
+
+    test('地址菜单操作态发位置 → 提示先完成当前步骤，不打断流程', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB });
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+        await svc.onMessage(textEvent('地址管理', 'M1'));
+        await svc.onMessage(textEvent('1', 'M2')); // 进入操作菜单 addr_op
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('当前正在地址选择/操作中');
+        expect(connection.sessions.get('openid-user-1').state).toBe('addr_op');
     });
 });

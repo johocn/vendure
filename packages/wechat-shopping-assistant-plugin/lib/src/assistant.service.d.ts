@@ -3,6 +3,7 @@ import { WechatInboundMessage, WechatMessageEvent } from '@vendure/wechat-auth-p
 import { AddressBookService } from './address.service';
 import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
+import { GeoService } from './geo.service';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
@@ -26,7 +27,8 @@ export declare class AssistantService {
     private requestContextService;
     private customerBinding;
     private addressBook;
-    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService);
+    private geoService;
+    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService);
     onMessage(event: WechatMessageEvent): Promise<void>;
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
@@ -56,6 +58,15 @@ export declare class AssistantService {
     private handleAddressManage;
     /** 「新增地址」入口：直接进新增地址文本状态（默认 manage 流程；下单流程传入保留 order 上下文） */
     private handleAddressAdd;
+    /**
+     * 微信「发送位置」消息：
+     * - 空闲态：缓存定位结果（「新增地址」可直接复用），不改变会话状态；
+     * - 地址录入态（awaiting_address / addr_new_text / addr_edit_text）：直接作为收货地址写入；
+     * - 其他状态：提示先完成当前步骤，不打断流程。
+     */
+    private handleLocationMessage;
+    /** 地理编码城市提示：已有定位结果时用其城市提升文本地址命中率 */
+    private geoHint;
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     private orderConfirmCard;
     private handleSearch;

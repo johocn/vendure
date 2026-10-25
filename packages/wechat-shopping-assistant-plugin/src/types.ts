@@ -90,6 +90,19 @@ export interface AssistantFlowDraft {
     pendingText?: string | null;
     /** 新增地址已确定的电话 */
     pendingPhone?: string | null;
+    /** 地址定位结果（微信位置消息 / 地址文本地理编码），供保存地址时写入坐标 */
+    geo?: AssistantAddressGeo | null;
+}
+
+/** 地址坐标 + 行政区（GCJ-02），写入 Address.latitude/longitude/city/province */
+export interface AssistantAddressGeo {
+    lat: number;
+    lng: number;
+    province?: string | null;
+    city?: string | null;
+    district?: string | null;
+    /** 定位精度：door/poi/street/district/city（运行期使用，不落库） */
+    level?: string | null;
 }
 
 /** 地址簿列表项（service 层聚合给文案构建用） */

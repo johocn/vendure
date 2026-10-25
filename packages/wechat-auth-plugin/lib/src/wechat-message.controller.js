@@ -121,6 +121,10 @@ let WechatMessageController = class WechatMessageController {
             event: xml.Event,
             eventKey: xml.EventKey,
             createTime: xml.CreateTime ? Number(xml.CreateTime) : undefined,
+            latitude: xml.Location_X ? Number(xml.Location_X) : undefined,
+            longitude: xml.Location_Y ? Number(xml.Location_Y) : undefined,
+            scale: xml.Scale ? Number(xml.Scale) : undefined,
+            label: xml.Label,
         };
         try {
             this.eventBus.publish(new wechat_message_events_1.WechatMessageEvent(message));

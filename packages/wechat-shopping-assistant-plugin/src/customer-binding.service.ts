@@ -66,6 +66,7 @@ export class CustomerBindingService {
         openid: string,
         phone: string,
         addressText?: string,
+        geo?: { lat: number; lng: number; province?: string | null; city?: string | null } | null,
     ): Promise<BindOrCreateOutcome> {
         try {
             // 1) 已绑定（并发/重复触发）→ 幂等成功
@@ -134,6 +135,11 @@ export class CustomerBindingService {
                         phoneNumber: phone,
                         countryCode: 'CN',
                         defaultShippingAddress: true,
+                        ...(geo?.province ? { province: geo.province } : {}),
+                        ...(geo?.city ? { city: geo.city } : {}),
+                        ...(geo
+                            ? { customFields: { latitude: geo.lat, longitude: geo.lng } }
+                            : {}),
                     } as any);
                 } catch (e: any) {
                     Logger.warn(`Assistant bind: create address skipped: ${e?.message}`, loggerCtx);

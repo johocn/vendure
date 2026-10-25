@@ -1,5 +1,5 @@
 // e:\code\vendure\packages\cjk-plugin\src\map\providers\baidu-provider.ts
-import { DistrictNode, MapProvider, ReverseGeocodeResult } from '../map-provider';
+import { DistrictNode, GeocodeInput, GeocodeResult, MapProvider, ReverseGeocodeResult } from '../map-provider';
 
 export class BaiduProvider implements MapProvider {
     readonly name = 'baidu' as const;
@@ -13,6 +13,10 @@ export class BaiduProvider implements MapProvider {
     }
 
     async reverseGeocode(lat: number, lng: number, apiKey: string): Promise<ReverseGeocodeResult> {
+        throw new Error('百度地图 Provider 尚未实现，请使用高德');
+    }
+
+    async geocode(input: GeocodeInput, apiKey: string, timeoutMs?: number): Promise<GeocodeResult> {
         throw new Error('百度地图 Provider 尚未实现，请使用高德');
     }
 }

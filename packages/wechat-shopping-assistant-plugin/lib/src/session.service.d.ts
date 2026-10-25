@@ -18,4 +18,9 @@ export declare class SessionService {
     setFlow(openid: string, state: AssistantFlowState, draft: AssistantFlowDraft | null, ttlMinutes: number): Promise<void>;
     /** 清除补录状态（保留搜索结果，用户可直接重新回复编号下单） */
     clearFlow(openid: string): Promise<void>;
+    /**
+     * 只合并草稿并续期，不改变状态：
+     * 空闲态收到位置消息时缓存定位结果（供后续「新增地址」直接使用），不打断当前流程。
+     */
+    saveDraft(openid: string, patch: AssistantFlowDraft, ttlMinutes: number): Promise<void>;
 }

@@ -24,6 +24,8 @@ const constants_1 = require("./constants");
  *   /shop-api/* 前缀下的 POST 会被 Apollo GraphQL 中间件拦截，勿挂）
  *   header: x-zhao-secret（与 strapi 端 ZHAO_SEARCH_SHARED_SECRET 同值）
  *   body:   { openid, text, msgId?, createTime?, channelToken?, boundPhone? }
+ *           位置消息：{ openid, msgType: 'location', latitude, longitude, scale?, label? }
+ *           或 { openid, location: { latitude, longitude, scale?, label? } }
  *   返回:   { kind: 'text', content } | { kind: 'news', articles: [{title,description,pic_url,url}] }
  *           | { handled: false }（无需回复，sso 回 success）
  *
@@ -36,7 +38,7 @@ let AssistantHttpController = class AssistantHttpController {
         this.assistantService = assistantService;
     }
     async handle(req, res) {
-        var _a;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const secret = process.env.ZHAO_SEARCH_SHARED_SECRET;
         if (!secret || req.headers['x-zhao-secret'] !== secret) {
             res.status(403).json({ handled: false, error: 'invalid secret' });
@@ -48,24 +50,42 @@ let AssistantHttpController = class AssistantHttpController {
             // jsonBridge 中间件已把 body 解析为对象；兼容字符串形式
             body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody || {};
         }
-        catch (_b) {
+        catch (_j) {
             res.status(400).json({ handled: false, error: 'invalid json body' });
             return;
         }
         const openid = String(body.openid || body.fromUserName || '');
         const text = typeof body.text === 'string' ? body.text : '';
-        if (!openid || !text) {
+        // 位置消息：支持 sso 透传的 location 子对象，也兼容顶层经纬度
+        const locSource = body.location && typeof body.location === 'object' ? body.location : body;
+        const latitude = toNumber((_b = (_a = locSource.latitude) !== null && _a !== void 0 ? _a : locSource.Latitude) !== null && _b !== void 0 ? _b : body.Latitude);
+        const longitude = toNumber((_d = (_c = locSource.longitude) !== null && _c !== void 0 ? _c : locSource.Longitude) !== null && _d !== void 0 ? _d : body.Longitude);
+        const isLocation = String(body.msgType || '').toLowerCase() === 'location' ||
+            (latitude !== undefined && longitude !== undefined);
+        if (!openid) {
+            res.status(400).json({ handled: false, error: 'openid is required' });
+            return;
+        }
+        if (isLocation && !(latitude !== undefined && longitude !== undefined)) {
+            res.status(400).json({ handled: false, error: 'latitude and longitude are required' });
+            return;
+        }
+        if (!isLocation && !text) {
             res.status(400).json({ handled: false, error: 'openid and text are required' });
             return;
         }
         const msg = {
             channelToken: String(body.channelToken || ''),
-            msgType: 'text',
+            msgType: isLocation ? 'location' : 'text',
             fromUserName: openid,
             toUserName: '',
             content: text,
             msgId: body.msgId != null ? String(body.msgId) : undefined,
             createTime: body.createTime != null ? Number(body.createTime) : undefined,
+            latitude: isLocation ? latitude : undefined,
+            longitude: isLocation ? longitude : undefined,
+            scale: toNumber((_e = locSource.scale) !== null && _e !== void 0 ? _e : locSource.Scale),
+            label: typeof ((_f = locSource.label) !== null && _f !== void 0 ? _f : body.label) === 'string' ? ((_g = locSource.label) !== null && _g !== void 0 ? _g : body.label) : undefined,
         };
         // sso 转调附带的绑定用户手机号（路径 A：vendure 未绑定时免输入自动建档）
         const boundPhone = String(body.boundPhone || '').trim() || undefined;
@@ -87,7 +107,7 @@ let AssistantHttpController = class AssistantHttpController {
                 });
                 return;
             }
-            res.json({ kind: 'text', content: (_a = out.content) !== null && _a !== void 0 ? _a : '' });
+            res.json({ kind: 'text', content: (_h = out.content) !== null && _h !== void 0 ? _h : '' });
         }
         catch (e) {
             core_1.Logger.error(`Assistant http handle failed: ${String(e)}`, constants_1.loggerCtx);
@@ -108,4 +128,11 @@ exports.AssistantHttpController = AssistantHttpController = __decorate([
     (0, common_1.Controller)('wechat-assistant'),
     __metadata("design:paramtypes", [assistant_service_1.AssistantService])
 ], AssistantHttpController);
+/** 宽松数字转换：空值/非数字返回 undefined */
+function toNumber(value) {
+    if (value === null || value === undefined || value === '')
+        return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+}
 //# sourceMappingURL=assistant-http.controller.js.map

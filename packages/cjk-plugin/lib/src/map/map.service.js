@@ -98,6 +98,18 @@ let MapService = class MapService {
         const provider = this.getProvider(config);
         return this.callProvider(ctx, () => provider.reverseGeocode(lat, lng, config.apiKey));
     }
+    /**
+     * 正向地理编码：地址文本 → 坐标。
+     * 购物助手等聊天场景需快速失败，默认超时 1.5s；后台批量补录可传更长超时。
+     */
+    async geocode(ctx, input, timeoutMs = 1500) {
+        const config = await this.getConfigForChannel(ctx);
+        if (!config) {
+            throw new Error((0, i18n_messages_1.translateError)(ctx, 'MAP_CONFIG_NOT_CONFIGURED'));
+        }
+        const provider = this.getProvider(config);
+        return this.callProvider(ctx, () => provider.geocode(input, config.apiKey, timeoutMs));
+    }
     async getSdkConfig(ctx) {
         const config = await this.getConfigForChannel(ctx);
         if (!config) {

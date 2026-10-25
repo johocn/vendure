@@ -46,6 +46,8 @@ export * from './src/payment/payment-profile-shop.resolver';
 export * from './src/order/merchant-settlement-ledger.entity';
 export * from './src/order/merchant-settlement.service';
 export * from './src/order/merchant-settlement-admin.resolver';
+export * from './src/map/map-provider';
+export * from './src/map/map.service';
 export * from './src/inventory/stock-location-custom-fields';
 export * from './src/inventory/variant-location-binding.entity';
 export * from './src/inventory/variant-location-binding.service';

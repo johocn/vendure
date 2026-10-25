@@ -14,6 +14,9 @@ class TencentProvider {
     async reverseGeocode(lat, lng, apiKey) {
         throw new Error('腾讯地图 Provider 尚未实现，请使用高德');
     }
+    async geocode(input, apiKey, timeoutMs) {
+        throw new Error('腾讯地图 Provider 尚未实现，请使用高德');
+    }
 }
 exports.TencentProvider = TencentProvider;
 //# sourceMappingURL=tencent-provider.js.map

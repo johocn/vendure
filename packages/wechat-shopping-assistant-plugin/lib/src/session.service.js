@@ -72,6 +72,21 @@ let SessionService = class SessionService {
     async clearFlow(openid) {
         await this.setFlow(openid, null, null, 30);
     }
+    /**
+     * 只合并草稿并续期，不改变状态：
+     * 空闲态收到位置消息时缓存定位结果（供后续「新增地址」直接使用），不打断当前流程。
+     */
+    async saveDraft(openid, patch, ttlMinutes) {
+        var _a;
+        const repo = this.connection.getRepository(wechat_shopping_session_entity_1.WechatShoppingSession);
+        const session = await repo.findOne({ where: { openid } });
+        if (!session)
+            return;
+        await repo.update(session.id, {
+            draft: Object.assign(Object.assign({}, ((_a = session.draft) !== null && _a !== void 0 ? _a : {})), patch),
+            expireAt: new Date(Date.now() + ttlMinutes * 60000),
+        });
+    }
 };
 exports.SessionService = SessionService;
 exports.SessionService = SessionService = __decorate([

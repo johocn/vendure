@@ -35,6 +35,10 @@ exports.buildAddrSavedText = buildAddrSavedText;
 exports.buildInvalidAddrIndexText = buildInvalidAddrIndexText;
 exports.buildInvalidAddrPersonText = buildInvalidAddrPersonText;
 exports.buildAddrDefaultSetText = buildAddrDefaultSetText;
+exports.buildLocationRecognizedText = buildLocationRecognizedText;
+exports.buildLocationFlowBusyText = buildLocationFlowBusyText;
+exports.buildLocationUnavailableText = buildLocationUnavailableText;
+exports.buildLocationInvalidText = buildLocationInvalidText;
 /** 价格分 → 展示串：890 → '8.90'，0 → '价格面议' */
 function formatPrice(price) {
     if (!price || price <= 0)
@@ -343,6 +347,43 @@ function buildAddrDefaultSetText(touser, item) {
         kind: 'text',
         touser,
         content: `已将「${item.fullName || '收货人未填'} · ${item.streetLine1}」设为默认地址 ⭐\n回复编号可继续管理，回复「退出」结束`,
+    };
+}
+// ============ 位置消息（微信发送位置） ============
+/** 空闲态收到位置：识别成功并把地址缓存为「新增地址」的预填内容 */
+function buildLocationRecognizedText(touser, addressText) {
+    return {
+        kind: 'text',
+        touser,
+        content: [
+            `已定位到：${addressText}`,
+            '需要保存为收货地址时，回复「新增地址」即可直接使用这个位置。',
+            '也可以直接发送想买的商品（如「买一瓶酱油」）。',
+        ].join('\n'),
+    };
+}
+/** 非地址录入态收到位置：提示先完成当前操作，不打断流程 */
+function buildLocationFlowBusyText(touser) {
+    return {
+        kind: 'text',
+        touser,
+        content: '已收到位置。当前正在地址选择/操作中，请先按提示完成当前步骤。\n回复「取消」退出后，再发送位置即可保存为新地址。',
+    };
+}
+/** 位置逆地理失败（地图服务不可用/无结果） */
+function buildLocationUnavailableText(touser) {
+    return {
+        kind: 'text',
+        touser,
+        content: '抱歉，暂时无法识别这个位置，请直接回复收货地址文本（含省市区 + 详细地址）。',
+    };
+}
+/** 微信上报的经纬度不合法 */
+function buildLocationInvalidText(touser) {
+    return {
+        kind: 'text',
+        touser,
+        content: '位置信息不完整，请重新发送位置，或直接回复收货地址文本（含省市区 + 详细地址）。',
     };
 }
 //# sourceMappingURL=card-builder.js.map

@@ -11,6 +11,7 @@ import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
 import { WechatProcessedMessage } from './entities/wechat-processed-message.entity';
 import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
+import { GeoService } from './geo.service';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
@@ -40,6 +41,7 @@ import { WechatSender } from './wechat-sender';
         AssistantService,
         CustomerBindingService,
         AddressBookService,
+        GeoService,
         ShoppingSessionFlowColumnsMigration,
     ],
     compatibility: '^3.0.0',

@@ -21,6 +21,7 @@ const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
 const customer_binding_service_1 = require("./customer-binding.service");
 const wechat_processed_message_entity_1 = require("./entities/wechat-processed-message.entity");
+const geo_service_1 = require("./geo.service");
 const intent_1 = require("./intent");
 const order_service_1 = require("./order.service");
 const search_adapter_1 = require("./search-adapter");
@@ -33,7 +34,7 @@ const wechat_sender_1 = require("./wechat-sender");
  * 重复推送由 MsgId 去重表挡住）。
  */
 let AssistantService = class AssistantService {
-    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook) {
+    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook, geoService) {
         this.opts = opts;
         this.connection = connection;
         this.sessionService = sessionService;
@@ -45,6 +46,7 @@ let AssistantService = class AssistantService {
         this.requestContextService = requestContextService;
         this.customerBinding = customerBinding;
         this.addressBook = addressBook;
+        this.geoService = geoService;
     }
     async onMessage(event) {
         const msg = event.message;
@@ -81,10 +83,12 @@ let AssistantService = class AssistantService {
      */
     async processMessage(msg, extra) {
         var _a, _b;
-        // 关注事件：欢迎语；其余事件忽略（购物链路只处理文本）
+        // 关注事件：欢迎语；其余事件忽略（购物链路只处理文本/位置）
         if (msg.msgType === 'event') {
             return msg.event === 'subscribe' ? (0, card_builder_1.buildWelcomeText)(msg.fromUserName) : null;
         }
+        if (msg.msgType === 'location')
+            return this.handleLocationMessage(msg);
         if (msg.msgType !== 'text' || !msg.content)
             return null;
         const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
@@ -184,7 +188,9 @@ let AssistantService = class AssistantService {
             const indices = (_f = draft.indices) !== null && _f !== void 0 ? _f : [];
             const picked = session.results.filter(r => indices.includes(r.index));
             const ctx = await this.createShopCtx(session.channelId);
-            const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text);
+            // 建档首地址：地理编码失败不阻塞建档，仅少写坐标（后续可在地址簿补录）
+            const geo = await this.geoService.geocode(ctx, text);
+            const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text, geo);
             await this.sessionService.clearFlow(msg.fromUserName);
             switch (outcome.status) {
                 case 'ok': {
@@ -224,7 +230,11 @@ let AssistantService = class AssistantService {
             const outcome = await this.withAddrCtx(msg, draft);
             if (!outcome)
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
-            const ok = await this.addressBook.updateText(outcome.ctx, outcome.addressId, text);
+            const geo = await this.geoService.geocode(outcome.ctx, text);
+            const geoFields = geo
+                ? { latitude: geo.lat, longitude: geo.lng, province: geo.province, city: geo.city }
+                : undefined;
+            const ok = await this.addressBook.updateText(outcome.ctx, outcome.addressId, text, geoFields);
             if (!ok)
                 return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '修改地址失败');
             const updated = await this.addressBook.getItem(outcome.ctx, outcome.customerId, outcome.addressId);
@@ -298,6 +308,8 @@ let AssistantService = class AssistantService {
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
             }
             const nextDraft = Object.assign(Object.assign({}, draft), { pendingText: text.slice(0, 250) });
+            const geo = await this.geoService.geocode(await this.createShopCtx(session.channelId), text, this.geoHint(draft));
+            nextDraft.geo = geo;
             const registeredPhone = (_j = customer.phoneNumber) !== null && _j !== void 0 ? _j : '';
             if (registeredPhone) {
                 await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone', nextDraft, ttl);
@@ -348,11 +360,14 @@ let AssistantService = class AssistantService {
                 await this.sessionService.clearFlow(msg.fromUserName);
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
             }
-            const addressId = await this.addressBook.add(ctx, customer.id, {
-                streetLine1: (_o = draft.pendingText) !== null && _o !== void 0 ? _o : '',
-                phoneNumber: (_p = draft.pendingPhone) !== null && _p !== void 0 ? _p : '',
-                setDefault: input === '是',
-            });
+            const addressId = await this.addressBook.add(ctx, customer.id, Object.assign({ streetLine1: (_o = draft.pendingText) !== null && _o !== void 0 ? _o : '', phoneNumber: (_p = draft.pendingPhone) !== null && _p !== void 0 ? _p : '', setDefault: input === '是' }, (draft.geo
+                ? {
+                    province: draft.geo.province,
+                    city: draft.geo.city,
+                    latitude: draft.geo.lat,
+                    longitude: draft.geo.lng,
+                }
+                : {})));
             if (!addressId)
                 return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '保存地址失败');
             const item = await this.addressBook.getItem(ctx, customer.id, addressId);
@@ -488,15 +503,129 @@ let AssistantService = class AssistantService {
     }
     /** 「新增地址」入口：直接进新增地址文本状态（默认 manage 流程；下单流程传入保留 order 上下文） */
     async handleAddressAdd(msg, initialDraft = { flow: 'manage' }) {
-        var _a;
+        var _a, _b, _c, _d, _e, _f, _g;
         const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
         if (!customer)
             return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
         const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
         const channelId = await this.resolveSessionChannelId(msg);
         await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        // 空闲态发过位置：直接复用缓存的定位地址，跳过地址文本输入
+        const locatedText = (_d = (_c = (_b = session === null || session === void 0 ? void 0 : session.draft) === null || _b === void 0 ? void 0 : _b.pendingText) === null || _c === void 0 ? void 0 : _c.trim()) !== null && _d !== void 0 ? _d : '';
+        const locatedGeo = (_f = (_e = session === null || session === void 0 ? void 0 : session.draft) === null || _e === void 0 ? void 0 : _e.geo) !== null && _f !== void 0 ? _f : null;
+        if (locatedText.length >= 8 && locatedGeo) {
+            const draft = Object.assign(Object.assign({}, initialDraft), { pendingText: locatedText, geo: locatedGeo });
+            const registeredPhone = (_g = customer.phoneNumber) !== null && _g !== void 0 ? _g : '';
+            if (registeredPhone) {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone', draft, ttl);
+                return (0, card_builder_1.buildAddrNewPhoneText)(msg.fromUserName, registeredPhone);
+            }
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone_text', draft, ttl);
+            return (0, card_builder_1.buildAddrNewPhonePromptText)(msg.fromUserName);
+        }
         await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', initialDraft, ttl);
         return (0, card_builder_1.buildAddrEditTextPrompt)(msg.fromUserName);
+    }
+    // ============ 位置消息：逆地理 → 按会话态写入地址 ============
+    /**
+     * 微信「发送位置」消息：
+     * - 空闲态：缓存定位结果（「新增地址」可直接复用），不改变会话状态；
+     * - 地址录入态（awaiting_address / addr_new_text / addr_edit_text）：直接作为收货地址写入；
+     * - 其他状态：提示先完成当前步骤，不打断流程。
+     */
+    async handleLocationMessage(msg) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        const lat = Number(msg.latitude);
+        const lng = Number(msg.longitude);
+        if (!geo_service_1.GeoService.isValidCoordinate(lat, lng)) {
+            return (0, card_builder_1.buildLocationInvalidText)(msg.fromUserName);
+        }
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        const state = ((_b = session === null || session === void 0 ? void 0 : session.state) !== null && _b !== void 0 ? _b : null);
+        const addressInputStates = ['awaiting_address', 'addr_new_text', 'addr_edit_text'];
+        if (state && !addressInputStates.includes(state)) {
+            core_1.Logger.info(`Assistant location ignored in state=${state} openid=${msg.fromUserName}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildLocationFlowBusyText)(msg.fromUserName);
+        }
+        const channelId = (_c = session === null || session === void 0 ? void 0 : session.channelId) !== null && _c !== void 0 ? _c : (await this.resolveChannelId(msg.channelToken));
+        const ctx = await this.createShopCtx(channelId);
+        const reverse = await this.geoService.reverse(ctx, lat, lng);
+        if (!reverse)
+            return (0, card_builder_1.buildLocationUnavailableText)(msg.fromUserName);
+        const addressText = geo_service_1.GeoService.composeAddressText(reverse, msg.label);
+        if (addressText.length < 8) {
+            core_1.Logger.info(`Assistant location address too short: openid=${msg.fromUserName}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildLocationUnavailableText)(msg.fromUserName);
+        }
+        const geo = geoPointFromReverse(reverse, lat, lng);
+        // 空闲态：仅缓存，供「新增地址」跳过地址文本输入
+        if (!state) {
+            await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+            await this.sessionService.saveDraft(msg.fromUserName, Object.assign(Object.assign({}, ((_d = session === null || session === void 0 ? void 0 : session.draft) !== null && _d !== void 0 ? _d : {})), { pendingText: addressText.slice(0, 250), geo }), ttl);
+            core_1.Logger.info(`Assistant location cached: openid=${msg.fromUserName} city=${(_e = reverse.city) !== null && _e !== void 0 ? _e : ''}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildLocationRecognizedText)(msg.fromUserName, addressText);
+        }
+        const draft = (_f = session === null || session === void 0 ? void 0 : session.draft) !== null && _f !== void 0 ? _f : {};
+        if (state === 'awaiting_address') {
+            const phone = draft.phone;
+            if (!phone) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            const indices = (_g = draft.indices) !== null && _g !== void 0 ? _g : [];
+            const picked = ((_h = session === null || session === void 0 ? void 0 : session.results) !== null && _h !== void 0 ? _h : []).filter(r => indices.includes(r.index));
+            const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, addressText, geo);
+            await this.sessionService.clearFlow(msg.fromUserName);
+            switch (outcome.status) {
+                case 'ok':
+                    if (!picked.length)
+                        return (0, card_builder_1.buildBindSuccessText)(msg.fromUserName);
+                    return this.placeOrder(ctx, msg.fromUserName, outcome.customer, picked);
+                case 'phone_taken':
+                    return (0, card_builder_1.buildPhoneTakenText)(msg.fromUserName, this.loginUrl());
+                default:
+                    return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, outcome.message);
+            }
+        }
+        if (state === 'addr_new_text') {
+            const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            if (!customer) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            const nextDraft = Object.assign(Object.assign({}, draft), { pendingText: addressText.slice(0, 250), geo });
+            const registeredPhone = (_j = customer.phoneNumber) !== null && _j !== void 0 ? _j : '';
+            if (registeredPhone) {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone', nextDraft, ttl);
+                return (0, card_builder_1.buildAddrNewPhoneText)(msg.fromUserName, registeredPhone);
+            }
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone_text', nextDraft, ttl);
+            return (0, card_builder_1.buildAddrNewPhonePromptText)(msg.fromUserName);
+        }
+        if (state === 'addr_edit_text') {
+            const outcome = await this.withAddrCtx(msg, draft);
+            if (!outcome)
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            const ok = await this.addressBook.updateText(outcome.ctx, outcome.addressId, addressText, {
+                latitude: lat,
+                longitude: lng,
+                province: reverse.province,
+                city: reverse.city,
+            });
+            if (!ok)
+                return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '修改地址失败');
+            const updated = await this.addressBook.getItem(outcome.ctx, outcome.customerId, outcome.addressId);
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            return (0, card_builder_1.buildAddrSavedText)(msg.fromUserName, updated);
+        }
+        return (0, card_builder_1.buildLocationFlowBusyText)(msg.fromUserName);
+    }
+    /** 地理编码城市提示：已有定位结果时用其城市提升文本地址命中率 */
+    geoHint(draft) {
+        var _a;
+        return ((_a = draft.geo) === null || _a === void 0 ? void 0 : _a.city) ? { city: draft.geo.city } : undefined;
     }
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     async orderConfirmCard(ctx, touser, session, draft) {
@@ -712,6 +841,19 @@ exports.AssistantService = AssistantService = __decorate([
         core_1.ChannelService,
         core_1.RequestContextService,
         customer_binding_service_1.CustomerBindingService,
-        address_service_1.AddressBookService])
+        address_service_1.AddressBookService,
+        geo_service_1.GeoService])
 ], AssistantService);
+/** 微信位置坐标 + 逆地理行政区 → 可写入草稿/地址的坐标对象 */
+function geoPointFromReverse(reverse, lat, lng) {
+    return {
+        lat,
+        lng,
+        province: reverse.province,
+        city: reverse.city,
+        district: reverse.district,
+        // 用户主动共享的 GPS 位置，视为兴趣点级精度（非门牌号）
+        level: 'poi',
+    };
+}
 //# sourceMappingURL=assistant.service.js.map

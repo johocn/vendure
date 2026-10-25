@@ -53,7 +53,7 @@ let CustomerBindingService = class CustomerBindingService {
      * - 手机号顾客存在但未绑微信 → 写 wechatOpenid 绑定（sso 手机号与 H5 手机号登录同源互认）；
      * - 全新 → User(identifier=wechat_mp_<openid>) + Customer(phoneNumber) + 可选收货地址。
      */
-    async bindOrCreateCustomer(ctx, openid, phone, addressText) {
+    async bindOrCreateCustomer(ctx, openid, phone, addressText, geo) {
         var _a, _b, _c, _d, _e;
         try {
             // 1) 已绑定（并发/重复触发）→ 幂等成功
@@ -108,13 +108,11 @@ let CustomerBindingService = class CustomerBindingService {
             //    首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用
             if (addressText) {
                 try {
-                    await this.customerService.createAddress(ctx, customer.id, {
+                    await this.customerService.createAddress(ctx, customer.id, Object.assign(Object.assign(Object.assign({ 
                         // fork 的 CreateAddressInput 字段为 streetLine1（上游为 streetLine）
-                        streetLine1: addressText.slice(0, 250),
-                        phoneNumber: phone,
-                        countryCode: 'CN',
-                        defaultShippingAddress: true,
-                    });
+                        streetLine1: addressText.slice(0, 250), phoneNumber: phone, countryCode: 'CN', defaultShippingAddress: true }, ((geo === null || geo === void 0 ? void 0 : geo.province) ? { province: geo.province } : {})), ((geo === null || geo === void 0 ? void 0 : geo.city) ? { city: geo.city } : {})), (geo
+                        ? { customFields: { latitude: geo.lat, longitude: geo.lng } }
+                        : {})));
                 }
                 catch (e) {
                     core_1.Logger.warn(`Assistant bind: create address skipped: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);

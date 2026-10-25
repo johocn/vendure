@@ -62,6 +62,8 @@ __exportStar(require("./src/payment/payment-profile-shop.resolver"), exports);
 __exportStar(require("./src/order/merchant-settlement-ledger.entity"), exports);
 __exportStar(require("./src/order/merchant-settlement.service"), exports);
 __exportStar(require("./src/order/merchant-settlement-admin.resolver"), exports);
+__exportStar(require("./src/map/map-provider"), exports);
+__exportStar(require("./src/map/map.service"), exports);
 __exportStar(require("./src/inventory/stock-location-custom-fields"), exports);
 __exportStar(require("./src/inventory/variant-location-binding.entity"), exports);
 __exportStar(require("./src/inventory/variant-location-binding.service"), exports);

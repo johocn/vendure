@@ -127,4 +127,12 @@ export declare function buildAddrDefaultSetText(touser: string, item: {
     fullName: string;
     streetLine1: string;
 }): TextMessage;
+/** 空闲态收到位置：识别成功并把地址缓存为「新增地址」的预填内容 */
+export declare function buildLocationRecognizedText(touser: string, addressText: string): TextMessage;
+/** 非地址录入态收到位置：提示先完成当前操作，不打断流程 */
+export declare function buildLocationFlowBusyText(touser: string): TextMessage;
+/** 位置逆地理失败（地图服务不可用/无结果） */
+export declare function buildLocationUnavailableText(touser: string): TextMessage;
+/** 微信上报的经纬度不合法 */
+export declare function buildLocationInvalidText(touser: string): TextMessage;
 export {};

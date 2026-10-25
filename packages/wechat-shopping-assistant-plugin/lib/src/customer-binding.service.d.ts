@@ -32,5 +32,10 @@ export declare class CustomerBindingService {
      * - 手机号顾客存在但未绑微信 → 写 wechatOpenid 绑定（sso 手机号与 H5 手机号登录同源互认）；
      * - 全新 → User(identifier=wechat_mp_<openid>) + Customer(phoneNumber) + 可选收货地址。
      */
-    bindOrCreateCustomer(ctx: RequestContext, openid: string, phone: string, addressText?: string): Promise<BindOrCreateOutcome>;
+    bindOrCreateCustomer(ctx: RequestContext, openid: string, phone: string, addressText?: string, geo?: {
+        lat: number;
+        lng: number;
+        province?: string | null;
+        city?: string | null;
+    } | null): Promise<BindOrCreateOutcome>;
 }

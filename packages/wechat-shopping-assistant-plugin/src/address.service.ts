@@ -52,14 +52,27 @@ export class AddressBookService {
     async add(
         ctx: RequestContext,
         customerId: string | number,
-        input: { streetLine1: string; phoneNumber: string; setDefault: boolean },
+        input: {
+            streetLine1: string;
+            phoneNumber: string;
+            setDefault: boolean;
+            fullName?: string;
+            province?: string | null;
+            city?: string | null;
+            latitude?: number | null;
+            longitude?: number | null;
+        },
     ): Promise<string | null> {
         try {
             const address = await this.customerService.createAddress(ctx, customerId, {
                 streetLine1: input.streetLine1.slice(0, 250),
                 phoneNumber: input.phoneNumber,
+                ...(input.fullName ? { fullName: input.fullName } : {}),
+                ...(input.province ? { province: input.province } : {}),
+                ...(input.city ? { city: input.city } : {}),
                 countryCode: 'CN',
                 defaultShippingAddress: input.setDefault,
+                ...buildCoordinateFields(input.latitude, input.longitude),
             } as any);
             return String(address.id);
         } catch (e: any) {
@@ -68,10 +81,21 @@ export class AddressBookService {
         }
     }
 
-    /** 改收货地址文本 */
-    async updateText(ctx: RequestContext, addressId: string, text: string): Promise<boolean> {
+    /** 改收货地址文本（可同步坐标：地理编码结果回写 latitude/longitude） */
+    async updateText(
+        ctx: RequestContext,
+        addressId: string,
+        text: string,
+        geo?: { latitude?: number | null; longitude?: number | null; province?: string | null; city?: string | null },
+    ): Promise<boolean> {
         try {
-            await this.customerService.updateAddress(ctx, { id: addressId, streetLine1: text.slice(0, 250) } as any);
+            await this.customerService.updateAddress(ctx, {
+                id: addressId,
+                streetLine1: text.slice(0, 250),
+                ...(geo?.province ? { province: geo.province } : {}),
+                ...(geo?.city ? { city: geo.city } : {}),
+                ...buildCoordinateFields(geo?.latitude, geo?.longitude),
+            } as any);
             return true;
         } catch (e: any) {
             Logger.warn(`Assistant address updateText failed: ${e?.message}`, loggerCtx);
@@ -122,4 +146,17 @@ export class AddressBookService {
             return false;
         }
     }
+}
+
+/**
+ * Address 坐标自定义字段（delivery-plugin 已注册 latitude/longitude）。
+ * 两者都有效才写入，避免半残坐标参与配送范围计算。
+ */
+function buildCoordinateFields(
+    latitude?: number | null,
+    longitude?: number | null,
+): { customFields?: { latitude: number; longitude: number } } {
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') return {};
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return {};
+    return { customFields: { latitude, longitude } };
 }

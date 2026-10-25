@@ -26,6 +26,7 @@ const credential_service_1 = require("./credential.service");
 const customer_binding_service_1 = require("./customer-binding.service");
 const wechat_processed_message_entity_1 = require("./entities/wechat-processed-message.entity");
 const wechat_shopping_session_entity_1 = require("./entities/wechat-shopping-session.entity");
+const geo_service_1 = require("./geo.service");
 const order_service_1 = require("./order.service");
 const search_adapter_1 = require("./search-adapter");
 const session_service_1 = require("./session.service");
@@ -74,6 +75,7 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
             assistant_service_1.AssistantService,
             customer_binding_service_1.CustomerBindingService,
             address_service_1.AddressBookService,
+            geo_service_1.GeoService,
             shopping_session_flow_columns_migration_1.ShoppingSessionFlowColumnsMigration,
         ],
         compatibility: '^3.0.0',

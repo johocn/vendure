@@ -55,12 +55,7 @@ let AddressBookService = class AddressBookService {
     /** 新增地址（setDefault=true 时 core 自动清旧默认）；返回新建地址 id，失败 null */
     async add(ctx, customerId, input) {
         try {
-            const address = await this.customerService.createAddress(ctx, customerId, {
-                streetLine1: input.streetLine1.slice(0, 250),
-                phoneNumber: input.phoneNumber,
-                countryCode: 'CN',
-                defaultShippingAddress: input.setDefault,
-            });
+            const address = await this.customerService.createAddress(ctx, customerId, Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ streetLine1: input.streetLine1.slice(0, 250), phoneNumber: input.phoneNumber }, (input.fullName ? { fullName: input.fullName } : {})), (input.province ? { province: input.province } : {})), (input.city ? { city: input.city } : {})), { countryCode: 'CN', defaultShippingAddress: input.setDefault }), buildCoordinateFields(input.latitude, input.longitude)));
             return String(address.id);
         }
         catch (e) {
@@ -68,10 +63,10 @@ let AddressBookService = class AddressBookService {
             return null;
         }
     }
-    /** 改收货地址文本 */
-    async updateText(ctx, addressId, text) {
+    /** 改收货地址文本（可同步坐标：地理编码结果回写 latitude/longitude） */
+    async updateText(ctx, addressId, text, geo) {
         try {
-            await this.customerService.updateAddress(ctx, { id: addressId, streetLine1: text.slice(0, 250) });
+            await this.customerService.updateAddress(ctx, Object.assign(Object.assign(Object.assign({ id: addressId, streetLine1: text.slice(0, 250) }, ((geo === null || geo === void 0 ? void 0 : geo.province) ? { province: geo.province } : {})), ((geo === null || geo === void 0 ? void 0 : geo.city) ? { city: geo.city } : {})), buildCoordinateFields(geo === null || geo === void 0 ? void 0 : geo.latitude, geo === null || geo === void 0 ? void 0 : geo.longitude)));
             return true;
         }
         catch (e) {
@@ -122,4 +117,15 @@ exports.AddressBookService = AddressBookService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.CustomerService])
 ], AddressBookService);
+/**
+ * Address 坐标自定义字段（delivery-plugin 已注册 latitude/longitude）。
+ * 两者都有效才写入，避免半残坐标参与配送范围计算。
+ */
+function buildCoordinateFields(latitude, longitude) {
+    if (typeof latitude !== 'number' || typeof longitude !== 'number')
+        return {};
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude))
+        return {};
+    return { customFields: { latitude, longitude } };
+}
 //# sourceMappingURL=address.service.js.map

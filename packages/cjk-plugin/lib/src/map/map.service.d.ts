@@ -1,5 +1,5 @@
 import { ChannelService, RequestContext } from '@vendure/core';
-import { DistrictNode, ReverseGeocodeResult } from './map-provider';
+import { DistrictNode, GeocodeInput, GeocodeResult, ReverseGeocodeResult } from './map-provider';
 import { MapProviderRegistry } from './map-provider-registry';
 export declare class MapService {
     private registry;
@@ -23,6 +23,11 @@ export declare class MapService {
     maskApiKey(key: string): string;
     getDistricts(ctx: RequestContext, parentAdcode: string | null): Promise<DistrictNode[]>;
     reverseGeocode(ctx: RequestContext, lat: number, lng: number): Promise<ReverseGeocodeResult>;
+    /**
+     * 正向地理编码：地址文本 → 坐标。
+     * 购物助手等聊天场景需快速失败，默认超时 1.5s；后台批量补录可传更长超时。
+     */
+    geocode(ctx: RequestContext, input: GeocodeInput, timeoutMs?: number): Promise<GeocodeResult>;
     getSdkConfig(ctx: RequestContext): Promise<{
         provider: string;
         sdkUrl: string;
