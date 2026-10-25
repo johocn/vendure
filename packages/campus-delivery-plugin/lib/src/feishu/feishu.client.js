@@ -222,7 +222,12 @@ let FeishuClient = class FeishuClient {
             clearTimeout(timer);
         }
     }
-    /** 广播：优先发到所有已映射群；没有群映射时退回 webhook */
+    /**
+     * 广播：优先发到已映射群；没有群映射时退回 webhook。
+     * - scope：只发指定范围（platform = 跨店平台群）
+     * - channel：店铺定向推送 —— 只发「该店铺群 + 平台群」，避免 A 店告警刷到 B 店群；
+     *   若没有任何群命中（例如未配置店铺群）则退回 webhook，保证告警不静默丢失。
+     */
     async broadcast(text, opts) {
         if (!this.enabled)
             return false;
@@ -230,13 +235,19 @@ let FeishuClient = class FeishuClient {
         if (chats.length === 0)
             return this.sendWebhook(text);
         let ok = false;
+        let matched = false;
         for (const [chatId, chat] of chats) {
             // scope=platform 只发跨店平台群；未指定则全发
             if ((opts === null || opts === void 0 ? void 0 : opts.scope) && chat.scope !== opts.scope)
                 continue;
+            if ((opts === null || opts === void 0 ? void 0 : opts.channel) && chat.scope !== 'platform' && chat.channel !== opts.channel)
+                continue;
+            matched = true;
             if (await this.sendToChat(chatId, text, opts))
                 ok = true;
         }
+        if (!matched)
+            return this.sendWebhook(text);
         return ok;
     }
     /** tenant_access_token 缓存（提前 5 分钟过期），单飞防并发重复取 */

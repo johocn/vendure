@@ -68,19 +68,19 @@ let FeishuNotifyService = class FeishuNotifyService {
     }
     /** 内部事件（异常/超时/支付取消）直接推群；按业务键 2 分钟去重。
      * 返回是否送达（未启用/去重命中记为 true，避免调用方无意义重试）。 */
-    async push(scene, dedupeKey, text) {
+    async push(scene, dedupeKey, text, target) {
         if (!this.client.enabled)
             return true;
         const key = dedupeKey ? `${scene}:${dedupeKey}` : undefined;
         if (key && this.isDuplicate(key))
             return true;
-        const ok = await this.deliver(text, scene);
+        const ok = await this.deliver(text, scene, target);
         if (ok && key)
             this.mark(key);
         return ok;
     }
     /** 返回是否已送达/已合并到卡片：false 表示本次推送失败，调用方应保留重试机会。 */
-    async pushEvent(scene, title, content, orderCode, dedupeKey) {
+    async pushEvent(scene, title, content, orderCode, dedupeKey, target) {
         if (!this.client.enabled)
             return true;
         // 缺省键必须带事件标题：同一订单 2 分钟内可能连发多个不同事件（如取货超时告警 + 回厅），
@@ -100,15 +100,19 @@ let FeishuNotifyService = class FeishuNotifyService {
                 return true;
             }
         }
-        const ok = await this.push(scene, key, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
+        const ok = await this.push(scene, key, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }), target);
         if (ok && key)
             this.mark(key);
         return ok;
     }
-    async deliver(text, scene) {
+    /** 飞书通道是否可用（未启用时业务侧只记录日志、不外发） */
+    get enabled() {
+        return this.client.enabled;
+    }
+    async deliver(text, scene, target) {
         var _a;
         try {
-            const ok = await this.client.broadcast(text);
+            const ok = await this.client.broadcast(text, target);
             if (!ok)
                 core_1.Logger.warn(`飞书推送未送达 scene=${scene}`, loggerCtx);
             return ok;

@@ -225,17 +225,26 @@ export class FeishuClient {
         }
     }
 
-    /** 广播：优先发到所有已映射群；没有群映射时退回 webhook */
-    async broadcast(text: string, opts?: { atAll?: boolean; scope?: string }): Promise<boolean> {
+    /**
+     * 广播：优先发到已映射群；没有群映射时退回 webhook。
+     * - scope：只发指定范围（platform = 跨店平台群）
+     * - channel：店铺定向推送 —— 只发「该店铺群 + 平台群」，避免 A 店告警刷到 B 店群；
+     *   若没有任何群命中（例如未配置店铺群）则退回 webhook，保证告警不静默丢失。
+     */
+    async broadcast(text: string, opts?: { atAll?: boolean; scope?: string; channel?: string }): Promise<boolean> {
         if (!this.enabled) return false;
         const chats = Object.entries(this.cfg.settings.chats);
         if (chats.length === 0) return this.sendWebhook(text);
         let ok = false;
+        let matched = false;
         for (const [chatId, chat] of chats) {
             // scope=platform 只发跨店平台群；未指定则全发
             if (opts?.scope && chat.scope !== opts.scope) continue;
+            if (opts?.channel && chat.scope !== 'platform' && chat.channel !== opts.channel) continue;
+            matched = true;
             if (await this.sendToChat(chatId, text, opts)) ok = true;
         }
+        if (!matched) return this.sendWebhook(text);
         return ok;
     }
 

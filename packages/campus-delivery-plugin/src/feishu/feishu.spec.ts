@@ -1,7 +1,7 @@
 import { createCipheriv, createHash } from 'crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildWebhookPayload, buildWebhookSignature } from './feishu.client';
+import { FeishuClient, buildWebhookPayload, buildWebhookSignature } from './feishu.client';
 import { AUDIT_TABLE_SQL, buildRestoreSQL, parseCommand, requiredRole } from './feishu.command.service';
 import { parseChatMap, readFeishuSettings } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
@@ -515,5 +515,46 @@ describe('feishu 零建表卡片', () => {
         expect(AUDIT_TABLE_SQL).toContain('card_action');
         expect(AUDIT_TABLE_SQL).toContain('order_code');
         expect(AUDIT_TABLE_SQL).toContain('result');
+    });
+});
+
+describe('FeishuClient.broadcast 定向推送', () => {
+    function mkClient(chats: Record<string, any>, webhook = '') {
+        const cfg = { enabled: true, settings: { enabled: true, chats, webhook } } as any;
+        const client = new FeishuClient(cfg);
+        const send = vi.spyOn(client as any, 'sendToChat').mockResolvedValue(true);
+        const hook = vi.spyOn(client as any, 'sendWebhook').mockResolvedValue(true);
+        return { client, send, hook };
+    }
+
+    it('channel 定向：只发本店铺群 + 平台群，不刷其他店铺群', async () => {
+        const { client, send, hook } = mkClient({
+            oc_a: { scope: 'channel', channel: 'canteen-a', operators: [], owners: [] },
+            oc_b: { scope: 'channel', channel: 'canteen-b', operators: [], owners: [] },
+            oc_p: { scope: 'platform', operators: [], owners: [] },
+        });
+        expect(await client.broadcast('x', { channel: 'canteen-a', atAll: true })).toBe(true);
+        const hit = send.mock.calls.map(c => c[0]).sort();
+        expect(hit).toEqual(['oc_a', 'oc_p']);
+        expect(send.mock.calls[0][2]).toEqual({ channel: 'canteen-a', atAll: true });
+        expect(hook).not.toHaveBeenCalled();
+    });
+
+    it('无命中群时退回 webhook，告警不静默丢失', async () => {
+        const { client, send, hook } = mkClient({
+            oc_b: { scope: 'channel', channel: 'canteen-b', operators: [], owners: [] },
+        }, 'https://hook.example/x');
+        expect(await client.broadcast('x', { channel: 'canteen-a' })).toBe(true);
+        expect(send).not.toHaveBeenCalled();
+        expect(hook).toHaveBeenCalledTimes(1);
+    });
+
+    it('scope=platform 过滤仍然生效', async () => {
+        const { client, send } = mkClient({
+            oc_a: { scope: 'channel', channel: 'canteen-a', operators: [], owners: [] },
+            oc_p: { scope: 'platform', operators: [], owners: [] },
+        });
+        await client.broadcast('x', { scope: 'platform' });
+        expect(send.mock.calls.map(c => c[0])).toEqual(['oc_p']);
     });
 });

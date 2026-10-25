@@ -9,6 +9,12 @@ import { formatPush } from './feishu.templates';
 const loggerCtx = 'Feishu';
 const DEDUPE_MS = 2 * 60_000;
 
+/** 推送目标：店铺定向（channel=渠道 code，平台群始终接收）+ 严重告警 @所有人 */
+export interface FeishuPushTarget {
+    channel?: string;
+    atAll?: boolean;
+}
+
 /**
  * 管理侧外发：订阅 notification-plugin 的 AdminNotifyEvent，把新订单/售后推到飞书群；
  * 新订单优先发订单卡片（尾号 + 按钮 + 话题归集），卡片失败再降级为文本；
@@ -60,17 +66,24 @@ export class FeishuNotifyService {
 
     /** 内部事件（异常/超时/支付取消）直接推群；按业务键 2 分钟去重。
      * 返回是否送达（未启用/去重命中记为 true，避免调用方无意义重试）。 */
-    async push(scene: string, dedupeKey: string | undefined, text: string): Promise<boolean> {
+    async push(scene: string, dedupeKey: string | undefined, text: string, target?: FeishuPushTarget): Promise<boolean> {
         if (!this.client.enabled) return true;
         const key = dedupeKey ? `${scene}:${dedupeKey}` : undefined;
         if (key && this.isDuplicate(key)) return true;
-        const ok = await this.deliver(text, scene);
+        const ok = await this.deliver(text, scene, target);
         if (ok && key) this.mark(key);
         return ok;
     }
 
     /** 返回是否已送达/已合并到卡片：false 表示本次推送失败，调用方应保留重试机会。 */
-    async pushEvent(scene: string, title: string, content: string, orderCode?: string, dedupeKey?: string): Promise<boolean> {
+    async pushEvent(
+        scene: string,
+        title: string,
+        content: string,
+        orderCode?: string,
+        dedupeKey?: string,
+        target?: FeishuPushTarget,
+    ): Promise<boolean> {
         if (!this.client.enabled) return true;
         // 缺省键必须带事件标题：同一订单 2 分钟内可能连发多个不同事件（如取货超时告警 + 回厅），
         // 只用 orderCode 会把后到的那条吞掉。显式传键的调用方保持原语义。
@@ -89,14 +102,19 @@ export class FeishuNotifyService {
             }
         }
 
-        const ok = await this.push(scene, key, formatPush({ scene, title, content, orderCode, at: Date.now() }));
+        const ok = await this.push(scene, key, formatPush({ scene, title, content, orderCode, at: Date.now() }), target);
         if (ok && key) this.mark(key);
         return ok;
     }
 
-    private async deliver(text: string, scene: string): Promise<boolean> {
+    /** 飞书通道是否可用（未启用时业务侧只记录日志、不外发） */
+    get enabled(): boolean {
+        return this.client.enabled;
+    }
+
+    private async deliver(text: string, scene: string, target?: FeishuPushTarget): Promise<boolean> {
         try {
-            const ok = await this.client.broadcast(text);
+            const ok = await this.client.broadcast(text, target);
             if (!ok) Logger.warn(`飞书推送未送达 scene=${scene}`, loggerCtx);
             return ok;
         } catch (e: any) {
