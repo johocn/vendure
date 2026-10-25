@@ -101,8 +101,7 @@ export class DeliveryGuardService {
         return {
             status: 'OUT_OF_RANGE',
             reason: 'CITY_NOT_SERVED',
-            // 直辖市场景地图只回省份（city 为空），用省份兜底，避免向用户暴露城市码
-            serviceAreaText: `本店目前不服务「${parsed.city || parsed.province || parsed.cityCode || '该'}」地区的地址。`,
+            serviceAreaText: `本店目前不服务「${areaLabel(parsed)}」地区的地址。`,
             parsed,
         };
     }
@@ -111,4 +110,17 @@ export class DeliveryGuardService {
         const raw = (channel?.customFields as any)?.servingCities;
         return Array.isArray(raw) ? raw.map(String) : [];
     }
+}
+
+/**
+ * 超范围文案的「地区」展示名：
+ * 直辖市等高德只回区县或空省市时，从地址原文取「xx市/自治州/地区/盟」，
+ * 避免向用户暴露城市码（110100）。
+ */
+function areaLabel(parsed: ParsedAddress): string {
+    if (parsed.city) return parsed.city;
+    if (parsed.province) return parsed.province;
+    const m = /^(.{2,10}?(?:市|自治州|地区|盟))/.exec(parsed.streetLine1 || '');
+    if (m) return m[1];
+    return parsed.district || parsed.cityCode || '该';
 }

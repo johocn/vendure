@@ -39,6 +39,15 @@ describe('DeliveryGuardService.check', () => {
         expect(r.serviceAreaText).toContain('吉林市');
     });
 
+    test('直辖市地图只回区县（省市为空）→ 文案从地址原文取城市名，不暴露城市码', async () => {
+        const beijing = { province: null, city: null, district: '朝阳区', adcode: '110105', lat: 39.9, lng: 116.4, formattedAddress: '北京市朝阳区建国路1号' };
+        const guard = makeGuard(channel(['220200']), beijing);
+        const r = await guard.check({} as any, '111', '北京市朝阳区建国路1号 张三 13900000002');
+        expect(r.status).toBe('OUT_OF_RANGE');
+        expect(r.serviceAreaText).toContain('北京市');
+        expect(r.serviceAreaText).not.toContain('110100');
+    });
+
     test('渠道未配置服务城市 → 不限制（OK）', async () => {
         const guard = makeGuard(channel([]));
         const r = await guard.check({} as any, '111', '江南街1号');
