@@ -88,19 +88,28 @@ let WechatpayController = class WechatpayController {
      * 2. 未命中 → 渠道 override（payConfig.wechatpayJson）+ code='wechatpay' 的 PaymentMethod args
      */
     async buildWxPay(ctx, host) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e, _f;
         const mapCode = (_b = (_a = this.options) === null || _a === void 0 ? void 0 : _a.callbackMethodMap) === null || _b === void 0 ? void 0 : _b[host];
+        const pms = await this.paymentMethodService.findAll(ctx);
+        const mapped = mapCode ? pms.items.find(p => p.code === mapCode) : undefined;
+        const mappedApiKey = ((_e = (_d = (_c = mapped === null || mapped === void 0 ? void 0 : mapped.handler) === null || _c === void 0 ? void 0 : _c.args) === null || _d === void 0 ? void 0 : _d.find(a => a.name === 'apiKey')) === null || _e === void 0 ? void 0 : _e.value) || '';
+        // 映射到的方法若没有商户凭证（如仅作占位、未填 key 的 wechatpay-xxx），不能只用它验签：
+        // apiKey 为空会让验签恒失败、回调 401（微信重试后仍失败 → 已付款但不结单/不发券）。
+        // 此时回退到「渠道 override + wechatpay」这条既有主链。
+        const useMapped = !!mapped && !!mappedApiKey;
         let override = null;
         let methodCode = 'wechatpay';
-        if (mapCode) {
+        if (useMapped) {
             methodCode = mapCode;
         }
         else {
             override = (0, payment_config_1.getPaymentOverride)(ctx, 'wechatpay');
+            if (mapCode && !useMapped) {
+                core_1.Logger.warn(`callbackMethodMap[${host}]=${mapCode} 缺少商户凭证，回退 wechatpay 验签`, constants_1.loggerCtx);
+            }
         }
-        const pms = await this.paymentMethodService.findAll(ctx);
         const pm = pms.items.find(p => p.code === methodCode);
-        const args = ((_c = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _c === void 0 ? void 0 : _c.args) || [];
+        const args = ((_f = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _f === void 0 ? void 0 : _f.args) || [];
         const getArg = (name) => { var _a; return ((_a = args.find(a => a.name === name)) === null || _a === void 0 ? void 0 : _a.value) || ''; };
         const apiKey = (override === null || override === void 0 ? void 0 : override.apiKey) || getArg('apiKey');
         const pay = new wechatpay_node_v3_1.default({

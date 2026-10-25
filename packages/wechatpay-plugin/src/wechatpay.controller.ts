@@ -95,14 +95,26 @@ export class WechatpayController {
         apiKey: string;
     }> {
         const mapCode = this.options?.callbackMethodMap?.[host];
+        const pms = await this.paymentMethodService.findAll(ctx);
+        const mapped = mapCode ? pms.items.find(p => p.code === mapCode) : undefined;
+        const mappedApiKey = mapped?.handler?.args?.find(a => a.name === 'apiKey')?.value || '';
+        // 映射到的方法若没有商户凭证（如仅作占位、未填 key 的 wechatpay-xxx），不能只用它验签：
+        // apiKey 为空会让验签恒失败、回调 401（微信重试后仍失败 → 已付款但不结单/不发券）。
+        // 此时回退到「渠道 override + wechatpay」这条既有主链。
+        const useMapped = !!mapped && !!mappedApiKey;
         let override: WechatpayCredentials | null = null;
         let methodCode = 'wechatpay';
-        if (mapCode) {
-            methodCode = mapCode;
+        if (useMapped) {
+            methodCode = mapCode as string;
         } else {
             override = getPaymentOverride(ctx, 'wechatpay') as WechatpayCredentials | null;
+            if (mapCode && !useMapped) {
+                Logger.warn(
+                    `callbackMethodMap[${host}]=${mapCode} 缺少商户凭证，回退 wechatpay 验签`,
+                    loggerCtx,
+                );
+            }
         }
-        const pms = await this.paymentMethodService.findAll(ctx);
         const pm = pms.items.find(p => p.code === methodCode);
         const args = pm?.handler?.args || [];
         const getArg = (name: string) => args.find(a => a.name === name)?.value || '';
