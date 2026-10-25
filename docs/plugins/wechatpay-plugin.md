@@ -429,6 +429,38 @@ const pollOrderStatus = async (interval = 3000, maxAttempts = 20) => {
 - 插件已内置幂等处理，重复通知不会导致重复确认。
 - 微信支付 V3 版本的通知数据为加密传输，插件会自动解密。
 
+### 多租户回调渠道路由（重要）
+
+多店铺/多租户部署时，**回调请求的渠道 ≠ 订单所属渠道**是常态，必须按订单自身渠道结算，不能按回调 ctx 的渠道查询订单。
+
+原因：回调 ctx 的 `channel` 由请求 Host 经 `findChannelByDomain` 解析，解析不到会回退默认渠道；而各店铺的 `notifyUrl` 往往是同一个默认域名（如 `https://www.youshop.cn/shop-api/wechatpay/notify`）。若结算时按 `ctx.channelId` 过滤订单，跨渠道订单会查不到，表现为「用户已扣款但订单未结算/未入账」。
+
+统一处理规则（`CS-`/`RC-`/`BP-`/`PO-` 前缀及普通订单均适用）：
+
+1. 先按业务单号（`out_trade_no`）**全局**取单，不带渠道过滤。
+2. 从订单自身记录解析出所属渠道 `orderChannel`。
+3. 若与回调 ctx 渠道不一致，构造该渠道的 admin `RequestContext`（`new RequestContext({ apiType: 'admin', channel: orderChannel, isAuthorized: true, authorizedAsOwnerOnly: false })`），后续查询、`settlePayment`、事务、余额/积分变动全部使用该 ctx；渠道一致则直接复用原 ctx。
+4. 忽略结算类的 `CHANNEL_NOT_FOUND` 是异常（渠道被删），此时应记日志并放弃结算，不可回退默认渠道强行入账。
+
+相关实现位置：
+
+| 链路 | 结算入口 |
+|------|---------|
+| 普通订单 | `WechatpayController.settleOrderPayment` |
+| 券订单 `CS-` | `CouponSaleService`（`orderChannelCtx`） |
+| 充值卡 `RC-` | `RechargeCardService.settleRechargeOrderByOutTradeNo` |
+| 账单 `BP-` | `BillPayService.settleBillPayOrderByOutTradeNo` |
+| 积分商城 `PO-` | `PointsMallService.settlePointsOrderByOutTradeNo` |
+
+### JSAPI openid 选择规则
+
+调用统一下单时必须使用 **与 appId 同源** 的 openid（公众号 openid 与小程序 openid 按 appid 隔离，选错必然报 `openid 与 appid 不匹配`）：
+
+- 当前渠道存在 `payConfig` 覆盖（即本租户在自己的公众号/H5 场景下支付）→ **优先公众号 openid**（`preferMini: false`）。
+- 无 `payConfig` 覆盖（即用平台小程序支付）→ **优先小程序 openid**。
+
+`WechatpayService.hasChannelPayConfig(ctx)` 用于判定；`resolveCustomerOpenid(ctx, { preferMini })` 按上述规则挑 openid。充值卡、账单、积分商城三条链路已统一按此口径（与券支付一致）。
+
 ## 退款流程
 
 退款通过 Vendure 原生退款流程触发，插件内部自动调用微信支付退款接口。
