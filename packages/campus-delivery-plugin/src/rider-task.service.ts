@@ -124,6 +124,21 @@ export class RiderTaskService {
         if (!Array.isArray(rows) || !rows.length) {
             throw new UserInputError('订单已被取消或改派，无法上报位置');
         }
+        // P8-4 轨迹留痕：实时位置（Order.customFields）送达即清空，历史点位落 campus_rider_location。
+        // 同单 5s 内重复上报不落库（骑手端 10s/次，防重试/多端并发撑大表）；
+        // 留痕失败绝不影响实时上报（C 端跟踪优先），仅告警供排查。
+        try {
+            await this.connection.rawConnection.query(
+                'INSERT INTO campus_rider_location '
+                + '("createdAt", "updatedAt", "channelId", "orderId", "riderCustomerId", lat, lng, "reportedAt") '
+                + 'SELECT now(), now(), $1, $2, $3, $4, $5, now() '
+                + 'WHERE NOT EXISTS (SELECT 1 FROM campus_rider_location '
+                + `WHERE "orderId" = $2 AND "reportedAt" > now() - interval '5 seconds')`,
+                [ctx.channelId, order.id, Number(cf.deliveryStaffId), lat, lng],
+            );
+        } catch (e: any) {
+            Logger.warn(`骑手轨迹留痕失败 order=${order.id}: ${e?.message ?? e}`, 'RiderTask');
+        }
         return order;
     }
 

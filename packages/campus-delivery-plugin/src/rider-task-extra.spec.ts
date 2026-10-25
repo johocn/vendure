@@ -110,16 +110,27 @@ describe('RiderTaskService.orderRider', () => {
 });
 
 describe('RiderTaskService.reportLocation', () => {
-    it('配送中本人订单按条件写落 riderLat/riderLng', async () => {
+    it('配送中本人订单按条件写落 riderLat/riderLng，并留痕轨迹（5s 内去重）', async () => {
         const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
-        await env.svc.reportLocation({} as any, 5, 30.1, 120.2);
-        expect(env.rawQuery).toHaveBeenCalledTimes(1);
+        await env.svc.reportLocation({ channelId: 2 } as any, 5, 30.1, 120.2);
+        expect(env.rawQuery).toHaveBeenCalledTimes(2);
         const [sql, params] = env.rawQuery.mock.calls[0];
         expect(sql).toContain('"customFieldsRiderlat"');
         expect(sql).toContain('"customFieldsDeliverystaffid"');
         expect(sql).toContain('"state" <> \'Cancelled\'');
         expect(params).toEqual([30.1, 120.2, 5, '7', ['assigned', 'in_progress']]);
+        const [trackSql, trackParams] = env.rawQuery.mock.calls[1];
+        expect(trackSql).toContain('INSERT INTO campus_rider_location');
+        expect(trackSql).toContain('interval \'5 seconds\'');
+        expect(trackParams).toEqual([2, 5, 7, 30.1, 120.2]);
         expect(env.repoByEntity.Order.update).not.toHaveBeenCalled();
+    });
+    it('轨迹留痕失败不影响实时位置上报', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
+        env.rawQuery
+            .mockResolvedValueOnce([[{ id: 5 }], []])
+            .mockRejectedValueOnce(new Error('relation "campus_rider_location" does not exist'));
+        await expect(env.svc.reportLocation({} as any, 5, 30.1, 120.2)).resolves.toBeTruthy();
     });
     it('坐标非法直接拒绝（不查库）', async () => {
         const env = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });

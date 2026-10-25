@@ -30,6 +30,10 @@ const support_entities_1 = require("./support.entities");
 const rider_ops_entities_1 = require("./rider-ops.entities");
 const p7_ops_tables_1 = require("./migrations/p7-ops-tables");
 const add_withdraw_payout_1 = require("./migrations/add-withdraw-payout");
+const add_rider_location_1 = require("./migrations/add-rider-location");
+const campus_rider_location_entity_1 = require("./campus-rider-location.entity");
+const rider_ledger_admin_resolver_1 = require("./rider-ledger-admin.resolver");
+const rider_ledger_service_1 = require("./rider-ledger.service");
 const rider_ops_service_1 = require("./rider-ops.service");
 const support_admin_resolver_1 = require("./support-admin.resolver");
 const support_service_1 = require("./support.service");
@@ -237,7 +241,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -250,6 +254,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p6_default_compensation_and_credit_recovery_1.P6DefaultCompensationMigration,
             p7_ops_tables_1.P7OpsTablesMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
+            add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
@@ -266,6 +271,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             rider_task_service_1.RiderTaskService,
             rider_credit_service_1.RiderCreditService,
             rider_wallet_service_1.RiderWalletService,
+            rider_ledger_service_1.RiderLedgerService,
             dispatch_job_service_1.DispatchJobService,
             dispatch_admin_service_1.DispatchAdminService,
             delivery_stats_service_1.DeliveryStatsService,
@@ -777,6 +783,52 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     soldOut: Boolean!
                 }
 
+                type CampusRiderEarningRow {
+                    id: ID!
+                    orderId: ID!
+                    orderCode: String
+                    riderCustomerId: ID!
+                    riderName: String!
+                    """分成金额（分，已含小费折算）"""
+                    amount: Int!
+                    """其中小费（分，仅展示，不额外叠加）"""
+                    tip: Int!
+                    """credited / pending / crediting"""
+                    status: String!
+                    createdAt: DateTime!
+                }
+
+                type CampusRiderEarningList {
+                    items: [CampusRiderEarningRow!]!
+                    total: Int!
+                    """筛选条件下全量分成合计（分）"""
+                    sumAmount: Int!
+                    """筛选条件下全量小费合计（分）"""
+                    sumTip: Int!
+                }
+
+                type CampusRiderTrackPoint {
+                    id: ID!
+                    orderId: ID!
+                    orderCode: String
+                    riderCustomerId: ID!
+                    lat: Float!
+                    lng: Float!
+                    reportedAt: DateTime!
+                }
+
+                type CampusRiderTrack {
+                    orderId: ID
+                    orderCode: String
+                    riderCustomerId: ID
+                    riderName: String
+                    points: [CampusRiderTrackPoint!]!
+                    """相邻点位球面直线距离累计（米）"""
+                    distanceMeters: Int!
+                    """是否因单次上限 5000 点被截断"""
+                    truncated: Boolean!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -799,6 +851,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusRiderOnlineStats(date: String): CampusRiderOnlineStatList!
                     campusRiderReviews(riderCustomerId: ID, skip: Int, take: Int): [CampusRiderReviewRow!]!
                     campusRiderRating(riderCustomerId: ID!): CampusRiderRating!
+                    campusRiderEarnings(from: String, to: String, riderCustomerId: ID, status: String, orderCode: String, skip: Int, take: Int): CampusRiderEarningList!
+                    campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
+                    campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
                 }
 
@@ -1071,7 +1126,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

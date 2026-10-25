@@ -44,6 +44,8 @@ __decorate([
 ], RiderEarning.prototype, "channelId", void 0);
 exports.RiderEarning = RiderEarning = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)('idx_campus_rider_earning_channel_created', ['channelId', 'createdAt']),
+    (0, typeorm_1.Index)('idx_campus_rider_earning_rider_created', ['riderCustomerId', 'createdAt']),
     __metadata("design:paramtypes", [Object])
 ], RiderEarning);
 //# sourceMappingURL=rider-earning.entity.js.map

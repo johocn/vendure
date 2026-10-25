@@ -32,6 +32,10 @@ const TIMEOUT_COMPENSATION_LIMIT = 200;
 const TIMEOUT_COMPENSATION_CLAIM_STALE_MIN = 15;
 // F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
 const SCAN_LIMIT = 200;
+/** 骑手轨迹保留天数（P8-4）：后台轨迹页按同一口径提示运营 */
+const LOCATION_RETENTION_DAYS = 30;
+/** 轨迹清理频率：每 6h 最多一次（DELETE 跨渠道，无需每轮都跑） */
+const LOCATION_CLEANUP_INTERVAL_MS = 6 * 3600000;
 let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     constructor(connection, grab, hall, capacity, credit, moduleRef, thirdParty, feishu) {
         this.connection = connection;
@@ -46,6 +50,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         this.running = false;
         /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
         this.compensationWarnAt = 0;
+        /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
+        this.lastLocationCleanupAt = 0;
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     get injector() {
@@ -75,9 +81,23 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             for (const cfg of cfgs) {
                 await this.scanChannelWithLock(cfg.channelId);
             }
+            await this.cleanupRiderLocations();
         }
         finally {
             this.running = false;
+        }
+    }
+    /** 骑手轨迹过期清理（P8-4）：保留 30 天，避免位置表无限增长。失败只告警不影响调度。 */
+    async cleanupRiderLocations() {
+        var _a;
+        if (Date.now() - this.lastLocationCleanupAt < LOCATION_CLEANUP_INTERVAL_MS)
+            return;
+        this.lastLocationCleanupAt = Date.now();
+        try {
+            await this.connection.rawConnection.query('DELETE FROM campus_rider_location WHERE "reportedAt" < now() - ($1 || \' days\')::interval', [String(LOCATION_RETENTION_DAYS)]);
+        }
+        catch (e) {
+            core_2.Logger.warn(`rider location cleanup failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'CampusDispatch');
         }
     }
     /**

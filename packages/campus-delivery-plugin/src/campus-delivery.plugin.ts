@@ -31,6 +31,10 @@ import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './suppo
 import { CampusRiderReview, CampusRiderSession, CampusRiderShift } from './rider-ops.entities';
 import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
 import { AddWithdrawPayoutMigration } from './migrations/add-withdraw-payout';
+import { AddRiderLocationMigration } from './migrations/add-rider-location';
+import { CampusRiderLocation } from './campus-rider-location.entity';
+import { RiderLedgerAdminResolver } from './rider-ledger-admin.resolver';
+import { RiderLedgerService } from './rider-ledger.service';
 import { RiderOpsService } from './rider-ops.service';
 import { SupportAdminResolver } from './support-admin.resolver';
 import { SupportService } from './support.service';
@@ -106,7 +110,7 @@ import { WaimaiStoreService } from './waimai-store.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusRiderShift, CampusRiderSession, CampusRiderReview],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -119,6 +123,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P6DefaultCompensationMigration,
         P7OpsTablesMigration,
         AddWithdrawPayoutMigration,
+        AddRiderLocationMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
@@ -135,6 +140,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         RiderTaskService,
         RiderCreditService,
         RiderWalletService,
+        RiderLedgerService,
         DispatchJobService,
         DispatchAdminService,
         DeliveryStatsService,
@@ -646,6 +652,52 @@ import { WaimaiStoreService } from './waimai-store.service';
                     soldOut: Boolean!
                 }
 
+                type CampusRiderEarningRow {
+                    id: ID!
+                    orderId: ID!
+                    orderCode: String
+                    riderCustomerId: ID!
+                    riderName: String!
+                    """分成金额（分，已含小费折算）"""
+                    amount: Int!
+                    """其中小费（分，仅展示，不额外叠加）"""
+                    tip: Int!
+                    """credited / pending / crediting"""
+                    status: String!
+                    createdAt: DateTime!
+                }
+
+                type CampusRiderEarningList {
+                    items: [CampusRiderEarningRow!]!
+                    total: Int!
+                    """筛选条件下全量分成合计（分）"""
+                    sumAmount: Int!
+                    """筛选条件下全量小费合计（分）"""
+                    sumTip: Int!
+                }
+
+                type CampusRiderTrackPoint {
+                    id: ID!
+                    orderId: ID!
+                    orderCode: String
+                    riderCustomerId: ID!
+                    lat: Float!
+                    lng: Float!
+                    reportedAt: DateTime!
+                }
+
+                type CampusRiderTrack {
+                    orderId: ID
+                    orderCode: String
+                    riderCustomerId: ID
+                    riderName: String
+                    points: [CampusRiderTrackPoint!]!
+                    """相邻点位球面直线距离累计（米）"""
+                    distanceMeters: Int!
+                    """是否因单次上限 5000 点被截断"""
+                    truncated: Boolean!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -668,6 +720,9 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusRiderOnlineStats(date: String): CampusRiderOnlineStatList!
                     campusRiderReviews(riderCustomerId: ID, skip: Int, take: Int): [CampusRiderReviewRow!]!
                     campusRiderRating(riderCustomerId: ID!): CampusRiderRating!
+                    campusRiderEarnings(from: String, to: String, riderCustomerId: ID, status: String, orderCode: String, skip: Int, take: Int): CampusRiderEarningList!
+                    campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
+                    campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
                 }
 
@@ -940,7 +995,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {

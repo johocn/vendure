@@ -107,7 +107,7 @@ let RiderTaskService = class RiderTaskService {
     }
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
     async reportLocation(ctx, orderId, lat, lng) {
-        var _a, _b;
+        var _a, _b, _c;
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
             throw new core_1.UserInputError('位置坐标不合法');
         }
@@ -120,6 +120,19 @@ let RiderTaskService = class RiderTaskService {
         const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
         if (!Array.isArray(rows) || !rows.length) {
             throw new core_1.UserInputError('订单已被取消或改派，无法上报位置');
+        }
+        // P8-4 轨迹留痕：实时位置（Order.customFields）送达即清空，历史点位落 campus_rider_location。
+        // 同单 5s 内重复上报不落库（骑手端 10s/次，防重试/多端并发撑大表）；
+        // 留痕失败绝不影响实时上报（C 端跟踪优先），仅告警供排查。
+        try {
+            await this.connection.rawConnection.query('INSERT INTO campus_rider_location '
+                + '("createdAt", "updatedAt", "channelId", "orderId", "riderCustomerId", lat, lng, "reportedAt") '
+                + 'SELECT now(), now(), $1, $2, $3, $4, $5, now() '
+                + 'WHERE NOT EXISTS (SELECT 1 FROM campus_rider_location '
+                + `WHERE "orderId" = $2 AND "reportedAt" > now() - interval '5 seconds')`, [ctx.channelId, order.id, Number(cf.deliveryStaffId), lat, lng]);
+        }
+        catch (e) {
+            common_1.Logger.warn(`骑手轨迹留痕失败 order=${order.id}: ${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, 'RiderTask');
         }
         return order;
     }

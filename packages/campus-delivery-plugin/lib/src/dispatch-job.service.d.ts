@@ -22,12 +22,16 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private couponSvc?;
     /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
     private compensationWarnAt;
+    /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
+    private lastLocationCleanupAt;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     start(intervalMs?: number): void;
     onApplicationShutdown(): void;
     private tick;
+    /** 骑手轨迹过期清理（P8-4）：保留 30 天，避免位置表无限增长。失败只告警不影响调度。 */
+    private cleanupRiderLocations;
     /**
      * 按渠道加扫描锁：多实例幂等（pm2 多进程/多副本时同一渠道同一轮只允许一个实例扫描），
      * 同时把渠道间故障隔离——单渠道扫描抛错不再中断其余渠道（上一版全局锁整体串行，渠道多时
