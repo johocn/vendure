@@ -16,6 +16,8 @@
 
 **实施修正二（2026-10-25，Task 10 前）:** 核对线上部署（`/www/apps/vendure` → pm2 `vendure` → Postgres 库 `vendure`）确认：**不存在 `delivery_range` 表，`AddressPlugin` 从未在 `dev-config.ts` 注册，`merchant-plugin` 也未上线**。原 Task 4/6 依赖的 `DeliveryRange` / `DeliveryService` 在线上不可用，若按原样注册 provider 会因实体元数据缺失导致下单链路抛错。经确认改为**城市级校验**：城市索引只读渠道 `servingCities`（未配置的渠道视为不限，进 `allChannels` 兜底）；配送守卫判定「地址城市码是否在渠道服务城市内」，不再引入 address-plugin（`package.json`/lockfile 中的 `@vendure/address-plugin` 依赖已同步移除）。P1 若上线地址/范围插件，再补区县与半径精度。
 
+**实施修正三（2026-10-25，Task 11 冒烟后）:** 冒烟发现两处线上问题并修复（`b601f22ff`）：① 切店重搜无命中时原实现保留旧店结果与会话渠道，用户继续回编号会落回旧店并在守卫处反复切店——现无论是否命中都切会话渠道并覆盖结果，无命中提示换词重搜；② 直辖市地址（城市字段为空）超范围文案会显示城市码，现用省份兜底。另记录遗留项：`customer-binding` 的「手机号已注册 → 补绑定」分支不保存本次输入地址，该类老用户会跳过路由/守卫（待产品确认是否 P0 补建）。
+
 ---
 
 ## File Structure
@@ -1278,38 +1280,42 @@ git commit -m "feat(assistant): 注册城市路由服务并补充上线配置清
 
 ### Task 11: 线上冒烟与回归
 
-- [ ] **Step 1: 部署**
+- [x] **Step 1: 部署**
 
 ```bash
 git push origin master
 ssh joho "cd /www/apps/vendure && git fetch origin -q && git reset --hard origin/master -q && pm2 restart vendure && sleep 12 && pm2 list | grep -i vendure | head -1"
 ```
 
-Expected: `online`。
+Expected: `online`。实测：`0685faab5`、`b601f22ff` 两次部署均 `online`，启动日志有 `WechatShoppingAssistantPlugin initialized`。
 
-- [ ] **Step 2: 冒烟 A（可配送）**
+- [x] **Step 2: 冒烟 A（可配送）**
 
 用测试 openid 发「买袋面」→ 回编号 → 用该城市地址下单。
 Expected: 回复含订单号、商品、金额、预计送达（或电话确认）、支付链接。
 
-- [ ] **Step 3: 冒烟 B（超范围）**
+- [x] **Step 3: 冒烟 B（超范围）**
 
 发同一商品，地址填外省地址。
 Expected: 超范围卡，含「不在配送范围」+ 服务区域 + 客服/留言出口；数据库无新订单。
+实测：北京地址 → 「本店目前不服务「北京市」地区的地址」，无新订单。注意：必须用**全新手机号**，否则命中「手机号已注册 → 补绑定不建地址」分支会跳过守卫（见遗留项）。
 
-- [ ] **Step 4: 冒烟 C（切店）**
+- [x] **Step 4: 冒烟 C（切店）**
 
 在有 `servingCities` 的另一城市地址下单。
 Expected: 收到「已为你切换到『XX』」，旧编号失效，重搜后编号可用。
+实测：长春地址 → 切到「新生」（ch7）；因该店无「面」商品，返回「该店暂时没有「面」相关的商品，换个商品名再试试」，会话渠道已切到 7、旧编号失效。修复提交 `b601f22ff`。
 
-- [ ] **Step 5: 清理测试数据**
+- [x] **Step 5: 清理测试数据**
 
 ```sql
 delete from wechat_shopping_session where openid like 'oQaCityRoute-%';
 delete from wechat_processed_message where "dedupKey" like '%oQaCityRoute-%';
 ```
 
-- [ ] **Step 6: 提交验证记录**
+实测补充：另删除冒烟新建的顾客 198/199/200/201（含 `authentication_method`、`user`、`customer_channels_channel`、`address`），并清除既有顾客 161/197 的测试 openid 绑定；临时渠道 `servingCities` 已回滚为 null 并重启。
+
+- [x] **Step 6: 提交验证记录**
 
 把 3 条冒烟结果与截图路径追加到 `docs/superpowers/plans/2026-10-25-city-routing-ops-checklist.md`，提交：
 
