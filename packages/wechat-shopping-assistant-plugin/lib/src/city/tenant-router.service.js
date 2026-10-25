@@ -32,12 +32,32 @@ let TenantRouterService = class TenantRouterService {
         });
         const candidates = (0, tenant_router_1.rankCandidates)([...cityHits, ...others]).slice(0, 3);
         const currentChannelId = String((_b = input.currentChannelId) !== null && _b !== void 0 ? _b : '');
+        // 仅当目标精度严格高于当前渠道时才切店：同精度（如两边都是「不限城市」）保持当前渠道，
+        // 避免线上未配置 servingCities 时每单都被切到排序第一的渠道。
+        const currentPrecision = this.currentPrecision(index, currentChannelId);
+        const best = (_c = candidates[0]) !== null && _c !== void 0 ? _c : null;
+        const chosen = best && tenant_router_1.PRECISION_WEIGHT[best.precision] < tenant_router_1.PRECISION_WEIGHT[currentPrecision] ? best : null;
         return {
-            chosen: (_c = candidates[0]) !== null && _c !== void 0 ? _c : null,
+            chosen,
             candidates,
             ambiguous: candidates.length > 1 && candidates[0].precision === candidates[1].precision,
             currentInCandidates: candidates.some(c => c.channelId === currentChannelId),
         };
+    }
+    /**
+     * 当前渠道的精度：未配置 servingCities → all；配置了但本城市不命中 → explicit
+     * （配置过的渠道不参与 allChannels 兜底）；渠道不存在 → all（放行，不误切）。
+     */
+    currentPrecision(index, channelId) {
+        if (!channelId)
+            return 'all';
+        if (index.allChannels.some(c => c.channelId === channelId))
+            return 'all';
+        for (const list of index.byCity.values()) {
+            if (list.some(c => c.channelId === channelId))
+                return 'explicit';
+        }
+        return 'all';
     }
 };
 exports.TenantRouterService = TenantRouterService;

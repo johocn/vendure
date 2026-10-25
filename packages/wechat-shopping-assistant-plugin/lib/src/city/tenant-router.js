@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.PRECISION_WEIGHT = void 0;
 exports.rankCandidates = rankCandidates;
 const PRECISION_WEIGHT = { explicit: 0, district: 1, circle: 2, all: 3 };
+exports.PRECISION_WEIGHT = PRECISION_WEIGHT;
 function rankCandidates(candidates, opts = {}) {
     var _a;
     const maxKm = (_a = opts.maxDistanceKm) !== null && _a !== void 0 ? _a : 3;

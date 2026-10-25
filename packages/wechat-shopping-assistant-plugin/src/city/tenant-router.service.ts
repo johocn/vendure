@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 
+import { Precision } from './city-catalog';
 import { CityCatalogService } from './city-catalog.service';
-import { Candidate, rankCandidates } from './tenant-router';
+import { Candidate, PRECISION_WEIGHT, rankCandidates } from './tenant-router';
 
 export interface TenantRouteResult {
+    /** 需要切店的目标渠道；null 表示保持当前渠道（含同精度、无候选、当前渠道更高精度） */
     chosen: Candidate | null;
     candidates: Candidate[];
     ambiguous: boolean;
@@ -31,12 +33,31 @@ export class TenantRouterService {
         });
         const candidates = rankCandidates([...cityHits, ...others]).slice(0, 3);
         const currentChannelId = String(input.currentChannelId ?? '');
+        // 仅当目标精度严格高于当前渠道时才切店：同精度（如两边都是「不限城市」）保持当前渠道，
+        // 避免线上未配置 servingCities 时每单都被切到排序第一的渠道。
+        const currentPrecision = this.currentPrecision(index, currentChannelId);
+        const best = candidates[0] ?? null;
+        const chosen =
+            best && PRECISION_WEIGHT[best.precision] < PRECISION_WEIGHT[currentPrecision] ? best : null;
         return {
-            chosen: candidates[0] ?? null,
+            chosen,
             candidates,
             ambiguous: candidates.length > 1 && candidates[0].precision === candidates[1].precision,
             currentInCandidates: candidates.some(c => c.channelId === currentChannelId),
         };
+    }
+
+    /**
+     * 当前渠道的精度：未配置 servingCities → all；配置了但本城市不命中 → explicit
+     * （配置过的渠道不参与 allChannels 兜底）；渠道不存在 → all（放行，不误切）。
+     */
+    private currentPrecision(index: { byCity: Map<string, Candidate[]>; allChannels: Candidate[] }, channelId: string): Precision {
+        if (!channelId) return 'all';
+        if (index.allChannels.some(c => c.channelId === channelId)) return 'all';
+        for (const list of index.byCity.values()) {
+            if (list.some(c => c.channelId === channelId)) return 'explicit';
+        }
+        return 'all';
     }
 }
 

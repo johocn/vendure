@@ -4,6 +4,8 @@ export type Candidate = CatalogChannel;
 
 const PRECISION_WEIGHT: Record<Precision, number> = { explicit: 0, district: 1, circle: 2, all: 3 };
 
+export { PRECISION_WEIGHT };
+
 export interface RankOptions {
     /** 半径候选的最大距离（km），缺省 3 */
     maxDistanceKm?: number;
