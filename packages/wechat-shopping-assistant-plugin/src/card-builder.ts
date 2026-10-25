@@ -572,6 +572,23 @@ export interface SupportCardInput {
     items?: Array<{ title: string; quantity: number; price: number }>;
     /** 合计（分） */
     total?: number;
+    /** 店铺名（无门店/无电话时展示，避免只回一句「未配置」） */
+    shopName?: string | null;
+    /** 店铺链接（无电话时引导到店铺页在线客服） */
+    shopUrl?: string | null;
+}
+
+/** 店铺信息卡：用户发店铺名/品牌名时的兜底，告诉主营、链接与可用指令 */
+export function buildShopInfoCard(
+    touser: string,
+    input: { name: string; intro?: string | null; url?: string | null; phone?: string | null },
+): TextMessage {
+    const lines = [input.name];
+    if (input.intro) lines.push(input.intro);
+    if (input.phone) lines.push(`电话　${input.phone}（点击拨打）`);
+    if (input.url) lines.push(`店铺　${input.url}`);
+    lines.push('发商品名即可下单，如「雪花粉」「买2袋面粉」；回复「客服」联系店家，回复「留言」留言。');
+    return { kind: 'text', touser, content: lines.join('\n') };
 }
 
 /**
@@ -592,13 +609,16 @@ export function buildSupportCard(touser: string, input: SupportCardInput): TextM
             lines.push(`门店电话暂未登记，可联系平台客服　${platformPhone}（点击拨打）`);
         } else {
             lines.push('门店电话暂未登记，可在店铺页联系在线客服。');
+            if (input.shopUrl) lines.push(`店铺　${input.shopUrl}`);
         }
         if (store.businessHours) lines.push(`营业　${store.businessHours}`);
     } else if (platformPhone) {
         lines.push('平台客服');
         lines.push(`电话　${platformPhone}（点击拨打）`);
     } else {
-        lines.push('暂未配置客服电话，可在店铺页联系在线客服，或稍后再回「客服」试试。');
+        lines.push(input.shopName ? `${input.shopName} · 在线客服` : '在线客服');
+        if (input.shopUrl) lines.push(`店铺　${input.shopUrl}（点击进入，可在店铺页联系在线客服）`);
+        else lines.push('可在店铺页联系在线客服。');
     }
 
     if (input.items?.length) {

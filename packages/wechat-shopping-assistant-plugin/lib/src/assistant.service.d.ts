@@ -85,6 +85,13 @@ export declare class AssistantService {
     private handleSupport;
     /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
     private platformServicePhone;
+    /** 渠道店铺域名 → 绝对地址（兼容只存 `host/path` 的配置） */
+    private shopUrlOf;
+    /**
+     * 店铺名/简称识别：查询词等于店铺名（或去掉「店/超市」等后缀的主体）时回店铺信息。
+     * 品类通用词（米/面/油/粮油…）不当作店名，避免挡住正常商品检索。
+     */
+    private matchShopQuery;
     /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */
     private contactFromNearby;
     /** 「留言」入口：进入留言输入态，并记住当前流程状态（保存/取消后恢复） */

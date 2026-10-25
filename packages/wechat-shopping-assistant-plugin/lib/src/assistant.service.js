@@ -740,7 +740,7 @@ let AssistantService = class AssistantService {
      * 全程不改会话状态（用户下一次输入仍按原流程处理）。
      */
     async handleSupport(msg, storeIndex) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
         const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
         const session = await this.sessionService.getActive(msg.fromUserName);
         const draft = (_b = session === null || session === void 0 ? void 0 : session.draft) !== null && _b !== void 0 ? _b : {};
@@ -781,6 +781,7 @@ let AssistantService = class AssistantService {
         const phone = (_q = contact === null || contact === void 0 ? void 0 : contact.phoneNumber) !== null && _q !== void 0 ? _q : platformPhone;
         await this.sessionService.saveDraft(msg.fromUserName, Object.assign(Object.assign({}, draft), { supportAt: now, supportStoreId: (_r = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _r !== void 0 ? _r : null, supportPhone: phone !== null && phone !== void 0 ? phone : null }), ttl);
         core_1.Logger.info(`Assistant support card: openid=${msg.fromUserName} store=${(_s = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _s !== void 0 ? _s : 'none'} phone=${Boolean(phone)}`, constants_1.loggerCtx);
+        const cf = (_u = (_t = ctx.channel) === null || _t === void 0 ? void 0 : _t.customFields) !== null && _u !== void 0 ? _u : {};
         return (0, card_builder_1.buildSupportCard)(msg.fromUserName, {
             store: contact
                 ? { name: contact.name, phoneNumber: contact.phoneNumber, businessHours: contact.businessHours }
@@ -788,6 +789,8 @@ let AssistantService = class AssistantService {
             platformPhone,
             items,
             total: items.length ? total : undefined,
+            shopName: String((_v = cf.shopName) !== null && _v !== void 0 ? _v : '').trim() || null,
+            shopUrl: this.shopUrlOf(cf),
         });
     }
     /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
@@ -796,6 +799,39 @@ let AssistantService = class AssistantService {
         const cf = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {};
         const phone = (_e = (_c = cf.servicePhone) !== null && _c !== void 0 ? _c : (_d = cf.basicConfig) === null || _d === void 0 ? void 0 : _d.contactPhone) !== null && _e !== void 0 ? _e : null;
         return phone ? String(phone) : null;
+    }
+    /** 渠道店铺域名 → 绝对地址（兼容只存 `host/path` 的配置） */
+    shopUrlOf(cf) {
+        var _a;
+        const raw = String((_a = cf === null || cf === void 0 ? void 0 : cf.domain) !== null && _a !== void 0 ? _a : '').trim();
+        if (!raw)
+            return null;
+        return /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`;
+    }
+    /**
+     * 店铺名/简称识别：查询词等于店铺名（或去掉「店/超市」等后缀的主体）时回店铺信息。
+     * 品类通用词（米/面/油/粮油…）不当作店名，避免挡住正常商品检索。
+     */
+    matchShopQuery(query, cf) {
+        var _a;
+        const name = String((_a = cf === null || cf === void 0 ? void 0 : cf.shopName) !== null && _a !== void 0 ? _a : '').trim();
+        if (!name)
+            return null;
+        const q = (0, intent_1.normalizeInput)(query);
+        if (q.length < 2)
+            return null;
+        const categoryWords = ['米', '面', '油', '粉', '粮油', '大米', '面粉', '食用油', '杂粮', '食品', '五谷'];
+        if (categoryWords.includes(q))
+            return null;
+        const core = name.replace(/(粮油店|食品店|旗舰店|便利店|超市|商店|商行|店铺|店)$/u, '');
+        if (!(q === name || q === core || (core.length >= 2 && core.includes(q))))
+            return null;
+        return {
+            name,
+            intro: (cf === null || cf === void 0 ? void 0 : cf.shopIntro) ? String(cf.shopIntro) : null,
+            url: this.shopUrlOf(cf),
+            phone: this.platformServicePhone({ channel: { customFields: cf } }),
+        };
     }
     /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */
     contactFromNearby(store) {
@@ -972,15 +1008,22 @@ let AssistantService = class AssistantService {
     }
     // ============ 搜索：meili 检索 → 会话保存 → 卡片消息 ============
     async handleSearch(msg, query, quantity) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f;
         const channelId = await this.resolveChannelId(msg.channelToken);
+        // 店铺名/简称（如「利民」）优先回店铺信息，避免正文里带店铺名导致全店泛匹配
+        const ctx = await this.createShopCtx(channelId);
+        const shop = this.matchShopQuery(query, (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
+        if (shop) {
+            core_1.Logger.info(`Assistant shop info: openid=${msg.fromUserName} query=${query}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildShopInfoCard)(msg.fromUserName, shop);
+        }
         let products;
         try {
             products = await this.searchService.searchProducts({
                 query,
                 channelId,
-                locale: (_a = this.opts.searchLocale) !== null && _a !== void 0 ? _a : 'zh',
-                limit: (_b = this.opts.searchLimit) !== null && _b !== void 0 ? _b : 5,
+                locale: (_c = this.opts.searchLocale) !== null && _c !== void 0 ? _c : 'zh',
+                limit: (_d = this.opts.searchLimit) !== null && _d !== void 0 ? _d : 5,
                 storefrontUrl: this.storefront(),
                 productUrlTemplate: this.opts.productUrlTemplate,
             });
@@ -994,8 +1037,8 @@ let AssistantService = class AssistantService {
         }
         // 数量进会话：编号下单时按该数量加购
         const results = products.map(p => (Object.assign(Object.assign({}, p), { quantity })));
-        await this.sessionService.saveResults(msg.fromUserName, channelId, results, query, (_c = this.opts.sessionTtlMinutes) !== null && _c !== void 0 ? _c : 30);
-        return (_d = (0, card_builder_1.buildNewsMessage)(msg.fromUserName, results)) !== null && _d !== void 0 ? _d : (0, card_builder_1.buildTextListMessage)(msg.fromUserName, results);
+        await this.sessionService.saveResults(msg.fromUserName, channelId, results, query, (_e = this.opts.sessionTtlMinutes) !== null && _e !== void 0 ? _e : 30);
+        return (_f = (0, card_builder_1.buildNewsMessage)(msg.fromUserName, results)) !== null && _f !== void 0 ? _f : (0, card_builder_1.buildTextListMessage)(msg.fromUserName, results);
     }
     // ============ 下单：编号回查会话 → 绑定校验/建档 → 建单 → 确认通知 ============
     async handleOrder(msg, indices, boundPhone) {

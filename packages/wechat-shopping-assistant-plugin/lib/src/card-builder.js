@@ -49,6 +49,7 @@ exports.buildStoreFlowBusyText = buildStoreFlowBusyText;
 exports.buildLocationFlowBusyText = buildLocationFlowBusyText;
 exports.buildLocationUnavailableText = buildLocationUnavailableText;
 exports.buildLocationInvalidText = buildLocationInvalidText;
+exports.buildShopInfoCard = buildShopInfoCard;
 exports.buildSupportCard = buildSupportCard;
 exports.buildSupportStorePickText = buildSupportStorePickText;
 exports.buildSupportInvalidStoreText = buildSupportInvalidStoreText;
@@ -517,6 +518,18 @@ function buildLocationInvalidText(touser) {
         content: '位置信息不完整，请重新发送位置，或直接回复收货地址文本（含省市区 + 详细地址）。',
     };
 }
+/** 店铺信息卡：用户发店铺名/品牌名时的兜底，告诉主营、链接与可用指令 */
+function buildShopInfoCard(touser, input) {
+    const lines = [input.name];
+    if (input.intro)
+        lines.push(input.intro);
+    if (input.phone)
+        lines.push(`电话　${input.phone}（点击拨打）`);
+    if (input.url)
+        lines.push(`店铺　${input.url}`);
+    lines.push('发商品名即可下单，如「雪花粉」「买2袋面粉」；回复「客服」联系店家，回复「留言」留言。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
 /**
  * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
  * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。
@@ -537,6 +550,8 @@ function buildSupportCard(touser, input) {
         }
         else {
             lines.push('门店电话暂未登记，可在店铺页联系在线客服。');
+            if (input.shopUrl)
+                lines.push(`店铺　${input.shopUrl}`);
         }
         if (store.businessHours)
             lines.push(`营业　${store.businessHours}`);
@@ -546,7 +561,11 @@ function buildSupportCard(touser, input) {
         lines.push(`电话　${platformPhone}（点击拨打）`);
     }
     else {
-        lines.push('暂未配置客服电话，可在店铺页联系在线客服，或稍后再回「客服」试试。');
+        lines.push(input.shopName ? `${input.shopName} · 在线客服` : '在线客服');
+        if (input.shopUrl)
+            lines.push(`店铺　${input.shopUrl}（点击进入，可在店铺页联系在线客服）`);
+        else
+            lines.push('可在店铺页联系在线客服。');
     }
     if ((_c = input.items) === null || _c === void 0 ? void 0 : _c.length) {
         const summary = input.items.map(i => `${i.title} ×${i.quantity}`).join('，');

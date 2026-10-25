@@ -52,6 +52,7 @@ import {
     buildPhoneTakenText,
     buildSearchErrorText,
     buildSessionExpiredText,
+    buildShopInfoCard,
     buildStoreFlowBusyText,
     buildStoreNeedLocationText,
     buildStoreSelectedText,
@@ -989,6 +990,7 @@ export class AssistantService {
             `Assistant support card: openid=${msg.fromUserName} store=${contact?.id ?? 'none'} phone=${Boolean(phone)}`,
             loggerCtx,
         );
+        const cf = (ctx.channel?.customFields as any) ?? {};
         return buildSupportCard(msg.fromUserName, {
             store: contact
                 ? { name: contact.name, phoneNumber: contact.phoneNumber, businessHours: contact.businessHours }
@@ -996,6 +998,8 @@ export class AssistantService {
             platformPhone,
             items,
             total: items.length ? total : undefined,
+            shopName: String(cf.shopName ?? '').trim() || null,
+            shopUrl: this.shopUrlOf(cf),
         });
     }
 
@@ -1004,6 +1008,37 @@ export class AssistantService {
         const cf = (ctx.channel?.customFields as any) ?? {};
         const phone = cf.servicePhone ?? cf.basicConfig?.contactPhone ?? null;
         return phone ? String(phone) : null;
+    }
+
+    /** 渠道店铺域名 → 绝对地址（兼容只存 `host/path` 的配置） */
+    private shopUrlOf(cf: any): string | null {
+        const raw = String(cf?.domain ?? '').trim();
+        if (!raw) return null;
+        return /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`;
+    }
+
+    /**
+     * 店铺名/简称识别：查询词等于店铺名（或去掉「店/超市」等后缀的主体）时回店铺信息。
+     * 品类通用词（米/面/油/粮油…）不当作店名，避免挡住正常商品检索。
+     */
+    private matchShopQuery(
+        query: string,
+        cf: any,
+    ): { name: string; intro?: string | null; url?: string | null; phone?: string | null } | null {
+        const name = String(cf?.shopName ?? '').trim();
+        if (!name) return null;
+        const q = normalizeInput(query);
+        if (q.length < 2) return null;
+        const categoryWords = ['米', '面', '油', '粉', '粮油', '大米', '面粉', '食用油', '杂粮', '食品', '五谷'];
+        if (categoryWords.includes(q)) return null;
+        const core = name.replace(/(粮油店|食品店|旗舰店|便利店|超市|商店|商行|店铺|店)$/u, '');
+        if (!(q === name || q === core || (core.length >= 2 && core.includes(q)))) return null;
+        return {
+            name,
+            intro: cf?.shopIntro ? String(cf.shopIntro) : null,
+            url: this.shopUrlOf(cf),
+            phone: this.platformServicePhone({ channel: { customFields: cf } } as any),
+        };
     }
 
     /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */
@@ -1248,6 +1283,13 @@ export class AssistantService {
         quantity: number,
     ): Promise<OutboundMessage | null> {
         const channelId = await this.resolveChannelId(msg.channelToken);
+        // 店铺名/简称（如「利民」）优先回店铺信息，避免正文里带店铺名导致全店泛匹配
+        const ctx = await this.createShopCtx(channelId);
+        const shop = this.matchShopQuery(query, (ctx.channel?.customFields as any) ?? {});
+        if (shop) {
+            Logger.info(`Assistant shop info: openid=${msg.fromUserName} query=${query}`, loggerCtx);
+            return buildShopInfoCard(msg.fromUserName, shop);
+        }
         let products;
         try {
             products = await this.searchService.searchProducts({

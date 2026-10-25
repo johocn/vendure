@@ -16,6 +16,8 @@ export declare class MeiliService {
         channelId?: string;
         limit?: number;
         offset?: number;
+        /** 限定检索字段（如 ['title'] 做标题优先检索；不传=全部可检索字段） */
+        attributesToSearchOn?: string[];
     }): Promise<{
         hits: KbDocument[];
         total: number;

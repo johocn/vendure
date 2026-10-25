@@ -11,6 +11,8 @@ import {
     buildOrderConfirmCard,
     buildOrderSuccessText,
     buildPhoneTakenText,
+    buildShopInfoCard,
+    buildSupportCard,
     buildTextListMessage,
     formatPrice,
     maskPhone,
@@ -48,6 +50,31 @@ describe('buildNewsMessage', () => {
     test('caps at 8 articles', () => {
         const many = Array.from({ length: 12 }, (_, i) => ({ ...products[0], index: i + 1 }));
         expect(buildNewsMessage('oX', many)!.articles.length).toBe(8);
+    });
+});
+
+describe('店铺信息卡与客服兜底', () => {
+    test('店铺信息卡：店名 + 主营 + 店铺链接 + 下单指引', () => {
+        const msg = buildShopInfoCard('oX', {
+            name: '东利民粮油店',
+            intro: '只做米、面、油',
+            url: 'https://www.youshop.cn/official-20',
+        });
+        expect(msg.content).toContain('东利民粮油店');
+        expect(msg.content).toContain('只做米、面、油');
+        expect(msg.content).toContain('https://www.youshop.cn/official-20');
+        expect(msg.content).toContain('发商品名即可下单');
+    });
+
+    test('无门店且无电话：客服卡带店铺名与店铺链接，不再只说「暂未配置」', () => {
+        const msg = buildSupportCard('oX', {
+            shopName: '东利民粮油店',
+            shopUrl: 'https://www.youshop.cn/official-20',
+        });
+        expect(msg.content).toContain('东利民粮油店 · 在线客服');
+        expect(msg.content).toContain('https://www.youshop.cn/official-20');
+        expect(msg.content).not.toContain('暂未配置客服电话');
+        expect(msg.content).toContain('回复「留言」');
     });
 });
 

@@ -184,7 +184,18 @@ export interface SupportCardInput {
     }>;
     /** 合计（分） */
     total?: number;
+    /** 店铺名（无门店/无电话时展示，避免只回一句「未配置」） */
+    shopName?: string | null;
+    /** 店铺链接（无电话时引导到店铺页在线客服） */
+    shopUrl?: string | null;
 }
+/** 店铺信息卡：用户发店铺名/品牌名时的兜底，告诉主营、链接与可用指令 */
+export declare function buildShopInfoCard(touser: string, input: {
+    name: string;
+    intro?: string | null;
+    url?: string | null;
+    phone?: string | null;
+}): TextMessage;
 /**
  * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
  * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。

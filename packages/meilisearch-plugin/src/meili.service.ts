@@ -49,7 +49,14 @@ export class MeiliService {
      */
     async search(
         locale: string,
-        params: { q: string; channelId?: string; limit?: number; offset?: number },
+        params: {
+            q: string;
+            channelId?: string;
+            limit?: number;
+            offset?: number;
+            /** 限定检索字段（如 ['title'] 做标题优先检索；不传=全部可检索字段） */
+            attributesToSearchOn?: string[];
+        },
     ): Promise<{ hits: KbDocument[]; total: number; processingTimeMs: number }> {
         const filter = ["type = 'product'", "status = 'published'"];
         // 商品可归属多个渠道（含默认渠道）：按 channelIds 数组过滤，避免单渠道字段漏掉其它渠道的可见商品
@@ -59,6 +66,9 @@ export class MeiliService {
             limit: params.limit ?? 10,
             offset: params.offset ?? 0,
             filter,
+            ...(params.attributesToSearchOn?.length
+                ? { attributesToSearchOn: params.attributesToSearchOn }
+                : {}),
         };
         const r = await this.req('POST', `/indexes/${this.indexUid(locale)}/search`, body);
         return {

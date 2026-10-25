@@ -22,14 +22,27 @@ describe('parseOrderIndices', () => {
 
 describe('recognizeIntent', () => {
     test('search with natural language', () => {
-        expect(recognizeIntent('买一瓶酱油')).toEqual({ kind: 'search', query: '一瓶酱油' });
+        expect(recognizeIntent('买一瓶酱油')).toEqual({ kind: 'search', query: '酱油', quantity: 1 });
         expect(recognizeIntent('想要洗衣液')).toEqual({ kind: 'search', query: '洗衣液' });
         expect(recognizeIntent('大米')).toEqual({ kind: 'search', query: '大米' });
+        expect(recognizeIntent('帮我找洗衣液')).toEqual({ kind: 'search', query: '洗衣液' });
     });
 
     test('search with quantity', () => {
         expect(recognizeIntent('买2瓶酱油')).toEqual({ kind: 'search', query: '酱油', quantity: 2 });
         expect(recognizeIntent('来3袋盐')).toEqual({ kind: 'search', query: '盐', quantity: 3 });
+        // 中文数字：一袋/两袋
+        expect(recognizeIntent('买两袋面粉')).toEqual({ kind: 'search', query: '面粉', quantity: 2 });
+        // 计量词前面的「装」一并剥离
+        expect(recognizeIntent('买袋装面粉')).toEqual({ kind: 'search', query: '面粉', quantity: 1 });
+    });
+
+    test('口语计量词剥离（袋/箱/瓶… 无数字也识别）', () => {
+        expect(recognizeIntent('买袋面')).toEqual({ kind: 'search', query: '面', quantity: 1 });
+        expect(recognizeIntent('买袋雪花粉')).toEqual({ kind: 'search', query: '雪花粉', quantity: 1 });
+        expect(recognizeIntent('2袋雪花粉')).toEqual({ kind: 'search', query: '雪花粉', quantity: 2 });
+        // 商品名本身以「包」开头时不误剥（包子 → 子）
+        expect(recognizeIntent('包子')).toEqual({ kind: 'search', query: '包子' });
     });
 
     test('order by indices', () => {

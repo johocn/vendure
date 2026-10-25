@@ -46,8 +46,13 @@ function makeConnection() {
         findOne: async ({ where }: any) => ({
             id: where.id,
             token: 'channel-token-a',
-            // 渠道装修客服电话（客服卡片无门店时兜底）
-            customFields: { servicePhone: '400-800-1234' },
+            // 渠道装修：客服电话（客服卡片无门店时兜底）+ 店铺名/主营/店铺链接（店铺信息卡）
+            customFields: {
+                servicePhone: '400-800-1234',
+                shopName: '东利民粮油店',
+                shopIntro: '只做米、面、油 · 丰满区江南城区免费送货上门',
+                domain: 'www.youshop.cn/official-20',
+            },
         }),
     };
     const repos = new Map<any, any>([
@@ -355,6 +360,41 @@ describe('AssistantService 冒烟闭环', () => {
         const session = connection.sessions.get('openid-user-1');
         expect(session.results.length).toBe(2);
         expect(session.channelId).toBe('2');
+    });
+
+    test('「买袋面」剥离计量词：检索词=面、数量=1', async () => {
+        const searchCalls: any[] = [];
+        const { svc, connection, outbound } = makeService({
+            search: {
+                searchProducts: async (input: any) => {
+                    searchCalls.push(input);
+                    return SEARCH_HITS.map((h, i) => ({ index: i + 1, ...h }));
+                },
+            } as any,
+        });
+        await svc.onMessage(textEvent('买袋面'));
+        expect(searchCalls[0].query).toBe('面');
+        expect(outbound[0].kind).toBe('news');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.results[0].quantity).toBe(1);
+    });
+
+    test('回复店铺名「利民」→ 店铺信息卡（不触发商品检索）', async () => {
+        const searchCalls: any[] = [];
+        const { svc, outbound } = makeService({
+            search: {
+                searchProducts: async (input: any) => {
+                    searchCalls.push(input);
+                    return [];
+                },
+            } as any,
+        });
+        await svc.onMessage(textEvent('利民'));
+        expect(searchCalls).toHaveLength(0);
+        expect(outbound[0].kind).toBe('text');
+        expect(outbound[0].content).toContain('东利民粮油店');
+        expect(outbound[0].content).toContain('只做米、面、油');
+        expect(outbound[0].content).toContain('https://www.youshop.cn/official-20');
     });
 
     test('回复「买1」未绑定 → 引导绑定 + 进入补录状态机', async () => {

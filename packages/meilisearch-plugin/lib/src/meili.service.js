@@ -60,22 +60,19 @@ let MeiliService = class MeiliService {
      * 权重由 ensureIndexes 的 searchableAttributes 决定（title > tags > body）。
      */
     async search(locale, params) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const filter = ["type = 'product'", "status = 'published'"];
         // 商品可归属多个渠道（含默认渠道）：按 channelIds 数组过滤，避免单渠道字段漏掉其它渠道的可见商品
         if (params.channelId)
             filter.push(`channelIds = '${String(params.channelId).replace(/'/g, "''")}'`);
-        const body = {
-            q: params.q,
-            limit: (_a = params.limit) !== null && _a !== void 0 ? _a : 10,
-            offset: (_b = params.offset) !== null && _b !== void 0 ? _b : 0,
-            filter,
-        };
+        const body = Object.assign({ q: params.q, limit: (_a = params.limit) !== null && _a !== void 0 ? _a : 10, offset: (_b = params.offset) !== null && _b !== void 0 ? _b : 0, filter }, (((_c = params.attributesToSearchOn) === null || _c === void 0 ? void 0 : _c.length)
+            ? { attributesToSearchOn: params.attributesToSearchOn }
+            : {}));
         const r = await this.req('POST', `/indexes/${this.indexUid(locale)}/search`, body);
         return {
-            hits: ((_c = r.hits) !== null && _c !== void 0 ? _c : []),
-            total: (_e = (_d = r.estimatedTotalHits) !== null && _d !== void 0 ? _d : r.totalHits) !== null && _e !== void 0 ? _e : 0,
-            processingTimeMs: (_f = r.processingTimeMs) !== null && _f !== void 0 ? _f : 0,
+            hits: ((_d = r.hits) !== null && _d !== void 0 ? _d : []),
+            total: (_f = (_e = r.estimatedTotalHits) !== null && _e !== void 0 ? _e : r.totalHits) !== null && _f !== void 0 ? _f : 0,
+            processingTimeMs: (_g = r.processingTimeMs) !== null && _g !== void 0 ? _g : 0,
         };
     }
     async deleteDocuments(locale, ids) {
