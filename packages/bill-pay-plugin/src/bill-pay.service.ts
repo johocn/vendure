@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+    ChannelService,
     CustomerService,
     ID,
     Logger,
@@ -54,6 +55,7 @@ export class BillPayService {
     constructor(
         private connection: TransactionalConnection,
         private customerService: CustomerService,
+        private channelService: ChannelService,
     ) {}
 
     // ===== 基础 =====
@@ -277,14 +279,17 @@ export class BillPayService {
         if (!gatewayService) {
             throw new UserInputError('Payment gateway not configured');
         }
+        const gateway = gatewayService; // 收窄为不可空引用（闭包内使用不再触发 possibly null）
         const outTradeNo = order.code ?? `${BILLPAY_CODE_PREFIX}${order.id}`;
         const effectiveTradeType = tradeType || 'JSAPI';
+        // 渠道配了商户凭证（payConfig override）= 公众号/H5 场景，JSAPI 必须优先公众号 openid，
+        // 否则取到小程序 openid 时 appId 不一致（openid 按 appid 隔离），支付必然失败。
         const effectiveOpenid =
             openid ||
             (await resolveCustomerOpenid(ctx, order.customerId, {
-                preferMini: effectiveTradeType === 'JSAPI',
+                preferMini: effectiveTradeType === 'JSAPI' && !gateway.hasChannelPayConfig(ctx),
             }));
-        const pay = await gatewayService.createBarePayment(
+        const pay = await gateway.createBarePayment(
             {
                 outTradeNo,
                 amount: order.quoteAmount,
@@ -306,9 +311,10 @@ export class BillPayService {
         if (!m) {
             throw new UserInputError('Invalid bill pay out_trade_no');
         }
-        const repo = this.orderRepo(ctx);
-        const order = await repo.findOne({
-            where: { id: m[1] as any, channelId: ctx.channelId as any },
+        // 回调域名解析出的渠道未必是下单渠道（回调落默认渠道域名时），
+        // 不能按 ctx.channelId 过滤，否则查不到单→已扣款不结单；先按 id 取单再切到订单自身渠道。
+        const order = await this.orderRepo(ctx).findOne({
+            where: { id: m[1] as any },
         });
         if (!order) {
             throw new UserInputError('Bill pay order not found');
@@ -316,7 +322,9 @@ export class BillPayService {
         if (order.status !== 'QUOTED') {
             return; // 幂等：已结算/已取消直接返回
         }
-        await this.connection.startTransaction(ctx);
+        const orderCtx = await this.orderChannelCtx(ctx, order.channelId);
+        const repo = this.orderRepo(orderCtx);
+        await this.connection.startTransaction(orderCtx);
         try {
             const claim = await repo
                 .createQueryBuilder()
@@ -325,15 +333,30 @@ export class BillPayService {
                 .where('id = :id AND status = :status', { id: order.id, status: 'QUOTED' })
                 .execute();
             if ((claim.affected ?? 0) === 0) {
-                await this.connection.commitOpenTransaction(ctx);
+                await this.connection.commitOpenTransaction(orderCtx);
                 return; // 并发下已被他人结算
             }
-            await this.connection.commitOpenTransaction(ctx);
+            await this.connection.commitOpenTransaction(orderCtx);
         } catch (e) {
-            await this.connection.rollBackTransaction(ctx);
+            await this.connection.rollBackTransaction(orderCtx);
             throw e;
         }
         Logger.info(`BillPayOrder ${outTradeNo} settled via wechat callback`, loggerCtx);
+    }
+
+    /** 账单支付单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private async orderChannelCtx(ctx: RequestContext, channelId: ID): Promise<RequestContext> {
+        if (Number(channelId) === Number(ctx.channelId)) return ctx;
+        const channel = await this.channelService.findOne(ctx, channelId);
+        if (!channel) {
+            throw new UserInputError(`Channel ${channelId} of bill pay order not found`);
+        }
+        return new RequestContext({
+            apiType: 'admin',
+            channel,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
     }
 
     /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */

@@ -101,10 +101,11 @@ async function verifyPin(pin, stored) {
     return crypto_1.default.timingSafeEqual(test, expected);
 }
 let RechargeCardService = class RechargeCardService {
-    constructor(connection, listQueryBuilder, customerService) {
+    constructor(connection, listQueryBuilder, customerService, channelService) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.customerService = customerService;
+        this.channelService = channelService;
     }
     // ===== Balance Operations =====
     /**
@@ -276,14 +277,17 @@ let RechargeCardService = class RechargeCardService {
         if (!gatewayService) {
             throw new core_1.UserInputError('Payment gateway not configured');
         }
+        const gateway = gatewayService; // 收窄为不可空引用（闭包内使用不再触发 possibly null）
         const outTradeNo = `RC-${order.id}`;
         const effectiveTradeType = tradeType || 'JSAPI';
-        // openid 回落（F-VS-08）：前端未携带 openid 时由客户档案推导，避免 JSAPI 支付失败
+        // openid 回落（F-VS-08）：前端未携带 openid 时由客户档案推导，避免 JSAPI 支付失败。
+        // 渠道配了商户凭证（payConfig override）说明走公众号/H5 场景，JSAPI 必须优先公众号 openid，
+        // 否则取到小程序 openid 时 appId 不一致（openid 按 appid 隔离），支付必然失败。
         const effectiveOpenid = openid ||
             (await (0, wechatpay_plugin_1.resolveCustomerOpenid)(ctx, order.customerId, {
-                preferMini: effectiveTradeType === 'JSAPI',
+                preferMini: effectiveTradeType === 'JSAPI' && !gateway.hasChannelPayConfig(ctx),
             }));
-        const pay = await gatewayService.createBarePayment({
+        const pay = await gateway.createBarePayment({
             outTradeNo,
             amount: order.amount,
             tradeType: effectiveTradeType,
@@ -300,15 +304,18 @@ let RechargeCardService = class RechargeCardService {
         const m = String(outTradeNo).match(/^RC-(\d+)$/);
         if (!m)
             throw new core_1.UserInputError('Invalid recharge out_trade_no');
-        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
-        const order = await repo.findOne({
-            where: { id: m[1], channelId: ctx.channelId },
+        // 回调查不到的渠道可能不是下单渠道（如回调域名不在渠道 customDomains 时回退默认渠道），
+        // 不能按 ctx.channelId 过滤，否则查不到单→已扣款不入账；先按 id 取单再切到订单自身渠道入账。
+        const order = await this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder).findOne({
+            where: { id: m[1] },
         });
         if (!order)
             throw new core_1.UserInputError('Recharge order not found');
         if (order.status !== 'pending')
             return; // 幂等：已结算直接返回
-        await this.connection.startTransaction(ctx);
+        const orderCtx = await this.orderChannelCtx(ctx, order.channelId);
+        const repo = this.connection.getRepository(orderCtx, recharge_order_entity_1.RechargeOrder);
+        await this.connection.startTransaction(orderCtx);
         try {
             const claim = await repo.createQueryBuilder()
                 .update(recharge_order_entity_1.RechargeOrder)
@@ -316,16 +323,31 @@ let RechargeCardService = class RechargeCardService {
                 .where('id = :id AND status = :status', { id: order.id, status: 'pending' })
                 .execute();
             if (claim.affected === 0) {
-                await this.connection.commitOpenTransaction(ctx);
+                await this.connection.commitOpenTransaction(orderCtx);
                 return; // 并发下已被他人结算，跳过
             }
-            await this.applyBalanceChange(ctx, order.customerId, order.amount, balance_transaction_entity_1.BalanceTransactionType.RECHARGE, { remark: `Recharge order #${order.id}` });
-            await this.connection.commitOpenTransaction(ctx);
+            await this.applyBalanceChange(orderCtx, order.customerId, order.amount, balance_transaction_entity_1.BalanceTransactionType.RECHARGE, { remark: `Recharge order #${order.id}` });
+            await this.connection.commitOpenTransaction(orderCtx);
         }
         catch (e) {
-            await this.connection.rollBackTransaction(ctx);
+            await this.connection.rollBackTransaction(orderCtx);
             throw e;
         }
+    }
+    /** 充值单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    async orderChannelCtx(ctx, channelId) {
+        if (Number(channelId) === Number(ctx.channelId))
+            return ctx;
+        const channel = await this.channelService.findOne(ctx, channelId);
+        if (!channel) {
+            throw new core_1.UserInputError(`Channel ${channelId} of recharge order not found`);
+        }
+        return new core_1.RequestContext({
+            apiType: 'admin',
+            channel,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
     }
     // ===== Card Operations =====
     async redeemCard(ctx, code, pin) {
@@ -638,6 +660,7 @@ exports.RechargeCardService = RechargeCardService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.ListQueryBuilder,
-        core_1.CustomerService])
+        core_1.CustomerService,
+        core_1.ChannelService])
 ], RechargeCardService);
 //# sourceMappingURL=recharge-card.service.js.map

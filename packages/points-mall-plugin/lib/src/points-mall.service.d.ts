@@ -1,4 +1,4 @@
-import { ConfigService, ID, PaginatedList, ProductPriceApplicator, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, ConfigService, ID, PaginatedList, ProductPriceApplicator, RequestContext, TransactionalConnection } from '@vendure/core';
 import { PointsOrder } from './points-order.entity';
 import { PointsProduct } from './points-product.entity';
 import { CreatePointsOrderInput, CreatePointsProductInput, FavoriteProductView, PointsOrderListOptions, PointsPayParams, PointsProductListOptions, PointsProductView, ToggleFavoriteResult, UpdatePointsProductInput } from './types';
@@ -6,9 +6,10 @@ export declare class PointsMallService {
     private connection;
     private productPriceApplicator;
     private configService;
+    private channelService;
     private memberLevel;
     private gateway;
-    constructor(connection: TransactionalConnection, productPriceApplicator: ProductPriceApplicator, configService: ConfigService);
+    constructor(connection: TransactionalConnection, productPriceApplicator: ProductPriceApplicator, configService: ConfigService, channelService: ChannelService);
     /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀。
      * C端 H5 为 history/hash 混合路由，裸 `preview/...` 相对路径会被解析到当前路由目录下导致图片 404。 */
     private toAbsoluteAssetUrl;
@@ -65,6 +66,8 @@ export declare class PointsMallService {
     createPointsOrderPayment(ctx: RequestContext, pointsOrderId: ID, tradeType?: string, openid?: string): Promise<PointsPayParams>;
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
     settlePointsOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string, transactionId: string): Promise<void>;
+    /** 积分单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private orderChannelCtx;
     /**
      * 回调晚于关单：订单已 cancelled（积分已退、库存已回补）但微信现金已收 → 原路自动退款。
      * 事务内原子认领支付行（pending/cancelled + refundStatus=none → paid + refunding），

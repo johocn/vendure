@@ -1,4 +1,4 @@
-import { CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { WechatpayService } from '@vendure/wechatpay-plugin';
 import { BillPayOrder } from './bill-pay-order.entity';
 import { MerchantAgreement } from './merchant-agreement.entity';
@@ -11,7 +11,8 @@ export declare function setBillPayGateway(gw: WechatpayService | null): void;
 export declare class BillPayService {
     private connection;
     private customerService;
-    constructor(connection: TransactionalConnection, customerService: CustomerService);
+    private channelService;
+    constructor(connection: TransactionalConnection, customerService: CustomerService, channelService: ChannelService);
     private currentCustomerId;
     /** 渠道配置：bill_pay_config JSON → 解析（坏配置逐字段回退默认） */
     getChannelConfig(ctx: RequestContext): Promise<BillPayChannelConfig>;
@@ -38,6 +39,8 @@ export declare class BillPayService {
     createWechatBillPayment(ctx: RequestContext, id: ID, tradeType?: 'JSAPI' | 'NATIVE' | 'H5' | 'APP', openid?: string): Promise<any>;
     /** 微信回调结算入口：解析 BP-<id>，原子置 QUOTED → PAID（幂等，参照 coupon-sale L208-237） */
     settleBillPayOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
+    /** 账单支付单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private orderChannelCtx;
     /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
     payBillPayOrderWithBalance(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
     /** 人工改价：PENDING_QUOTE → QUOTED，note 必填 */

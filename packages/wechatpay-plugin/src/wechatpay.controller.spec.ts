@@ -25,15 +25,20 @@ function makeRes() {
 function makeController(devBypass: boolean) {
     const settlement = { find: vi.fn().mockReturnValue(undefined), settle: vi.fn() };
     const orderService = { findOneByCode: vi.fn().mockResolvedValue(null) };
+    // 结算前会先全局按 code 取单（可能跨渠道），mock 为查不到单
+    const connection = {
+        getRepository: vi.fn().mockReturnValue({ findOne: vi.fn().mockResolvedValue(null) }),
+    };
     const ctrl = new WechatpayController(
         { devBypass } as any,
         orderService as any,
         { getDefaultChannel: vi.fn() } as any,
+        connection as any,
         {} as any,
         {} as any,
         settlement as any,
     );
-    return { ctrl, settlement, orderService };
+    return { ctrl, settlement, orderService, connection };
 }
 
 const req = { query: { outTradeNo: 'ORD1' }, headers: {}, hostname: 'localhost' } as any;
@@ -65,6 +70,19 @@ describe('WechatpayController dev 端点门禁（P0 修复：仅 devBypass 可�
         await ctrl.devNotify(req, res);
         expect(settlement.find).toHaveBeenCalledWith('ORD1');
         expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('回调渠道与订单渠道不同时：切到订单所属渠道结算', async () => {
+        const { ctrl, orderService, connection } = makeController(true);
+        // 回调域名解析到渠道 1（默认渠道），订单实际属于渠道 9（t1）
+        connection.getRepository.mockReturnValue({
+            findOne: vi.fn().mockResolvedValue({ code: 'ORD1', channels: [{ id: 9, code: 't1' }] }),
+        });
+        const res = makeRes();
+        await ctrl.devNotify(req, res);
+        const ctx = orderService.findOneByCode.mock.calls[0][0];
+        expect(ctx.channelId).toBe(9);
+        expect(ctx.channel.code).toBe('t1');
     });
 
     it('devBypass 开启：dev-pay 渲染模拟支付页', () => {

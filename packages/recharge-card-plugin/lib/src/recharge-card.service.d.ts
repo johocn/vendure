@@ -1,4 +1,4 @@
-import { CustomerService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, CustomerService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
@@ -24,7 +24,8 @@ export declare class RechargeCardService {
     private connection;
     private listQueryBuilder;
     private customerService;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService);
+    private channelService;
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService, channelService: ChannelService);
     /**
      * Unifies the customer identity across all balance entry points.
      * Given an explicit `customerId`, returns it directly. Otherwise resolves
@@ -44,6 +45,8 @@ export declare class RechargeCardService {
     createWechatRechargePayment(ctx: RequestContext, rechargeOrderId: ID, tradeType?: string, openid?: string): Promise<any>;
     /** 网关回调结算入口：解析 RC-<id>，原子入账（admin ctx 无 activeUser，用单归属 customerId 显式入账） */
     settleRechargeOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
+    /** 充值单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private orderChannelCtx;
     redeemCard(ctx: RequestContext, code: string, pin?: string): Promise<RechargeCard>;
     findMyCards(ctx: RequestContext): Promise<RechargeCard[]>;
     findAll(ctx: RequestContext, options?: ListQueryOptions<RechargeCard>): Promise<PaginatedList<RechargeCard>>;

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     Address,
+    ChannelService,
     ConfigService,
     Customer,
     ID,
@@ -40,6 +41,7 @@ export class PointsMallService {
         private connection: TransactionalConnection,
         private productPriceApplicator: ProductPriceApplicator,
         private configService: ConfigService,
+        private channelService: ChannelService,
     ) {}
 
     /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀。
@@ -624,8 +626,14 @@ export class PointsMallService {
             throw new UserInputError('Payment gateway not configured');
         }
         const tt = tradeType || 'JSAPI';
-        // openid 缺省时由客户档案推导（微信 unionid/openid 存储口径），推导失败返回 undefined
-        const openId = openid || (await resolveCustomerOpenid(ctx, customer.id, { preferMini: tt === 'JSAPI' }));
+        // openid 缺省时由客户档案推导（微信 unionid/openid 存储口径），推导失败返回 undefined。
+        // 渠道配了商户凭证（payConfig override）= 公众号/H5 场景，JSAPI 优先公众号 openid，
+        // 否则 appId 不一致（openid 按 appid 隔离）支付必然失败。
+        const openId =
+            openid ||
+            (await resolveCustomerOpenid(ctx, customer.id, {
+                preferMini: tt === 'JSAPI' && !this.gateway.hasChannelPayConfig(ctx),
+            }));
         const pay = await this.gateway.createBarePayment(
             {
                 outTradeNo: order.code,
@@ -647,21 +655,24 @@ export class PointsMallService {
     ): Promise<void> {
         const m = String(outTradeNo).match(/^PO-(\d+)$/);
         if (!m) throw new UserInputError('Invalid points out_trade_no');
-        const repo = this.connection.getRepository(ctx, PointsOrder);
-        const order = await repo.findOne({
-            where: { id: m[1] as any, channelId: ctx.channelId as any },
+        // 回调域名解析出的渠道未必是下单渠道（回调落默认渠道域名时），
+        // 不能按 ctx.channelId 过滤，否则查不到单→已扣款不结单；先按 id 取单再切到订单自身渠道。
+        const order = await this.connection.getRepository(ctx, PointsOrder).findOne({
+            where: { id: m[1] as any },
         });
         if (!order) throw new UserInputError('Points order not found');
+        const orderCtx = await this.orderChannelCtx(ctx, order.channelId);
         if (order.status !== 'pending_payment') {
             // 已结算（含后续履约态）属重复回调，幂等返回；已取消则现金已收但单已退分回补 → 自动原路退款（不抛错，避免微信反复重推）
             if (order.status === 'cancelled') {
-                await this.refundLateSettledPayment(ctx, order, transactionId);
+                await this.refundLateSettledPayment(orderCtx, order, transactionId);
             }
             return;
         }
         const next = order.deliveryType === 'virtual' ? 'completed' : 'pending_ship';
         const now = new Date();
-        await this.connection.startTransaction(ctx);
+        const repo = this.connection.getRepository(orderCtx, PointsOrder);
+        await this.connection.startTransaction(orderCtx);
         try {
             // 1) 先原子抢占订单：pending_payment → next；若已被取消/结算则 affected===0
             const claimOrder = await repo
@@ -675,7 +686,7 @@ export class PointsMallService {
             }
             // 2) 再原子抢占支付单：pending → paid，并写入 transactionId
             const claimPay = await this.connection
-                .getRepository(ctx, PointsOrderPayment)
+                .getRepository(orderCtx, PointsOrderPayment)
                 .createQueryBuilder()
                 .update(PointsOrderPayment)
                 .set({ status: 'paid', transactionId, paidAt: now })
@@ -684,12 +695,27 @@ export class PointsMallService {
             if (claimPay.affected === 0) {
                 throw new UserInputError('Payment already settled or not found');
             }
-            await this.connection.commitOpenTransaction(ctx);
+            await this.connection.commitOpenTransaction(orderCtx);
         } catch (e) {
-            await this.connection.rollBackTransaction(ctx);
+            await this.connection.rollBackTransaction(orderCtx);
             throw e;
         }
         Logger.info(`PointsOrder ${order.code} settled via ${outTradeNo} -> ${next}`, loggerCtx);
+    }
+
+    /** 积分单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private async orderChannelCtx(ctx: RequestContext, channelId: ID): Promise<RequestContext> {
+        if (Number(channelId) === Number(ctx.channelId)) return ctx;
+        const channel = await this.channelService.findOne(ctx, channelId);
+        if (!channel) {
+            throw new UserInputError(`Channel ${channelId} of points order not found`);
+        }
+        return new RequestContext({
+            apiType: 'admin',
+            channel,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
     }
 
     /**

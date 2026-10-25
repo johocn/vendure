@@ -25,10 +25,11 @@ const payment_config_1 = require("@vendure/cjk-plugin/lib/src/payment/payment-co
 const constants_1 = require("./constants");
 const wechatpay_settlement_1 = require("./wechatpay-settlement");
 let WechatpayController = class WechatpayController {
-    constructor(options, orderService, channelService, paymentMethodService, requestContextService, settlementRegistry) {
+    constructor(options, orderService, channelService, connection, paymentMethodService, requestContextService, settlementRegistry) {
         this.options = options;
         this.orderService = orderService;
         this.channelService = channelService;
+        this.connection = connection;
         this.paymentMethodService = paymentMethodService;
         this.requestContextService = requestContextService;
         this.settlementRegistry = settlementRegistry;
@@ -62,16 +63,37 @@ let WechatpayController = class WechatpayController {
      * 注意：订单到达 PaymentAuthorized 后 active=false，不能用 order.active 判断
      */
     async settleOrderPayment(ctx, orderCode) {
-        const order = await this.orderService.findOneByCode(ctx, orderCode, ['payments']);
-        if (!order) {
+        var _a, _b, _c;
+        // 回调域名解析出的渠道未必是下单渠道（如 t1 站点回调落 www.youshop.cn 时回退默认渠道），
+        // 而 OrderService.findOne 会按 ctx 渠道过滤 → 查不到单，微信已扣款却不结单。
+        // 故先全局按 code 取单和它所属渠道，再切到该渠道 ctx 去查单/结算。
+        const base = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            where: { code: orderCode },
+            relations: ['channels'],
+        });
+        if (!base) {
             core_1.Logger.warn(`settleOrderPayment: order ${orderCode} not found`, constants_1.loggerCtx);
+            return;
+        }
+        const orderChannel = (_b = (_a = base.channels) === null || _a === void 0 ? void 0 : _a.find(c => Number(c.id) === Number(ctx.channelId))) !== null && _b !== void 0 ? _b : (_c = base.channels) === null || _c === void 0 ? void 0 : _c[0];
+        const orderCtx = orderChannel && Number(orderChannel.id) !== Number(ctx.channelId)
+            ? new core_1.RequestContext({
+                apiType: 'admin',
+                channel: orderChannel,
+                isAuthorized: true,
+                authorizedAsOwnerOnly: false,
+            })
+            : ctx;
+        const order = await this.orderService.findOneByCode(orderCtx, orderCode, ['payments']);
+        if (!order) {
+            core_1.Logger.warn(`settleOrderPayment: order ${orderCode} not found in channel ${orderCtx.channelId}`, constants_1.loggerCtx);
             return;
         }
         const payments = order.payments || [];
         for (const payment of payments) {
             if (payment.state === 'Authorized') {
                 try {
-                    await this.orderService.settlePayment(ctx, payment.id);
+                    await this.orderService.settlePayment(orderCtx, payment.id);
                     core_1.Logger.info(`Settled payment ${payment.id} for order ${orderCode}`, constants_1.loggerCtx);
                 }
                 catch (e) {
@@ -270,6 +292,7 @@ exports.WechatpayController = WechatpayController = __decorate([
     __param(0, (0, common_1.Inject)(constants_1.WECHATPAY_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, core_1.OrderService,
         core_1.ChannelService,
+        core_1.TransactionalConnection,
         core_1.PaymentMethodService,
         core_1.RequestContextService,
         wechatpay_settlement_1.WechatpaySettlementRegistry])

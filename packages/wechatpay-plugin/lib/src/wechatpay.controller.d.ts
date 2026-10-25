@@ -1,15 +1,16 @@
 import { Request, Response } from 'express';
-import { OrderService, ChannelService, PaymentMethodService, RequestContextService } from '@vendure/core';
+import { OrderService, ChannelService, PaymentMethodService, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { WechatpayPluginOptions } from './types';
 import { WechatpaySettlementRegistry } from './wechatpay-settlement';
 export declare class WechatpayController {
     private options;
     private orderService;
     private channelService;
+    private connection;
     private paymentMethodService;
     private requestContextService;
     private settlementRegistry;
-    constructor(options: WechatpayPluginOptions, orderService: OrderService, channelService: ChannelService, paymentMethodService: PaymentMethodService, requestContextService: RequestContextService, settlementRegistry: WechatpaySettlementRegistry);
+    constructor(options: WechatpayPluginOptions, orderService: OrderService, channelService: ChannelService, connection: TransactionalConnection, paymentMethodService: PaymentMethodService, requestContextService: RequestContextService, settlementRegistry: WechatpaySettlementRegistry);
     /** 回调请求所属租户的 ctx：按请求域名（渠道 customFields.customDomains）解析，
      *  解析不到回退默认渠道，兼容历史单店部署。
      *  验签/解密/结算必须用「下单时那个租户」的商户凭证，否则 apiKey 不匹配解不开密。 */
