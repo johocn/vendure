@@ -27,6 +27,7 @@ import {
     buildAwaitingAddressText,
     buildBindGuideText,
     buildBindSuccessText,
+    buildChannelSwitchNoMatchText,
     buildChannelSwitchText,
     buildFlowCancelledText,
     buildGuideText,
@@ -91,6 +92,7 @@ import {
     AssistantAddressGeo,
     AssistantFlowDraft,
     AssistantFlowState,
+    CardProduct,
     NearbyStore,
     OutboundMessage,
     StoreContact,
@@ -1445,9 +1447,10 @@ export class AssistantService {
                     { cityCode: parsed.cityCode, resolvedChannelId: target.channelId, pendingQuery: query || null },
                     this.opts.sessionTtlMinutes ?? 30,
                 );
+                let hits: CardProduct[] = [];
                 if (query) {
                     try {
-                        const hits = await this.searchService.searchProducts({
+                        hits = await this.searchService.searchProducts({
                             query,
                             channelId: target.channelId,
                             locale: this.opts.searchLocale ?? 'zh',
@@ -1455,25 +1458,26 @@ export class AssistantService {
                             storefrontUrl: this.storefront(),
                             productUrlTemplate: this.opts.productUrlTemplate,
                         });
-                        if (hits.length) {
-                            await this.sessionService.saveResults(
-                                touser,
-                                target.channelId,
-                                hits.map(h => ({ ...h, quantity: picked[0]?.quantity ?? 1 })),
-                                query,
-                                this.opts.sessionTtlMinutes ?? 30,
-                            );
-                        }
                     } catch (e) {
                         Logger.warn(`Assistant switch-channel search failed: ${String(e)}`, loggerCtx);
                     }
                 }
+                // 无论新店是否有货都切会话渠道并覆盖结果：否则旧店编号仍可下单，会在守卫处反复切店
+                await this.sessionService.saveResults(
+                    touser,
+                    target.channelId,
+                    hits.map(h => ({ ...h, quantity: picked[0]?.quantity ?? 1 })),
+                    query,
+                    this.opts.sessionTtlMinutes ?? 30,
+                );
                 await this.sessionService.clearFlow(touser);
                 Logger.info(
-                    `Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode}`,
+                    `Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode} hits=${hits.length}`,
                     loggerCtx,
                 );
-                return buildChannelSwitchText(touser, target.channelName);
+                return query && !hits.length
+                    ? buildChannelSwitchNoMatchText(touser, target.channelName, query)
+                    : buildChannelSwitchText(touser, target.channelName);
             }
             const guard = await this.deliveryGuard.checkParsed(ctx, String(ctx.channelId), parsed);
             if (guard.status === 'UNKNOWN') {

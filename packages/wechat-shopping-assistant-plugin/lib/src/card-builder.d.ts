@@ -230,4 +230,6 @@ export declare function buildOutOfRangeText(touser: string, input: {
 }): TextMessage;
 /** 已切换到目标租户：提示价格已更新、需重新选编号 */
 export declare function buildChannelSwitchText(touser: string, channelName: string): TextMessage;
+/** 已切换到目标租户，但该店没有原关键词的商品：提示换词重搜（清空旧编号，避免误下到旧店） */
+export declare function buildChannelSwitchNoMatchText(touser: string, channelName: string, query: string): TextMessage;
 export {};

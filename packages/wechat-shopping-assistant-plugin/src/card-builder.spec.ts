@@ -6,6 +6,7 @@ import {
     buildAddrOpMenu,
     buildAwaitingAddressText,
     buildBindGuideText,
+    buildChannelSwitchNoMatchText,
     buildChannelSwitchText,
     buildInvalidOrderText,
     buildNewsMessage,
@@ -240,6 +241,14 @@ describe('城市路由相关文案', () => {
         const msg = buildChannelSwitchText('oX', '东利民粮油店');
         expect(msg.content).toContain('已为你切换到「东利民粮油店」');
         expect(msg.content).toContain('重新回复编号');
+    });
+
+    test('切店后新店无商品：说明已切换并提示换词重搜', () => {
+        const msg = buildChannelSwitchNoMatchText('oX', '新生', '面');
+        expect(msg.content).toContain('已为你切换到「新生」');
+        expect(msg.content).toContain('没有「面」相关的商品');
+        expect(msg.content).toContain('换个商品名');
+        expect(msg.content).not.toContain('重新回复编号');
     });
 
     test('预计送达：有时效显示分钟，无则电话确认', () => {

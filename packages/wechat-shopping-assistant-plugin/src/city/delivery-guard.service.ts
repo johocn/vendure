@@ -65,7 +65,8 @@ export class DeliveryGuardService {
         return {
             status: 'OUT_OF_RANGE',
             reason: 'CITY_NOT_SERVED',
-            serviceAreaText: `本店目前不服务「${parsed.city || parsed.cityCode || '该'}」地区的地址。`,
+            // 直辖市场景地图只回省份（city 为空），用省份兜底，避免向用户暴露城市码
+            serviceAreaText: `本店目前不服务「${parsed.city || parsed.province || parsed.cityCode || '该'}」地区的地址。`,
             parsed,
         };
     }

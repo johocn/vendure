@@ -731,3 +731,12 @@ export function buildChannelSwitchText(touser: string, channelName: string): Tex
         content: `根据您的收货地址，已为你切换到「${channelName}」，商品与价格以该店为准。\n请重新回复编号下单。`,
     };
 }
+
+/** 已切换到目标租户，但该店没有原关键词的商品：提示换词重搜（清空旧编号，避免误下到旧店） */
+export function buildChannelSwitchNoMatchText(touser: string, channelName: string, query: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `根据您的收货地址，已为你切换到「${channelName}」，商品与价格以该店为准。\n该店暂时没有「${query}」相关的商品，换个商品名再试试。`,
+    };
+}

@@ -60,6 +60,7 @@ exports.buildSupportNoteSavedText = buildSupportNoteSavedText;
 exports.buildSupportNoteCancelledText = buildSupportNoteCancelledText;
 exports.buildOutOfRangeText = buildOutOfRangeText;
 exports.buildChannelSwitchText = buildChannelSwitchText;
+exports.buildChannelSwitchNoMatchText = buildChannelSwitchNoMatchText;
 /** 价格分 → 展示串：890 → '8.90'，0 → '价格面议' */
 function formatPrice(price) {
     if (!price || price <= 0)
@@ -650,6 +651,14 @@ function buildChannelSwitchText(touser, channelName) {
         kind: 'text',
         touser,
         content: `根据您的收货地址，已为你切换到「${channelName}」，商品与价格以该店为准。\n请重新回复编号下单。`,
+    };
+}
+/** 已切换到目标租户，但该店没有原关键词的商品：提示换词重搜（清空旧编号，避免误下到旧店） */
+function buildChannelSwitchNoMatchText(touser, channelName, query) {
+    return {
+        kind: 'text',
+        touser,
+        content: `根据您的收货地址，已为你切换到「${channelName}」，商品与价格以该店为准。\n该店暂时没有「${query}」相关的商品，换个商品名再试试。`,
     };
 }
 //# sourceMappingURL=card-builder.js.map

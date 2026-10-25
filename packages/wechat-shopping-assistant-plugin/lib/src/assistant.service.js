@@ -1125,9 +1125,10 @@ let AssistantService = class AssistantService {
                 const session = await this.sessionService.getActive(touser);
                 const query = (_d = (_c = session === null || session === void 0 ? void 0 : session.query) === null || _c === void 0 ? void 0 : _c.trim()) !== null && _d !== void 0 ? _d : '';
                 await this.sessionService.saveDraft(touser, { cityCode: parsed.cityCode, resolvedChannelId: target.channelId, pendingQuery: query || null }, (_e = this.opts.sessionTtlMinutes) !== null && _e !== void 0 ? _e : 30);
+                let hits = [];
                 if (query) {
                     try {
-                        const hits = await this.searchService.searchProducts({
+                        hits = await this.searchService.searchProducts({
                             query,
                             channelId: target.channelId,
                             locale: (_f = this.opts.searchLocale) !== null && _f !== void 0 ? _f : 'zh',
@@ -1135,17 +1136,18 @@ let AssistantService = class AssistantService {
                             storefrontUrl: this.storefront(),
                             productUrlTemplate: this.opts.productUrlTemplate,
                         });
-                        if (hits.length) {
-                            await this.sessionService.saveResults(touser, target.channelId, hits.map(h => { var _a, _b; return (Object.assign(Object.assign({}, h), { quantity: (_b = (_a = picked[0]) === null || _a === void 0 ? void 0 : _a.quantity) !== null && _b !== void 0 ? _b : 1 })); }), query, (_h = this.opts.sessionTtlMinutes) !== null && _h !== void 0 ? _h : 30);
-                        }
                     }
                     catch (e) {
                         core_1.Logger.warn(`Assistant switch-channel search failed: ${String(e)}`, constants_1.loggerCtx);
                     }
                 }
+                // 无论新店是否有货都切会话渠道并覆盖结果：否则旧店编号仍可下单，会在守卫处反复切店
+                await this.sessionService.saveResults(touser, target.channelId, hits.map(h => { var _a, _b; return (Object.assign(Object.assign({}, h), { quantity: (_b = (_a = picked[0]) === null || _a === void 0 ? void 0 : _a.quantity) !== null && _b !== void 0 ? _b : 1 })); }), query, (_h = this.opts.sessionTtlMinutes) !== null && _h !== void 0 ? _h : 30);
                 await this.sessionService.clearFlow(touser);
-                core_1.Logger.info(`Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode}`, constants_1.loggerCtx);
-                return (0, card_builder_1.buildChannelSwitchText)(touser, target.channelName);
+                core_1.Logger.info(`Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode} hits=${hits.length}`, constants_1.loggerCtx);
+                return query && !hits.length
+                    ? (0, card_builder_1.buildChannelSwitchNoMatchText)(touser, target.channelName, query)
+                    : (0, card_builder_1.buildChannelSwitchText)(touser, target.channelName);
             }
             const guard = await this.deliveryGuard.checkParsed(ctx, String(ctx.channelId), parsed);
             if (guard.status === 'UNKNOWN') {
