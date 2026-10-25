@@ -65,6 +65,7 @@ import { PointsMallPlugin } from '@vendure/points-mall-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
+import { MerchantPlugin } from '@vendure/merchant-plugin';
 import { BillPayPlugin } from '@vendure/bill-pay-plugin';
 import { CampusDeliveryPlugin } from '@vendure/campus-delivery-plugin';
 import { CampusJianghuPlugin } from '@vendure/campus-jianghu-plugin';
@@ -548,6 +549,7 @@ export const devConfig: VendureConfig = {
         FavoritePlugin.init(),
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
+        MerchantPlugin.init(),
         // t3 代买单（委托单模式）：BP- 微信回调结算 / bill_pay_* 独立表，纯增量不触碰既有业务
         BillPayPlugin.init(),
         LiveStreamingPlugin.init({
@@ -657,7 +659,10 @@ function getDbConfig(): DataSourceOptions {
         case 'postgres':
             console.log('Using postgres connection');
             return {
-                synchronize: true,
+                // 线上库长期自动同步后 order 表累计 1400+ 个已删列（attnum 逼近 1600 上限），
+                // 再同步会报 "tables can have at most 1600 columns" 导致启动失败；
+                // 可用 DB_SYNC=0 关闭自动同步（表结构已就绪时安全），新字段改走 migration。
+                synchronize: process.env.DB_SYNC !== '0',
                 type: 'postgres',
                 host: process.env.DB_HOST || 'localhost',
                 port: Number(process.env.DB_PORT) || 5432,

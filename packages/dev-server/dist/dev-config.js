@@ -539,7 +539,8 @@ function getDbConfig() {
         case 'postgres':
             console.log('Using postgres connection');
             return {
-                synchronize: true,
+                // DB_SYNC=0 关闭线上自动同步（order 表已删列累积逼近 1600 列上限，同步会启动失败）
+                synchronize: process.env.DB_SYNC !== '0',
                 type: 'postgres',
                 host: process.env.DB_HOST || 'localhost',
                 port: Number(process.env.DB_PORT) || 5432,
