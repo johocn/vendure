@@ -563,62 +563,59 @@ export function buildLocationInvalidText(touser: string): TextMessage {
 
 // ============ 一键客服（任何状态下回复「客服」生效，不打断原流程） ============
 
+/** 客服微信号：同一会话第 3 次求助起提供，引导用户发语音说明问题 */
+export const SUPPORT_WECHAT_ID = 'youshopcn';
+/** 第几次「客服」开始给微信号 */
+export const SUPPORT_WECHAT_AFTER = 3;
+
+/**
+ * 客服卡统一策略：不展示电话，先引导在线留言；
+ * 同一会话第 3 次求助起附客服微信（要求用户发语音）。
+ */
+function supportWechatLine(wechatId: string): string {
+    return `客服微信：${wechatId}（添加后直接发语音说明问题，处理更快）`;
+}
+
 export interface SupportCardInput {
     /** 门店客服信息（已选门店/候选唯一时） */
     store?: { name: string; phoneNumber?: string | null; businessHours?: string | null } | null;
-    /** 平台客服电话（门店未登记电话或未选门店时兜底） */
-    platformPhone?: string | null;
     /** 当前这单的商品摘要（草稿中的下单商品） */
     items?: Array<{ title: string; quantity: number; price: number }>;
     /** 合计（分） */
     total?: number;
-    /** 店铺名（无门店/无电话时展示，避免只回一句「未配置」） */
+    /** 店铺名（无门店时展示，避免只回一句「在线客服」） */
     shopName?: string | null;
-    /** 店铺链接（无电话时引导到店铺页在线客服） */
+    /** 店铺链接（可在店铺页查看订单） */
     shopUrl?: string | null;
+    /** 客服微信号：仅第 3 次及以后求助时传入 */
+    wechatId?: string | null;
 }
 
 /** 店铺信息卡：用户发店铺名/品牌名时的兜底，告诉主营、链接与可用指令 */
 export function buildShopInfoCard(
     touser: string,
-    input: { name: string; intro?: string | null; url?: string | null; phone?: string | null },
+    input: { name: string; intro?: string | null; url?: string | null },
 ): TextMessage {
     const lines = [input.name];
     if (input.intro) lines.push(input.intro);
-    if (input.phone) lines.push(`电话　${input.phone}（点击拨打）`);
     if (input.url) lines.push(`店铺　${input.url}`);
     lines.push('发商品名即可下单，如「雪花粉」「买2袋面粉」；回复「客服」联系店家，回复「留言」留言。');
     return { kind: 'text', touser, content: lines.join('\n') };
 }
 
 /**
- * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
- * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。
+ * 客服卡片：先引导「在线留言」，不提供电话；第 3 次求助起附客服微信。
  */
 export function buildSupportCard(touser: string, input: SupportCardInput): TextMessage {
     const lines: string[] = [];
     const store = input.store;
-    const storePhone = String(store?.phoneNumber ?? '').trim();
-    const platformPhone = String(input.platformPhone ?? '').trim();
 
     if (store) {
-        lines.push(`${store.name} · 门店客服`);
-        if (storePhone) {
-            lines.push(`电话　${storePhone}（点击拨打）`);
-        } else if (platformPhone) {
-            lines.push(`门店电话暂未登记，可联系平台客服　${platformPhone}（点击拨打）`);
-        } else {
-            lines.push('门店电话暂未登记，可在店铺页联系在线客服。');
-            if (input.shopUrl) lines.push(`店铺　${input.shopUrl}`);
-        }
+        lines.push(`${store.name} · 在线客服`);
         if (store.businessHours) lines.push(`营业　${store.businessHours}`);
-    } else if (platformPhone) {
-        lines.push('平台客服');
-        lines.push(`电话　${platformPhone}（点击拨打）`);
     } else {
         lines.push(input.shopName ? `${input.shopName} · 在线客服` : '在线客服');
-        if (input.shopUrl) lines.push(`店铺　${input.shopUrl}（点击进入，可在店铺页联系在线客服）`);
-        else lines.push('可在店铺页联系在线客服。');
+        if (input.shopUrl) lines.push(`店铺　${input.shopUrl}（点击进入，可在店铺页查看订单）`);
     }
 
     if (input.items?.length) {
@@ -626,20 +623,23 @@ export function buildSupportCard(touser: string, input: SupportCardInput): TextM
         const amount = input.total != null ? `，${formatPrice(input.total)}` : '';
         lines.push(`关于这单：${summary}${amount}`);
     }
-    if (store || platformPhone) {
-        lines.push('打电话时说明来自微信购物助手，客服可直接查这单。');
-    }
-    lines.push('需要门店稍后联系你：回复「留言」写清问题（200 字以内）。');
+    lines.push('请先回复「留言」写清问题（200 字以内），门店会在线处理并回复你。');
+    if (input.wechatId) lines.push(supportWechatLine(input.wechatId));
     return { kind: 'text', touser, content: lines.join('\n') };
 }
 
 /** 有多个候选门店：让用户用「客服N」指定要联系哪家店 */
-export function buildSupportStorePickText(touser: string, stores: NearbyStore[]): TextMessage {
+export function buildSupportStorePickText(
+    touser: string,
+    stores: NearbyStore[],
+    wechatId?: string | null,
+): TextMessage {
     const lines = [
         '要联系哪家店？回复「客服N」选择：',
         ...stores.map((store, i) => `${i + 1}. ${store.name}${store.address ? `（${store.address}）` : ''}`),
     ];
     lines.push('回复「客服」查看可选门店。');
+    if (wechatId) lines.push(supportWechatLine(wechatId));
     return { kind: 'text', touser, content: lines.join('\n') };
 }
 
@@ -653,15 +653,15 @@ export function buildSupportInvalidStoreText(touser: string, count: number): Tex
     };
 }
 
-/** 10 分钟内重复请求客服：只回短提示，不重复刷屏 */
-export function buildSupportRepeatText(touser: string, input: { name?: string | null; phoneNumber?: string | null }): TextMessage {
+/** 10 分钟内重复请求客服：只回短提示，不重复刷屏（第 3 次起不再走此分支） */
+export function buildSupportRepeatText(
+    touser: string,
+    input: { name?: string | null; wechatId?: string | null },
+): TextMessage {
     const name = input.name ? `${input.name} ` : '';
-    const phone = input.phoneNumber ? `${input.phoneNumber} ` : '';
-    return {
-        kind: 'text',
-        touser,
-        content: `客服联系方式刚发过：${name}${phone}可直接拨打。\n若暂时没接通，稍后再回「客服」即可；需要门店回电可回复「留言」。`,
-    };
+    const lines = [`客服入口刚发过：${name}直接回复「留言」写清问题，门店会在线处理。`];
+    if (input.wechatId) lines.push(supportWechatLine(input.wechatId));
+    return { kind: 'text', touser, content: lines.join('\n') };
 }
 
 // ============ 留言工单（≤200 字，保存后恢复原流程状态） ============

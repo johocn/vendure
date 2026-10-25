@@ -78,13 +78,11 @@ export declare class AssistantService {
     /** store_pick：回复「门店N」/「N」选定门店（记入草稿，供后续下单就近安排） */
     private onStorePick;
     /**
-     * 客服卡片：已选门店 → 门店电话/营业时间；多候选未选 → 「客服N」选择；
-     * 无门店 → 平台客服电话兜底；同一门店 10 分钟内重复只回短提示。
+     * 客服卡片：先引导「在线留言」，不展示电话；同一会话第 3 次求助起附客服微信。
+     * 多候选未选 → 「客服N」选择；同一门店 10 分钟内重复只回短提示。
      * 全程不改会话状态（用户下一次输入仍按原流程处理）。
      */
     private handleSupport;
-    /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
-    private platformServicePhone;
     /** 渠道店铺域名 → 绝对地址（兼容只存 `host/path` 的配置） */
     private shopUrlOf;
     /**

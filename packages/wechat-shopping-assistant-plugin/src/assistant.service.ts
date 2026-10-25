@@ -65,6 +65,8 @@ import {
     buildSupportNoteTooLongText,
     buildSupportRepeatText,
     buildSupportStorePickText,
+    SUPPORT_WECHAT_AFTER,
+    SUPPORT_WECHAT_ID,
     buildTextListMessage,
     buildWelcomeText,
     formatPrice,
@@ -936,8 +938,8 @@ export class AssistantService {
     // ============ 一键客服（全局，任何状态生效，不打断原流程） ============
 
     /**
-     * 客服卡片：已选门店 → 门店电话/营业时间；多候选未选 → 「客服N」选择；
-     * 无门店 → 平台客服电话兜底；同一门店 10 分钟内重复只回短提示。
+     * 客服卡片：先引导「在线留言」，不展示电话；同一会话第 3 次求助起附客服微信。
+     * 多候选未选 → 「客服N」选择；同一门店 10 分钟内重复只回短提示。
      * 全程不改会话状态（用户下一次输入仍按原流程处理）。
      */
     private async handleSupport(msg: WechatInboundMessage, storeIndex?: number): Promise<OutboundMessage> {
@@ -947,7 +949,10 @@ export class AssistantService {
         const stores = draft.nearbyStores ?? [];
         const channelId = session?.channelId ?? (await this.resolveChannelId(msg.channelToken));
         const ctx = await this.createShopCtx(channelId);
-        const platformPhone = this.platformServicePhone(ctx);
+
+        // 同一会话内「客服」求助次数：第 3 次起提供客服微信（引导发语音）
+        const askCount = Number(draft.supportAskCount ?? 0) + 1;
+        const wechatId = askCount >= SUPPORT_WECHAT_AFTER ? SUPPORT_WECHAT_ID : null;
 
         let contact: StoreContact | null = null;
         if (storeIndex != null) {
@@ -964,30 +969,39 @@ export class AssistantService {
 
         // 多个候选且未选门店：先让用户用「客服N」指定（不进入状态机）
         if (!contact && stores.length > 1) {
-            return buildSupportStorePickText(msg.fromUserName, stores);
+            await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+            await this.sessionService.saveDraft(
+                msg.fromUserName,
+                { ...draft, supportAskCount: askCount },
+                ttl,
+            );
+            return buildSupportStorePickText(msg.fromUserName, stores, wechatId);
         }
 
         const now = Date.now();
         const sameTarget = String(draft.supportStoreId ?? '') === String(contact?.id ?? '');
-        if (now - Number(draft.supportAt ?? 0) < SUPPORT_REPEAT_WINDOW_MS && sameTarget) {
-            return buildSupportRepeatText(msg.fromUserName, {
-                name: contact?.name ?? null,
-                phoneNumber: contact?.phoneNumber ?? draft.supportPhone ?? platformPhone,
-            });
+        // 第 3 次起必须带微信号，不再走「重复只回短提示」
+        if (!wechatId && now - Number(draft.supportAt ?? 0) < SUPPORT_REPEAT_WINDOW_MS && sameTarget) {
+            await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+            await this.sessionService.saveDraft(
+                msg.fromUserName,
+                { ...draft, supportAskCount: askCount },
+                ttl,
+            );
+            return buildSupportRepeatText(msg.fromUserName, { name: contact?.name ?? null });
         }
 
         await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
         const picked = (session?.results ?? []).filter(r => (draft.indices ?? []).includes(r.index));
         const items = picked.map(r => ({ title: r.title, quantity: r.quantity ?? 1, price: r.price }));
         const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        const phone = contact?.phoneNumber ?? platformPhone;
         await this.sessionService.saveDraft(
             msg.fromUserName,
-            { ...draft, supportAt: now, supportStoreId: contact?.id ?? null, supportPhone: phone ?? null },
+            { ...draft, supportAt: now, supportStoreId: contact?.id ?? null, supportAskCount: askCount },
             ttl,
         );
         Logger.info(
-            `Assistant support card: openid=${msg.fromUserName} store=${contact?.id ?? 'none'} phone=${Boolean(phone)}`,
+            `Assistant support card: openid=${msg.fromUserName} store=${contact?.id ?? 'none'} ask=${askCount} wechat=${Boolean(wechatId)}`,
             loggerCtx,
         );
         const cf = (ctx.channel?.customFields as any) ?? {};
@@ -995,19 +1009,12 @@ export class AssistantService {
             store: contact
                 ? { name: contact.name, phoneNumber: contact.phoneNumber, businessHours: contact.businessHours }
                 : null,
-            platformPhone,
             items,
             total: items.length ? total : undefined,
             shopName: String(cf.shopName ?? '').trim() || null,
             shopUrl: this.shopUrlOf(cf),
+            wechatId,
         });
-    }
-
-    /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
-    private platformServicePhone(ctx: RequestContext): string | null {
-        const cf = (ctx.channel?.customFields as any) ?? {};
-        const phone = cf.servicePhone ?? cf.basicConfig?.contactPhone ?? null;
-        return phone ? String(phone) : null;
     }
 
     /** 渠道店铺域名 → 绝对地址（兼容只存 `host/path` 的配置） */
@@ -1024,7 +1031,7 @@ export class AssistantService {
     private matchShopQuery(
         query: string,
         cf: any,
-    ): { name: string; intro?: string | null; url?: string | null; phone?: string | null } | null {
+    ): { name: string; intro?: string | null; url?: string | null } | null {
         const name = String(cf?.shopName ?? '').trim();
         if (!name) return null;
         const q = normalizeInput(query);
@@ -1037,7 +1044,6 @@ export class AssistantService {
             name,
             intro: cf?.shopIntro ? String(cf.shopIntro) : null,
             url: this.shopUrlOf(cf),
-            phone: this.platformServicePhone({ channel: { customFields: cf } } as any),
         };
     }
 

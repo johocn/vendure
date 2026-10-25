@@ -105,8 +105,8 @@ export interface AssistantFlowDraft {
     supportAt?: number | null;
     /** 最近一次「客服」卡片对应的门店 id（判断是否同一门店重复请求） */
     supportStoreId?: string | null;
-    /** 最近一次「客服」卡片的电话号码（重复请求时短提示用） */
-    supportPhone?: string | null;
+    /** 同一会话内「客服」求助次数（第 3 次起提供客服微信号） */
+    supportAskCount?: number | null;
     /** 留言前所处的流程状态（留言保存后恢复，保证「每步」都不打断原流程） */
     supportReturnState?: AssistantFlowState;
     /** 选定的支付方式 code（下单确认用） */

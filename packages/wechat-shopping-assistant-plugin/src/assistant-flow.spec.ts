@@ -1025,7 +1025,7 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         },
     ];
 
-    test('已选门店后回复「客服」→ 门店客服卡（电话/营业时间）', async () => {
+    test('已选门店后回复「客服」→ 门店在线客服卡（引导留言，不给电话）', async () => {
         const store = makeStoreStub(STORES);
         const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store });
         connection.customers.set('openid-user-1', { id: 42 });
@@ -1036,10 +1036,13 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         await svc.onMessage(textEvent('客服', 'M3'));
 
         const last = outbound[outbound.length - 1];
-        expect(last.content).toContain('国贸店 · 门店客服');
-        expect(last.content).toContain('电话　010-88882222（点击拨打）');
+        expect(last.content).toContain('国贸店 · 在线客服');
         expect(last.content).toContain('营业　09:00-22:00');
-        expect(last.content).toContain('打电话时说明来自微信购物助手');
+        expect(last.content).toContain('请先回复「留言」写清问题');
+        expect(last.content).not.toContain('010-88882222');
+        expect(last.content).not.toContain('点击拨打');
+        // 首次求助不给微信号
+        expect(last.content).not.toContain('youshopcn');
         // 不进入任何流程态
         expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
         expect(store.contactCalls).toContain('s2');
@@ -1061,16 +1064,20 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
 
         await svc.onMessage(textEvent('客服2', 'M3'));
         last = outbound[outbound.length - 1];
-        expect(last.content).toContain('国贸店 · 门店客服');
-        expect(last.content).toContain('010-88882222');
+        expect(last.content).toContain('国贸店 · 在线客服');
+        expect(last.content).toContain('请先回复「留言」');
+        expect(last.content).not.toContain('010-88882222');
     });
 
-    test('无门店上下文 → 平台客服电话兜底（渠道 servicePhone）', async () => {
+    test('无门店上下文 → 店铺名 + 店铺链接，不给电话', async () => {
         const { svc, outbound } = makeService({});
         await svc.onMessage(textEvent('客服', 'M1'));
         const last = outbound[outbound.length - 1];
-        expect(last.content).toContain('平台客服');
-        expect(last.content).toContain('400-800-1234');
+        expect(last.content).toContain('东利民粮油店 · 在线客服');
+        expect(last.content).toContain('https://www.youshop.cn/official-20');
+        expect(last.content).toContain('请先回复「留言」');
+        expect(last.content).not.toContain('400-800-1234');
+        expect(last.content).not.toContain('youshopcn');
     });
 
     test('会话已过期（旧行未清理）→ 客服仍可回复，不因唯一索引报错', async () => {
@@ -1087,7 +1094,7 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         });
         await svc.onMessage(textEvent('客服', 'M1'));
         const last = outbound[outbound.length - 1];
-        expect(last.content).toContain('400-800-1234');
+        expect(last.content).toContain('东利民粮油店 · 在线客服');
         // 旧行被原地重置并续期
         expect(connection.sessions.get('openid-user-1').expireAt.getTime()).toBeGreaterThan(Date.now());
     });
@@ -1112,7 +1119,7 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         expect(outbound[outbound.length - 1].content).toContain('下单成功');
     });
 
-    test('10 分钟内重复「客服」→ 只回短提示，不重复刷屏', async () => {
+    test('10 分钟内第 2 次「客服」→ 只回短提示，不重复刷屏', async () => {
         const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store: makeStoreStub(STORES) });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
@@ -1121,12 +1128,31 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
 
         await svc.onMessage(textEvent('客服', 'M3'));
         const first = outbound[outbound.length - 1].content;
-        expect(first).toContain('国贸店 · 门店客服');
+        expect(first).toContain('国贸店 · 在线客服');
 
         await svc.onMessage(textEvent('客服', 'M4'));
         const second = outbound[outbound.length - 1].content;
-        expect(second).toContain('客服联系方式刚发过');
-        expect(second).not.toContain('国贸店 · 门店客服');
+        expect(second).toContain('客服入口刚发过');
+        expect(second).not.toContain('国贸店 · 在线客服');
+        expect(second).not.toContain('youshopcn');
+    });
+
+    test('同一会话第 3 次「客服」→ 附客服微信 youshopcn，第 4 次仍带', async () => {
+        const { svc, outbound } = makeService({});
+
+        await svc.onMessage(textEvent('客服', 'M1'));
+        expect(outbound[outbound.length - 1].content).not.toContain('youshopcn');
+
+        await svc.onMessage(textEvent('客服', 'M2'));
+        expect(outbound[outbound.length - 1].content).not.toContain('youshopcn');
+
+        await svc.onMessage(textEvent('客服', 'M3'));
+        const third = outbound[outbound.length - 1].content;
+        expect(third).toContain('客服微信：youshopcn');
+        expect(third).toContain('直接发语音说明问题');
+
+        await svc.onMessage(textEvent('客服', 'M4'));
+        expect(outbound[outbound.length - 1].content).toContain('客服微信：youshopcn');
     });
 
     test('「客服9」超出候选范围 → 提示重新选择', async () => {

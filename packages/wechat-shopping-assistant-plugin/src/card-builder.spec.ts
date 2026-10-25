@@ -13,6 +13,7 @@ import {
     buildPhoneTakenText,
     buildShopInfoCard,
     buildSupportCard,
+    buildSupportRepeatText,
     buildTextListMessage,
     formatPrice,
     maskPhone,
@@ -66,15 +67,39 @@ describe('店铺信息卡与客服兜底', () => {
         expect(msg.content).toContain('发商品名即可下单');
     });
 
-    test('无门店且无电话：客服卡带店铺名与店铺链接，不再只说「暂未配置」', () => {
+    test('客服卡：先引导在线留言，不展示电话', () => {
         const msg = buildSupportCard('oX', {
+            store: { name: '国贸店', phoneNumber: '010-88882222', businessHours: '09:00-22:00' },
             shopName: '东利民粮油店',
             shopUrl: 'https://www.youshop.cn/official-20',
         });
+        expect(msg.content).toContain('国贸店 · 在线客服');
+        expect(msg.content).toContain('营业　09:00-22:00');
+        expect(msg.content).toContain('请先回复「留言」写清问题');
+        expect(msg.content).not.toContain('010-88882222');
+        expect(msg.content).not.toContain('点击拨打');
+        expect(msg.content).not.toContain('客服微信');
+    });
+
+    test('第 3 次求助：客服卡附微信号并引导发语音', () => {
+        const msg = buildSupportCard('oX', {
+            shopName: '东利民粮油店',
+            shopUrl: 'https://www.youshop.cn/official-20',
+            wechatId: 'youshopcn',
+        });
         expect(msg.content).toContain('东利民粮油店 · 在线客服');
+        expect(msg.content).toContain('客服微信：youshopcn');
+        expect(msg.content).toContain('直接发语音说明问题');
         expect(msg.content).toContain('https://www.youshop.cn/official-20');
-        expect(msg.content).not.toContain('暂未配置客服电话');
-        expect(msg.content).toContain('回复「留言」');
+    });
+
+    test('重复求助短提示：同样不展示电话，带微信号时附微信', () => {
+        const plain = buildSupportRepeatText('oX', { name: '国贸店' });
+        expect(plain.content).toContain('客服入口刚发过');
+        expect(plain.content).toContain('回复「留言」');
+        expect(plain.content).not.toContain('拨打');
+        const escalated = buildSupportRepeatText('oX', { name: '国贸店', wechatId: 'youshopcn' });
+        expect(escalated.content).toContain('客服微信：youshopcn');
     });
 });
 

@@ -735,70 +735,66 @@ let AssistantService = class AssistantService {
     }
     // ============ 一键客服（全局，任何状态生效，不打断原流程） ============
     /**
-     * 客服卡片：已选门店 → 门店电话/营业时间；多候选未选 → 「客服N」选择；
-     * 无门店 → 平台客服电话兜底；同一门店 10 分钟内重复只回短提示。
+     * 客服卡片：先引导「在线留言」，不展示电话；同一会话第 3 次求助起附客服微信。
+     * 多候选未选 → 「客服N」选择；同一门店 10 分钟内重复只回短提示。
      * 全程不改会话状态（用户下一次输入仍按原流程处理）。
      */
     async handleSupport(msg, storeIndex) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
         const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
         const session = await this.sessionService.getActive(msg.fromUserName);
         const draft = (_b = session === null || session === void 0 ? void 0 : session.draft) !== null && _b !== void 0 ? _b : {};
         const stores = (_c = draft.nearbyStores) !== null && _c !== void 0 ? _c : [];
         const channelId = (_d = session === null || session === void 0 ? void 0 : session.channelId) !== null && _d !== void 0 ? _d : (await this.resolveChannelId(msg.channelToken));
         const ctx = await this.createShopCtx(channelId);
-        const platformPhone = this.platformServicePhone(ctx);
+        // 同一会话内「客服」求助次数：第 3 次起提供客服微信（引导发语音）
+        const askCount = Number((_e = draft.supportAskCount) !== null && _e !== void 0 ? _e : 0) + 1;
+        const wechatId = askCount >= card_builder_1.SUPPORT_WECHAT_AFTER ? card_builder_1.SUPPORT_WECHAT_ID : null;
         let contact = null;
         if (storeIndex != null) {
             const picked = stores[storeIndex - 1];
             if (!picked)
                 return (0, card_builder_1.buildSupportInvalidStoreText)(msg.fromUserName, stores.length);
-            contact = (_e = (await this.storeLocator.findContact(ctx, picked.id))) !== null && _e !== void 0 ? _e : this.contactFromNearby(picked);
+            contact = (_f = (await this.storeLocator.findContact(ctx, picked.id))) !== null && _f !== void 0 ? _f : this.contactFromNearby(picked);
         }
         else if (draft.storeId) {
             contact =
-                (_f = (await this.storeLocator.findContact(ctx, draft.storeId))) !== null && _f !== void 0 ? _f : this.contactFromNearby(stores.find(store => store.id === draft.storeId));
+                (_g = (await this.storeLocator.findContact(ctx, draft.storeId))) !== null && _g !== void 0 ? _g : this.contactFromNearby(stores.find(store => store.id === draft.storeId));
         }
         else if (stores.length === 1) {
-            contact = (_g = (await this.storeLocator.findContact(ctx, stores[0].id))) !== null && _g !== void 0 ? _g : this.contactFromNearby(stores[0]);
+            contact = (_h = (await this.storeLocator.findContact(ctx, stores[0].id))) !== null && _h !== void 0 ? _h : this.contactFromNearby(stores[0]);
         }
         // 多个候选且未选门店：先让用户用「客服N」指定（不进入状态机）
         if (!contact && stores.length > 1) {
-            return (0, card_builder_1.buildSupportStorePickText)(msg.fromUserName, stores);
+            await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+            await this.sessionService.saveDraft(msg.fromUserName, Object.assign(Object.assign({}, draft), { supportAskCount: askCount }), ttl);
+            return (0, card_builder_1.buildSupportStorePickText)(msg.fromUserName, stores, wechatId);
         }
         const now = Date.now();
-        const sameTarget = String((_h = draft.supportStoreId) !== null && _h !== void 0 ? _h : '') === String((_j = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _j !== void 0 ? _j : '');
-        if (now - Number((_k = draft.supportAt) !== null && _k !== void 0 ? _k : 0) < SUPPORT_REPEAT_WINDOW_MS && sameTarget) {
-            return (0, card_builder_1.buildSupportRepeatText)(msg.fromUserName, {
-                name: (_l = contact === null || contact === void 0 ? void 0 : contact.name) !== null && _l !== void 0 ? _l : null,
-                phoneNumber: (_o = (_m = contact === null || contact === void 0 ? void 0 : contact.phoneNumber) !== null && _m !== void 0 ? _m : draft.supportPhone) !== null && _o !== void 0 ? _o : platformPhone,
-            });
+        const sameTarget = String((_j = draft.supportStoreId) !== null && _j !== void 0 ? _j : '') === String((_k = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _k !== void 0 ? _k : '');
+        // 第 3 次起必须带微信号，不再走「重复只回短提示」
+        if (!wechatId && now - Number((_l = draft.supportAt) !== null && _l !== void 0 ? _l : 0) < SUPPORT_REPEAT_WINDOW_MS && sameTarget) {
+            await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+            await this.sessionService.saveDraft(msg.fromUserName, Object.assign(Object.assign({}, draft), { supportAskCount: askCount }), ttl);
+            return (0, card_builder_1.buildSupportRepeatText)(msg.fromUserName, { name: (_m = contact === null || contact === void 0 ? void 0 : contact.name) !== null && _m !== void 0 ? _m : null });
         }
         await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
-        const picked = ((_p = session === null || session === void 0 ? void 0 : session.results) !== null && _p !== void 0 ? _p : []).filter(r => { var _a; return ((_a = draft.indices) !== null && _a !== void 0 ? _a : []).includes(r.index); });
+        const picked = ((_o = session === null || session === void 0 ? void 0 : session.results) !== null && _o !== void 0 ? _o : []).filter(r => { var _a; return ((_a = draft.indices) !== null && _a !== void 0 ? _a : []).includes(r.index); });
         const items = picked.map(r => { var _a; return ({ title: r.title, quantity: (_a = r.quantity) !== null && _a !== void 0 ? _a : 1, price: r.price }); });
         const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        const phone = (_q = contact === null || contact === void 0 ? void 0 : contact.phoneNumber) !== null && _q !== void 0 ? _q : platformPhone;
-        await this.sessionService.saveDraft(msg.fromUserName, Object.assign(Object.assign({}, draft), { supportAt: now, supportStoreId: (_r = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _r !== void 0 ? _r : null, supportPhone: phone !== null && phone !== void 0 ? phone : null }), ttl);
-        core_1.Logger.info(`Assistant support card: openid=${msg.fromUserName} store=${(_s = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _s !== void 0 ? _s : 'none'} phone=${Boolean(phone)}`, constants_1.loggerCtx);
-        const cf = (_u = (_t = ctx.channel) === null || _t === void 0 ? void 0 : _t.customFields) !== null && _u !== void 0 ? _u : {};
+        await this.sessionService.saveDraft(msg.fromUserName, Object.assign(Object.assign({}, draft), { supportAt: now, supportStoreId: (_p = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _p !== void 0 ? _p : null, supportAskCount: askCount }), ttl);
+        core_1.Logger.info(`Assistant support card: openid=${msg.fromUserName} store=${(_q = contact === null || contact === void 0 ? void 0 : contact.id) !== null && _q !== void 0 ? _q : 'none'} ask=${askCount} wechat=${Boolean(wechatId)}`, constants_1.loggerCtx);
+        const cf = (_s = (_r = ctx.channel) === null || _r === void 0 ? void 0 : _r.customFields) !== null && _s !== void 0 ? _s : {};
         return (0, card_builder_1.buildSupportCard)(msg.fromUserName, {
             store: contact
                 ? { name: contact.name, phoneNumber: contact.phoneNumber, businessHours: contact.businessHours }
                 : null,
-            platformPhone,
             items,
             total: items.length ? total : undefined,
-            shopName: String((_v = cf.shopName) !== null && _v !== void 0 ? _v : '').trim() || null,
+            shopName: String((_t = cf.shopName) !== null && _t !== void 0 ? _t : '').trim() || null,
             shopUrl: this.shopUrlOf(cf),
+            wechatId,
         });
-    }
-    /** 平台客服电话：渠道装修字段 servicePhone → 租户基本配置 contactPhone */
-    platformServicePhone(ctx) {
-        var _a, _b, _c, _d, _e;
-        const cf = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {};
-        const phone = (_e = (_c = cf.servicePhone) !== null && _c !== void 0 ? _c : (_d = cf.basicConfig) === null || _d === void 0 ? void 0 : _d.contactPhone) !== null && _e !== void 0 ? _e : null;
-        return phone ? String(phone) : null;
     }
     /** 渠道店铺域名 → 绝对地址（兼容只存 `host/path` 的配置） */
     shopUrlOf(cf) {
@@ -830,7 +826,6 @@ let AssistantService = class AssistantService {
             name,
             intro: (cf === null || cf === void 0 ? void 0 : cf.shopIntro) ? String(cf.shopIntro) : null,
             url: this.shopUrlOf(cf),
-            phone: this.platformServicePhone({ channel: { customFields: cf } }),
         };
     }
     /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */

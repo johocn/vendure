@@ -167,6 +167,10 @@ export declare function buildLocationFlowBusyText(touser: string): TextMessage;
 export declare function buildLocationUnavailableText(touser: string): TextMessage;
 /** 微信上报的经纬度不合法 */
 export declare function buildLocationInvalidText(touser: string): TextMessage;
+/** 客服微信号：同一会话第 3 次求助起提供，引导用户发语音说明问题 */
+export declare const SUPPORT_WECHAT_ID = "youshopcn";
+/** 第几次「客服」开始给微信号 */
+export declare const SUPPORT_WECHAT_AFTER = 3;
 export interface SupportCardInput {
     /** 门店客服信息（已选门店/候选唯一时） */
     store?: {
@@ -174,8 +178,6 @@ export interface SupportCardInput {
         phoneNumber?: string | null;
         businessHours?: string | null;
     } | null;
-    /** 平台客服电话（门店未登记电话或未选门店时兜底） */
-    platformPhone?: string | null;
     /** 当前这单的商品摘要（草稿中的下单商品） */
     items?: Array<{
         title: string;
@@ -184,31 +186,31 @@ export interface SupportCardInput {
     }>;
     /** 合计（分） */
     total?: number;
-    /** 店铺名（无门店/无电话时展示，避免只回一句「未配置」） */
+    /** 店铺名（无门店时展示，避免只回一句「在线客服」） */
     shopName?: string | null;
-    /** 店铺链接（无电话时引导到店铺页在线客服） */
+    /** 店铺链接（可在店铺页查看订单） */
     shopUrl?: string | null;
+    /** 客服微信号：仅第 3 次及以后求助时传入 */
+    wechatId?: string | null;
 }
 /** 店铺信息卡：用户发店铺名/品牌名时的兜底，告诉主营、链接与可用指令 */
 export declare function buildShopInfoCard(touser: string, input: {
     name: string;
     intro?: string | null;
     url?: string | null;
-    phone?: string | null;
 }): TextMessage;
 /**
- * 客服卡片（PRD FR-07）：门店名 + 电话 + 营业时间 + 当前订单上下文。
- * 门店电话缺失时回退平台客服电话；两者都没有时引导到店铺在线客服。
+ * 客服卡片：先引导「在线留言」，不提供电话；第 3 次求助起附客服微信。
  */
 export declare function buildSupportCard(touser: string, input: SupportCardInput): TextMessage;
 /** 有多个候选门店：让用户用「客服N」指定要联系哪家店 */
-export declare function buildSupportStorePickText(touser: string, stores: NearbyStore[]): TextMessage;
+export declare function buildSupportStorePickText(touser: string, stores: NearbyStore[], wechatId?: string | null): TextMessage;
 /** 「客服N」编号无效 */
 export declare function buildSupportInvalidStoreText(touser: string, count: number): TextMessage;
-/** 10 分钟内重复请求客服：只回短提示，不重复刷屏 */
+/** 10 分钟内重复请求客服：只回短提示，不重复刷屏（第 3 次起不再走此分支） */
 export declare function buildSupportRepeatText(touser: string, input: {
     name?: string | null;
-    phoneNumber?: string | null;
+    wechatId?: string | null;
 }): TextMessage;
 /** 进入留言输入态 */
 export declare function buildSupportNotePromptText(touser: string): TextMessage;
