@@ -233,7 +233,9 @@ let CouponSaleService = class CouponSaleService {
         if (!gatewayService) {
             throw new core_1.UserInputError('Payment gateway not configured');
         }
-        const outTradeNo = `CS-${order.id}`;
+        // 微信要求 out_trade_no 至少 6 位（6~32）：小 id 的 `CS-30` 会被拒为「商户订单号错误」，
+        // 故数字段左补零到 6 位；回调解析 /^CS-(\d+)$/ 不受影响。
+        const outTradeNo = `CS-${String(order.id).padStart(6, '0')}`;
         const effectiveTradeType = tradeType || 'JSAPI';
         const effectiveOpenid = openid ||
             (await (0, wechatpay_plugin_1.resolveCustomerOpenid)(ctx, order.customerId, {
@@ -265,7 +267,7 @@ let CouponSaleService = class CouponSaleService {
         }
         const order = await this.connection
             .getRepository(ctx, coupon_sale_order_entity_1.CouponSaleOrder)
-            .findOne({ where: { id: m[1] } });
+            .findOne({ where: { id: Number(m[1]) } });
         if (!order) {
             throw new core_1.UserInputError('Coupon sale order not found');
         }

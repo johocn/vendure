@@ -615,7 +615,7 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
 
             expect(refundMock).toHaveBeenCalledTimes(1);
             const callInput = refundMock.mock.calls[0][1];
-            expect(callInput.outTradeNo).toBe(order.code);
+            expect(callInput.outTradeNo).toBe(`PO-${String(numericId).padStart(6, '0')}`);
             expect(callInput.outRefundNo).toMatch(/^PO-RF-/);
             expect(callInput.refund).toBe(100);
             expect(callInput.total).toBe(100);
@@ -881,7 +881,7 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             expect(pay.refundError).toContain('CLOSED');
             expect(pay.refundAttempts).toBe(1);
             expect(pay.amount).toBe(90);
-            expect(pay.externalRef).toBe(order.code);
+            expect(pay.externalRef).toBe(`PO-${String(numericId).padStart(6, '0')}`);
             // admin 暴露支付方式 code，便于后台核对退款凭证路由
             expect(pay.methodCode).toBe('wechatpay');
         } finally {

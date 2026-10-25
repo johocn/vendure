@@ -136,6 +136,12 @@ export class WechatpayService {
         });
     }
 
+    /** 微信错误体优先取 {code,message}（errRaw.response.text / error），避免长 JSON 截断后丢失错误码 */
+    private wxErrorText(r: any): string {
+        const detail = r?.error || r?.errRaw?.response?.text || JSON.stringify(r?.data ?? r);
+        return String(detail ?? '').slice(0, 600);
+    }
+
     /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
      *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
      *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */
@@ -250,9 +256,7 @@ export class WechatpayService {
         const prepayId = r?.data?.prepay_id;
         // 同 handler：微信失败响应不 reject，缺 prepay_id 时显式报错（勿产出 prepay_id=undefined 假参数）
         if (!prepayId) {
-            throw new Error(
-                `微信 JSAPI 下单失败(status=${r?.status}): ` + JSON.stringify(r?.data ?? r).slice(0, 300),
-            );
+            throw new Error(`微信 JSAPI 下单失败(status=${r?.status}): ${this.wxErrorText(r)}`);
         }
         const timeStamp = String(Math.floor(Date.now() / 1000));
         const nonceStr = Math.random().toString(36).substring(2, 34);
@@ -281,7 +285,7 @@ export class WechatpayService {
         })) as any;
         const data = r?.data ?? {};
         if (!data.refund_id) {
-            throw new Error(`微信退款发起失败(status=${r?.status}): ` + JSON.stringify(r?.data ?? r).slice(0, 300));
+            throw new Error(`微信退款发起失败(status=${r?.status}): ${this.wxErrorText(r)}`);
         }
         return { refundId: data.refund_id, outRefundNo: data.out_refund_no, status: data.status };
     }

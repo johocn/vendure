@@ -66,7 +66,7 @@ function createWechatpayHandler(options, code = 'wechatpay') {
             },
         },
         async createPayment(ctx, order, amount, args, metadata, method) {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g, _h;
             try {
                 // Dev Bypass: 跳过真实微信 API 调用，返回模拟支付页面链接
                 // 注意：Shop API 的 Payment.metadata 字段 resolver 只返回 metadata.public
@@ -179,8 +179,11 @@ function createWechatpayHandler(options, code = 'wechatpay') {
                 // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
                 // 不校验会产出 prepay_id=undefined 的假签名参数 + 订单假 Authorized（P2 实锤）
                 if (!prepayId) {
-                    throw new Error(`微信 JSAPI 下单失败(status=${result.status}): ` +
-                        JSON.stringify((_f = result.data) !== null && _f !== void 0 ? _f : result).slice(0, 300));
+                    // 优先取微信返回的 {code,message}，避免长 JSON 截断后看不到真正的错误码
+                    const detail = result.error ||
+                        ((_g = (_f = result.errRaw) === null || _f === void 0 ? void 0 : _f.response) === null || _g === void 0 ? void 0 : _g.text) ||
+                        JSON.stringify((_h = result.data) !== null && _h !== void 0 ? _h : result);
+                    throw new Error(`微信 JSAPI 下单失败(status=${result.status}): ${String(detail !== null && detail !== void 0 ? detail : '').slice(0, 600)}`);
                 }
                 const jsapiAppId = (override === null || override === void 0 ? void 0 : override.appId) || args.appId;
                 const jsapiTimeStamp = String(Math.floor(Date.now() / 1000));

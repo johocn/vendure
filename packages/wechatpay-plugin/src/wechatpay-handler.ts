@@ -189,9 +189,13 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                 // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
                 // 不校验会产出 prepay_id=undefined 的假签名参数 + 订单假 Authorized（P2 实锤）
                 if (!prepayId) {
+                    // 优先取微信返回的 {code,message}，避免长 JSON 截断后看不到真正的错误码
+                    const detail =
+                        (result as any).error ||
+                        (result as any).errRaw?.response?.text ||
+                        JSON.stringify((result as any).data ?? result);
                     throw new Error(
-                        `微信 JSAPI 下单失败(status=${(result as any).status}): ` +
-                        JSON.stringify((result as any).data ?? result).slice(0, 300),
+                        `微信 JSAPI 下单失败(status=${(result as any).status}): ${String(detail ?? '').slice(0, 600)}`,
                     );
                 }
                 const jsapiAppId = override?.appId || args.appId;

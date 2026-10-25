@@ -62,9 +62,9 @@ describe('CouponSale · 真实 DB 运行态 e2e', () => {
         return Number(String(id).replace(/^T_/, ''));
     }
 
-    /** 与 CouponSaleService.createWechatPrepay 保持一致：out_trade_no = `CS-<自增主键>` */
+    /** 与 CouponSaleService.createWechatPrepay 保持一致：out_trade_no = `CS-<自增主键补零到6位>` */
     function outTradeNoOf(saleOrderId: string | number): string {
-        return `CS-${decodeId(saleOrderId)}`;
+        return `CS-${String(decodeId(saleOrderId)).padStart(6, '0')}`;
     }
 
     /**

@@ -304,7 +304,9 @@ export class RechargeCardService {
             throw new UserInputError('Payment gateway not configured');
         }
         const gateway = gatewayService; // 收窄为不可空引用（闭包内使用不再触发 possibly null）
-        const outTradeNo = `RC-${order.id}`;
+        // 微信要求 out_trade_no 至少 6 位（6~32）：小 id 的 `RC-30` 会被拒为「商户订单号错误」，
+        // 故数字段左补零到 6 位；回调解析 /^RC-(\d+)$/ 不受影响。
+        const outTradeNo = `RC-${String(order.id).padStart(6, '0')}`;
         const effectiveTradeType = (tradeType as any) || 'JSAPI';
         // openid 回落（F-VS-08）：前端未携带 openid 时由客户档案推导，避免 JSAPI 支付失败。
         // 渠道配了商户凭证（payConfig override）说明走公众号/H5 场景，JSAPI 必须优先公众号 openid，
@@ -340,7 +342,7 @@ export class RechargeCardService {
         // 回调查不到的渠道可能不是下单渠道（如回调域名不在渠道 customDomains 时回退默认渠道），
         // 不能按 ctx.channelId 过滤，否则查不到单→已扣款不入账；先按 id 取单再切到订单自身渠道入账。
         const order = await this.connection.getRepository(ctx, RechargeOrder).findOne({
-            where: { id: m[1] as any },
+            where: { id: Number(m[1]) as any },
         });
         if (!order) throw new UserInputError('Recharge order not found');
         if (order.status !== 'pending') return; // 幂等：已结算直接返回

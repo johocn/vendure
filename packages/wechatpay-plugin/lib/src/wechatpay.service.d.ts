@@ -62,6 +62,8 @@ export declare class WechatpayService {
     }): Promise<string | undefined>;
     /** 默认渠道 ctx（未按租户指定渠道时的回退，兼容历史单店部署） */
     private defaultChannelCtx;
+    /** 微信错误体优先取 {code,message}（errRaw.response.text / error），避免长 JSON 截断后丢失错误码 */
+    private wxErrorText;
     /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
      *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
      *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */

@@ -239,7 +239,10 @@ let BillPayService = class BillPayService {
             throw new core_1.UserInputError('Payment gateway not configured');
         }
         const gateway = gatewayService; // 收窄为不可空引用（闭包内使用不再触发 possibly null）
-        const outTradeNo = (_a = order.code) !== null && _a !== void 0 ? _a : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
+        // 微信要求 out_trade_no 至少 6 位（6~32）：小 id 的 `BP-30` 会被拒为「商户订单号错误」，
+        // 故数字段左补零到 6 位；回调解析 /^BP-(\d+)$/ 不受影响。
+        const rawRef = (_a = order.code) !== null && _a !== void 0 ? _a : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
+        const outTradeNo = rawRef.replace(/^BP-(\d+)$/, (_m, d) => `BP-${String(Number(d)).padStart(6, '0')}`);
         const effectiveTradeType = tradeType || 'JSAPI';
         // 渠道配了商户凭证（payConfig override）= 公众号/H5 场景，JSAPI 必须优先公众号 openid，
         // 否则取到小程序 openid 时 appId 不一致（openid 按 appid 隔离），支付必然失败。
@@ -269,7 +272,7 @@ let BillPayService = class BillPayService {
         // 回调域名解析出的渠道未必是下单渠道（回调落默认渠道域名时），
         // 不能按 ctx.channelId 过滤，否则查不到单→已扣款不结单；先按 id 取单再切到订单自身渠道。
         const order = await this.orderRepo(ctx).findOne({
-            where: { id: m[1] },
+            where: { id: Number(m[1]) },
         });
         if (!order) {
             throw new core_1.UserInputError('Bill pay order not found');
@@ -467,7 +470,8 @@ let BillPayService = class BillPayService {
             const outTradeNo = (_c = (_b = order.payRef) !== null && _b !== void 0 ? _b : order.code) !== null && _c !== void 0 ? _c : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
             await gatewayService.refundBarePayment(ctx, {
                 outTradeNo,
-                outRefundNo: `BPR-${order.id}`,
+                // out_refund_no 同样限制 6~64 位，数字段补零到 6 位避免 BPR-30 类短号被拒
+                outRefundNo: `BPR-${String(order.id).padStart(6, '0')}`,
                 refund: order.quoteAmount,
                 total: order.quoteAmount,
                 reason: reason !== null && reason !== void 0 ? reason : undefined,

@@ -548,12 +548,14 @@ let PointsMallService = class PointsMallService {
         }));
         const final = (await repo.save(Object.assign(Object.assign({}, saved), { code: `PO-${saved.id}` })));
         if (cashTotal > 0) {
+            // 微信要求 out_trade_no 至少 6 位：PO-30 类短号会被拒，故数字段左补零（订单 code 展示值不变）
+            const wxOutTradeNo = `PO-${String(final.id).padStart(6, '0')}`;
             await this.connection.getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment).save({
                 orderId: final.id,
                 customerId: customer.id,
                 amount: cashTotal,
                 status: 'pending',
-                externalRef: final.code,
+                externalRef: wxOutTradeNo,
                 transactionId: null,
                 paidAt: null,
                 channelId: ctx.channelId,
@@ -587,14 +589,16 @@ let PointsMallService = class PointsMallService {
             (await (0, wechatpay_plugin_1.resolveCustomerOpenid)(ctx, customer.id, {
                 preferMini: tt === 'JSAPI' && !this.gateway.hasChannelPayConfig(ctx),
             }));
+        // 与下单时 externalRef 同口径：数字段补零到 6 位（微信 out_trade_no 至少 6 位）
+        const outTradeNo = `PO-${String(order.id).padStart(6, '0')}`;
         const pay = await this.gateway.createBarePayment({
-            outTradeNo: order.code,
+            outTradeNo,
             amount: order.cashTotal,
             tradeType: tt,
             openid: openId,
-            description: 'Points ' + order.code,
+            description: 'Points ' + outTradeNo,
         }, ctx);
-        return { pointsOrderId: order.id, outTradeNo: order.code, pay };
+        return { pointsOrderId: order.id, outTradeNo, pay };
     }
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
     async settlePointsOrderByOutTradeNo(ctx, outTradeNo, transactionId) {
@@ -604,7 +608,7 @@ let PointsMallService = class PointsMallService {
         // 回调域名解析出的渠道未必是下单渠道（回调落默认渠道域名时），
         // 不能按 ctx.channelId 过滤，否则查不到单→已扣款不结单；先按 id 取单再切到订单自身渠道。
         const order = await this.connection.getRepository(ctx, points_order_entity_1.PointsOrder).findOne({
-            where: { id: m[1] },
+            where: { id: Number(m[1]) },
         });
         if (!order)
             throw new core_1.UserInputError('Points order not found');
