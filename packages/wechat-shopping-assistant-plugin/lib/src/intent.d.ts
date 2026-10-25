@@ -24,6 +24,10 @@ export type AssistantIntent = {
  | {
     kind: 'support';
     storeIndex?: number;
+}
+/** 留言工单：下一句作为留言正文提交 */
+ | {
+    kind: 'support_note';
 };
 /** 全角数字/字母转半角，去空白，统一分隔符 */
 export declare function normalizeInput(raw: string): string;

@@ -181,4 +181,12 @@ export declare function buildSupportRepeatText(touser: string, input: {
     name?: string | null;
     phoneNumber?: string | null;
 }): TextMessage;
+/** 进入留言输入态 */
+export declare function buildSupportNotePromptText(touser: string): TextMessage;
+/** 留言超长 */
+export declare function buildSupportNoteTooLongText(touser: string, length: number): TextMessage;
+/** 留言已提交（工单编号便于后台/电话核对） */
+export declare function buildSupportNoteSavedText(touser: string, ticketId: string): TextMessage;
+/** 取消留言：恢复留言前的流程状态 */
+export declare function buildSupportNoteCancelledText(touser: string): TextMessage;
 export {};

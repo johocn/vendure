@@ -26,13 +26,43 @@ const credential_service_1 = require("./credential.service");
 const customer_binding_service_1 = require("./customer-binding.service");
 const wechat_processed_message_entity_1 = require("./entities/wechat-processed-message.entity");
 const wechat_shopping_session_entity_1 = require("./entities/wechat-shopping-session.entity");
+const wechat_support_ticket_entity_1 = require("./entities/wechat-support-ticket.entity");
 const geo_service_1 = require("./geo.service");
 const order_service_1 = require("./order.service");
 const search_adapter_1 = require("./search-adapter");
 const session_service_1 = require("./session.service");
 const shopping_session_flow_columns_migration_1 = require("./migrations/shopping-session-flow-columns.migration");
 const store_locator_service_1 = require("./store-locator.service");
+const support_ticket_admin_resolver_1 = require("./support-ticket-admin.resolver");
+const support_ticket_service_1 = require("./support-ticket.service");
 const wechat_sender_1 = require("./wechat-sender");
+const { gql } = require('graphql-tag');
+/** 留言工单后台 schema：列表 + 回复（回复经公众号客服消息下发） */
+const adminSchema = () => gql `
+    type WechatSupportTicket implements Node {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        openid: String!
+        channelId: ID
+        customerId: ID
+        storeId: String
+        storeName: String
+        summary: String
+        content: String!
+        status: String!
+        reply: String
+        repliedAt: DateTime
+    }
+
+    extend type Query {
+        wechatSupportTickets(limit: Int = 20, status: String): [WechatSupportTicket!]!
+    }
+
+    extend type Mutation {
+        replyWechatSupportTicket(id: ID!, content: String!): WechatSupportTicket!
+    }
+`;
 /**
  * 微信公众号购物助手：
  * 用户发「买一瓶酱油」→ meili 商品搜索 → 客服消息图文卡片（失败降级文本列表）
@@ -64,8 +94,9 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin;
 exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule, meilisearch_plugin_1.MeiliSearchPlugin, wechat_auth_plugin_1.WechatAuthPlugin],
-        entities: [wechat_shopping_session_entity_1.WechatShoppingSession, wechat_processed_message_entity_1.WechatProcessedMessage],
+        entities: [wechat_shopping_session_entity_1.WechatShoppingSession, wechat_processed_message_entity_1.WechatProcessedMessage, wechat_support_ticket_entity_1.WechatSupportTicket],
         controllers: [assistant_http_controller_1.AssistantHttpController],
+        adminApiExtensions: { schema: adminSchema, resolvers: [support_ticket_admin_resolver_1.SupportTicketAdminResolver] },
         providers: [
             { provide: constants_1.WECHAT_ASSISTANT_PLUGIN_OPTIONS, useFactory: () => WechatShoppingAssistantPlugin.options },
             session_service_1.SessionService,
@@ -78,6 +109,7 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
             address_service_1.AddressBookService,
             geo_service_1.GeoService,
             store_locator_service_1.StoreLocatorService,
+            support_ticket_service_1.SupportTicketService,
             shopping_session_flow_columns_migration_1.ShoppingSessionFlowColumnsMigration,
         ],
         compatibility: '^3.0.0',

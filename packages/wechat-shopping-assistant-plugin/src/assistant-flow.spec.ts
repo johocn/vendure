@@ -169,6 +169,7 @@ function makeService(
         addressBook?: any;
         geo?: any;
         store?: any;
+        supportTickets?: any;
     } = {},
 ) {
     const connection = makeConnection();
@@ -185,6 +186,7 @@ function makeService(
     const addressBook = overrides.addressBook ?? makeAddressBookStub();
     const geo = overrides.geo ?? { geocode: async () => null, reverse: async () => null };
     const store = overrides.store ?? makeStoreStub();
+    const supportTickets = overrides.supportTickets ?? makeSupportTicketsStub();
     const svc = new AssistantService(
         { storefrontUrl: 'https://shop.example.com', searchLocale: 'zh', sessionTtlMinutes: 30, searchLimit: 5 } as any,
         connection as any,
@@ -199,8 +201,28 @@ function makeService(
         addressBook as any,
         geo as any,
         store as any,
+        supportTickets as any,
     );
-    return { svc, connection, outbound, addressBook, store };
+    return { svc, connection, outbound, addressBook, store, supportTickets };
+}
+
+/** 留言工单假件：记录创建/回复入参 */
+function makeSupportTicketsStub() {
+    const created: any[] = [];
+    const replyCalls: any[] = [];
+    return {
+        created,
+        replyCalls,
+        create: async (_ctx: any, input: any) => {
+            created.push(input);
+            return { id: 101, ...input, status: 'open' };
+        },
+        list: async () => [],
+        reply: async (_ctx: any, id: string, content: string) => {
+            replyCalls.push({ id, content });
+            return { id: Number(id), status: 'replied', reply: content };
+        },
+    };
 }
 
 /**
@@ -1075,5 +1097,61 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         expect(outbound[0].content).toContain('回复「客服」联系门店客服');
+    });
+});
+
+describe('AssistantService 留言工单（≤200 字落库，保存后恢复原流程）', () => {
+    /** 走到下单确认态：搜索 → 买1 → 选默认地址 */
+    async function toOrderConfirm(svc: AssistantService) {
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('1', 'M3'));
+    }
+
+    test('下单确认态留言 → 工单落库（含商品上下文）→ 状态恢复可继续下单', async () => {
+        const { svc, connection, outbound, supportTickets } = makeService({ geo: GEO_STUB });
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+        await toOrderConfirm(svc);
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+
+        await svc.onMessage(textEvent('留言', 'M4'));
+        expect(outbound[outbound.length - 1].content).toContain('请直接回复留言内容（200 字以内）');
+        expect(connection.sessions.get('openid-user-1').state).toBe('support_note');
+        expect(connection.sessions.get('openid-user-1').draft.supportReturnState).toBe('order_confirm');
+
+        await svc.onMessage(textEvent('这单大概多久能送到？', 'M5'));
+        expect(outbound[outbound.length - 1].content).toContain('留言已提交（编号 #101）');
+        expect(supportTickets.created).toHaveLength(1);
+        expect(supportTickets.created[0]).toMatchObject({
+            openid: 'openid-user-1',
+            channelId: 2,
+            customerId: 42,
+            content: '这单大概多久能送到？',
+        });
+        expect(supportTickets.created[0].summary).toContain('商品：海天生抽酱油 500ml ×1');
+        // 原流程恢复，继续下单
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+        await svc.onMessage(textEvent('1', 'M6'));
+        expect(outbound[outbound.length - 1].content).toContain('下单成功');
+    });
+
+    test('留言超长 → 不落库并提示精简；回复「取消」恢复原状态', async () => {
+        const { svc, connection, outbound, supportTickets } = makeService({});
+        await svc.onMessage(textEvent('留言', 'M1'));
+        await svc.onMessage(textEvent('问'.repeat(201), 'M2'));
+        expect(outbound[outbound.length - 1].content).toContain('留言有点长（201 字）');
+        expect(supportTickets.created).toHaveLength(0);
+        expect(connection.sessions.get('openid-user-1').state).toBe('support_note');
+
+        await svc.onMessage(textEvent('取消', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('已取消留言');
+        expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
+        expect(supportTickets.created).toHaveLength(0);
+    });
+
+    test('客服卡带「留言」入口提示', async () => {
+        const { svc, outbound } = makeService({});
+        await svc.onMessage(textEvent('客服', 'M1'));
+        expect(outbound[0].content).toContain('回复「留言」写清问题');
     });
 });

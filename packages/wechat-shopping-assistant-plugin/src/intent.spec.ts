@@ -73,6 +73,14 @@ describe('recognizeIntent', () => {
         // 不是纯客服指令时仍走搜索
         expect(recognizeIntent('客服电话是多少')).toEqual({ kind: 'search', query: '客服电话是多少' });
     });
+
+    test('support note intents（留言工单）', () => {
+        expect(recognizeIntent('留言')).toEqual({ kind: 'support_note' });
+        expect(recognizeIntent('给门店留言。')).toEqual({ kind: 'support_note' });
+        expect(recognizeIntent('意见反馈')).toEqual({ kind: 'support_note' });
+        expect(recognizeIntent('反馈')).toEqual({ kind: 'support_note' });
+        expect(recognizeIntent('留言说这个商品有货吗')).toEqual({ kind: 'search', query: '留言说这个商品有货吗' });
+    });
 });
 
 describe('buildDedupKey', () => {

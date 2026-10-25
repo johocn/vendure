@@ -11,14 +11,46 @@ import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
 import { WechatProcessedMessage } from './entities/wechat-processed-message.entity';
 import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
+import { WechatSupportTicket } from './entities/wechat-support-ticket.entity';
 import { GeoService } from './geo.service';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
 import { ShoppingSessionFlowColumnsMigration } from './migrations/shopping-session-flow-columns.migration';
 import { StoreLocatorService } from './store-locator.service';
+import { SupportTicketAdminResolver } from './support-ticket-admin.resolver';
+import { SupportTicketService } from './support-ticket.service';
 import { WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
+
+const { gql } = require('graphql-tag');
+
+/** 留言工单后台 schema：列表 + 回复（回复经公众号客服消息下发） */
+const adminSchema = () => gql`
+    type WechatSupportTicket implements Node {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        openid: String!
+        channelId: ID
+        customerId: ID
+        storeId: String
+        storeName: String
+        summary: String
+        content: String!
+        status: String!
+        reply: String
+        repliedAt: DateTime
+    }
+
+    extend type Query {
+        wechatSupportTickets(limit: Int = 20, status: String): [WechatSupportTicket!]!
+    }
+
+    extend type Mutation {
+        replyWechatSupportTicket(id: ID!, content: String!): WechatSupportTicket!
+    }
+`;
 
 /**
  * 微信公众号购物助手：
@@ -30,8 +62,9 @@ import { WechatSender } from './wechat-sender';
  */
 @VendurePlugin({
     imports: [PluginCommonModule, MeiliSearchPlugin, WechatAuthPlugin],
-    entities: [WechatShoppingSession, WechatProcessedMessage],
+    entities: [WechatShoppingSession, WechatProcessedMessage, WechatSupportTicket],
     controllers: [AssistantHttpController],
+    adminApiExtensions: { schema: adminSchema, resolvers: [SupportTicketAdminResolver] },
     providers: [
         { provide: WECHAT_ASSISTANT_PLUGIN_OPTIONS, useFactory: () => WechatShoppingAssistantPlugin.options },
         SessionService,
@@ -44,6 +77,7 @@ import { WechatSender } from './wechat-sender';
         AddressBookService,
         GeoService,
         StoreLocatorService,
+        SupportTicketService,
         ShoppingSessionFlowColumnsMigration,
     ],
     compatibility: '^3.0.0',

@@ -50,6 +50,10 @@ exports.buildSupportCard = buildSupportCard;
 exports.buildSupportStorePickText = buildSupportStorePickText;
 exports.buildSupportInvalidStoreText = buildSupportInvalidStoreText;
 exports.buildSupportRepeatText = buildSupportRepeatText;
+exports.buildSupportNotePromptText = buildSupportNotePromptText;
+exports.buildSupportNoteTooLongText = buildSupportNoteTooLongText;
+exports.buildSupportNoteSavedText = buildSupportNoteSavedText;
+exports.buildSupportNoteCancelledText = buildSupportNoteCancelledText;
 /** 价格分 → 展示串：890 → '8.90'，0 → '价格面议' */
 function formatPrice(price) {
     if (!price || price <= 0)
@@ -513,6 +517,7 @@ function buildSupportCard(touser, input) {
     if (store || platformPhone) {
         lines.push('打电话时说明来自微信购物助手，客服可直接查这单。');
     }
+    lines.push('需要门店稍后联系你：回复「留言」写清问题（200 字以内）。');
     return { kind: 'text', touser, content: lines.join('\n') };
 }
 /** 有多个候选门店：让用户用「客服N」指定要联系哪家店 */
@@ -540,7 +545,40 @@ function buildSupportRepeatText(touser, input) {
     return {
         kind: 'text',
         touser,
-        content: `客服联系方式刚发过：${name}${phone}可直接拨打。\n若暂时没接通，稍后再回「客服」即可。`,
+        content: `客服联系方式刚发过：${name}${phone}可直接拨打。\n若暂时没接通，稍后再回「客服」即可；需要门店回电可回复「留言」。`,
+    };
+}
+// ============ 留言工单（≤200 字，保存后恢复原流程状态） ============
+/** 进入留言输入态 */
+function buildSupportNotePromptText(touser) {
+    return {
+        kind: 'text',
+        touser,
+        content: '请直接回复留言内容（200 字以内），可写清商品、订单或遇到的问题。\n门店看到后会尽快联系你。\n回复「取消」退出。',
+    };
+}
+/** 留言超长 */
+function buildSupportNoteTooLongText(touser, length) {
+    return {
+        kind: 'text',
+        touser,
+        content: `留言有点长（${length} 字），请精简到 200 字以内再发一次。\n回复「取消」退出。`,
+    };
+}
+/** 留言已提交（工单编号便于后台/电话核对） */
+function buildSupportNoteSavedText(touser, ticketId) {
+    return {
+        kind: 'text',
+        touser,
+        content: `留言已提交（编号 #${ticketId}），门店会尽快处理并回复你。\n可以继续发送商品名购物，回复「客服」查看联系方式。`,
+    };
+}
+/** 取消留言：恢复留言前的流程状态 */
+function buildSupportNoteCancelledText(touser) {
+    return {
+        kind: 'text',
+        touser,
+        content: '已取消留言，可继续刚才的操作。\n回复「客服」可查看联系方式。',
     };
 }
 //# sourceMappingURL=card-builder.js.map

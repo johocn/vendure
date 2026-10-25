@@ -72,6 +72,7 @@ export type AssistantFlowState =
     | 'addr_new_phone_text' // 等新号码
     | 'addr_new_default' // 等是否设默认（是/否）
     | 'store_pick' // 3km 门店列表选择（draft.nearbyStores）
+    | 'support_note' // 等留言正文（≤200 字），保存后恢复 supportReturnState
     | 'order_confirm' // 下单二次确认（1 确认 / 0 重选地址）
     | null;
 
@@ -105,6 +106,8 @@ export interface AssistantFlowDraft {
     supportStoreId?: string | null;
     /** 最近一次「客服」卡片的电话号码（重复请求时短提示用） */
     supportPhone?: string | null;
+    /** 留言前所处的流程状态（留言保存后恢复，保证「每步」都不打断原流程） */
+    supportReturnState?: AssistantFlowState;
 }
 
 /** 3km 内门店（含距离与熟店标记），用于客服消息列表与选择 */

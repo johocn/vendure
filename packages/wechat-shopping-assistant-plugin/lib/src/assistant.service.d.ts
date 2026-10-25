@@ -8,6 +8,7 @@ import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
 import { StoreLocatorService } from './store-locator.service';
+import { SupportTicketService } from './support-ticket.service';
 import { OutboundMessage, WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
 /**
@@ -30,7 +31,8 @@ export declare class AssistantService {
     private addressBook;
     private geoService;
     private storeLocator;
-    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService, storeLocator: StoreLocatorService);
+    private supportTickets;
+    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService, storeLocator: StoreLocatorService, supportTickets: SupportTicketService);
     onMessage(event: WechatMessageEvent): Promise<void>;
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
@@ -85,6 +87,14 @@ export declare class AssistantService {
     private platformServicePhone;
     /** 3km 门店列表项 → 客服联系方式（门店数据回查失败时兜底用） */
     private contactFromNearby;
+    /** 「留言」入口：进入留言输入态，并记住当前流程状态（保存/取消后恢复） */
+    private handleSupportNoteStart;
+    /** 留言正文：校验长度 → 落库工单 → 恢复原流程状态 */
+    private onSupportNote;
+    /** 留言关联门店：最近客服门店 → 已选门店 → 3km 唯一候选 */
+    private resolveSupportStore;
+    /** 工单上下文摘要：当前这单商品/合计 + 城市（便于客服定位问题） */
+    private supportSummary;
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     private orderConfirmCard;
     private handleSearch;

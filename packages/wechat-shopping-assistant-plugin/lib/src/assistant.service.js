@@ -27,6 +27,7 @@ const order_service_1 = require("./order.service");
 const search_adapter_1 = require("./search-adapter");
 const session_service_1 = require("./session.service");
 const store_locator_service_1 = require("./store-locator.service");
+const support_ticket_service_1 = require("./support-ticket.service");
 const wechat_sender_1 = require("./wechat-sender");
 /** 同一门店「客服」重复请求窗口：窗口内只回短提示，避免刷屏（PRD FR-07） */
 const SUPPORT_REPEAT_WINDOW_MS = 10 * 60 * 1000;
@@ -37,7 +38,7 @@ const SUPPORT_REPEAT_WINDOW_MS = 10 * 60 * 1000;
  * 重复推送由 MsgId 去重表挡住）。
  */
 let AssistantService = class AssistantService {
-    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook, geoService, storeLocator) {
+    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook, geoService, storeLocator, supportTickets) {
         this.opts = opts;
         this.connection = connection;
         this.sessionService = sessionService;
@@ -51,6 +52,7 @@ let AssistantService = class AssistantService {
         this.addressBook = addressBook;
         this.geoService = geoService;
         this.storeLocator = storeLocator;
+        this.supportTickets = supportTickets;
     }
     async onMessage(event) {
         const msg = event.message;
@@ -95,13 +97,18 @@ let AssistantService = class AssistantService {
             return this.handleLocationMessage(msg);
         if (msg.msgType !== 'text' || !msg.content)
             return null;
-        // 全局「一键客服」：任何状态下优先响应，且不改变会话状态（不打断原流程）
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        // 留言输入态：这句话就是留言正文，不再识别指令（取消例外，见 onSupportNote）
+        if ((session === null || session === void 0 ? void 0 : session.state) === 'support_note')
+            return this.onSupportNote(msg, session);
+        // 全局「一键客服 / 留言」：任何状态下优先响应，不打断原流程
         const earlyIntent = (0, intent_1.recognizeIntent)(msg.content);
         if (earlyIntent.kind === 'support')
             return this.handleSupport(msg, earlyIntent.storeIndex);
-        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        if (earlyIntent.kind === 'support_note')
+            return this.handleSupportNoteStart(msg, session);
         // 补录状态机优先：处于手机号/地址补录中的用户，输入不走意图识别
-        const session = await this.sessionService.getActive(msg.fromUserName);
         if (session === null || session === void 0 ? void 0 : session.state) {
             return this.handleFlowStep(msg, session);
         }
@@ -777,6 +784,93 @@ let AssistantService = class AssistantService {
             businessHours: (_b = store.businessHours) !== null && _b !== void 0 ? _b : null,
         };
     }
+    // ============ 留言工单（≤200 字落库，后台回复经公众号下发） ============
+    /** 「留言」入口：进入留言输入态，并记住当前流程状态（保存/取消后恢复） */
+    async handleSupportNoteStart(msg, session) {
+        var _a, _b, _c, _d, _e;
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const channelId = (_b = session === null || session === void 0 ? void 0 : session.channelId) !== null && _b !== void 0 ? _b : (await this.resolveChannelId(msg.channelToken));
+        await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        await this.sessionService.setFlow(msg.fromUserName, 'support_note', Object.assign(Object.assign({}, ((_c = session === null || session === void 0 ? void 0 : session.draft) !== null && _c !== void 0 ? _c : {})), { supportReturnState: (_d = session === null || session === void 0 ? void 0 : session.state) !== null && _d !== void 0 ? _d : null }), ttl);
+        core_1.Logger.info(`Assistant support note started: openid=${msg.fromUserName} returnState=${(_e = session === null || session === void 0 ? void 0 : session.state) !== null && _e !== void 0 ? _e : 'none'}`, constants_1.loggerCtx);
+        return (0, card_builder_1.buildSupportNotePromptText)(msg.fromUserName);
+    }
+    /** 留言正文：校验长度 → 落库工单 → 恢复原流程状态 */
+    async onSupportNote(msg, session) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const text = (msg.content || '').trim();
+        const draft = (_b = session.draft) !== null && _b !== void 0 ? _b : {};
+        // 取消：放弃留言并恢复留言前的流程状态
+        if (/^(取消|退出)[!！。.~]?$/.test(text)) {
+            await this.sessionService.setFlow(msg.fromUserName, (_c = draft.supportReturnState) !== null && _c !== void 0 ? _c : null, Object.assign(Object.assign({}, draft), { supportReturnState: null }), ttl);
+            return (0, card_builder_1.buildSupportNoteCancelledText)(msg.fromUserName);
+        }
+        if (text.length > 200) {
+            return (0, card_builder_1.buildSupportNoteTooLongText)(msg.fromUserName, text.length);
+        }
+        const channelId = (_d = session.channelId) !== null && _d !== void 0 ? _d : (await this.resolveChannelId(msg.channelToken));
+        const ctx = await this.createShopCtx(channelId);
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        const store = await this.resolveSupportStore(ctx, draft);
+        let ticketId;
+        try {
+            const ticket = await this.supportTickets.create(ctx, {
+                openid: msg.fromUserName,
+                channelId: Number(channelId),
+                customerId: customer ? Number(customer.id) : null,
+                storeId: (_e = store === null || store === void 0 ? void 0 : store.id) !== null && _e !== void 0 ? _e : null,
+                storeName: (_f = store === null || store === void 0 ? void 0 : store.name) !== null && _f !== void 0 ? _f : null,
+                summary: this.supportSummary(session, draft),
+                content: text,
+            });
+            ticketId = String(ticket.id);
+            core_1.Logger.info(`Assistant support note saved: openid=${msg.fromUserName} ticket=${ticketId}`, constants_1.loggerCtx);
+        }
+        catch (e) {
+            core_1.Logger.error(`Assistant support note save failed: ${String(e)}`, constants_1.loggerCtx);
+            // 落库失败保留输入态，用户可重发或取消
+            return {
+                kind: 'text',
+                touser: msg.fromUserName,
+                content: '留言提交失败，请稍后重试一次；也可回复「客服」直接电话联系。',
+            };
+        }
+        await this.sessionService.setFlow(msg.fromUserName, (_g = draft.supportReturnState) !== null && _g !== void 0 ? _g : null, Object.assign(Object.assign({}, draft), { supportReturnState: null }), ttl);
+        return (0, card_builder_1.buildSupportNoteSavedText)(msg.fromUserName, ticketId);
+    }
+    /** 留言关联门店：最近客服门店 → 已选门店 → 3km 唯一候选 */
+    async resolveSupportStore(ctx, draft) {
+        var _a, _b, _c, _d, _e, _f;
+        const single = ((_a = draft.nearbyStores) === null || _a === void 0 ? void 0 : _a.length) === 1 ? draft.nearbyStores[0] : null;
+        const storeId = (_d = (_c = (_b = draft.supportStoreId) !== null && _b !== void 0 ? _b : draft.storeId) !== null && _c !== void 0 ? _c : single === null || single === void 0 ? void 0 : single.id) !== null && _d !== void 0 ? _d : null;
+        if (!storeId)
+            return null;
+        const cached = (_e = draft.nearbyStores) === null || _e === void 0 ? void 0 : _e.find(store => store.id === storeId);
+        if (cached === null || cached === void 0 ? void 0 : cached.name)
+            return { id: storeId, name: cached.name };
+        try {
+            const contact = await this.storeLocator.findContact(ctx, storeId);
+            return { id: storeId, name: (_f = contact === null || contact === void 0 ? void 0 : contact.name) !== null && _f !== void 0 ? _f : null };
+        }
+        catch (_g) {
+            return { id: storeId, name: null };
+        }
+    }
+    /** 工单上下文摘要：当前这单商品/合计 + 城市（便于客服定位问题） */
+    supportSummary(session, draft) {
+        var _a;
+        const parts = [];
+        const picked = ((_a = session.results) !== null && _a !== void 0 ? _a : []).filter(r => { var _a; return ((_a = draft.indices) !== null && _a !== void 0 ? _a : []).includes(r.index); });
+        if (picked.length) {
+            const items = picked.map(r => { var _a; return `${r.title} ×${(_a = r.quantity) !== null && _a !== void 0 ? _a : 1}`; }).join('，');
+            const total = picked.reduce((sum, r) => { var _a; return sum + r.price * ((_a = r.quantity) !== null && _a !== void 0 ? _a : 1); }, 0);
+            parts.push(`商品：${items}，合计 ${(0, card_builder_1.formatPrice)(total)}`);
+        }
+        if (draft.city)
+            parts.push(`城市：${draft.city}`);
+        return parts.length ? parts.join('；').slice(0, 500) : null;
+    }
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     async orderConfirmCard(ctx, touser, session, draft) {
         var _a, _b;
@@ -993,7 +1087,8 @@ exports.AssistantService = AssistantService = __decorate([
         customer_binding_service_1.CustomerBindingService,
         address_service_1.AddressBookService,
         geo_service_1.GeoService,
-        store_locator_service_1.StoreLocatorService])
+        store_locator_service_1.StoreLocatorService,
+        support_ticket_service_1.SupportTicketService])
 ], AssistantService);
 /** 微信位置坐标 + 逆地理行政区 → 可写入草稿/地址的坐标对象 */
 function geoPointFromReverse(reverse, lat, lng) {

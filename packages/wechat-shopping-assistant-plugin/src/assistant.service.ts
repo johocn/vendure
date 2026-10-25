@@ -55,10 +55,15 @@ import {
     buildStoreSelectionInvalidText,
     buildSupportCard,
     buildSupportInvalidStoreText,
+    buildSupportNoteCancelledText,
+    buildSupportNotePromptText,
+    buildSupportNoteSavedText,
+    buildSupportNoteTooLongText,
     buildSupportRepeatText,
     buildSupportStorePickText,
     buildTextListMessage,
     buildWelcomeText,
+    formatPrice,
 } from './card-builder';
 import { loggerCtx, WECHAT_ASSISTANT_PLUGIN_OPTIONS } from './constants';
 import { CredentialService } from './credential.service';
@@ -71,6 +76,7 @@ import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
 import { StoreLocatorService } from './store-locator.service';
+import { SupportTicketService } from './support-ticket.service';
 import {
     AssistantAddressGeo,
     AssistantFlowDraft,
@@ -108,6 +114,7 @@ export class AssistantService {
         private addressBook: AddressBookService,
         private geoService: GeoService,
         private storeLocator: StoreLocatorService,
+        private supportTickets: SupportTicketService,
     ) {}
 
     async onMessage(event: WechatMessageEvent): Promise<void> {
@@ -152,14 +159,18 @@ export class AssistantService {
         if (msg.msgType === 'location') return this.handleLocationMessage(msg);
         if (msg.msgType !== 'text' || !msg.content) return null;
 
-        // 全局「一键客服」：任何状态下优先响应，且不改变会话状态（不打断原流程）
+        const ttl = this.opts.sessionTtlMinutes ?? 30;
+        const session = await this.sessionService.getActive(msg.fromUserName);
+
+        // 留言输入态：这句话就是留言正文，不再识别指令（取消例外，见 onSupportNote）
+        if (session?.state === 'support_note') return this.onSupportNote(msg, session);
+
+        // 全局「一键客服 / 留言」：任何状态下优先响应，不打断原流程
         const earlyIntent = recognizeIntent(msg.content);
         if (earlyIntent.kind === 'support') return this.handleSupport(msg, earlyIntent.storeIndex);
-
-        const ttl = this.opts.sessionTtlMinutes ?? 30;
+        if (earlyIntent.kind === 'support_note') return this.handleSupportNoteStart(msg, session);
 
         // 补录状态机优先：处于手机号/地址补录中的用户，输入不走意图识别
-        const session = await this.sessionService.getActive(msg.fromUserName);
         if (session?.state) {
             return this.handleFlowStep(msg, session);
         }
@@ -952,6 +963,122 @@ export class AssistantService {
             phoneNumber: store.phoneNumber ?? null,
             businessHours: store.businessHours ?? null,
         };
+    }
+
+    // ============ 留言工单（≤200 字落库，后台回复经公众号下发） ============
+
+    /** 「留言」入口：进入留言输入态，并记住当前流程状态（保存/取消后恢复） */
+    private async handleSupportNoteStart(
+        msg: WechatInboundMessage,
+        session: WechatShoppingSession | null,
+    ): Promise<OutboundMessage> {
+        const ttl = this.opts.sessionTtlMinutes ?? 30;
+        const channelId = session?.channelId ?? (await this.resolveChannelId(msg.channelToken));
+        await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        await this.sessionService.setFlow(
+            msg.fromUserName,
+            'support_note',
+            {
+                ...(session?.draft ?? {}),
+                supportReturnState: (session?.state as AssistantFlowState | null) ?? null,
+            },
+            ttl,
+        );
+        Logger.info(
+            `Assistant support note started: openid=${msg.fromUserName} returnState=${session?.state ?? 'none'}`,
+            loggerCtx,
+        );
+        return buildSupportNotePromptText(msg.fromUserName);
+    }
+
+    /** 留言正文：校验长度 → 落库工单 → 恢复原流程状态 */
+    private async onSupportNote(
+        msg: WechatInboundMessage,
+        session: WechatShoppingSession,
+    ): Promise<OutboundMessage | null> {
+        const ttl = this.opts.sessionTtlMinutes ?? 30;
+        const text = (msg.content || '').trim();
+        const draft: AssistantFlowDraft = session.draft ?? {};
+
+        // 取消：放弃留言并恢复留言前的流程状态
+        if (/^(取消|退出)[!！。.~]?$/.test(text)) {
+            await this.sessionService.setFlow(
+                msg.fromUserName,
+                draft.supportReturnState ?? null,
+                { ...draft, supportReturnState: null },
+                ttl,
+            );
+            return buildSupportNoteCancelledText(msg.fromUserName);
+        }
+        if (text.length > 200) {
+            return buildSupportNoteTooLongText(msg.fromUserName, text.length);
+        }
+
+        const channelId = session.channelId ?? (await this.resolveChannelId(msg.channelToken));
+        const ctx = await this.createShopCtx(channelId);
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        const store = await this.resolveSupportStore(ctx, draft);
+        let ticketId: string;
+        try {
+            const ticket = await this.supportTickets.create(ctx, {
+                openid: msg.fromUserName,
+                channelId: Number(channelId),
+                customerId: customer ? Number(customer.id) : null,
+                storeId: store?.id ?? null,
+                storeName: store?.name ?? null,
+                summary: this.supportSummary(session, draft),
+                content: text,
+            });
+            ticketId = String(ticket.id);
+            Logger.info(`Assistant support note saved: openid=${msg.fromUserName} ticket=${ticketId}`, loggerCtx);
+        } catch (e) {
+            Logger.error(`Assistant support note save failed: ${String(e)}`, loggerCtx);
+            // 落库失败保留输入态，用户可重发或取消
+            return {
+                kind: 'text',
+                touser: msg.fromUserName,
+                content: '留言提交失败，请稍后重试一次；也可回复「客服」直接电话联系。',
+            };
+        }
+
+        await this.sessionService.setFlow(
+            msg.fromUserName,
+            draft.supportReturnState ?? null,
+            { ...draft, supportReturnState: null },
+            ttl,
+        );
+        return buildSupportNoteSavedText(msg.fromUserName, ticketId);
+    }
+
+    /** 留言关联门店：最近客服门店 → 已选门店 → 3km 唯一候选 */
+    private async resolveSupportStore(
+        ctx: RequestContext,
+        draft: AssistantFlowDraft,
+    ): Promise<{ id: string; name: string | null } | null> {
+        const single = draft.nearbyStores?.length === 1 ? draft.nearbyStores[0] : null;
+        const storeId = draft.supportStoreId ?? draft.storeId ?? single?.id ?? null;
+        if (!storeId) return null;
+        const cached = draft.nearbyStores?.find(store => store.id === storeId);
+        if (cached?.name) return { id: storeId, name: cached.name };
+        try {
+            const contact = await this.storeLocator.findContact(ctx, storeId);
+            return { id: storeId, name: contact?.name ?? null };
+        } catch {
+            return { id: storeId, name: null };
+        }
+    }
+
+    /** 工单上下文摘要：当前这单商品/合计 + 城市（便于客服定位问题） */
+    private supportSummary(session: WechatShoppingSession, draft: AssistantFlowDraft): string | null {
+        const parts: string[] = [];
+        const picked = (session.results ?? []).filter(r => (draft.indices ?? []).includes(r.index));
+        if (picked.length) {
+            const items = picked.map(r => `${r.title} ×${r.quantity ?? 1}`).join('，');
+            const total = picked.reduce((sum, r) => sum + r.price * (r.quantity ?? 1), 0);
+            parts.push(`商品：${items}，合计 ${formatPrice(total)}`);
+        }
+        if (draft.city) parts.push(`城市：${draft.city}`);
+        return parts.length ? parts.join('；').slice(0, 500) : null;
     }
 
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
