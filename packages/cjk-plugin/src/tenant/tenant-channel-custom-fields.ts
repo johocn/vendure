@@ -146,6 +146,18 @@ export const tenantChannelCustomFields: CustomFields = {
             label: [{ languageCode: LanguageCode.zh_Hans, value: '店铺名' }],
         },
         {
+            name: 'servingCities',
+            type: 'string',
+            list: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '服务城市（城市码）' }],
+            description: [
+                {
+                    languageCode: LanguageCode.zh_Hans,
+                    value: '该店铺服务城市的 6 位城市码（如吉林市 220200，取区县码前 4 位 + 00），用于公众号文字订购的城市匹配；留空则按配送范围推导',
+                },
+            ],
+        },
+        {
             name: 'shopIntro',
             type: 'string',
             nullable: true,
