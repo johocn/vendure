@@ -7,6 +7,7 @@ import { GeoService } from './geo.service';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
+import { StoreLocatorService } from './store-locator.service';
 import { OutboundMessage, WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
 /**
@@ -28,7 +29,8 @@ export declare class AssistantService {
     private customerBinding;
     private addressBook;
     private geoService;
-    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService);
+    private storeLocator;
+    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService, geoService: GeoService, storeLocator: StoreLocatorService);
     onMessage(event: WechatMessageEvent): Promise<void>;
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
@@ -67,6 +69,12 @@ export declare class AssistantService {
     private handleLocationMessage;
     /** 地理编码城市提示：已有定位结果时用其城市提升文本地址命中率 */
     private geoHint;
+    /** 定位坐标 → 3km 内门店（熟店优先）；顾客未绑定/门店服务异常一律降级为空列表 */
+    private matchStores;
+    /** 「附近门店」：用最近一次定位坐标匹配（无定位先引导发送位置） */
+    private handleNearbyStores;
+    /** store_pick：回复「门店N」/「N」选定门店（记入草稿，供后续下单就近安排） */
+    private onStorePick;
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     private orderConfirmCard;
     private handleSearch;

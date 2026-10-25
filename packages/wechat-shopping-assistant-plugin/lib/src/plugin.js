@@ -31,6 +31,7 @@ const order_service_1 = require("./order.service");
 const search_adapter_1 = require("./search-adapter");
 const session_service_1 = require("./session.service");
 const shopping_session_flow_columns_migration_1 = require("./migrations/shopping-session-flow-columns.migration");
+const store_locator_service_1 = require("./store-locator.service");
 const wechat_sender_1 = require("./wechat-sender");
 /**
  * 微信公众号购物助手：
@@ -76,6 +77,7 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
             customer_binding_service_1.CustomerBindingService,
             address_service_1.AddressBookService,
             geo_service_1.GeoService,
+            store_locator_service_1.StoreLocatorService,
             shopping_session_flow_columns_migration_1.ShoppingSessionFlowColumnsMigration,
         ],
         compatibility: '^3.0.0',

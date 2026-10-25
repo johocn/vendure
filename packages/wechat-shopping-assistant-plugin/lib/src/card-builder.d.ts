@@ -1,4 +1,4 @@
-import { CardProduct, OutboundMessage } from './types';
+import { CardProduct, NearbyStore, OutboundMessage } from './types';
 type TextMessage = Extract<OutboundMessage, {
     kind: 'text';
 }>;
@@ -127,8 +127,20 @@ export declare function buildAddrDefaultSetText(touser: string, item: {
     fullName: string;
     streetLine1: string;
 }): TextMessage;
-/** 空闲态收到位置：识别成功并把地址缓存为「新增地址」的预填内容 */
-export declare function buildLocationRecognizedText(touser: string, addressText: string): TextMessage;
+/** 空闲态收到位置：识别成功并把地址缓存为「新增地址」的预填内容；有 3km 门店时一并列出 */
+export declare function buildLocationRecognizedText(touser: string, addressText: string, stores?: NearbyStore[]): TextMessage;
+/** 「附近门店」：列出定位范围内的门店 */
+export declare function buildNearbyStoresText(touser: string, stores: NearbyStore[], city?: string | null): TextMessage;
+/** 3km 内没有门店 */
+export declare function buildNoNearbyStoresText(touser: string, city?: string | null): TextMessage;
+/** 未定位就查附近门店 */
+export declare function buildStoreNeedLocationText(touser: string): TextMessage;
+/** 门店编号无效 */
+export declare function buildStoreSelectionInvalidText(touser: string, count: number): TextMessage;
+/** 门店已选定 */
+export declare function buildStoreSelectedText(touser: string, store: NearbyStore): TextMessage;
+/** 地址操作流程中查门店：不打断当前流程 */
+export declare function buildStoreFlowBusyText(touser: string): TextMessage;
 /** 非地址录入态收到位置：提示先完成当前操作，不打断流程 */
 export declare function buildLocationFlowBusyText(touser: string): TextMessage;
 /** 位置逆地理失败（地图服务不可用/无结果） */

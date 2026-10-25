@@ -38,7 +38,9 @@ import {
     buildLocationInvalidText,
     buildLocationRecognizedText,
     buildLocationUnavailableText,
+    buildNearbyStoresText,
     buildNewsMessage,
+    buildNoNearbyStoresText,
     buildNoResultText,
     buildOrderConfirmCard,
     buildOrderFailText,
@@ -47,6 +49,10 @@ import {
     buildPhoneTakenText,
     buildSearchErrorText,
     buildSessionExpiredText,
+    buildStoreFlowBusyText,
+    buildStoreNeedLocationText,
+    buildStoreSelectedText,
+    buildStoreSelectionInvalidText,
     buildTextListMessage,
     buildWelcomeText,
 } from './card-builder';
@@ -56,14 +62,16 @@ import { CustomerBindingService } from './customer-binding.service';
 import { WechatProcessedMessage } from './entities/wechat-processed-message.entity';
 import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
 import { GeoService, ReverseAddressResult } from './geo.service';
-import { buildDedupKey, normalizeInput, recognizeIntent } from './intent';
+import { buildDedupKey, normalizeInput, parseOrderIndices, recognizeIntent } from './intent';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
+import { StoreLocatorService } from './store-locator.service';
 import {
     AssistantAddressGeo,
     AssistantFlowDraft,
     AssistantFlowState,
+    NearbyStore,
     OutboundMessage,
     WechatCredentials,
     WechatShoppingAssistantOptions,
@@ -91,6 +99,7 @@ export class AssistantService {
         private customerBinding: CustomerBindingService,
         private addressBook: AddressBookService,
         private geoService: GeoService,
+        private storeLocator: StoreLocatorService,
     ) {}
 
     async onMessage(event: WechatMessageEvent): Promise<void> {
@@ -143,6 +152,11 @@ export class AssistantService {
             return this.handleFlowStep(msg, session);
         }
 
+        // 空闲态定位后回复「门店N」：回查最近一次门店列表选用（不额外占用会话状态）
+        if (session?.draft?.nearbyStores?.length && /^门店\d{1,2}[!！。.~]?$/.test(normalizeInput(msg.content))) {
+            return this.onStorePick(msg, msg.content, session.draft, ttl);
+        }
+
         // 裸手机号入口：未绑定用户直接发手机号 → 进入地址补录（路径 B 第二步直接开始）
         const phone = msg.content.trim().replace(/[-\s]/g, '');
         if (/^1[3-9]\d{9}$/.test(phone)) {
@@ -182,6 +196,8 @@ export class AssistantService {
                 return this.handleAddressManage(msg);
             case 'address_add':
                 return this.handleAddressAdd(msg);
+            case 'nearby_stores':
+                return this.handleNearbyStores(msg);
         }
         return null;
     }
@@ -214,9 +230,15 @@ export class AssistantService {
             const explicitOrder =
                 flowIntent.kind === 'order' && /^(?:购买|下单|订购|买|要|来|购|拍)/.test(normalizeInput(text));
             if (explicitOrder) return this.handleOrder(msg, flowIntent.indices);
+            if (flowIntent.kind === 'nearby_stores') return buildStoreFlowBusyText(msg.fromUserName);
         }
         const ttl = this.opts.sessionTtlMinutes ?? 30;
         const draft: AssistantFlowDraft = session.draft ?? {};
+
+        // 门店选择态可重新拉取附近门店（城市/位置可能已更新）
+        if (session.state === 'store_pick' && recognizeIntent(text).kind === 'nearby_stores') {
+            return this.handleNearbyStores(msg);
+        }
 
         if (session.state === 'awaiting_phone') {
             const phone = text.replace(/[-\s]/g, '');
@@ -269,6 +291,9 @@ export class AssistantService {
         }
         if (session.state === 'addr_pick') {
             return this.onAddrPick(msg, session, text, draft, ttl);
+        }
+        if (session.state === 'store_pick') {
+            return this.onStorePick(msg, text, draft, ttl);
         }
         if (session.state === 'addr_op') {
             return this.onAddrOp(msg, session, text, draft, ttl);
@@ -676,19 +701,26 @@ export class AssistantService {
         }
         const geo = geoPointFromReverse(reverse, lat, lng);
 
-        // 空闲态：仅缓存，供「新增地址」跳过地址文本输入
+        // 空闲态：缓存定位 + 识别城市 + 匹配 3km 门店，供「新增地址」「附近门店」直接使用
         if (!state) {
             await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+            const nearbyStores = await this.matchStores(ctx, msg.fromUserName, lat, lng);
             await this.sessionService.saveDraft(
                 msg.fromUserName,
-                { ...(session?.draft ?? {}), pendingText: addressText.slice(0, 250), geo },
+                {
+                    ...(session?.draft ?? {}),
+                    pendingText: addressText.slice(0, 250),
+                    geo,
+                    city: reverse.city ?? null,
+                    nearbyStores,
+                },
                 ttl,
             );
             Logger.info(
-                `Assistant location cached: openid=${msg.fromUserName} city=${reverse.city ?? ''}`,
+                `Assistant location cached: openid=${msg.fromUserName} city=${reverse.city ?? ''} stores=${nearbyStores.length}`,
                 loggerCtx,
             );
-            return buildLocationRecognizedText(msg.fromUserName, addressText);
+            return buildLocationRecognizedText(msg.fromUserName, addressText, nearbyStores);
         }
 
         const draft: AssistantFlowDraft = session?.draft ?? {};
@@ -726,7 +758,12 @@ export class AssistantService {
                 await this.sessionService.clearFlow(msg.fromUserName);
                 return buildBindGuideText(msg.fromUserName, this.loginUrl());
             }
-            const nextDraft: AssistantFlowDraft = { ...draft, pendingText: addressText.slice(0, 250), geo };
+            const nextDraft: AssistantFlowDraft = {
+                ...draft,
+                pendingText: addressText.slice(0, 250),
+                geo,
+                city: reverse.city ?? null,
+            };
             const registeredPhone = customer.phoneNumber ?? '';
             if (registeredPhone) {
                 await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone', nextDraft, ttl);
@@ -757,6 +794,66 @@ export class AssistantService {
     /** 地理编码城市提示：已有定位结果时用其城市提升文本地址命中率 */
     private geoHint(draft: AssistantFlowDraft): { city?: string | null } | undefined {
         return draft.geo?.city ? { city: draft.geo.city } : undefined;
+    }
+
+    // ============ 城市识别 + 3km 门店匹配（熟店优先） ============
+
+    /** 定位坐标 → 3km 内门店（熟店优先）；顾客未绑定/门店服务异常一律降级为空列表 */
+    private async matchStores(
+        ctx: RequestContext,
+        openid: string,
+        lat: number,
+        lng: number,
+    ): Promise<NearbyStore[]> {
+        try {
+            const customer = await this.customerBinding.findCustomerByOpenid(openid);
+            const familiarStoreIds = await this.storeLocator.familiarStoreIds(ctx, customer?.id);
+            return await this.storeLocator.findNearby(ctx, lat, lng, { familiarStoreIds });
+        } catch (e) {
+            Logger.warn(`Assistant store matching failed: ${String(e)}`, loggerCtx);
+            return [];
+        }
+    }
+
+    /** 「附近门店」：用最近一次定位坐标匹配（无定位先引导发送位置） */
+    private async handleNearbyStores(msg: WechatInboundMessage): Promise<OutboundMessage | null> {
+        const ttl = this.opts.sessionTtlMinutes ?? 30;
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        const draft: AssistantFlowDraft = session?.draft ?? {};
+        const geo = draft.geo;
+        if (!geo || !GeoService.isValidCoordinate(geo.lat, geo.lng)) {
+            return buildStoreNeedLocationText(msg.fromUserName);
+        }
+        const channelId = session?.channelId ?? (await this.resolveChannelId(msg.channelToken));
+        await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        const ctx = await this.createShopCtx(channelId);
+        const city = draft.city ?? geo.city ?? null;
+        const stores = await this.matchStores(ctx, msg.fromUserName, geo.lat, geo.lng);
+        if (!stores.length) {
+            return buildNoNearbyStoresText(msg.fromUserName, city);
+        }
+        await this.sessionService.setFlow(msg.fromUserName, 'store_pick', { ...draft, nearbyStores: stores }, ttl);
+        Logger.info(`Assistant nearby stores listed: openid=${msg.fromUserName} count=${stores.length}`, loggerCtx);
+        return buildNearbyStoresText(msg.fromUserName, stores, city);
+    }
+
+    /** store_pick：回复「门店N」/「N」选定门店（记入草稿，供后续下单就近安排） */
+    private async onStorePick(
+        msg: WechatInboundMessage,
+        text: string,
+        draft: AssistantFlowDraft,
+        ttl: number,
+    ): Promise<OutboundMessage | null> {
+        const stores = draft.nearbyStores ?? [];
+        const indices = parseOrderIndices(normalizeInput(text).replace(/^门店/, ''));
+        const index = indices?.[0] ?? 0;
+        if (index < 1 || index > stores.length) {
+            return buildStoreSelectionInvalidText(msg.fromUserName, stores.length);
+        }
+        const store = stores[index - 1];
+        await this.sessionService.setFlow(msg.fromUserName, null, { ...draft, storeId: store.id }, ttl);
+        Logger.info(`Assistant store selected: openid=${msg.fromUserName} storeId=${store.id}`, loggerCtx);
+        return buildStoreSelectedText(msg.fromUserName, store);
     }
 
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */

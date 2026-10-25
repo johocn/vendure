@@ -157,7 +157,14 @@ function makeAddressBookStub(initial: any[] = DEFAULT_ADDR_BOOK) {
 }
 
 function makeService(
-    overrides: { search?: any; order?: any; binding?: any; addressBook?: any; geo?: any } = {},
+    overrides: {
+        search?: any;
+        order?: any;
+        binding?: any;
+        addressBook?: any;
+        geo?: any;
+        store?: any;
+    } = {},
 ) {
     const connection = makeConnection();
     const outbound: any[] = [];
@@ -172,6 +179,7 @@ function makeService(
     };
     const addressBook = overrides.addressBook ?? makeAddressBookStub();
     const geo = overrides.geo ?? { geocode: async () => null, reverse: async () => null };
+    const store = overrides.store ?? makeStoreStub();
     const svc = new AssistantService(
         { storefrontUrl: 'https://shop.example.com', searchLocale: 'zh', sessionTtlMinutes: 30, searchLimit: 5 } as any,
         connection as any,
@@ -185,8 +193,33 @@ function makeService(
         (overrides.binding ?? makeBindingStub({}, connection)) as any,
         addressBook as any,
         geo as any,
+        store as any,
     );
-    return { svc, connection, outbound, addressBook };
+    return { svc, connection, outbound, addressBook, store };
+}
+
+/**
+ * 门店匹配假件：findNearby 按传入的熟店集合打标（排序/3km 过滤由 StoreLocatorService 单测覆盖）。
+ */
+function makeStoreStub(
+    stores: Array<{ id: string; name: string; address?: string; distanceKm: number }> = [],
+    familiarIds: string[] = [],
+) {
+    const findCalls: Array<{ lat: number; lng: number; familiar: string[] }> = [];
+    const familiarCalls: Array<any> = [];
+    return {
+        findCalls,
+        familiarCalls,
+        familiarStoreIds: async (_ctx: any, customerId?: any) => {
+            familiarCalls.push(customerId);
+            return new Set(familiarIds);
+        },
+        findNearby: async (_ctx: any, lat: number, lng: number, options: any = {}) => {
+            const familiar: Set<string> = options.familiarStoreIds ?? new Set<string>();
+            findCalls.push({ lat, lng, familiar: [...familiar] });
+            return stores.map(s => ({ address: '', ...s, familiar: familiar.has(s.id) }));
+        },
+    };
 }
 
 /**
@@ -787,6 +820,95 @@ describe('AssistantService 位置消息（微信发送位置）', () => {
         await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
         const last = outbound[outbound.length - 1];
         expect(last.content).toContain('当前正在地址选择/操作中');
+        expect(connection.sessions.get('openid-user-1').state).toBe('addr_op');
+    });
+});
+
+describe('AssistantService 城市识别 + 3km 门店匹配', () => {
+    const STORES = [
+        { id: 's1', name: '朝阳门市部', address: '朝阳区建国路2号', distanceKm: 0.4 },
+        { id: 's2', name: '国贸店', address: '朝阳区建国门外大街1号', distanceKm: 2.6 },
+    ];
+
+    test('空闲态发位置 → 识别城市 + 列出 3km 门店（熟店打标），回复「门店2」选定', async () => {
+        const store = makeStoreStub(STORES, ['s2']);
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store });
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('已定位到：北京市朝阳区建国路1号');
+        expect(last.content).toContain('3km 内门店');
+        expect(last.content).toContain('朝阳门市部');
+        expect(last.content).toContain('国贸店 ⭐熟店（2.6km）');
+        expect(last.content).toContain('回复「门店1」');
+
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state ?? null).toBeNull();
+        expect(session.draft.city).toBe('北京市');
+        expect(session.draft.nearbyStores.map((s: any) => s.id)).toEqual(['s1', 's2']);
+        // 定位坐标与熟店集合都传入门店匹配
+        expect(store.findCalls[0]).toMatchObject({ lat: 39.9087, lng: 116.3975 });
+        expect(store.findCalls[0].familiar).toEqual(['s2']);
+        expect(store.familiarCalls[0]).toBe(42);
+
+        // 空闲态回复「门店2」：直接从缓存列表回查并记录
+        await svc.onMessage(textEvent('门店2', 'M2'));
+        expect(outbound[outbound.length - 1].content).toContain('已记住您的门店：国贸店');
+        expect(connection.sessions.get('openid-user-1').draft.storeId).toBe('s2');
+    });
+
+    test('3km 内无门店 → 文案提示仍可正常配送，并保留地址新增入口', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('暂未匹配到 3km 内的门店');
+        expect(last.content).toContain('回复「新增地址」');
+        expect(connection.sessions.get('openid-user-1').draft.nearbyStores).toEqual([]);
+    });
+
+    test('未发过位置就查「附近门店」→ 引导发送位置', async () => {
+        const { svc, outbound } = makeService({ store: makeStoreStub(STORES) });
+        await svc.onMessage(textEvent('附近门店', 'M1'));
+        expect(outbound[0].content).toContain('请点聊天框「+」发送位置');
+    });
+
+    test('定位后「附近门店」→ 门店选择态，回复「2」选定；超范围提示', async () => {
+        const { svc, connection, outbound } = makeService({
+            geo: GEO_STUB,
+            store: makeStoreStub(STORES),
+        });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(locationEvent(39.9087, 116.3975, 'L1'));
+        await svc.onMessage(textEvent('附近门店', 'M2'));
+
+        const listed = outbound[outbound.length - 1];
+        expect(listed.content).toContain('当前城市：北京市');
+        expect(listed.content).toContain('回复「门店N」选用');
+        expect(connection.sessions.get('openid-user-1').state).toBe('store_pick');
+
+        await svc.onMessage(textEvent('2', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('已记住您的门店：国贸店');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state ?? null).toBeNull();
+        expect(session.draft.storeId).toBe('s2');
+
+        // 选择后仍可按缓存列表回查（编号超范围给提示）
+        await svc.onMessage(textEvent('门店9', 'M4'));
+        expect(outbound[outbound.length - 1].content).toContain('没有找到该门店');
+    });
+
+    test('地址操作流中回复「附近门店」→ 不打断当前流程', async () => {
+        const { svc, connection, outbound } = makeService({ geo: GEO_STUB, store: makeStoreStub(STORES) });
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+        await svc.onMessage(textEvent('地址管理', 'M1'));
+        await svc.onMessage(textEvent('1', 'M2')); // addr_op
+        await svc.onMessage(textEvent('附近门店', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('当前正在地址操作中');
         expect(connection.sessions.get('openid-user-1').state).toBe('addr_op');
     });
 });

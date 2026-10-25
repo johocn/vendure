@@ -71,6 +71,7 @@ export type AssistantFlowState =
     | 'addr_new_phone' // 等电话选择（1 注册号 / 2 换新号）
     | 'addr_new_phone_text' // 等新号码
     | 'addr_new_default' // 等是否设默认（是/否）
+    | 'store_pick' // 3km 门店列表选择（draft.nearbyStores）
     | 'order_confirm' // 下单二次确认（1 确认 / 0 重选地址）
     | null;
 
@@ -92,6 +93,23 @@ export interface AssistantFlowDraft {
     pendingPhone?: string | null;
     /** 地址定位结果（微信位置消息 / 地址文本地理编码），供保存地址时写入坐标 */
     geo?: AssistantAddressGeo | null;
+    /** 最近一次识别到的城市（定位/地址地理编码），用于门店匹配 */
+    city?: string | null;
+    /** 最近一次匹配到的 3km 内门店（位置消息 /「附近门店」触发），「门店N」按序号回查 */
+    nearbyStores?: NearbyStore[] | null;
+    /** 用户选定的门店 id（会话内保留，下单确认时展示） */
+    storeId?: string | null;
+}
+
+/** 3km 内门店（含距离与熟店标记），用于客服消息列表与选择 */
+export interface NearbyStore {
+    id: string;
+    name: string;
+    address: string;
+    /** 直线距离（km，保留 1 位小数） */
+    distanceKm: number;
+    /** 熟店：该顾客历史订单选过该门店（自提/门店配送） */
+    familiar: boolean;
 }
 
 /** 地址坐标 + 行政区（GCJ-02），写入 Address.latitude/longitude/city/province */

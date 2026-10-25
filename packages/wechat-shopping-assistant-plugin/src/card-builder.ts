@@ -1,4 +1,4 @@
-import { CardProduct, OutboundMessage } from './types';
+import { CardProduct, NearbyStore, OutboundMessage } from './types';
 
 type TextMessage = Extract<OutboundMessage, { kind: 'text' }>;
 type NewsMessage = Extract<OutboundMessage, { kind: 'news' }>;
@@ -54,6 +54,7 @@ export function buildGuideText(touser: string, storefrontUrl?: string): TextMess
         '· 直接发送想买的商品，如「买一瓶酱油」',
         '· 回复商品编号下单，如「买1」「2」',
         '· 一次买多件：「买2瓶酱油」',
+        '· 找附近门店：「附近门店」（需先发送位置）',
         '· 下单成功后会收到订单与支付链接',
     ];
     if (storefrontUrl) lines.push(`· 进店逛逛：${storefrontUrl}`);
@@ -378,16 +379,96 @@ export function buildAddrDefaultSetText(
 
 // ============ 位置消息（微信发送位置） ============
 
-/** 空闲态收到位置：识别成功并把地址缓存为「新增地址」的预填内容 */
-export function buildLocationRecognizedText(touser: string, addressText: string): TextMessage {
+/** 空闲态收到位置：识别成功并把地址缓存为「新增地址」的预填内容；有 3km 门店时一并列出 */
+export function buildLocationRecognizedText(
+    touser: string,
+    addressText: string,
+    stores: NearbyStore[] = [],
+): TextMessage {
+    const lines = [`已定位到：${addressText}`];
+    if (stores.length) {
+        lines.push(...formatStoreLines(stores));
+        lines.push('回复「门店1」选用附近门店，或回复「新增地址」保存该位置为收货地址。');
+    } else {
+        lines.push('暂未匹配到 3km 内的门店，仍可正常下单配送。');
+        lines.push('需要保存为收货地址时，回复「新增地址」即可直接使用这个位置。');
+    }
+    lines.push('也可以直接发送想买的商品（如「买一瓶酱油」）。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+// ============ 城市识别 + 3km 门店匹配 ============
+
+/** 门店列表行：序号 + 名称 + 熟店标记 + 距离 + 地址 */
+function formatStoreLines(stores: NearbyStore[]): string[] {
+    return [
+        '3km 内门店（回复「门店N」选用）：',
+        ...stores.map((store, i) => {
+            const tag = store.familiar ? ' ⭐熟店' : '';
+            const address = store.address ? `\n   ${store.address}` : '';
+            return `${i + 1}. ${store.name}${tag}（${store.distanceKm.toFixed(1)}km）${address}`;
+        }),
+    ];
+}
+
+/** 「附近门店」：列出定位范围内的门店 */
+export function buildNearbyStoresText(touser: string, stores: NearbyStore[], city?: string | null): TextMessage {
+    const lines = [...(city ? [`当前城市：${city}`] : []), ...formatStoreLines(stores)];
+    lines.push('回复「门店N」选用，回复「取消」结束。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 3km 内没有门店 */
+export function buildNoNearbyStoresText(touser: string, city?: string | null): TextMessage {
+    const scope = city ? `${city}附近 3km 内` : '3km 内';
+    return {
+        kind: 'text',
+        touser,
+        content: `${scope}暂未匹配到门店，仍可正常下单配送。\n发送想买的商品（如「买一瓶酱油」）即可继续。`,
+    };
+}
+
+/** 未定位就查附近门店 */
+export function buildStoreNeedLocationText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '还没有您的位置信息。请点聊天框「+」发送位置，我会自动识别城市并匹配 3km 内门店。',
+    };
+}
+
+/** 门店编号无效 */
+export function buildStoreSelectionInvalidText(touser: string, count: number): TextMessage {
+    const range = count > 0 ? `1-${count}` : '对应编号';
+    return {
+        kind: 'text',
+        touser,
+        content: `没有找到该门店，请回复门店列表中的编号（${range}）。\n回复「取消」结束。`,
+    };
+}
+
+/** 门店已选定 */
+export function buildStoreSelectedText(touser: string, store: NearbyStore): TextMessage {
+    const tag = store.familiar ? '（常去门店）' : '';
     return {
         kind: 'text',
         touser,
         content: [
-            `已定位到：${addressText}`,
-            '需要保存为收货地址时，回复「新增地址」即可直接使用这个位置。',
-            '也可以直接发送想买的商品（如「买一瓶酱油」）。',
-        ].join('\n'),
+            `已记住您的门店：${store.name}${tag}（${store.distanceKm.toFixed(1)}km）`,
+            store.address ? `地址：${store.address}` : '',
+            '可以继续发送想买的商品，下单会按该门店就近安排。',
+        ]
+            .filter(Boolean)
+            .join('\n'),
+    };
+}
+
+/** 地址操作流程中查门店：不打断当前流程 */
+export function buildStoreFlowBusyText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '当前正在地址操作中，请先按提示完成或回复「取消」，再回复「附近门店」查看。',
     };
 }
 

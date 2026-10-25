@@ -16,6 +16,7 @@ import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
 import { ShoppingSessionFlowColumnsMigration } from './migrations/shopping-session-flow-columns.migration';
+import { StoreLocatorService } from './store-locator.service';
 import { WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
 
@@ -42,6 +43,7 @@ import { WechatSender } from './wechat-sender';
         CustomerBindingService,
         AddressBookService,
         GeoService,
+        StoreLocatorService,
         ShoppingSessionFlowColumnsMigration,
     ],
     compatibility: '^3.0.0',
