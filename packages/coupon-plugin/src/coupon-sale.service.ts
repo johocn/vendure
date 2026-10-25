@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     Channel,
+    ChannelService,
     Customer,
     CustomerService,
     ID,
@@ -53,6 +54,7 @@ export class CouponSaleService {
         private couponService: CouponService,
         private customerService: CustomerService,
         private settlementService: CouponSettlementService,
+        private channelService: ChannelService,
     ) {}
 
     /** 当前请求的 customerId */
@@ -287,7 +289,10 @@ export class CouponSaleService {
         const effectiveOpenid =
             openid ||
             (await resolveCustomerOpenid(ctx, order.customerId, {
-                preferMini: effectiveTradeType === 'JSAPI',
+                // 渠道配了 payConfig.wechatpay（自带公众号商户参数）时是公众号/H5 支付，
+                // 必须取公众号 openid；否则双 openid 客户会拿小程序 openid 配公众号 appid，
+                // 微信直接报「openid 和 appid 不匹配」。无渠道配置时沿用小程序优先。
+                preferMini: effectiveTradeType === 'JSAPI' && !gatewayService.hasChannelPayConfig(ctx),
             }));
         const pay = await gatewayService.createBarePayment(
             {
@@ -305,23 +310,26 @@ export class CouponSaleService {
         return { saleOrderId: order.id, outTradeNo, pay };
     }
 
-    /** 微信回调结算入口：解析 CS-<id>，原子置 PAID 后发券（幂等） */
+    /** 微信回调结算入口：解析 CS-<id>，原子置 PAID 后发券（幂等）。
+     *  回调 Host 决定验签 ctx（多租户共用主域名时会落到默认渠道），而券售单归属自有渠道，
+     *  故不按 ctx.channelId 过滤；命中后切到订单所在渠道再发券（券包/模板按渠道隔离）。 */
     async settleCouponSaleOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void> {
         const m = String(outTradeNo).match(/^CS-(\d+)$/);
         if (!m) {
             throw new UserInputError('Invalid coupon sale out_trade_no');
         }
-        const repo = this.connection.getRepository(ctx, CouponSaleOrder);
-        const order = await repo.findOne({
-            where: { id: m[1] as any, channelId: ctx.channelId as any },
-        });
+        const order = await this.connection
+            .getRepository(ctx, CouponSaleOrder)
+            .findOne({ where: { id: m[1] as any } });
         if (!order) {
             throw new UserInputError('Coupon sale order not found');
         }
         if (order.status !== 'PENDING') {
             return; // 幂等：已结算直接返回
         }
-        await this.connection.startTransaction(ctx);
+        const orderCtx = await this.orderChannelCtx(ctx, order.channelId);
+        const repo = this.connection.getRepository(orderCtx, CouponSaleOrder);
+        await this.connection.startTransaction(orderCtx);
         try {
             const claim = await repo
                 .createQueryBuilder()
@@ -330,15 +338,30 @@ export class CouponSaleService {
                 .where('id = :id AND status = :status', { id: order.id, status: 'PENDING' })
                 .execute();
             if ((claim.affected ?? 0) === 0) {
-                await this.connection.commitOpenTransaction(ctx);
+                await this.connection.commitOpenTransaction(orderCtx);
                 return; // 并发下已被他人结算
             }
-            await this.issueCouponsForOrder(ctx, order);
-            await this.connection.commitOpenTransaction(ctx);
+            await this.issueCouponsForOrder(orderCtx, order);
+            await this.connection.commitOpenTransaction(orderCtx);
         } catch (e) {
-            await this.connection.rollBackTransaction(ctx);
+            await this.connection.rollBackTransaction(orderCtx);
             throw e;
         }
+    }
+
+    /** 订单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private async orderChannelCtx(ctx: RequestContext, channelId: ID): Promise<RequestContext> {
+        if (Number(channelId) === Number(ctx.channelId)) return ctx;
+        const channel = await this.channelService.findOne(ctx, channelId);
+        if (!channel) {
+            throw new UserInputError(`Channel ${channelId} of coupon sale order not found`);
+        }
+        return new RequestContext({
+            apiType: 'admin',
+            channel,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
     }
 
     /** 取消未支付出售单 */

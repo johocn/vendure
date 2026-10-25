@@ -66,6 +66,16 @@ export declare class WechatpayService {
      *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
      *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */
     private buildWechatpay;
+    /**
+     * 按 code 找支付方法：显式 code 只做精确匹配；隐式 'wechatpay' 时依次回退
+     * 「渠道内任一微信支付处理器方法（wechatpay-xxx）」→「默认渠道同名方法」。
+     * 分租户只配了渠道 override、或只配了 wechatpay-xxx 方法时都不会再取到空参数。
+     */
+    private findPaymentMethod;
+    /** 渠道是否配置了微信支付商户凭证（payConfig.wechatpayJson）。
+     *  有 override = 该租户自带商户参数（公众号/H5 场景），JSAPI 应取公众号 openid；
+     *  无 override 回退平台默认支付方式（小程序 appid），沿用小程序 openid 优先。 */
+    hasChannelPayConfig(ctx: RequestContext): boolean;
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
      *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */
     createBarePayment(input: BarePaymentInput, ctx?: RequestContext): Promise<BarePaymentResult>;

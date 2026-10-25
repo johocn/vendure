@@ -141,7 +141,13 @@ describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
         };
         const couponService = new CouponService({} as any, {} as any, {} as any);
         const settlementService = { onSaleOrderRefunded: vi.fn().mockResolvedValue({ cancelled: 0, reversed: 0, failed: 0 }) };
-        return new CouponSaleService(connection as any, couponService, {} as any, settlementService as any);
+        return new CouponSaleService(
+            connection as any,
+            couponService,
+            {} as any,
+            settlementService as any,
+            { findOne: vi.fn() } as any,
+        );
     }
 
     const tpl = (over: Record<string, any>) =>

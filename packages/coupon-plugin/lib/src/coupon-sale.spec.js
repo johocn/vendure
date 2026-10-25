@@ -134,7 +134,7 @@ const coupon_sale_3 = require("./coupon-sale");
         };
         const couponService = new coupon_service_1.CouponService({}, {}, {});
         const settlementService = { onSaleOrderRefunded: vitest_1.vi.fn().mockResolvedValue({ cancelled: 0, reversed: 0, failed: 0 }) };
-        return new coupon_sale_service_1.CouponSaleService(connection, couponService, {}, settlementService);
+        return new coupon_sale_service_1.CouponSaleService(connection, couponService, {}, settlementService, { findOne: vitest_1.vi.fn() });
     }
     const tpl = (over) => (Object.assign({ enabled: true, salePrice: 990, distributionChannels: 'SALE' }, over));
     (0, vitest_1.it)('跨渠道券（channels=[1]，ctx=37）不进目录', async () => {

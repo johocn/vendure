@@ -93,18 +93,22 @@ let WechatpayService = class WechatpayService {
      *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
      *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */
     async buildWechatpay(ctx, methodCode) {
-        var _a, _b;
+        var _a, _b, _c, _d;
         const effectiveCtx = ctx !== null && ctx !== void 0 ? ctx : (await this.defaultChannelCtx());
         const explicitCode = methodCode || '';
         const override = explicitCode
             ? null
             : (0, payment_config_1.getPaymentOverride)(effectiveCtx, 'wechatpay');
-        const pms = await this.paymentMethodService.findAll(effectiveCtx);
-        const pm = pms.items.find(p => p.code === (explicitCode || 'wechatpay'));
+        const pm = await this.findPaymentMethod(effectiveCtx, explicitCode || 'wechatpay', !!explicitCode);
         const args = ((_a = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _a === void 0 ? void 0 : _a.args) || [];
         const getArg = (name) => { var _a; return ((_a = args.find(a => a.name === name)) === null || _a === void 0 ? void 0 : _a.value) || ''; };
         const appId = (override === null || override === void 0 ? void 0 : override.appId) || getArg('appId');
         const privateKey = (override === null || override === void 0 ? void 0 : override.privateKey) || getArg('privateKey');
+        // 渠道既没绑微信支付方法、也没有 payConfig override 时，不能继续用空参数构造 WxPay：
+        // wechatpay-node-v3 会在 getSN 解析空公钥/私钥时抛 "PEM: no block"，用户侧表现为莫名支付失败。
+        if (!appId || !privateKey) {
+            throw new core_1.UserInputError(`微信支付未配置：店铺 ${(_c = (_b = effectiveCtx.channel) === null || _b === void 0 ? void 0 : _b.code) !== null && _c !== void 0 ? _c : ''} 缺少可用的微信支付方式或渠道商户参数（payConfig.wechatpay）`);
+        }
         return {
             pay: new wechatpay_node_v3_1.default({
                 appid: appId,
@@ -117,8 +121,31 @@ let WechatpayService = class WechatpayService {
             appId,
             privateKey,
             tradeType: (override === null || override === void 0 ? void 0 : override.tradeType) || getArg('tradeType') || 'JSAPI',
-            notifyUrl: (override === null || override === void 0 ? void 0 : override.notifyUrl) || getArg('notifyUrl') || ((_b = this.options) === null || _b === void 0 ? void 0 : _b.notifyUrl) || '',
+            notifyUrl: (override === null || override === void 0 ? void 0 : override.notifyUrl) || getArg('notifyUrl') || ((_d = this.options) === null || _d === void 0 ? void 0 : _d.notifyUrl) || '',
         };
+    }
+    /**
+     * 按 code 找支付方法：显式 code 只做精确匹配；隐式 'wechatpay' 时依次回退
+     * 「渠道内任一微信支付处理器方法（wechatpay-xxx）」→「默认渠道同名方法」。
+     * 分租户只配了渠道 override、或只配了 wechatpay-xxx 方法时都不会再取到空参数。
+     */
+    async findPaymentMethod(ctx, code, exactOnly) {
+        const pms = await this.paymentMethodService.findAll(ctx);
+        const exact = pms.items.find(p => p.code === code);
+        if (exact || exactOnly)
+            return exact;
+        const sibling = pms.items.find(p => { var _a, _b; return (_b = (_a = p.handler) === null || _a === void 0 ? void 0 : _a.code) === null || _b === void 0 ? void 0 : _b.startsWith('wechatpay'); });
+        if (sibling)
+            return sibling;
+        const defaultPms = await this.paymentMethodService.findAll(await this.defaultChannelCtx());
+        return (defaultPms.items.find(p => p.code === code) ||
+            defaultPms.items.find(p => { var _a, _b; return (_b = (_a = p.handler) === null || _a === void 0 ? void 0 : _a.code) === null || _b === void 0 ? void 0 : _b.startsWith('wechatpay'); }));
+    }
+    /** 渠道是否配置了微信支付商户凭证（payConfig.wechatpayJson）。
+     *  有 override = 该租户自带商户参数（公众号/H5 场景），JSAPI 应取公众号 openid；
+     *  无 override 回退平台默认支付方式（小程序 appid），沿用小程序 openid 优先。 */
+    hasChannelPayConfig(ctx) {
+        return !!(0, payment_config_1.getPaymentOverride)(ctx, 'wechatpay');
     }
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
      *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */

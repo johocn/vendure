@@ -1,4 +1,4 @@
-import { CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CouponService } from './coupon.service';
 import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponTemplate } from './coupon-template.entity';
@@ -16,7 +16,8 @@ export declare class CouponSaleService {
     private couponService;
     private customerService;
     private settlementService;
-    constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService, settlementService: CouponSettlementService);
+    private channelService;
+    constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService, settlementService: CouponSettlementService, channelService: ChannelService);
     /** 当前请求的 customerId */
     private currentCustomerId;
     /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数、首购/学生价资格信息与倒计时活动位 */
@@ -36,8 +37,12 @@ export declare class CouponSaleService {
     paySaleOrderWithBalance(ctx: RequestContext, id: ID): Promise<CouponSaleOrder>;
     /** 生成微信支付参数（仅本人 PENDING 单），镜像 recharge-card 的 RC- 范式 */
     createWechatCouponPayment(ctx: RequestContext, saleOrderId: ID, tradeType?: 'JSAPI' | 'NATIVE' | 'H5' | 'APP', openid?: string): Promise<any>;
-    /** 微信回调结算入口：解析 CS-<id>，原子置 PAID 后发券（幂等） */
+    /** 微信回调结算入口：解析 CS-<id>，原子置 PAID 后发券（幂等）。
+     *  回调 Host 决定验签 ctx（多租户共用主域名时会落到默认渠道），而券售单归属自有渠道，
+     *  故不按 ctx.channelId 过滤；命中后切到订单所在渠道再发券（券包/模板按渠道隔离）。 */
     settleCouponSaleOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
+    /** 订单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
+    private orderChannelCtx;
     /** 取消未支付出售单 */
     cancelSaleOrder(ctx: RequestContext, id: ID): Promise<CouponSaleOrder>;
     /**

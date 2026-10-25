@@ -8,6 +8,7 @@ import {
     PaymentMethodService,
     RequestContext,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 import crypto from 'crypto';
 import WxPay from 'wechatpay-node-v3';
@@ -150,12 +151,18 @@ export class WechatpayService {
         const override = explicitCode
             ? null
             : (getPaymentOverride(effectiveCtx, 'wechatpay') as WechatpayCredentials | null);
-        const pms = await this.paymentMethodService.findAll(effectiveCtx);
-        const pm = pms.items.find(p => p.code === (explicitCode || 'wechatpay'));
+        const pm = await this.findPaymentMethod(effectiveCtx, explicitCode || 'wechatpay', !!explicitCode);
         const args = pm?.handler?.args || [];
         const getArg = (name: string) => args.find(a => a.name === name)?.value || '';
         const appId = override?.appId || getArg('appId');
         const privateKey = override?.privateKey || getArg('privateKey');
+        // 渠道既没绑微信支付方法、也没有 payConfig override 时，不能继续用空参数构造 WxPay：
+        // wechatpay-node-v3 会在 getSN 解析空公钥/私钥时抛 "PEM: no block"，用户侧表现为莫名支付失败。
+        if (!appId || !privateKey) {
+            throw new UserInputError(
+                `微信支付未配置：店铺 ${effectiveCtx.channel?.code ?? ''} 缺少可用的微信支付方式或渠道商户参数（payConfig.wechatpay）`,
+            );
+        }
         return {
             pay: new WxPay({
                 appid: appId,
@@ -170,6 +177,31 @@ export class WechatpayService {
             tradeType: override?.tradeType || getArg('tradeType') || 'JSAPI',
             notifyUrl: override?.notifyUrl || getArg('notifyUrl') || this.options?.notifyUrl || '',
         };
+    }
+
+    /**
+     * 按 code 找支付方法：显式 code 只做精确匹配；隐式 'wechatpay' 时依次回退
+     * 「渠道内任一微信支付处理器方法（wechatpay-xxx）」→「默认渠道同名方法」。
+     * 分租户只配了渠道 override、或只配了 wechatpay-xxx 方法时都不会再取到空参数。
+     */
+    private async findPaymentMethod(ctx: RequestContext, code: string, exactOnly: boolean) {
+        const pms = await this.paymentMethodService.findAll(ctx);
+        const exact = pms.items.find(p => p.code === code);
+        if (exact || exactOnly) return exact;
+        const sibling = pms.items.find(p => (p.handler as any)?.code?.startsWith('wechatpay'));
+        if (sibling) return sibling;
+        const defaultPms = await this.paymentMethodService.findAll(await this.defaultChannelCtx());
+        return (
+            defaultPms.items.find(p => p.code === code) ||
+            defaultPms.items.find(p => (p.handler as any)?.code?.startsWith('wechatpay'))
+        );
+    }
+
+    /** 渠道是否配置了微信支付商户凭证（payConfig.wechatpayJson）。
+     *  有 override = 该租户自带商户参数（公众号/H5 场景），JSAPI 应取公众号 openid；
+     *  无 override 回退平台默认支付方式（小程序 appid），沿用小程序 openid 优先。 */
+    hasChannelPayConfig(ctx: RequestContext): boolean {
+        return !!getPaymentOverride(ctx, 'wechatpay');
     }
 
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
