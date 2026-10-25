@@ -10,5 +10,9 @@ export declare class RiderWithdrawalRequest extends VendureEntity {
     remark: string | null;
     reviewedBy: string | null;
     reviewedAt: Date | null;
+    /** 打款流水号（通过时必填，用于对账留痕） */
+    payoutRef: string | null;
+    /** 打款凭证（转账截图/回单 URL） */
+    payoutProof: string | null;
     constructor(input?: DeepPartial<RiderWithdrawalRequest>);
 }

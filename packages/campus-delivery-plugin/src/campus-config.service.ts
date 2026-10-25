@@ -181,7 +181,7 @@ export class CampusConfigService {
         'notifyTemplatePaymentPending', 'notifyTemplateCancelled', 'notifyTemplateAfterSales',
         'notifyTemplateAddressChanged', 'h5BaseUrl', 'printMode', 'routeFirstLeg', 'handoverPoints',
         'providerShopNo', 'merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes',
-        'storeLat', 'storeLng', 'dynamicPricing',
+        'storeLat', 'storeLng', 'dynamicPricing', 'shiftCheckEnabled', 'blacklistAutoCancelCount',
     ]);
 
     /** 整型配置的取值范围（分钟/百分比/分） */
@@ -200,6 +200,7 @@ export class CampusConfigService {
         errandBaseFee: [0, 100_000_00],
         thirdPartyBaseFee: [0, 100_000_00],
         freeShippingThreshold: [0, 100_000_00],
+        blacklistAutoCancelCount: [0, 50],
     };
 
     async updateConfig(ctx: RequestContext, patch: Partial<CampusFulfillmentConfig>) {

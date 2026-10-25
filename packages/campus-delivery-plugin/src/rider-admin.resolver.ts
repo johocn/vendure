@@ -46,15 +46,17 @@ export class RiderAdminResolver {
         return this.wallet.adminList(ctx, status, skip, take);
     }
 
-    /** 通过：标记 PAID 留痕（金额已在申请时冻结扣减） */
+    /** 通过：标记 PAID + 登记打款流水号/凭证（金额已在申请时冻结扣减） */
     @Mutation()
     @Allow(CampusPermissions.CampusAuditRider as any)
     async approveRiderWithdraw(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
         @Args('remark', { nullable: true }) remark?: string,
+        @Args('payoutRef', { nullable: true }) payoutRef?: string,
+        @Args('payoutProof', { nullable: true }) payoutProof?: string,
     ) {
-        return this.wallet.adminApprove(ctx, id, remark);
+        return this.wallet.adminApprove(ctx, id, remark, payoutRef, payoutProof);
     }
 
     /** 驳回：状态 REJECTED 并退回冻结金额 */

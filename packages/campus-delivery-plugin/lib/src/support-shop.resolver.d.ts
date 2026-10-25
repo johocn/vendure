@@ -15,6 +15,8 @@ export declare class SupportShopResolver {
         avgRating: number;
         ratingCount: number;
     }>;
+    /** 骑手自己的评价明细（P3-3）：均分之外的逐条评分/标签/留言 */
+    campusMyRiderReviews(ctx: RequestContext, skip?: number, take?: number): Promise<import("./rider-ops.entities").CampusRiderReview[]>;
     campusRateRider(ctx: RequestContext, orderId: ID, rating: number, tags?: string[], comment?: string): Promise<{
         ok: boolean;
         rating: any;

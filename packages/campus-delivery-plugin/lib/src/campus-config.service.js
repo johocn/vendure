@@ -442,7 +442,7 @@ CampusConfigService.WRITABLE_FIELDS = new Set([
     'notifyTemplatePaymentPending', 'notifyTemplateCancelled', 'notifyTemplateAfterSales',
     'notifyTemplateAddressChanged', 'h5BaseUrl', 'printMode', 'routeFirstLeg', 'handoverPoints',
     'providerShopNo', 'merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes',
-    'storeLat', 'storeLng', 'dynamicPricing',
+    'storeLat', 'storeLng', 'dynamicPricing', 'shiftCheckEnabled', 'blacklistAutoCancelCount',
 ]);
 /** 整型配置的取值范围（分钟/百分比/分） */
 CampusConfigService.INT_RANGES = {
@@ -460,6 +460,7 @@ CampusConfigService.INT_RANGES = {
     errandBaseFee: [0, 10000000],
     thirdPartyBaseFee: [0, 10000000],
     freeShippingThreshold: [0, 10000000],
+    blacklistAutoCancelCount: [0, 50],
 };
 exports.CampusConfigService = CampusConfigService = CampusConfigService_1 = __decorate([
     (0, common_1.Injectable)(),

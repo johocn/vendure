@@ -292,6 +292,20 @@ export class RiderOpsService {
         };
     }
 
+    /** 骑手查看自己的评价明细（P3-3）：仅返回当前登录骑手收到的评价 */
+    async myReviews(ctx: RequestContext, skip?: number, take?: number) {
+        const customer = await this.requireCustomer(ctx);
+        return this.connection.getRepository(ctx, CampusRiderReview).find({
+            where: {
+                channelId: ctx.channelId as any,
+                riderCustomerId: Number(customer.id) as any,
+            },
+            order: { createdAt: 'DESC' },
+            skip: Math.max(0, Number(skip ?? 0) || 0),
+            take: clampTake(take ?? 20),
+        });
+    }
+
     async adminReviews(ctx: RequestContext, riderCustomerId?: ID | null, skip?: number, take?: number) {
         const where: Record<string, unknown> = { channelId: ctx.channelId };
         if (riderCustomerId != null && riderCustomerId !== '') where.riderCustomerId = Number(riderCustomerId);

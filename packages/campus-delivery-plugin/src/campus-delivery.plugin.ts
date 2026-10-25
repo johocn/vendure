@@ -4,6 +4,7 @@ import {
     Injector,
     Logger,
     OrderPlacedEvent,
+    OrderService,
     OrderStateTransitionEvent,
     PaymentStateTransitionEvent,
     PluginCommonModule,
@@ -15,6 +16,7 @@ import { ModuleRef } from '@nestjs/core';
 import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { AdminNotifyEvent } from '@vendure/notification-plugin';
 import { CampusBuilding } from './campus-building.entity';
+import { BlacklistAutoScanJob } from './blacklist-scan.job';
 import { CapacityAlertJob } from './capacity-alert.job';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
@@ -28,6 +30,7 @@ import { bindOrderGateConnection, campusOrderGateProcess } from './order-gate.pr
 import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './support.entities';
 import { CampusRiderReview, CampusRiderSession, CampusRiderShift } from './rider-ops.entities';
 import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
+import { AddWithdrawPayoutMigration } from './migrations/add-withdraw-payout';
 import { RiderOpsService } from './rider-ops.service';
 import { SupportAdminResolver } from './support-admin.resolver';
 import { SupportService } from './support.service';
@@ -115,6 +118,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P5TimestampTimezoneMigration,
         P6DefaultCompensationMigration,
         P7OpsTablesMigration,
+        AddWithdrawPayoutMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
@@ -122,6 +126,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         SupportService,
         CampusSmsService,
         CapacityAlertJob,
+        BlacklistAutoScanJob,
         RiderService,
         CapacityService,
         SlotLockService,
@@ -198,6 +203,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
                     timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
+                    """接单班次校验：开启后骑手仅能在后台登记的排班时段内抢单"""
+                    shiftCheckEnabled: Boolean!
+                    """自动拉黑阈值：近 30 天顾客主动取消订单达到该次数自动加入黑名单（0=关闭）"""
+                    blacklistAutoCancelCount: Int!
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -214,6 +223,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
+                    shiftCheckEnabled: Boolean
+                    blacklistAutoCancelCount: Int
                 }
 
                 type DeliverySlot {
@@ -486,6 +497,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     remark: String
                     reviewedBy: String
                     reviewedAt: DateTime
+                    payoutRef: String
+                    payoutProof: String
                     createdAt: DateTime
                 }
 
@@ -553,6 +566,12 @@ import { WaimaiStoreService } from './waimai-store.service';
 
                 type CampusRemoveResult {
                     ok: Boolean!
+                }
+
+                type CampusBlacklistImportResult {
+                    added: Int!
+                    skipped: Int!
+                    invalid: Int!
                 }
 
                 type CampusRiderShift {
@@ -835,11 +854,12 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusMerchantAcceptOwned(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantMarkHandoverArrived(orderId: ID!): CampusFirstLegResult!
                     campusMerchantMarkOwnedArrived(orderId: ID!): CampusFirstLegResult!
-                    approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+                    approveRiderWithdraw(id: ID!, remark: String, payoutRef: String, payoutProof: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
                     campusAddBlacklist(type: String!, value: String!, reason: String): CampusBlacklistEntry!
+                    campusImportBlacklist(type: String!, values: [String!]!, reason: String): CampusBlacklistImportResult!
                     campusRemoveBlacklist(id: ID!): CampusRemoveResult!
                     campusSaveRiderShift(input: CampusRiderShiftInput!): CampusRiderShift!
                     campusDeleteRiderShift(id: ID!): CampusRemoveResult!
@@ -1119,6 +1139,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     remark: String
                     reviewedBy: String
                     reviewedAt: DateTime
+                    payoutRef: String
+                    payoutProof: String
                     createdAt: DateTime
                 }
 
@@ -1189,6 +1211,15 @@ import { WaimaiStoreService } from './waimai-store.service';
                     ratingCount: Int!
                 }
 
+                type CampusMyRiderReviewRow {
+                    id: ID!
+                    orderId: ID!
+                    rating: Int!
+                    tags: [String!]
+                    comment: String
+                    createdAt: DateTime!
+                }
+
                 type CampusRateRiderResult {
                     ok: Boolean!
                     rating: Int!
@@ -1244,6 +1275,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusMySupportTickets(skip: Int, take: Int): [CampusMySupportTicket!]!
                     campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
                     campusMyRiderRating: CampusRiderRating!
+                    campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
                     campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
                     campusRiderNav(orderId: ID!): CampusRiderNav
                 }
@@ -1381,6 +1413,13 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.eventBus.ofType(OrderStateTransitionEvent).subscribe(e => {
             this.r4TagService.tagR4(e).catch(err => Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
             if (e.toState === 'Cancelled') {
+                // P3-2 取消归因：C 端顾客主动取消标记 customer（自动拉黑规则只统计该口径），
+                // 其余为系统/运营取消（campusCause 已有归因标记的视为 system）
+                void this.injector.get(OrderService).updateCustomFields(
+                    e.ctx,
+                    e.order.id,
+                    { campusCancelCause: e.ctx.apiType === 'shop' ? 'customer' : ((e.order.customFields as any)?.campusCause ? 'system' : 'ops') } as any,
+                ).catch(err => Logger.warn(`Cancel cause tag failed: ${String(err)}`, 'CampusSupport'));
                 // 已推给达达/美团的运单必须同步取消：按「取消外部运单 → 脱厅 → 释放时段」顺序串行，
                 // 不能三者并行——并行时外部取消失败也已脱厅，外部骑手仍可能上门取餐造成餐损。
                 // 整段异步执行，不阻塞事件总线；任一步失败只记日志，后续步骤照常执行。
@@ -1423,6 +1462,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(DispatchJobService).start();
         // 运力预警：在线会话收口 + 待抢单量/在线骑手数告警（自管定时器，生产无 worker）
         this.injector.get(CapacityAlertJob).start();
+        // P3-2 黑名单自动规则：每日扫顾客主动取消次数达标者（阈值 0 = 关闭）
+        this.injector.get(BlacklistAutoScanJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
             void this.injector.get(FeishuNotifyService).onAdminNotify(event);

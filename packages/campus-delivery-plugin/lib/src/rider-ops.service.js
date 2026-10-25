@@ -285,6 +285,19 @@ let RiderOpsService = class RiderOpsService {
             ratingCount: Number((_b = raw === null || raw === void 0 ? void 0 : raw.count) !== null && _b !== void 0 ? _b : 0),
         };
     }
+    /** 骑手查看自己的评价明细（P3-3）：仅返回当前登录骑手收到的评价 */
+    async myReviews(ctx, skip, take) {
+        const customer = await this.requireCustomer(ctx);
+        return this.connection.getRepository(ctx, rider_ops_entities_1.CampusRiderReview).find({
+            where: {
+                channelId: ctx.channelId,
+                riderCustomerId: Number(customer.id),
+            },
+            order: { createdAt: 'DESC' },
+            skip: Math.max(0, Number(skip !== null && skip !== void 0 ? skip : 0) || 0),
+            take: clampTake(take !== null && take !== void 0 ? take : 20),
+        });
+    }
     async adminReviews(ctx, riderCustomerId, skip, take) {
         const where = { channelId: ctx.channelId };
         if (riderCustomerId != null && riderCustomerId !== '')

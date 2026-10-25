@@ -4,7 +4,7 @@ import { HallGrabService } from './hall-grab.service';
 
 const openOrder = { id: 10, code: 'A1', customer: { id: 7 }, customFields: { hallStatus: 'open' } };
 
-function makeSvc(order: any) {
+function makeSvc(order: any, opts?: { shiftCheck?: boolean; shifts?: any[] }) {
     const riderSvc = {
         assertApprovedRider: vi.fn().mockResolvedValue({
             id: 9,
@@ -22,7 +22,17 @@ function makeSvc(order: any) {
             findOneByOrFail: vi.fn().mockResolvedValue(order),
         }),
     };
-    const conn = { rawConnection: { transaction: (fn: any) => fn(em) } } as any;
+    const conn = {
+        getRepository: (_ctx: any, entity: any) => ({
+            findOne: vi.fn().mockResolvedValue(
+                entity?.name === 'CampusFulfillmentConfig'
+                    ? { channelId: 1, shiftCheckEnabled: !!opts?.shiftCheck }
+                    : null,
+            ),
+            find: vi.fn().mockResolvedValue(opts?.shifts ?? []),
+        }),
+        rawConnection: { transaction: (fn: any) => fn(em) },
+    } as any;
     return { svc: new HallGrabService(conn, riderSvc, { user: vi.fn() } as any), updated };
 }
 
@@ -43,6 +53,31 @@ describe('HallGrabService.grab', () => {
         const mine = { ...openOrder, customer: { id: 9 } };
         const { svc } = makeSvc(mine);
         await expect(svc.grab({ channelId: 1 } as any, 10 as any)).rejects.toThrow('不能抢自己的订单');
+    });
+});
+
+// P3-1 班次联动：店铺开关关闭不拦截；开启后无当日班次拦截，命中时段放行
+describe('HallGrabService.grab 班次校验（P3-1）', () => {
+    it('开关关闭：无班次也能抢单', async () => {
+        const { svc, updated } = makeSvc(openOrder, { shiftCheck: false, shifts: [] });
+        await svc.grab({ channelId: 1 } as any, 10 as any);
+        expect(updated[0].customFields.hallStatus).toBe('grabbed');
+    });
+    it('开关开启且无排班：抛「不在排班时段」', async () => {
+        const { svc } = makeSvc(openOrder, { shiftCheck: true, shifts: [] });
+        await expect(svc.grab({ channelId: 1 } as any, 10 as any)).rejects.toThrow('不在排班时段');
+    });
+    it('开关开启且当前在班次内：放行', async () => {
+        const now = new Date();
+        const d = new Date(now.getTime() + 8 * 3600_000);
+        const p = (n: number) => String(n).padStart(2, '0');
+        const today = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+        const { svc, updated } = makeSvc(openOrder, {
+            shiftCheck: true,
+            shifts: [{ shiftDate: today, startTime: '00:00', endTime: '23:59' }],
+        });
+        await svc.grab({ channelId: 1 } as any, 10 as any);
+        expect(updated[0].customFields.hallStatus).toBe('grabbed');
     });
 });
 
@@ -71,7 +106,13 @@ describe('HallGrabService.grab 整组抢单（plan 3.3）', () => {
                 }),
             }),
         };
-        const conn = { rawConnection: { transaction: (fn: any) => fn(em) } } as any;
+        const conn = {
+            getRepository: () => ({
+                findOne: vi.fn().mockResolvedValue(null),
+                find: vi.fn().mockResolvedValue([]),
+            }),
+            rawConnection: { transaction: (fn: any) => fn(em) },
+        } as any;
         const svc = new HallGrabService(conn, riderSvc, { user: vi.fn((_c: any, id: any) => notifyCalls.push(id)) } as any);
         return { svc, updates, notifyCalls };
     }

@@ -63,6 +63,10 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ nullable: true, type: 'float' }) storeLng: number | null; // 档口/门店取货点经度
     /** 动态配送计价配置（时段高峰/供需/手动倍率/封顶），null=关闭，回退分区固定运费 */
     @Column({ type: 'simple-json', nullable: true }) dynamicPricing: Record<string, any> | null;
+    /** 接单班次校验：开启后骑手仅能在后台登记的排班时段内抢单 */
+    @Column({ default: false }) shiftCheckEnabled: boolean;
+    /** 自动拉黑阈值：近 30 天顾客主动取消订单达到该次数自动加入黑名单（0 = 关闭） */
+    @Column({ type: 'int', default: 0 }) blacklistAutoCancelCount: number;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

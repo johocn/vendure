@@ -12,9 +12,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HallGrabService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const rider_service_1 = require("./rider.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const rider_ops_entities_1 = require("./rider-ops.entities");
+const rider_shift_window_1 = require("./rider-shift-window");
 /** F5 聚合大厅单量上限（超限截断 + 告警，防单量增长拖垮小机） */
 const HALL_ALL_LIMIT = 500;
 let HallGrabService = class HallGrabService {
@@ -32,6 +35,7 @@ let HallGrabService = class HallGrabService {
      * FOR UPDATE，保证并发抢同组两单时加锁顺序一致，避免 PG 死锁（败者整体回滚重试）。 */
     async grab(ctx, orderId) {
         const rider = await this.riderService.assertApprovedRider(ctx);
+        await this.assertShiftAllowed(ctx, rider.id);
         const grabbed = await this.connection.rawConnection.transaction(async (em) => {
             var _a;
             const order = await em.getRepository(core_1.Order).findOne({
@@ -181,6 +185,29 @@ let HallGrabService = class HallGrabService {
             };
         })
             .filter((x) => x !== null);
+    }
+    /**
+     * P3-1 接单班次联动：店铺开启 shiftCheckEnabled 后，骑手仅能在后台登记的排班时段内抢单。
+     * 默认关闭（不改变既有抢单行为）；跨零点班次按「开始日 + 次日结束」判定。
+     */
+    async assertShiftAllowed(ctx, riderId) {
+        const config = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId },
+        });
+        if (!(config === null || config === void 0 ? void 0 : config.shiftCheckEnabled))
+            return;
+        const now = new Date();
+        const today = (0, rider_shift_window_1.localDateKey)(now);
+        const shifts = await this.connection.getRepository(ctx, rider_ops_entities_1.CampusRiderShift).find({
+            where: {
+                channelId: ctx.channelId,
+                riderCustomerId: riderId,
+                shiftDate: (0, typeorm_1.In)([today, (0, rider_shift_window_1.addDays)(today, -1)]),
+            },
+        });
+        if (!shifts.some(s => (0, rider_shift_window_1.shiftCoversNow)(s, now))) {
+            throw new core_1.UserInputError('当前不在排班时段，暂不能接单');
+        }
     }
     /** 大厅排序：滞留 >5min 加急置顶，其次小费降序，再按入厅时间升序（JS 排序，避免 customFields 物理列名在 SQL 排序中的风险） */
     sortHall(orders) {

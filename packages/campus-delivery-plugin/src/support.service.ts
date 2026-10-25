@@ -4,6 +4,7 @@ import {
     CustomerService,
     ForbiddenError,
     ID,
+    Logger,
     Order,
     RequestContext,
     TransactionalConnection,
@@ -11,6 +12,9 @@ import {
 } from '@vendure/core';
 import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './support.entities';
 import { RiderCreditService } from './rider-credit.service';
+import { FeishuNotifyService, FeishuPushTarget } from './feishu/feishu-notify.service';
+
+const loggerCtx = 'CampusSupport';
 
 export const TICKET_CATEGORIES = ['order', 'delivery', 'refund', 'invoice', 'other'];
 export const TICKET_STATUSES = ['open', 'replied', 'closed'];
@@ -43,6 +47,7 @@ export class SupportService {
         private connection: TransactionalConnection,
         private customerService: CustomerService,
         private credit: RiderCreditService,
+        private feishu: FeishuNotifyService,
     ) {}
 
     private async requireCustomer(ctx: RequestContext): Promise<Customer> {
@@ -50,6 +55,55 @@ export class SupportService {
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         if (!customer) throw new ForbiddenError();
         return customer;
+    }
+
+    /** 飞书提醒：仅记录日志、绝不阻塞主流程（未启用时 pushEvent 直接返回 true） */
+    private async pushFeishu(
+        scene: string,
+        title: string,
+        content: string,
+        orderCode?: string | null,
+        dedupeKey?: string,
+        target?: FeishuPushTarget,
+    ): Promise<void> {
+        try {
+            await this.feishu.pushEvent(scene, title, content, orderCode ?? undefined, dedupeKey, target);
+        } catch (e: any) {
+            Logger.warn(`飞书提醒失败 scene=${scene}: ${e?.message ?? e}`, loggerCtx);
+        }
+    }
+
+    /**
+     * 站内信：复用 message-plugin 的 Message/MessageDelivery（invoice-plugin / coupon-plugin 已落地范式）；
+     * 未装 message-plugin 时实体不存在，静默跳过，绝不阻塞工单/申诉主流程。
+     */
+    private async sendInAppMessage(ctx: RequestContext, customerId: ID, title: string, body: string): Promise<void> {
+        try {
+            const msgRepo = this.connection.getRepository(ctx, 'Message' as any);
+            const deliveryRepo = this.connection.getRepository(ctx, 'MessageDelivery' as any);
+            const message = await msgRepo.save(
+                msgRepo.create({
+                    title,
+                    body,
+                    deliveryChannel: 'inapp',
+                    audienceType: 'all',
+                    status: 'sent',
+                    totalTarget: 1,
+                    totalSent: 1,
+                    channels: [ctx.channel],
+                }),
+            );
+            await deliveryRepo.save(
+                deliveryRepo.create({
+                    messageId: message.id,
+                    customerId: Number(customerId),
+                    deliveryStatus: 'sent',
+                    channels: [ctx.channel],
+                }),
+            );
+        } catch (e: any) {
+            Logger.warn(`站内信发送失败 customer=${customerId}: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 
     // ---------------- 客服工单 ----------------
@@ -74,6 +128,21 @@ export class SupportService {
             images: normalizeImages(input.images),
             status: 'open',
         } as any);
+        // 运营提醒：新工单推当前店铺群（channel 定向；平台群始终接收），无群也不影响提交
+        const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || '-';
+        void this.pushFeishu(
+            'support_ticket',
+            '新客服工单',
+            [
+                `类型：${category}`,
+                orderCode ? `订单：${orderCode}` : '',
+                `顾客：${name}${customer.phoneNumber ? `（${customer.phoneNumber}）` : ''}`,
+                `内容：${content.slice(0, 120)}${content.length > 120 ? '…' : ''}`,
+            ].filter(Boolean).join('\n'),
+            orderCode,
+            `ticket:${ticket.id}`,
+            { channel: ctx.channel?.code },
+        );
         return ticket;
     }
 
@@ -133,6 +202,12 @@ export class SupportService {
             repliedBy: String(ctx.activeUserId ?? ''),
             repliedAt: new Date(),
         } as any);
+        // 站内信：回复/关闭都通知顾客（C 端消息中心红点）
+        const title = target === 'closed' ? '客服工单已关闭' : '客服工单已回复';
+        const body = target === 'closed'
+            ? `工单 #${ticket.id} 已关闭${text ? `：${text}` : ''}`
+            : `工单 #${ticket.id} 回复：${text}`;
+        await this.sendInAppMessage(ctx, ticket.customerId, title, body);
         return { ...ticket, status: target, reply: text || ticket.reply };
     }
 
@@ -164,7 +239,7 @@ export class SupportService {
             where: { riderCustomerId: customer.id as any, status: 'pending' as any },
         });
         if (pending) throw new UserInputError('已有待审核的申诉，请等待处理');
-        return this.connection.getRepository(ctx, CampusRiderAppeal).save({
+        const appeal = await this.connection.getRepository(ctx, CampusRiderAppeal).save({
             channelId: ctx.channelId,
             riderCustomerId: customer.id,
             orderId,
@@ -174,6 +249,21 @@ export class SupportService {
             status: 'pending',
             creditDelta: 0,
         } as any);
+        // 运营提醒：新申诉推当前店铺群 + 平台群，后台「运营中心」待办
+        const riderName = (customer.customFields as any)?.riderRealName ?? customer.firstName ?? '-';
+        void this.pushFeishu(
+            'rider_appeal',
+            '新骑手申诉',
+            [
+                `骑手：${riderName}${customer.phoneNumber ? `（${customer.phoneNumber}）` : ''}`,
+                orderCode ? `订单：${orderCode}` : '订单：未关联',
+                `理由：${reason.slice(0, 120)}${reason.length > 120 ? '…' : ''}`,
+            ].join('\n'),
+            orderCode,
+            `appeal:${appeal.id}`,
+            { channel: ctx.channel?.code },
+        );
+        return appeal;
     }
 
     async myAppeals(ctx: RequestContext, skip?: number, take?: number) {
@@ -239,6 +329,16 @@ export class SupportService {
         if (delta > 0) {
             await this.credit.adjust(ctx, appeal.riderCustomerId as any, delta, 'appeal_approved', appeal.orderId ?? undefined);
         }
+        // 站内信：审核结果通知骑手（C 端消息中心红点）
+        const noteText = String(note ?? '').trim();
+        await this.sendInAppMessage(
+            ctx,
+            appeal.riderCustomerId,
+            approve ? '骑手申诉已通过' : '骑手申诉未通过',
+            approve
+                ? `申诉已通过${appeal.orderCode ? `（订单 ${appeal.orderCode}）` : ''}，信用分 +${delta}${noteText ? `；说明：${noteText}` : ''}`
+                : `申诉未通过${appeal.orderCode ? `（订单 ${appeal.orderCode}）` : ''}，信用分不变${noteText ? `；说明：${noteText}` : ''}`,
+        );
         return { ...appeal, status: approve ? 'approved' : 'rejected', creditDelta: delta };
     }
 
@@ -298,6 +398,94 @@ export class SupportService {
             createdBy: String(ctx.activeUserId ?? ''),
             active: true,
         } as any);
+    }
+
+    /**
+     * 批量导入黑名单（P3-2）：type=phone 时 values 为手机号列表；type=user 时为用户 ID 列表。
+     * 去重后逐条入库；已存在且生效的计入 skipped，格式非法/不属于本店铺的计入 invalid。
+     * 单次上限 500 条，避免一次性长事务。
+     */
+    async importBlacklist(
+        ctx: RequestContext,
+        type: string,
+        values: string[],
+        reason?: string | null,
+    ): Promise<{ added: number; skipped: number; invalid: number }> {
+        const t = String(type ?? '');
+        if (!['user', 'phone'].includes(t)) throw new UserInputError('黑名单类型不合法');
+        const raw = (values ?? []).map(v => String(v ?? '').trim()).filter(Boolean);
+        if (!raw.length) throw new UserInputError('请粘贴要导入的用户 ID 或手机号');
+        if (raw.length > 500) throw new UserInputError('单次最多导入 500 条');
+        const lines = Array.from(new Set(raw));
+        const reasonText = String(reason ?? '').trim() || '批量导入';
+        const repo = this.connection.getRepository(ctx, CampusBlacklist);
+        let added = 0;
+        let skipped = 0;
+        let invalid = 0;
+
+        if (t === 'user') {
+            const ids = lines.map(v => Number(v)).filter(n => Number.isInteger(n) && n > 0);
+            invalid += lines.length - ids.length;
+            const valid = new Set<number>();
+            if (ids.length) {
+                const rows = await this.connection.getRepository(ctx, Customer).createQueryBuilder('customer')
+                    .leftJoin('customer.channels', 'channel')
+                    .where('customer.id IN (:...ids)', { ids })
+                    .andWhere('channel.id = :ch', { ch: ctx.channelId as any })
+                    .getMany();
+                rows.forEach(r => valid.add(Number(r.id)));
+            }
+            invalid += ids.filter(id => !valid.has(id)).length;
+            for (const customerId of valid) {
+                const exists = await repo.findOne({
+                    where: { channelId: ctx.channelId as any, type: 'user', customerId: customerId as any } as any,
+                });
+                if (exists?.active) { skipped += 1; continue; }
+                if (exists) {
+                    await repo.update(exists.id, { active: true, reason: reasonText } as any);
+                } else {
+                    await repo.save({
+                        channelId: ctx.channelId,
+                        type: 'user',
+                        customerId,
+                        phone: null,
+                        reason: reasonText,
+                        createdBy: String(ctx.activeUserId ?? ''),
+                        active: true,
+                    } as any);
+                }
+                added += 1;
+            }
+            return { added, skipped, invalid };
+        }
+
+        const phones = lines
+            .map(v => v.replace(/[^\d+]/g, ''))
+            .filter(p => p.length >= 6 && p.length <= 20);
+        invalid += lines.length - phones.length;
+        for (const phone of Array.from(new Set(phones))) {
+            const exists = await repo.findOne({
+                where: { channelId: ctx.channelId as any, type: 'phone', phone: phone as any } as any,
+            });
+            if (exists?.active) { skipped += 1; continue; }
+            if (exists) {
+                await repo.update(exists.id, { active: true, reason: reasonText } as any);
+            } else {
+                await repo.save({
+                    channelId: ctx.channelId,
+                    type: 'phone',
+                    customerId: null,
+                    phone,
+                    reason: reasonText,
+                    createdBy: String(ctx.activeUserId ?? ''),
+                    active: true,
+                } as any);
+            }
+            added += 1;
+        }
+        // phones 去重后与 lines 数量差异（重复行）不计 invalid，直接视为跳过
+        skipped += Math.max(0, lines.length - invalid - phones.length - added - skipped);
+        return { added, skipped, invalid };
     }
 
     async removeBlacklist(ctx: RequestContext, id: ID) {

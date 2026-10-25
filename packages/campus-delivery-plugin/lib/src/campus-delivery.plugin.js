@@ -15,6 +15,7 @@ const core_2 = require("@nestjs/core");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const notification_plugin_1 = require("@vendure/notification-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
+const blacklist_scan_job_1 = require("./blacklist-scan.job");
 const capacity_alert_job_1 = require("./capacity-alert.job");
 const capacity_service_1 = require("./capacity.service");
 const campus_config_admin_resolver_1 = require("./campus-config-admin.resolver");
@@ -28,6 +29,7 @@ const order_gate_process_1 = require("./order-gate.process");
 const support_entities_1 = require("./support.entities");
 const rider_ops_entities_1 = require("./rider-ops.entities");
 const p7_ops_tables_1 = require("./migrations/p7-ops-tables");
+const add_withdraw_payout_1 = require("./migrations/add-withdraw-payout");
 const rider_ops_service_1 = require("./rider-ops.service");
 const support_admin_resolver_1 = require("./support-admin.resolver");
 const support_service_1 = require("./support.service");
@@ -142,8 +144,12 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路；
         // 待付款任务：离开 ArrangingPayment 作废，进入 ArrangingPayment 登记
         this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(e => {
+            var _a;
             this.r4TagService.tagR4(e).catch(err => core_1.Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
             if (e.toState === 'Cancelled') {
+                // P3-2 取消归因：C 端顾客主动取消标记 customer（自动拉黑规则只统计该口径），
+                // 其余为系统/运营取消（campusCause 已有归因标记的视为 system）
+                void this.injector.get(core_1.OrderService).updateCustomFields(e.ctx, e.order.id, { campusCancelCause: e.ctx.apiType === 'shop' ? 'customer' : (((_a = e.order.customFields) === null || _a === void 0 ? void 0 : _a.campusCause) ? 'system' : 'ops') }).catch(err => core_1.Logger.warn(`Cancel cause tag failed: ${String(err)}`, 'CampusSupport'));
                 // 已推给达达/美团的运单必须同步取消：按「取消外部运单 → 脱厅 → 释放时段」顺序串行，
                 // 不能三者并行——并行时外部取消失败也已脱厅，外部骑手仍可能上门取餐造成餐损。
                 // 整段异步执行，不阻塞事件总线；任一步失败只记日志，后续步骤照常执行。
@@ -185,6 +191,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
         // 运力预警：在线会话收口 + 待抢单量/在线骑手数告警（自管定时器，生产无 worker）
         this.injector.get(capacity_alert_job_1.CapacityAlertJob).start();
+        // P3-2 黑名单自动规则：每日扫顾客主动取消次数达标者（阈值 0 = 关闭）
+        this.injector.get(blacklist_scan_job_1.BlacklistAutoScanJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(notification_plugin_1.AdminNotifyEvent).subscribe(event => {
             void this.injector.get(feishu_notify_service_1.FeishuNotifyService).onAdminNotify(event);
@@ -241,6 +249,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p5_timestamp_timezone_1.P5TimestampTimezoneMigration,
             p6_default_compensation_and_credit_recovery_1.P6DefaultCompensationMigration,
             p7_ops_tables_1.P7OpsTablesMigration,
+            add_withdraw_payout_1.AddWithdrawPayoutMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
@@ -248,6 +257,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             support_service_1.SupportService,
             campus_sms_service_1.CampusSmsService,
             capacity_alert_job_1.CapacityAlertJob,
+            blacklist_scan_job_1.BlacklistAutoScanJob,
             rider_service_1.RiderService,
             capacity_service_1.CapacityService,
             slot_lock_service_1.SlotLockService,
@@ -324,6 +334,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
                     timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
+                    """接单班次校验：开启后骑手仅能在后台登记的排班时段内抢单"""
+                    shiftCheckEnabled: Boolean!
+                    """自动拉黑阈值：近 30 天顾客主动取消订单达到该次数自动加入黑名单（0=关闭）"""
+                    blacklistAutoCancelCount: Int!
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -340,6 +354,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
+                    shiftCheckEnabled: Boolean
+                    blacklistAutoCancelCount: Int
                 }
 
                 type DeliverySlot {
@@ -612,6 +628,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     remark: String
                     reviewedBy: String
                     reviewedAt: DateTime
+                    payoutRef: String
+                    payoutProof: String
                     createdAt: DateTime
                 }
 
@@ -679,6 +697,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 type CampusRemoveResult {
                     ok: Boolean!
+                }
+
+                type CampusBlacklistImportResult {
+                    added: Int!
+                    skipped: Int!
+                    invalid: Int!
                 }
 
                 type CampusRiderShift {
@@ -961,11 +985,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAcceptOwned(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantMarkHandoverArrived(orderId: ID!): CampusFirstLegResult!
                     campusMerchantMarkOwnedArrived(orderId: ID!): CampusFirstLegResult!
-                    approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+                    approveRiderWithdraw(id: ID!, remark: String, payoutRef: String, payoutProof: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
                     campusAddBlacklist(type: String!, value: String!, reason: String): CampusBlacklistEntry!
+                    campusImportBlacklist(type: String!, values: [String!]!, reason: String): CampusBlacklistImportResult!
                     campusRemoveBlacklist(id: ID!): CampusRemoveResult!
                     campusSaveRiderShift(input: CampusRiderShiftInput!): CampusRiderShift!
                     campusDeleteRiderShift(id: ID!): CampusRemoveResult!
@@ -1245,6 +1270,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     remark: String
                     reviewedBy: String
                     reviewedAt: DateTime
+                    payoutRef: String
+                    payoutProof: String
                     createdAt: DateTime
                 }
 
@@ -1315,6 +1342,15 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     ratingCount: Int!
                 }
 
+                type CampusMyRiderReviewRow {
+                    id: ID!
+                    orderId: ID!
+                    rating: Int!
+                    tags: [String!]
+                    comment: String
+                    createdAt: DateTime!
+                }
+
                 type CampusRateRiderResult {
                     ok: Boolean!
                     rating: Int!
@@ -1370,6 +1406,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMySupportTickets(skip: Int, take: Int): [CampusMySupportTicket!]!
                     campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
                     campusMyRiderRating: CampusRiderRating!
+                    campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
                     campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
                     campusRiderNav(orderId: ID!): CampusRiderNav
                 }

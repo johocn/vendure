@@ -59,6 +59,8 @@ export declare class RiderOpsService {
         avgRating: number;
         ratingCount: number;
     }>;
+    /** 骑手查看自己的评价明细（P3-3）：仅返回当前登录骑手收到的评价 */
+    myReviews(ctx: RequestContext, skip?: number, take?: number): Promise<CampusRiderReview[]>;
     adminReviews(ctx: RequestContext, riderCustomerId?: ID | null, skip?: number, take?: number): Promise<CampusRiderReview[]>;
     /** 骑手配送导航：店铺取货点 + 收货楼栋坐标（gcj02），供 uni.openLocation 使用 */
     riderNav(ctx: RequestContext, orderId: ID): Promise<{

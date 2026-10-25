@@ -8,9 +8,12 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { In } from 'typeorm';
 import { RiderService } from './rider.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusRiderShift } from './rider-ops.entities';
+import { addDays, localDateKey, shiftCoversNow } from './rider-shift-window';
 
 /** F5 聚合大厅单量上限（超限截断 + 告警，防单量增长拖垮小机） */
 const HALL_ALL_LIMIT = 500;
@@ -32,6 +35,7 @@ export class HallGrabService {
      * FOR UPDATE，保证并发抢同组两单时加锁顺序一致，避免 PG 死锁（败者整体回滚重试）。 */
     async grab(ctx: RequestContext, orderId: ID): Promise<Order> {
         const rider = await this.riderService.assertApprovedRider(ctx);
+        await this.assertShiftAllowed(ctx, rider.id);
         const grabbed = await this.connection.rawConnection.transaction(async em => {
             const order = await em.getRepository(Order).findOne({
                 where: { id: orderId as any },
@@ -175,6 +179,29 @@ export class HallGrabService {
                 };
             })
             .filter((x): x is NonNullable<typeof x> => x !== null);
+    }
+
+    /**
+     * P3-1 接单班次联动：店铺开启 shiftCheckEnabled 后，骑手仅能在后台登记的排班时段内抢单。
+     * 默认关闭（不改变既有抢单行为）；跨零点班次按「开始日 + 次日结束」判定。
+     */
+    private async assertShiftAllowed(ctx: RequestContext, riderId: ID): Promise<void> {
+        const config = await this.connection.getRepository(ctx, CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId as any },
+        });
+        if (!config?.shiftCheckEnabled) return;
+        const now = new Date();
+        const today = localDateKey(now);
+        const shifts = await this.connection.getRepository(ctx, CampusRiderShift).find({
+            where: {
+                channelId: ctx.channelId as any,
+                riderCustomerId: riderId as any,
+                shiftDate: In([today, addDays(today, -1)]),
+            },
+        });
+        if (!shifts.some(s => shiftCoversNow(s, now))) {
+            throw new UserInputError('当前不在排班时段，暂不能接单');
+        }
     }
 
     /** 大厅排序：滞留 >5min 加急置顶，其次小费降序，再按入厅时间升序（JS 排序，避免 customFields 物理列名在 SQL 排序中的风险） */

@@ -133,8 +133,30 @@ describe('RiderWalletService', () => {
         const { svc, repo, qb } = make();
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
         qb.execute.mockResolvedValueOnce({ affected: 0 });
-        await expect(svc.adminApprove(ctx, 5 as any, '已打款')).rejects.toThrow('该申请已处理');
+        await expect(svc.adminApprove(ctx, 5 as any, '已打款', 'TXN-001')).rejects.toThrow('该申请已处理');
         expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    it('approve 必填打款流水号：缺失直接抛错且不进入状态更新', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        await expect(svc.adminApprove(ctx, 5 as any, '已打款', '   ')).rejects.toThrow('打款流水号');
+        expect(qb.execute).not.toHaveBeenCalled();
+    });
+
+    it('approve 成功：PAID + 流水号/凭证留痕', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        await svc.adminApprove(ctx, 5 as any, '已打款', 'TXN-001', 'https://img.example/p.png');
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({
+            status: 'PAID',
+            payoutRef: 'TXN-001',
+            payoutProof: 'https://img.example/p.png',
+        }));
+        // 凭证可选：留空落 null
+        qb.execute.mockClear();
+        await svc.adminApprove(ctx, 5 as any, undefined, 'TXN-002');
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({ payoutRef: 'TXN-002', payoutProof: null }));
     });
 
     it('reject 退回失败：补偿恢复 PENDING 并抛「退回失败」以便重试', async () => {

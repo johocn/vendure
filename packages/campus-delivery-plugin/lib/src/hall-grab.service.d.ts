@@ -45,6 +45,11 @@ export declare class HallGrabService {
         channelName: string;
         customFields: any;
     }[]>;
+    /**
+     * P3-1 接单班次联动：店铺开启 shiftCheckEnabled 后，骑手仅能在后台登记的排班时段内抢单。
+     * 默认关闭（不改变既有抢单行为）；跨零点班次按「开始日 + 次日结束」判定。
+     */
+    private assertShiftAllowed;
     /** 大厅排序：滞留 >5min 加急置顶，其次小费降序，再按入厅时间升序（JS 排序，避免 customFields 物理列名在 SQL 排序中的风险） */
     private sortHall;
 }

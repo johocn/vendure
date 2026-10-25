@@ -42,6 +42,9 @@ let SupportAdminResolver = class SupportAdminResolver {
     async campusAddBlacklist(ctx, type, value, reason) {
         return this.support.addBlacklist(ctx, { type, value, reason });
     }
+    async campusImportBlacklist(ctx, type, values, reason) {
+        return this.support.importBlacklist(ctx, type, values, reason);
+    }
     async campusRemoveBlacklist(ctx, id) {
         return this.support.removeBlacklist(ctx, id);
     }
@@ -131,6 +134,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, String, String]),
     __metadata("design:returntype", Promise)
 ], SupportAdminResolver.prototype, "campusAddBlacklist", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('type')),
+    __param(2, (0, graphql_1.Args)({ name: 'values', type: () => [String] })),
+    __param(3, (0, graphql_1.Args)({ name: 'reason', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Array, String]),
+    __metadata("design:returntype", Promise)
+], SupportAdminResolver.prototype, "campusImportBlacklist", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),

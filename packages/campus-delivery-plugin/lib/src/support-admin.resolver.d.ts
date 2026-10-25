@@ -83,6 +83,11 @@ export declare class SupportAdminResolver {
         total: number;
     }>;
     campusAddBlacklist(ctx: RequestContext, type: string, value: string, reason?: string): Promise<any>;
+    campusImportBlacklist(ctx: RequestContext, type: string, values: string[], reason?: string): Promise<{
+        added: number;
+        skipped: number;
+        invalid: number;
+    }>;
     campusRemoveBlacklist(ctx: RequestContext, id: ID): Promise<{
         ok: boolean;
     }>;

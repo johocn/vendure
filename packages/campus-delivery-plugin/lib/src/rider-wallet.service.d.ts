@@ -35,8 +35,8 @@ export declare class RiderWalletService {
     }): Promise<any>;
     /** 管理端：提现申请列表（status=ALL 或具体状态；平台级，不限定选店渠道） */
     adminList(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<RiderWithdrawalRequest[]>;
-    /** 管理端：通过打款（仅留痕，金额已在申请时扣减） */
-    adminApprove(ctx: RequestContext, id: any, remark?: string): Promise<RiderWithdrawalRequest | null>;
+    /** 管理端：通过打款（金额已在申请时扣减；必须登记打款流水号，凭证可选） */
+    adminApprove(ctx: RequestContext, id: any, remark?: string, payoutRef?: string, payoutProof?: string): Promise<RiderWithdrawalRequest | null>;
     /** 管理端：驳回（退回冻结金额 + 留痕；退回资金固定默认渠道，与申请扣款同渠道） */
     adminReject(ctx: RequestContext, id: any, remark?: string): Promise<RiderWithdrawalRequest | null>;
     private reviewer;

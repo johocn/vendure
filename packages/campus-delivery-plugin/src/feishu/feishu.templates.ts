@@ -15,6 +15,9 @@ const SCENE_LABEL: Record<string, string> = {
     exception: '异常/超时',
     payment_timeout: '支付超时',
     digest: '每日汇总',
+    support_ticket: '客服工单',
+    rider_appeal: '骑手申诉',
+    blacklist_auto: '黑名单自动规则',
 };
 
 export function formatPush(input: PushInput): string {

@@ -54,6 +54,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Object)
 ], RiderWithdrawalRequest.prototype, "reviewedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], RiderWithdrawalRequest.prototype, "payoutRef", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], RiderWithdrawalRequest.prototype, "payoutProof", void 0);
 exports.RiderWithdrawalRequest = RiderWithdrawalRequest = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)(['channelId', 'status']),

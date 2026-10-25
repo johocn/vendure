@@ -38,6 +38,10 @@ let SupportShopResolver = class SupportShopResolver {
     async campusMyRiderRating(ctx) {
         return this.riderOps.ratingStats(ctx);
     }
+    /** 骑手自己的评价明细（P3-3）：均分之外的逐条评分/标签/留言 */
+    async campusMyRiderReviews(ctx, skip, take) {
+        return this.riderOps.myReviews(ctx, skip, take);
+    }
     async campusRateRider(ctx, orderId, rating, tags, comment) {
         const row = await this.riderOps.createReview(ctx, orderId, rating, tags, comment);
         return { ok: true, rating: row.rating };
@@ -101,6 +105,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], SupportShopResolver.prototype, "campusMyRiderRating", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
+    __metadata("design:returntype", Promise)
+], SupportShopResolver.prototype, "campusMyRiderReviews", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

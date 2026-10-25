@@ -77,6 +77,17 @@ export class SupportAdminResolver {
 
     @Mutation()
     @Allow(CampusPermissions.CampusDispatch as any)
+    async campusImportBlacklist(
+        @Ctx() ctx: RequestContext,
+        @Args('type') type: string,
+        @Args({ name: 'values', type: () => [String] }) values: string[],
+        @Args({ name: 'reason', type: () => String, nullable: true }) reason?: string,
+    ) {
+        return this.support.importBlacklist(ctx, type, values, reason);
+    }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusDispatch as any)
     async campusRemoveBlacklist(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
         return this.support.removeBlacklist(ctx, id);
     }

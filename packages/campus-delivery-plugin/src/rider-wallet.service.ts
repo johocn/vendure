@@ -163,8 +163,13 @@ export class RiderWalletService {
         return qb.orderBy('w.createdAt', 'DESC').skip(safeSkip).take(safeTake).getMany();
     }
 
-    /** 管理端：通过打款（仅留痕，金额已在申请时扣减） */
-    async adminApprove(ctx: RequestContext, id: any, remark?: string) {
+    /** 管理端：通过打款（金额已在申请时扣减；必须登记打款流水号，凭证可选） */
+    async adminApprove(ctx: RequestContext, id: any, remark?: string, payoutRef?: string, payoutProof?: string) {
+        const ref = String(payoutRef ?? '').trim();
+        if (!ref) throw new UserInputError('请填写打款流水号（用于对账留痕）');
+        if (ref.length > 255) throw new UserInputError('打款流水号不能超过 255 个字符');
+        const proof = String(payoutProof ?? '').trim();
+        if (proof.length > 255) throw new UserInputError('打款凭证链接不能超过 255 个字符');
         const req = await this.getForReview(id);
         const pc = await this.platformCtx();
         const repo = this.connection.getRepository(pc, RiderWithdrawalRequest);
@@ -178,6 +183,8 @@ export class RiderWalletService {
                 remark: remark?.trim() || req.remark || null,
                 reviewedBy: this.reviewer(ctx),
                 reviewedAt: new Date(),
+                payoutRef: ref,
+                payoutProof: proof || null,
             } as any)
             .where('id = :id', { id: req.id })
             .andWhere('status = :s', { s: 'PENDING' })

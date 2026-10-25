@@ -35,9 +35,9 @@ let RiderAdminResolver = class RiderAdminResolver {
     async riderWithdrawals(ctx, status, skip, take) {
         return this.wallet.adminList(ctx, status, skip, take);
     }
-    /** 通过：标记 PAID 留痕（金额已在申请时冻结扣减） */
-    async approveRiderWithdraw(ctx, id, remark) {
-        return this.wallet.adminApprove(ctx, id, remark);
+    /** 通过：标记 PAID + 登记打款流水号/凭证（金额已在申请时冻结扣减） */
+    async approveRiderWithdraw(ctx, id, remark, payoutRef, payoutProof) {
+        return this.wallet.adminApprove(ctx, id, remark, payoutRef, payoutProof);
     }
     /** 驳回：状态 REJECTED 并退回冻结金额 */
     async rejectRiderWithdraw(ctx, id, remark) {
@@ -83,8 +83,10 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('remark', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('payoutRef', { nullable: true })),
+    __param(4, (0, graphql_1.Args)('payoutProof', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String, String]),
     __metadata("design:returntype", Promise)
 ], RiderAdminResolver.prototype, "approveRiderWithdraw", null);
 __decorate([

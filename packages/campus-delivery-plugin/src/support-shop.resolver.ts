@@ -57,6 +57,17 @@ export class SupportShopResolver {
         return this.riderOps.ratingStats(ctx);
     }
 
+    /** 骑手自己的评价明细（P3-3）：均分之外的逐条评分/标签/留言 */
+    @Query()
+    @Allow(Permission.Authenticated)
+    async campusMyRiderReviews(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number,
+    ) {
+        return this.riderOps.myReviews(ctx, skip, take);
+    }
+
     @Mutation()
     @Allow(Permission.Authenticated)
     async campusRateRider(
