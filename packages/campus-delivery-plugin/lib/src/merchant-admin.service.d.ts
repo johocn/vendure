@@ -4,6 +4,7 @@ import { CampusNotifyService } from './campus-notify.service';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
+import { PrivacyNumberService } from './privacy-number.service';
 export interface MerchantBoardLine {
     name: string;
     quantity: number;
@@ -59,7 +60,10 @@ export declare class MerchantAdminService {
     private notify;
     private thirdParty;
     private orderService;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService);
+    private privacy;
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService);
+    /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
+    customerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
     board(ctx: RequestContext): Promise<MerchantBoard>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{

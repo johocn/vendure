@@ -20,6 +20,14 @@ export interface WaimaiStore {
     openNow: boolean;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 食安公示（未配置的字段为 null，C 端不渲染对应行） */
+    foodLicenseNo: string | null;
+    foodLicenseImage: string | null;
+    foodLicenseExpiry: string | null;
+    foodSafetyGrade: string | null;
+    foodSafetyCommitmentImage: string | null;
+    kitchenLiveUrl: string | null;
+    kitchenLiveEnabled: boolean;
 }
 export interface CampusStoreConfigWithChannel {
     channelId: number;
@@ -75,11 +83,24 @@ export interface CampusStoreConfigWithChannel {
     timeoutCompensationCouponTemplateId: string | null;
     /** 动态计价配置 JSON 字符串（null=关闭，回退分区固定运费） */
     dynamicPricing: string | null;
+    privacyNumberEnabled: boolean;
+    privacyNumberProvider: string;
+    privacyNumberTtlMinutes: number;
+    privacyNumberPrefix: string | null;
+    foodLicenseNo: string | null;
+    foodLicenseImage: string | null;
+    foodLicenseExpiry: string | null;
+    foodSafetyGrade: string | null;
+    foodSafetyCommitmentImage: string | null;
+    kitchenLiveUrl: string | null;
+    kitchenLiveEnabled: boolean;
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
 export declare function normalizePrintMode(v: unknown): PrintMode;
+/** 隐私号服务商白名单：mask=仅脱敏，mock=本地虚拟号，aliyun/tencent=外部号池（缺凭证自动降级为 mask） */
+export declare const PRIVACY_PROVIDERS: readonly ["mask", "mock", "aliyun", "tencent"];
 export declare class WaimaiStoreService {
     private connection;
     constructor(connection: TransactionalConnection);
@@ -140,6 +161,17 @@ export declare class WaimaiStoreService {
         storeLng?: number | null;
         /** 动态计价 JSON 字符串；null/'' = 关闭 */
         dynamicPricing?: string | null;
+        privacyNumberEnabled?: boolean | null;
+        privacyNumberProvider?: string | null;
+        privacyNumberTtlMinutes?: number | null;
+        privacyNumberPrefix?: string | null;
+        foodLicenseNo?: string | null;
+        foodLicenseImage?: string | null;
+        foodLicenseExpiry?: string | null;
+        foodSafetyGrade?: string | null;
+        foodSafetyCommitmentImage?: string | null;
+        kitchenLiveUrl?: string | null;
+        kitchenLiveEnabled?: boolean | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

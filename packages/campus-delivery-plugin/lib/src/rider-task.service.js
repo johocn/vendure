@@ -19,6 +19,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
 const errand_service_1 = require("./errand.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const hall_service_1 = require("./hall.service");
+const privacy_number_service_1 = require("./privacy-number.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
@@ -37,13 +38,30 @@ function haversineMeters(a, b) {
     return 2 * R * Math.asin(Math.sqrt(s));
 }
 let RiderTaskService = class RiderTaskService {
-    constructor(connection, riderService, credit, hall, notify, feishu) {
+    constructor(connection, riderService, credit, hall, notify, privacy, feishu) {
         this.connection = connection;
         this.riderService = riderService;
         this.credit = credit;
         this.hall = hall;
         this.notify = notify;
+        this.privacy = privacy;
         this.feishu = feishu;
+    }
+    /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，真实号不出服务端。
+     * 未开启号码保护时返回真实号（行为与旧版一致），前端统一用 display/callable 展示与拨号。 */
+    async customerContact(ctx, orderId) {
+        var _a, _b, _c;
+        const order = await this.assertOwner(ctx, orderId);
+        const withCustomer = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            where: { id: order.id },
+            relations: ['customer'],
+        });
+        const phone = (_b = (_a = withCustomer === null || withCustomer === void 0 ? void 0 : withCustomer.customer) === null || _a === void 0 ? void 0 : _a.phoneNumber) !== null && _b !== void 0 ? _b : null;
+        return this.privacy.resolve(ctx, {
+            channelId: ctx.channelId,
+            orderCode: (_c = withCustomer === null || withCustomer === void 0 ? void 0 : withCustomer.code) !== null && _c !== void 0 ? _c : order.code,
+            phone,
+        });
     }
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
      * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。
@@ -405,6 +423,7 @@ exports.RiderTaskService = RiderTaskService = __decorate([
         rider_credit_service_1.RiderCreditService,
         hall_service_1.HallService,
         campus_notify_service_1.CampusNotifyService,
+        privacy_number_service_1.PrivacyNumberService,
         feishu_notify_service_1.FeishuNotifyService])
 ], RiderTaskService);
 //# sourceMappingURL=rider-task.service.js.map

@@ -202,6 +202,50 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'int', default: 0 }),
     __metadata("design:type", Number)
 ], CampusFulfillmentConfig.prototype, "blacklistAutoCancelCount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CampusFulfillmentConfig.prototype, "privacyNumberEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'mask' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "privacyNumberProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 60 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "privacyNumberTtlMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "privacyNumberPrefix", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "foodLicenseNo", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "foodLicenseImage", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "foodLicenseExpiry", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "foodSafetyGrade", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "foodSafetyCommitmentImage", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "kitchenLiveUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CampusFulfillmentConfig.prototype, "kitchenLiveEnabled", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

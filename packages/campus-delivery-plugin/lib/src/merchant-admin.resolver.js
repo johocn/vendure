@@ -28,6 +28,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAcceptOrder(ctx, orderId) {
         return this.merchant.acceptOrder(ctx, orderId);
     }
+    /** 商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号 */
+    async campusMerchantCustomerContact(ctx, orderId) {
+        return this.merchant.customerContact(ctx, orderId);
+    }
     async campusMerchantCookingDone(ctx, orderId) {
         return this.merchant.cookingDone(ctx, orderId);
     }
@@ -90,6 +94,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAcceptOrder", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantCustomerContact", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

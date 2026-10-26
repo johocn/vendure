@@ -56,6 +56,10 @@ let ReviewShopResolver = class ReviewShopResolver {
     async markReviewHelpful(ctx, id) {
         return this.reviewService.markHelpful(ctx, id);
     }
+    /** 差评申诉（P0-4）：本人 1-3 星主评，审核通过后评价隐藏 */
+    async appealReview(ctx, reviewId, reason, images) {
+        return this.reviewService.appealReview(ctx, reviewId, reason, images);
+    }
     async followUps(ctx, review) {
         return this.reviewService.getReviewFollowUps(ctx, review);
     }
@@ -164,6 +168,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ReviewShopResolver.prototype, "markReviewHelpful", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('reviewId')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __param(3, (0, graphql_1.Args)({ name: 'images', type: () => [String], nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Array]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "appealReview", null);
 __decorate([
     (0, graphql_1.ResolveField)(),
     __param(0, (0, core_1.Ctx)()),

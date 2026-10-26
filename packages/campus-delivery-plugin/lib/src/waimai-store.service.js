@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WaimaiStoreService = void 0;
+exports.WaimaiStoreService = exports.PRIVACY_PROVIDERS = void 0;
 exports.normalizePrintMode = normalizePrintMode;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
@@ -22,6 +22,10 @@ function normalizePrintMode(v) {
     return PRINT_MODES.includes(v) ? v : 'off';
 }
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
+/** 隐私号服务商白名单：mask=仅脱敏，mock=本地虚拟号，aliyun/tencent=外部号池（缺凭证自动降级为 mask） */
+exports.PRIVACY_PROVIDERS = ['mask', 'mock', 'aliyun', 'tencent'];
+/** 食安量化分级：A/B/C（空=未评级） */
+const FOOD_GRADES = ['A', 'B', 'C'];
 /** 数值配置合法区间（金额=分，时长=分钟）：与 campus-config 另一写入口同口径，超界直接拒绝 */
 const INT_RANGES = {
     deliveryMinutes: [1, 240],
@@ -50,7 +54,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     async listStores(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
@@ -89,6 +93,13 @@ let WaimaiStoreService = class WaimaiStoreService {
                 openNow: (0, business_hours_1.isWithinBusinessHours)((_o = cf.waimaiBusinessHours) !== null && _o !== void 0 ? _o : null) && !cfg.paused,
                 errandBaseFee: (_p = cfg.errandBaseFee) !== null && _p !== void 0 ? _p : null,
                 freeShippingThreshold: (_q = cfg.freeShippingThreshold) !== null && _q !== void 0 ? _q : null,
+                foodLicenseNo: (_r = cfg.foodLicenseNo) !== null && _r !== void 0 ? _r : null,
+                foodLicenseImage: (_s = cfg.foodLicenseImage) !== null && _s !== void 0 ? _s : null,
+                foodLicenseExpiry: (_t = cfg.foodLicenseExpiry) !== null && _t !== void 0 ? _t : null,
+                foodSafetyGrade: (_u = cfg.foodSafetyGrade) !== null && _u !== void 0 ? _u : null,
+                foodSafetyCommitmentImage: (_v = cfg.foodSafetyCommitmentImage) !== null && _v !== void 0 ? _v : null,
+                kitchenLiveUrl: cfg.kitchenLiveEnabled ? (_w = cfg.kitchenLiveUrl) !== null && _w !== void 0 ? _w : null : null,
+                kitchenLiveEnabled: cfg.kitchenLiveEnabled,
             });
         }
         return stores;
@@ -109,7 +120,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
         const routes = Array.from(new Set(((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).map(r => String(r))));
         const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
@@ -282,13 +293,64 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_3) {
+                catch (_8) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
                     throw new core_1.UserInputError('动态计价配置必须是 JSON 对象');
                 cfg.dynamicPricing = parsed;
             }
+        }
+        // 号码保护：provider 白名单 + TTL 区间；外部号池缺凭证时由 PrivacyNumberService 运行时降级为脱敏
+        if (input.privacyNumberEnabled != null)
+            cfg.privacyNumberEnabled = !!input.privacyNumberEnabled;
+        if (input.privacyNumberProvider != null) {
+            const provider = String(input.privacyNumberProvider || '').trim();
+            if (!exports.PRIVACY_PROVIDERS.includes(provider)) {
+                throw new core_1.UserInputError(`不支持的隐私号服务商: ${provider || '(空)'}（仅接受 ${exports.PRIVACY_PROVIDERS.join('/')}）`);
+            }
+            cfg.privacyNumberProvider = provider;
+        }
+        if (input.privacyNumberTtlMinutes != null) {
+            const ttl = Number(input.privacyNumberTtlMinutes);
+            if (!Number.isInteger(ttl) || ttl < 1 || ttl > 1440) {
+                throw new core_1.UserInputError('隐私号有效期必须为 1-1440 的整数（分钟）');
+            }
+            cfg.privacyNumberTtlMinutes = ttl;
+        }
+        if (input.privacyNumberPrefix !== undefined) {
+            cfg.privacyNumberPrefix = String((_1 = input.privacyNumberPrefix) !== null && _1 !== void 0 ? _1 : '').trim() || null;
+        }
+        // 食安公示：空串归一为 null（未配置即 C 端不渲染）；等级/到期日做格式校验
+        const nullableText = (v) => (v === undefined ? undefined : String(v !== null && v !== void 0 ? v : '').trim() || null);
+        if (input.foodLicenseNo !== undefined)
+            cfg.foodLicenseNo = (_2 = nullableText(input.foodLicenseNo)) !== null && _2 !== void 0 ? _2 : null;
+        if (input.foodLicenseImage !== undefined)
+            cfg.foodLicenseImage = (_3 = nullableText(input.foodLicenseImage)) !== null && _3 !== void 0 ? _3 : null;
+        if (input.foodSafetyCommitmentImage !== undefined) {
+            cfg.foodSafetyCommitmentImage = (_4 = nullableText(input.foodSafetyCommitmentImage)) !== null && _4 !== void 0 ? _4 : null;
+        }
+        if (input.kitchenLiveUrl !== undefined)
+            cfg.kitchenLiveUrl = (_5 = nullableText(input.kitchenLiveUrl)) !== null && _5 !== void 0 ? _5 : null;
+        if (input.foodLicenseExpiry !== undefined) {
+            const expiry = nullableText(input.foodLicenseExpiry);
+            if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+                throw new core_1.UserInputError('食品经营许可证到期日格式必须为 YYYY-MM-DD');
+            }
+            cfg.foodLicenseExpiry = expiry !== null && expiry !== void 0 ? expiry : null;
+        }
+        if (input.foodSafetyGrade !== undefined) {
+            const grade = nullableText(input.foodSafetyGrade);
+            if (grade && !FOOD_GRADES.includes(grade)) {
+                throw new core_1.UserInputError(`食品安全量化分级仅接受 ${FOOD_GRADES.join('/')}（空=未评级）`);
+            }
+            cfg.foodSafetyGrade = grade !== null && grade !== void 0 ? grade : null;
+        }
+        if (input.kitchenLiveEnabled != null)
+            cfg.kitchenLiveEnabled = !!input.kitchenLiveEnabled;
+        // 明厨亮灶入口必须真的有地址，避免 C 端出现点不开的死入口
+        if (cfg.kitchenLiveEnabled && !cfg.kitchenLiveUrl) {
+            throw new core_1.UserInputError('开启明厨亮灶前请先填写直播/回放地址');
         }
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
@@ -303,10 +365,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_1 = input.storeAddress) !== null && _1 !== void 0 ? _1 : '').trim();
+        const address = ((_6 = input.storeAddress) !== null && _6 !== void 0 ? _6 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_2 = input.storePhone) !== null && _2 !== void 0 ? _2 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_7 = input.storePhone) !== null && _7 !== void 0 ? _7 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -337,7 +399,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19;
         return {
             channelId,
             channelName,
@@ -389,6 +451,17 @@ let WaimaiStoreService = class WaimaiStoreService {
             storeLat: (_7 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _7 !== void 0 ? _7 : null,
             storeLng: (_8 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _8 !== void 0 ? _8 : null,
             dynamicPricing: (cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) ? JSON.stringify(cfg.dynamicPricing) : null,
+            privacyNumberEnabled: (_9 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberEnabled) !== null && _9 !== void 0 ? _9 : false,
+            privacyNumberProvider: (_10 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberProvider) !== null && _10 !== void 0 ? _10 : 'mask',
+            privacyNumberTtlMinutes: (_11 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberTtlMinutes) !== null && _11 !== void 0 ? _11 : 60,
+            privacyNumberPrefix: (_12 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberPrefix) !== null && _12 !== void 0 ? _12 : null,
+            foodLicenseNo: (_13 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseNo) !== null && _13 !== void 0 ? _13 : null,
+            foodLicenseImage: (_14 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseImage) !== null && _14 !== void 0 ? _14 : null,
+            foodLicenseExpiry: (_15 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseExpiry) !== null && _15 !== void 0 ? _15 : null,
+            foodSafetyGrade: (_16 = cfg === null || cfg === void 0 ? void 0 : cfg.foodSafetyGrade) !== null && _16 !== void 0 ? _16 : null,
+            foodSafetyCommitmentImage: (_17 = cfg === null || cfg === void 0 ? void 0 : cfg.foodSafetyCommitmentImage) !== null && _17 !== void 0 ? _17 : null,
+            kitchenLiveUrl: (_18 = cfg === null || cfg === void 0 ? void 0 : cfg.kitchenLiveUrl) !== null && _18 !== void 0 ? _18 : null,
+            kitchenLiveEnabled: (_19 = cfg === null || cfg === void 0 ? void 0 : cfg.kitchenLiveEnabled) !== null && _19 !== void 0 ? _19 : false,
         };
     }
 };

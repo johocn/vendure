@@ -7,6 +7,8 @@ export declare class RiderTaskShopResolver {
     constructor(riderTaskService: RiderTaskService, r2Mark: R2MarkService);
     /** 需登录骑手：service 内部 assertApprovedRider，未登录/未批准/信用分不足抛 ForbiddenError。 */
     campusMyTasks(ctx: RequestContext, status?: string): Promise<import("@vendure/core").Order[]>;
+    /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，返回 display/callable 而非真实号 */
+    campusRiderCustomerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
     /** 需登录：仅下单人本人可查（service 内归属校验） */
     campusOrderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;

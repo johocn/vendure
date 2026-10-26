@@ -2,7 +2,7 @@ import { ModuleRef } from '@nestjs/core';
 import { CustomerService, ID, ListQueryBuilder, PaginatedList, ProductService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { Review } from './review.entity';
 import { ReviewPluginOptions } from './types';
-import { CreateReviewInput, FollowUpReviewInput, ProductRating, ReviewListOptions, ReviewStats, UpdateReviewInput } from './types';
+import { CreateReviewInput, FollowUpReviewInput, ProductRating, ReviewAppealListOptions, ReviewListOptions, ReviewStats, UpdateReviewInput } from './types';
 export declare class ReviewService {
     private options;
     private connection;
@@ -24,6 +24,17 @@ export declare class ReviewService {
     approveReview(ctx: RequestContext, id: ID): Promise<Review>;
     rejectReview(ctx: RequestContext, id: ID): Promise<Review>;
     getReview(ctx: RequestContext, id: ID): Promise<Review>;
+    /**
+     * 顾客对本人差评（1-3 星）发起申诉，诉求为隐藏该评价（内容有误 / 与商家已协商一致等）。
+     * 同一评价同时只允许一条待审核申诉；追评与已删除评价不可申诉。
+     */
+    appealReview(ctx: RequestContext, reviewId: ID, reason: string, images?: string[] | null): Promise<Review>;
+    /** 后台申诉列表：status 为申诉状态（pending/approved/rejected），缺省列出全部有申诉记录的评价。 */
+    getReviewAppeals(ctx: RequestContext, options?: ReviewAppealListOptions): Promise<PaginatedList<Review>>;
+    /** 申诉审核通过：评价被隐藏（退出展示与评分聚合），结果与审核人留痕。 */
+    approveReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review>;
+    /** 申诉驳回：评价维持原状，仅记录审核说明留痕。 */
+    rejectReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review>;
     getReviews(ctx: RequestContext, options?: ReviewListOptions): Promise<PaginatedList<Review>>;
     /** C 端商品列表：仅对外可见（approved）的主评 + 追评（followUps 由 ResolveField 加载）。 */
     getProductReviews(ctx: RequestContext, productId: ID, options?: ReviewListOptions): Promise<PaginatedList<Review>>;

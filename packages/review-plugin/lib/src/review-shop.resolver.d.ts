@@ -17,6 +17,8 @@ export declare class ReviewShopResolver {
     deleteReview(ctx: RequestContext, id: ID): Promise<any>;
     createFollowUpReview(ctx: RequestContext, reviewId: ID, input: any): Promise<any>;
     markReviewHelpful(ctx: RequestContext, id: ID): Promise<any>;
+    /** 差评申诉（P0-4）：本人 1-3 星主评，审核通过后评价隐藏 */
+    appealReview(ctx: RequestContext, reviewId: ID, reason: string, images?: string[]): Promise<any>;
     followUps(ctx: RequestContext, review: Review): Promise<any>;
     customerName(ctx: RequestContext, review: Review): Promise<string | null>;
 }

@@ -20,6 +20,7 @@ const hall_service_1 = require("./hall.service");
 const refund_payment_1 = require("./refund-payment");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const waimai_store_service_1 = require("./waimai-store.service");
+const privacy_number_service_1 = require("./privacy-number.service");
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
  * 状态机（merchantConfirmEnabled 渠道）：支付 → pending_merchant（待商家接单）
@@ -27,13 +28,32 @@ const waimai_store_service_1 = require("./waimai-store.service");
  * campusMerchantCookingDone）→ 骑手 grabbed/delivering → delivered。
  */
 let MerchantAdminService = class MerchantAdminService {
-    constructor(connection, config, hall, notify, thirdParty, orderService) {
+    constructor(connection, config, hall, notify, thirdParty, orderService, privacy) {
         this.connection = connection;
         this.config = config;
         this.hall = hall;
         this.notify = notify;
         this.thirdParty = thirdParty;
         this.orderService = orderService;
+        this.privacy = privacy;
+    }
+    /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
+    async customerContact(ctx, orderId) {
+        var _a, _b;
+        const order = await this.connection.getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .where('order.id = :id', { id: orderId })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId })
+            .getOne();
+        if (!order)
+            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+        return this.privacy.resolve(ctx, {
+            channelId: ctx.channelId,
+            orderCode: order.code,
+            phone: (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.phoneNumber) !== null && _b !== void 0 ? _b : null,
+        });
     }
     async board(ctx) {
         var _a, _b, _c;
@@ -407,6 +427,7 @@ exports.MerchantAdminService = MerchantAdminService = __decorate([
         hall_service_1.HallService,
         campus_notify_service_1.CampusNotifyService,
         third_party_delivery_service_1.ThirdPartyDeliveryService,
-        core_1.OrderService])
+        core_1.OrderService,
+        privacy_number_service_1.PrivacyNumberService])
 ], MerchantAdminService);
 //# sourceMappingURL=merchant-admin.service.js.map

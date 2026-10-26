@@ -27,8 +27,14 @@ const custom_fields_1 = require("./custom-fields");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
 const order_gate_process_1 = require("./order-gate.process");
 const support_entities_1 = require("./support.entities");
+const chat_entities_1 = require("./chat.entities");
+const chat_service_1 = require("./chat.service");
+const chat_admin_resolver_1 = require("./chat-admin.resolver");
+const chat_shop_resolver_1 = require("./chat-shop.resolver");
 const rider_ops_entities_1 = require("./rider-ops.entities");
 const p7_ops_tables_1 = require("./migrations/p7-ops-tables");
+const p8_p0_privacy_food_safety_1 = require("./migrations/p8-p0-privacy-food-safety");
+const privacy_number_service_1 = require("./privacy-number.service");
 const add_withdraw_payout_1 = require("./migrations/add-withdraw-payout");
 const add_rider_location_1 = require("./migrations/add-rider-location");
 const campus_rider_location_entity_1 = require("./campus-rider-location.entity");
@@ -241,7 +247,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -253,6 +259,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p5_timestamp_timezone_1.P5TimestampTimezoneMigration,
             p6_default_compensation_and_credit_recovery_1.P6DefaultCompensationMigration,
             p7_ops_tables_1.P7OpsTablesMigration,
+            p8_p0_privacy_food_safety_1.P8P0Migration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -260,6 +267,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             campus_config_service_1.CampusConfigService,
             rider_ops_service_1.RiderOpsService,
             support_service_1.SupportService,
+            chat_service_1.ChatService,
             campus_sms_service_1.CampusSmsService,
             capacity_alert_job_1.CapacityAlertJob,
             blacklist_scan_job_1.BlacklistAutoScanJob,
@@ -280,6 +288,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             r4_tag_service_1.R4TagService,
             shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
+            privacy_number_service_1.PrivacyNumberService,
             merchant_admin_service_1.MerchantAdminService,
             campus_notify_service_1.CampusNotifyService,
             third_party_delivery_service_1.ThirdPartyDeliveryService,
@@ -583,6 +592,29 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
                     timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
+                    """号码保护开关：开启后骑手/商家/客服侧不下发顾客真实手机号"""
+                    privacyNumberEnabled: Boolean!
+                    """隐私号服务商：mask / mock / aliyun / tencent"""
+                    privacyNumberProvider: String!
+                    privacyNumberTtlMinutes: Int!
+                    privacyNumberPrefix: String
+                    foodLicenseNo: String
+                    foodLicenseImage: String
+                    foodLicenseExpiry: String
+                    foodSafetyGrade: String
+                    foodSafetyCommitmentImage: String
+                    kitchenLiveUrl: String
+                    kitchenLiveEnabled: Boolean!
+                }
+
+                """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
+                type CampusPrivacyContact {
+                    protected: Boolean!
+                    display: String
+                    callable: String
+                    provider: String!
+                    expiresAt: DateTime
+                    note: String
                 }
 
                 input CampusStoreConfigInput {
@@ -621,6 +653,17 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
+                    privacyNumberEnabled: Boolean
+                    privacyNumberProvider: String
+                    privacyNumberTtlMinutes: Int
+                    privacyNumberPrefix: String
+                    foodLicenseNo: String
+                    foodLicenseImage: String
+                    foodLicenseExpiry: String
+                    foodSafetyGrade: String
+                    foodSafetyCommitmentImage: String
+                    kitchenLiveUrl: String
+                    kitchenLiveEnabled: Boolean
                 }
 
                 type RiderWithdrawalRequest {
@@ -710,6 +753,46 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     added: Int!
                     skipped: Int!
                     invalid: Int!
+                }
+
+                """在线客服会话（后台列表行）：带顾客姓名/手机号，免去二次查询"""
+                type CampusChatConversation {
+                    id: ID!
+                    customerId: ID!
+                    customerName: String
+                    customerPhone: String
+                    orderCode: String
+                    subject: String
+                    status: String!
+                    lastMessage: String
+                    lastMessageAt: DateTime
+                    lastSenderType: String
+                    unreadForCustomer: Int!
+                    unreadForAdmin: Int!
+                    closedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type CampusChatConversationList {
+                    items: [CampusChatConversation!]!
+                    total: Int!
+                }
+
+                """未读角标：conversationCount 待处理会话数，messageCount 未读消息总数"""
+                type CampusChatUnread {
+                    conversationCount: Int!
+                    messageCount: Int!
+                }
+
+                type CampusChatMessage {
+                    id: ID!
+                    conversationId: ID!
+                    senderType: String!
+                    senderId: ID
+                    content: String
+                    images: [String!]
+                    readAt: DateTime
+                    createdAt: DateTime!
                 }
 
                 type CampusRiderShift {
@@ -838,6 +921,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                     campusMerchantBoard: CampusMerchantBoard!
+                    """商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号"""
+                    campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
                     campusAddressChanges(status: String, orderId: ID, skip: Int, take: Int): [CampusAddressChangeRow!]!
@@ -845,6 +930,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
                     campusSupportTickets(status: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusChatConversations(status: String, unreadOnly: Boolean, skip: Int, take: Int): CampusChatConversationList!
+                    campusChatUnread: CampusChatUnread!
+                    campusAdminChatMessages(conversationId: ID!, afterId: ID, take: Int): [CampusChatMessage!]!
                     campusRiderAppeals(status: String, skip: Int, take: Int): CampusRiderAppealList!
                     campusBlacklist(skip: Int, take: Int): CampusBlacklistList!
                     campusRiderShifts(date: String!): CampusRiderShiftList!
@@ -1046,6 +1134,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """打款失败回退：PAID → FAILED 并退回骑手余额"""
                     campusMarkWithdrawFailed(id: ID!, reason: String!): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
+                    campusReplyChat(conversationId: ID!, content: String, images: [String!]): CampusChatMessage!
+                    campusCloseChatConversation(conversationId: ID!): CampusChatConversation!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
                     campusAddBlacklist(type: String!, value: String!, reason: String): CampusBlacklistEntry!
                     campusImportBlacklist(type: String!, values: [String!]!, reason: String): CampusBlacklistImportResult!
@@ -1126,7 +1216,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1256,6 +1346,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     openNow: Boolean!
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    foodLicenseNo: String
+                    foodLicenseImage: String
+                    foodLicenseExpiry: String
+                    foodSafetyGrade: String
+                    foodSafetyCommitmentImage: String
+                    kitchenLiveUrl: String
+                    kitchenLiveEnabled: Boolean!
+                }
+
+                """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
+                type CampusPrivacyContact {
+                    protected: Boolean!
+                    display: String
+                    callable: String
+                    provider: String!
+                    expiresAt: DateTime
+                    note: String
                 }
 
                 type CampusOrderRider {
@@ -1395,6 +1502,29 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     createdAt: DateTime!
                 }
 
+                """在线客服会话（C 端）：未读数为顾客侧口径"""
+                type CampusMyChatConversation {
+                    id: ID!
+                    orderCode: String
+                    subject: String
+                    status: String!
+                    lastMessage: String
+                    lastMessageAt: DateTime
+                    lastSenderType: String
+                    unreadForCustomer: Int!
+                    createdAt: DateTime!
+                }
+
+                type CampusMyChatMessage {
+                    id: ID!
+                    conversationId: ID!
+                    senderType: String!
+                    content: String
+                    images: [String!]
+                    readAt: DateTime
+                    createdAt: DateTime!
+                }
+
                 type CampusRiderRating {
                     riderCustomerId: ID!
                     avgRating: Float!
@@ -1453,6 +1583,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
+                    """骑手侧顾客联系方式（号码保护）：仅本单骑手可查"""
+                    campusRiderCustomerContact(orderId: ID!): CampusPrivacyContact!
                     campusR2Relay(orderId: ID!): CampusR2Relay
                     campusErrandVariant: CampusErrandVariantResult!
                     myRiderWallet: RiderWallet!
@@ -1463,6 +1595,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """本单最近一次改址的差额状态（待补/待退/已结清）"""
                     campusMyAddressChange(orderId: ID!): CampusMyAddressChange
                     campusMySupportTickets(skip: Int, take: Int): [CampusMySupportTicket!]!
+                    campusMyChatConversations(skip: Int, take: Int): [CampusMyChatConversation!]!
+                    campusChatMessages(conversationId: ID!, afterId: ID, take: Int): [CampusMyChatMessage!]!
                     campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
                     campusMyRiderRating: CampusRiderRating!
                     campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
@@ -1512,12 +1646,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusToggleFavoriteStore(channelId: ID!): [String!]!
                     campusToggleFavoriteVariant(variantId: ID!, channelId: ID!): [CampusFavoriteVariant!]!
                     campusCreateSupportTicket(category: String!, content: String!, images: [String!], orderCode: String): CampusMySupportTicket!
+                    campusStartChat(orderCode: String, subject: String): CampusMyChatConversation!
+                    campusSendChatMessage(conversationId: ID!, content: String, images: [String!]): CampusMyChatMessage!
+                    campusMarkChatRead(conversationId: ID!): CampusMyChatConversation!
+                    campusCloseChat(conversationId: ID!): CampusMyChatConversation!
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
                 }
             `;
             },
-            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;

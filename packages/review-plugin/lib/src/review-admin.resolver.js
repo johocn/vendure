@@ -30,6 +30,10 @@ let ReviewAdminResolver = class ReviewAdminResolver {
     async reviewStats(ctx, productId) {
         return this.reviewService.getReviewStats(ctx, productId);
     }
+    /** 差评申诉列表（P0-4）：status 传申诉状态，缺省列出全部有申诉的评价 */
+    async reviewAppeals(ctx, options) {
+        return this.reviewService.getReviewAppeals(ctx, options);
+    }
     async productRating(ctx, productId) {
         return this.reviewService.getProductRating(ctx, productId);
     }
@@ -41,6 +45,14 @@ let ReviewAdminResolver = class ReviewAdminResolver {
     }
     async rejectReview(ctx, id) {
         return this.reviewService.rejectReview(ctx, id);
+    }
+    /** 差评申诉通过：评价隐藏并退出评分聚合 */
+    async approveReviewAppeal(ctx, id, note) {
+        return this.reviewService.approveReviewAppeal(ctx, id, note);
+    }
+    /** 差评申诉驳回：评价维持原状，仅留痕 */
+    async rejectReviewAppeal(ctx, id, note) {
+        return this.reviewService.rejectReviewAppeal(ctx, id, note);
     }
     async followUps(ctx, review) {
         return this.reviewService.getReviewFollowUps(ctx, review);
@@ -81,6 +93,15 @@ __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.ReadOrder),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ReviewAdminResolver.prototype, "reviewAppeals", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
+    __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('productId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
@@ -114,6 +135,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ReviewAdminResolver.prototype, "rejectReview", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], ReviewAdminResolver.prototype, "approveReviewAppeal", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], ReviewAdminResolver.prototype, "rejectReviewAppeal", null);
 __decorate([
     (0, graphql_1.ResolveField)(),
     __param(0, (0, core_1.Ctx)()),

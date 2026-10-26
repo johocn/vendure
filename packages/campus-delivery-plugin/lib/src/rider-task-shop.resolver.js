@@ -26,6 +26,10 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusMyTasks(ctx, status) {
         return this.riderTaskService.myTasks(ctx, status);
     }
+    /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，返回 display/callable 而非真实号 */
+    async campusRiderCustomerContact(ctx, orderId) {
+        return this.riderTaskService.customerContact(ctx, orderId);
+    }
     /** 需登录：仅下单人本人可查（service 内归属校验） */
     async campusOrderRider(ctx, orderId) {
         return this.riderTaskService.orderRider(ctx, orderId);
@@ -67,6 +71,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusMyTasks", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusRiderCustomerContact", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

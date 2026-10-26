@@ -44,6 +44,11 @@ export interface ReviewListOptions extends ListQueryOptions<Review> {
     /** C 端「有图」筛选：images 非空数组。 */
     hasImages?: boolean;
 }
+/** 差评申诉列表筛选（后台）：status 为申诉状态，缺省列出全部有申诉记录的评价。 */
+export interface ReviewAppealListOptions extends ListQueryOptions<Review> {
+    /** pending / approved / rejected */
+    status?: string;
+}
 export interface RatingCount {
     rating: number;
     count: number;

@@ -64,5 +64,26 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     shiftCheckEnabled: boolean;
     /** 自动拉黑阈值：近 30 天顾客主动取消订单达到该次数自动加入黑名单（0 = 关闭） */
     blacklistAutoCancelCount: number;
+    privacyNumberEnabled: boolean;
+    /** 隐私号服务商：mask=仅脱敏（零依赖兜底），mock=本地虚拟号，aliyun/tencent=外部号池 */
+    privacyNumberProvider: string;
+    /** 虚拟号有效期（分钟），过期后重新申请；仅外部号池 provider 生效 */
+    privacyNumberTtlMinutes: number;
+    /** 隐私号小号区号/号码池前缀（provider 需要时配置） */
+    privacyNumberPrefix: string | null;
+    /** 食安公示：食品经营许可证编号 */
+    foodLicenseNo: string | null;
+    /** 食安公示：许可证照片 URL */
+    foodLicenseImage: string | null;
+    /** 食安公示：许可证到期日 YYYY-MM-DD（临近/过期 C 端标红） */
+    foodLicenseExpiry: string | null;
+    /** 食安公示：量化分级 A/B/C（空=未评级） */
+    foodSafetyGrade: string | null;
+    /** 食安公示：食品安全承诺书照片 URL */
+    foodSafetyCommitmentImage: string | null;
+    /** 食安公示：明厨亮灶直播/回放地址（空=未开通） */
+    kitchenLiveUrl: string | null;
+    /** 食安公示：是否在 C 端展示明厨亮灶入口 */
+    kitchenLiveEnabled: boolean;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

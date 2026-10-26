@@ -8,6 +8,8 @@ export declare class MerchantAdminResolver {
     campusMerchantAcceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号 */
+    campusMerchantCustomerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
     campusMerchantCookingDone(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
