@@ -26,6 +26,13 @@ export class ReviewAdminResolver {
         return this.reviewService.getReviewStats(ctx, productId);
     }
 
+    /** 差评申诉列表（P0-4）：status 传申诉状态，缺省列出全部有申诉的评价 */
+    @Query()
+    @Allow(Permission.ReadOrder)
+    async reviewAppeals(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options: any): Promise<any> {
+        return this.reviewService.getReviewAppeals(ctx, options);
+    }
+
     @Query()
     @Allow(Permission.ReadOrder)
     async productRating(@Ctx() ctx: RequestContext, @Args('productId') productId: ID): Promise<any> {
@@ -52,6 +59,28 @@ export class ReviewAdminResolver {
     @Allow(Permission.UpdateOrder)
     async rejectReview(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<any> {
         return this.reviewService.rejectReview(ctx, id);
+    }
+
+    /** 差评申诉通过：评价隐藏并退出评分聚合 */
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async approveReviewAppeal(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string,
+    ): Promise<any> {
+        return this.reviewService.approveReviewAppeal(ctx, id, note);
+    }
+
+    /** 差评申诉驳回：评价维持原状，仅留痕 */
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async rejectReviewAppeal(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string,
+    ): Promise<any> {
+        return this.reviewService.rejectReviewAppeal(ctx, id, note);
     }
 
     @ResolveField()

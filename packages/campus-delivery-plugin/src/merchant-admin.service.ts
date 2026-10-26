@@ -17,6 +17,7 @@ import { HallService } from './hall.service';
 import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { normalizePrintMode } from './waimai-store.service';
+import { PrivacyNumberService } from './privacy-number.service';
 
 export interface MerchantBoardLine {
     name: string;
@@ -78,7 +79,25 @@ export class MerchantAdminService {
         private notify: CampusNotifyService,
         private thirdParty: ThirdPartyDeliveryService,
         private orderService: OrderService,
+        private privacy: PrivacyNumberService,
     ) {}
+
+    /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
+    async customerContact(ctx: RequestContext, orderId: ID) {
+        const order = await this.connection.getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .where('order.id = :id', { id: orderId as any })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId as any })
+            .getOne();
+        if (!order) throw new UserInputError('订单不存在或不属于当前店铺');
+        return this.privacy.resolve(ctx, {
+            channelId: ctx.channelId,
+            orderCode: order.code,
+            phone: order.customer?.phoneNumber ?? null,
+        });
+    }
 
     async board(ctx: RequestContext): Promise<MerchantBoard> {
         const cfg = await this.config.getConfig(ctx);

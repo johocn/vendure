@@ -20,6 +20,13 @@ export class MerchantAdminResolver {
         return this.merchant.acceptOrder(ctx, orderId);
     }
 
+    /** 商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantCustomerContact(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.customerContact(ctx, orderId);
+    }
+
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantCookingDone(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {

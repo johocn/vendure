@@ -28,8 +28,14 @@ import { campusCustomFields } from './custom-fields';
 import { DeliverySlot } from './delivery-slot.entity';
 import { bindOrderGateConnection, campusOrderGateProcess } from './order-gate.process';
 import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './support.entities';
+import { CampusChatConversation, CampusChatMessage } from './chat.entities';
+import { ChatService } from './chat.service';
+import { ChatAdminResolver } from './chat-admin.resolver';
+import { ChatShopResolver } from './chat-shop.resolver';
 import { CampusRiderReview, CampusRiderSession, CampusRiderShift } from './rider-ops.entities';
 import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
+import { P8P0Migration } from './migrations/p8-p0-privacy-food-safety';
+import { PrivacyNumberService } from './privacy-number.service';
 import { AddWithdrawPayoutMigration } from './migrations/add-withdraw-payout';
 import { AddRiderLocationMigration } from './migrations/add-rider-location';
 import { CampusRiderLocation } from './campus-rider-location.entity';
@@ -110,7 +116,7 @@ import { WaimaiStoreService } from './waimai-store.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -122,6 +128,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P5TimestampTimezoneMigration,
         P6DefaultCompensationMigration,
         P7OpsTablesMigration,
+        P8P0Migration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -129,6 +136,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         CampusConfigService,
         RiderOpsService,
         SupportService,
+        ChatService,
         CampusSmsService,
         CapacityAlertJob,
         BlacklistAutoScanJob,
@@ -149,6 +157,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         R4TagService,
         ShippingProfileEnsureService,
         WaimaiStoreService,
+        PrivacyNumberService,
         MerchantAdminService,
         CampusNotifyService,
         ThirdPartyDeliveryService,
@@ -452,6 +461,29 @@ import { WaimaiStoreService } from './waimai-store.service';
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
                     timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
+                    """号码保护开关：开启后骑手/商家/客服侧不下发顾客真实手机号"""
+                    privacyNumberEnabled: Boolean!
+                    """隐私号服务商：mask / mock / aliyun / tencent"""
+                    privacyNumberProvider: String!
+                    privacyNumberTtlMinutes: Int!
+                    privacyNumberPrefix: String
+                    foodLicenseNo: String
+                    foodLicenseImage: String
+                    foodLicenseExpiry: String
+                    foodSafetyGrade: String
+                    foodSafetyCommitmentImage: String
+                    kitchenLiveUrl: String
+                    kitchenLiveEnabled: Boolean!
+                }
+
+                """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
+                type CampusPrivacyContact {
+                    protected: Boolean!
+                    display: String
+                    callable: String
+                    provider: String!
+                    expiresAt: DateTime
+                    note: String
                 }
 
                 input CampusStoreConfigInput {
@@ -490,6 +522,17 @@ import { WaimaiStoreService } from './waimai-store.service';
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
+                    privacyNumberEnabled: Boolean
+                    privacyNumberProvider: String
+                    privacyNumberTtlMinutes: Int
+                    privacyNumberPrefix: String
+                    foodLicenseNo: String
+                    foodLicenseImage: String
+                    foodLicenseExpiry: String
+                    foodSafetyGrade: String
+                    foodSafetyCommitmentImage: String
+                    kitchenLiveUrl: String
+                    kitchenLiveEnabled: Boolean
                 }
 
                 type RiderWithdrawalRequest {
@@ -579,6 +622,46 @@ import { WaimaiStoreService } from './waimai-store.service';
                     added: Int!
                     skipped: Int!
                     invalid: Int!
+                }
+
+                """在线客服会话（后台列表行）：带顾客姓名/手机号，免去二次查询"""
+                type CampusChatConversation {
+                    id: ID!
+                    customerId: ID!
+                    customerName: String
+                    customerPhone: String
+                    orderCode: String
+                    subject: String
+                    status: String!
+                    lastMessage: String
+                    lastMessageAt: DateTime
+                    lastSenderType: String
+                    unreadForCustomer: Int!
+                    unreadForAdmin: Int!
+                    closedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type CampusChatConversationList {
+                    items: [CampusChatConversation!]!
+                    total: Int!
+                }
+
+                """未读角标：conversationCount 待处理会话数，messageCount 未读消息总数"""
+                type CampusChatUnread {
+                    conversationCount: Int!
+                    messageCount: Int!
+                }
+
+                type CampusChatMessage {
+                    id: ID!
+                    conversationId: ID!
+                    senderType: String!
+                    senderId: ID
+                    content: String
+                    images: [String!]
+                    readAt: DateTime
+                    createdAt: DateTime!
                 }
 
                 type CampusRiderShift {
@@ -707,6 +790,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                     campusMerchantBoard: CampusMerchantBoard!
+                    """商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号"""
+                    campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
                     campusAddressChanges(status: String, orderId: ID, skip: Int, take: Int): [CampusAddressChangeRow!]!
@@ -714,6 +799,9 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
                     campusSupportTickets(status: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusChatConversations(status: String, unreadOnly: Boolean, skip: Int, take: Int): CampusChatConversationList!
+                    campusChatUnread: CampusChatUnread!
+                    campusAdminChatMessages(conversationId: ID!, afterId: ID, take: Int): [CampusChatMessage!]!
                     campusRiderAppeals(status: String, skip: Int, take: Int): CampusRiderAppealList!
                     campusBlacklist(skip: Int, take: Int): CampusBlacklistList!
                     campusRiderShifts(date: String!): CampusRiderShiftList!
@@ -915,6 +1003,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     """打款失败回退：PAID → FAILED 并退回骑手余额"""
                     campusMarkWithdrawFailed(id: ID!, reason: String!): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
+                    campusReplyChat(conversationId: ID!, content: String, images: [String!]): CampusChatMessage!
+                    campusCloseChatConversation(conversationId: ID!): CampusChatConversation!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
                     campusAddBlacklist(type: String!, value: String!, reason: String): CampusBlacklistEntry!
                     campusImportBlacklist(type: String!, values: [String!]!, reason: String): CampusBlacklistImportResult!
@@ -995,7 +1085,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1125,6 +1215,23 @@ import { WaimaiStoreService } from './waimai-store.service';
                     openNow: Boolean!
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    foodLicenseNo: String
+                    foodLicenseImage: String
+                    foodLicenseExpiry: String
+                    foodSafetyGrade: String
+                    foodSafetyCommitmentImage: String
+                    kitchenLiveUrl: String
+                    kitchenLiveEnabled: Boolean!
+                }
+
+                """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
+                type CampusPrivacyContact {
+                    protected: Boolean!
+                    display: String
+                    callable: String
+                    provider: String!
+                    expiresAt: DateTime
+                    note: String
                 }
 
                 type CampusOrderRider {
@@ -1264,6 +1371,29 @@ import { WaimaiStoreService } from './waimai-store.service';
                     createdAt: DateTime!
                 }
 
+                """在线客服会话（C 端）：未读数为顾客侧口径"""
+                type CampusMyChatConversation {
+                    id: ID!
+                    orderCode: String
+                    subject: String
+                    status: String!
+                    lastMessage: String
+                    lastMessageAt: DateTime
+                    lastSenderType: String
+                    unreadForCustomer: Int!
+                    createdAt: DateTime!
+                }
+
+                type CampusMyChatMessage {
+                    id: ID!
+                    conversationId: ID!
+                    senderType: String!
+                    content: String
+                    images: [String!]
+                    readAt: DateTime
+                    createdAt: DateTime!
+                }
+
                 type CampusRiderRating {
                     riderCustomerId: ID!
                     avgRating: Float!
@@ -1322,6 +1452,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
+                    """骑手侧顾客联系方式（号码保护）：仅本单骑手可查"""
+                    campusRiderCustomerContact(orderId: ID!): CampusPrivacyContact!
                     campusR2Relay(orderId: ID!): CampusR2Relay
                     campusErrandVariant: CampusErrandVariantResult!
                     myRiderWallet: RiderWallet!
@@ -1332,6 +1464,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     """本单最近一次改址的差额状态（待补/待退/已结清）"""
                     campusMyAddressChange(orderId: ID!): CampusMyAddressChange
                     campusMySupportTickets(skip: Int, take: Int): [CampusMySupportTicket!]!
+                    campusMyChatConversations(skip: Int, take: Int): [CampusMyChatConversation!]!
+                    campusChatMessages(conversationId: ID!, afterId: ID, take: Int): [CampusMyChatMessage!]!
                     campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
                     campusMyRiderRating: CampusRiderRating!
                     campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
@@ -1381,12 +1515,16 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusToggleFavoriteStore(channelId: ID!): [String!]!
                     campusToggleFavoriteVariant(variantId: ID!, channelId: ID!): [CampusFavoriteVariant!]!
                     campusCreateSupportTicket(category: String!, content: String!, images: [String!], orderCode: String): CampusMySupportTicket!
+                    campusStartChat(orderCode: String, subject: String): CampusMyChatConversation!
+                    campusSendChatMessage(conversationId: ID!, content: String, images: [String!]): CampusMyChatMessage!
+                    campusMarkChatRead(conversationId: ID!): CampusMyChatConversation!
+                    campusCloseChat(conversationId: ID!): CampusMyChatConversation!
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

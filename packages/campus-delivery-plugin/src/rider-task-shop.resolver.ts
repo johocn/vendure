@@ -14,6 +14,13 @@ export class RiderTaskShopResolver {
         return this.riderTaskService.myTasks(ctx, status);
     }
 
+    /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，返回 display/callable 而非真实号 */
+    @Query()
+    @Allow(Permission.Authenticated)
+    async campusRiderCustomerContact(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.riderTaskService.customerContact(ctx, orderId);
+    }
+
     /** 需登录：仅下单人本人可查（service 内归属校验） */
     @Query()
     @Allow(Permission.Authenticated)

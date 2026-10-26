@@ -88,6 +88,18 @@ export class ReviewShopResolver {
         return this.reviewService.markHelpful(ctx, id);
     }
 
+    /** 差评申诉（P0-4）：本人 1-3 星主评，审核通过后评价隐藏 */
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async appealReview(
+        @Ctx() ctx: RequestContext,
+        @Args('reviewId') reviewId: ID,
+        @Args('reason') reason: string,
+        @Args({ name: 'images', type: () => [String], nullable: true }) images?: string[],
+    ): Promise<any> {
+        return this.reviewService.appealReview(ctx, reviewId, reason, images);
+    }
+
     @ResolveField()
     async followUps(@Ctx() ctx: RequestContext, @Parent() review: Review): Promise<any> {
         return this.reviewService.getReviewFollowUps(ctx, review);

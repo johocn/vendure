@@ -45,6 +45,13 @@ const adminSchema = () => gql`
         helpfulCount: Int!
         createdAt: DateTime!
         updatedAt: DateTime!
+        """差评申诉状态：pending / approved（评价已隐藏）/ rejected；null 表示未申诉"""
+        appealStatus: String
+        appealReason: String
+        appealImages: [String!]
+        appealAt: DateTime
+        appealResult: String
+        appealReviewedAt: DateTime
     }
 
     type ReviewList implements PaginatedList {
@@ -56,6 +63,12 @@ const adminSchema = () => gql`
         skip: Int
         take: Int
         productId: ID
+        status: String
+    }
+
+    input ReviewAppealListOptions {
+        skip: Int
+        take: Int
         status: String
     }
 
@@ -84,6 +97,7 @@ const adminSchema = () => gql`
 
     extend type Query {
         reviews(options: ReviewListOptions): ReviewList!
+        reviewAppeals(options: ReviewAppealListOptions): ReviewList!
         review(id: ID!): Review
         reviewStats(productId: ID!): ReviewStats!
         productRating(productId: ID!): ProductRating!
@@ -93,6 +107,10 @@ const adminSchema = () => gql`
         replyReview(id: ID!, reply: String!): Review!
         approveReview(id: ID!): Review!
         rejectReview(id: ID!): Review!
+        """差评申诉审核通过：评价隐藏并退出评分聚合"""
+        approveReviewAppeal(id: ID!, note: String): Review!
+        """差评申诉驳回：评价维持原状，仅留痕"""
+        rejectReviewAppeal(id: ID!, note: String): Review!
     }
 `;
 
@@ -119,6 +137,13 @@ const shopSchema = () => gql`
         helpfulCount: Int!
         createdAt: DateTime!
         updatedAt: DateTime!
+        """差评申诉状态：pending / approved（评价已隐藏）/ rejected；null 表示未申诉"""
+        appealStatus: String
+        appealReason: String
+        appealImages: [String!]
+        appealAt: DateTime
+        appealResult: String
+        appealReviewedAt: DateTime
     }
 
     type ReviewList implements PaginatedList {
@@ -202,6 +227,8 @@ const shopSchema = () => gql`
         deleteReview(id: ID!): Boolean!
         createFollowUpReview(reviewId: ID!, input: FollowUpReviewInput!): Review!
         markReviewHelpful(id: ID!): Review!
+        """差评申诉：仅本人 1-3 星主评，审核通过后评价隐藏"""
+        appealReview(reviewId: ID!, reason: String!, images: [String!]): Review!
     }
 `;
 

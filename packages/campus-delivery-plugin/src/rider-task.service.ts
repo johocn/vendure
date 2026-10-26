@@ -15,6 +15,7 @@ import { CampusNotifyService } from './campus-notify.service';
 import { ERRAND_TIP_SURCHARGE_DESC } from './errand.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallService } from './hall.service';
+import { PrivacyNumberService } from './privacy-number.service';
 import { CREDIT_COMPLETE, RiderCreditService } from './rider-credit.service';
 import { RiderEarning } from './rider-earning.entity';
 import { RiderService } from './rider.service';
@@ -45,8 +46,25 @@ export class RiderTaskService {
         private credit: RiderCreditService,
         private hall: HallService,
         private notify: CampusNotifyService,
+        private privacy: PrivacyNumberService,
         private feishu?: FeishuNotifyService,
     ) {}
+
+    /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，真实号不出服务端。
+     * 未开启号码保护时返回真实号（行为与旧版一致），前端统一用 display/callable 展示与拨号。 */
+    async customerContact(ctx: RequestContext, orderId: ID) {
+        const order = await this.assertOwner(ctx, orderId);
+        const withCustomer = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: order.id as any },
+            relations: ['customer'],
+        });
+        const phone = withCustomer?.customer?.phoneNumber ?? null;
+        return this.privacy.resolve(ctx, {
+            channelId: ctx.channelId,
+            orderCode: withCustomer?.code ?? order.code,
+            phone,
+        });
+    }
 
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
      * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。

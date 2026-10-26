@@ -23,12 +23,13 @@ import { MemberLevelService } from '@vendure/member-level-plugin';
 import { loggerCtx, REVIEW_PLUGIN_OPTIONS } from './constants';
 import { Review } from './review.entity';
 import { ReviewPluginOptions } from './types';
-import { Between, FindOperator, IsNull, LessThanOrEqual, MoreThanOrEqual, SelectQueryBuilder } from 'typeorm';
+import { Between, FindOperator, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, SelectQueryBuilder } from 'typeorm';
 import {
     CreateReviewInput,
     FollowUpReviewInput,
     ProductRating,
     RatingCount,
+    ReviewAppealListOptions,
     ReviewListOptions,
     ReviewStats,
     TagCount,
@@ -39,6 +40,13 @@ const ALLOWED_ORDER_STATES = ['Delivered', 'Completed'];
 /** 对外可见且计入评分聚合的状态。 */
 const VISIBLE_STATUS = 'approved';
 const DELETED_STATUS = 'deleted';
+/** 差评申诉成立后的隐藏态：不展示、不计入评分聚合（保留记录便于追溯）。 */
+const HIDDEN_STATUS = 'hidden';
+/** 可申诉的差评档位（1-3 星）。 */
+const APPEALABLE_MAX_RATING = 3;
+const APPEAL_STATUSES = ['pending', 'approved', 'rejected'];
+const MAX_APPEAL_REASON = 300;
+const MAX_APPEAL_IMAGES = 6;
 
 /**
  * 星级档筛选条件：TypeORM 的同一列不能挂两个 FindOperator，故按入参合并为单个。
@@ -338,6 +346,113 @@ export class ReviewService {
 
     async getReview(ctx: RequestContext, id: ID): Promise<Review> {
         return this.connection.getEntityOrThrow(ctx, Review, id);
+    }
+
+    // ---------------- 差评申诉（P0-4） ----------------
+
+    /**
+     * 顾客对本人差评（1-3 星）发起申诉，诉求为隐藏该评价（内容有误 / 与商家已协商一致等）。
+     * 同一评价同时只允许一条待审核申诉；追评与已删除评价不可申诉。
+     */
+    async appealReview(
+        ctx: RequestContext,
+        reviewId: ID,
+        reason: string,
+        images?: string[] | null,
+    ): Promise<Review> {
+        const customer = await this.requireCustomer(ctx);
+        const review = await this.connection.getEntityOrThrow(ctx, Review, reviewId);
+        if (review.customerId !== customer.id) {
+            throw new ForbiddenError();
+        }
+        if (review.parentId) {
+            throw new UserInputError('追评不支持申诉');
+        }
+        if (review.rating > APPEALABLE_MAX_RATING) {
+            throw new UserInputError(`仅 ${APPEALABLE_MAX_RATING} 星及以下差评可申诉`);
+        }
+        if (review.status === DELETED_STATUS) {
+            throw new UserInputError('已删除的评价不可申诉');
+        }
+        if (review.appealStatus === 'pending') {
+            throw new UserInputError('申诉已提交，请等待审核');
+        }
+        if (review.appealStatus === 'approved') {
+            throw new UserInputError('该评价已申诉通过并隐藏');
+        }
+        const text = String(reason ?? '').trim();
+        if (!text) {
+            throw new UserInputError('请填写申诉理由');
+        }
+        if (text.length > MAX_APPEAL_REASON) {
+            throw new UserInputError(`申诉理由不能超过 ${MAX_APPEAL_REASON} 个字符`);
+        }
+        const imgs = (images ?? []).map(v => String(v ?? '').trim()).filter(Boolean);
+        if (imgs.length > MAX_APPEAL_IMAGES) {
+            throw new UserInputError(`最多上传 ${MAX_APPEAL_IMAGES} 张图片`);
+        }
+        review.appealStatus = 'pending';
+        review.appealReason = text;
+        review.appealImages = imgs.length ? imgs : null;
+        review.appealAt = new Date();
+        review.appealResult = null;
+        review.appealReviewedBy = null;
+        review.appealReviewedAt = null;
+        return this.connection.getRepository(ctx, Review).save(review);
+    }
+
+    /** 后台申诉列表：status 为申诉状态（pending/approved/rejected），缺省列出全部有申诉记录的评价。 */
+    async getReviewAppeals(
+        ctx: RequestContext,
+        options?: ReviewAppealListOptions,
+    ): Promise<PaginatedList<Review>> {
+        if (options?.status && !APPEAL_STATUSES.includes(options.status)) {
+            throw new UserInputError('申诉状态不合法');
+        }
+        return this.listQueryBuilder
+            .build(Review, options, {
+                ctx,
+                relations: ['channels'],
+                channelId: ctx.channelId,
+                where: {
+                    appealStatus: options?.status ?? Not(IsNull()),
+                } as any,
+            })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    /** 申诉审核通过：评价被隐藏（退出展示与评分聚合），结果与审核人留痕。 */
+    async approveReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review> {
+        const review = await this.connection.getEntityOrThrow(ctx, Review, id);
+        if (review.appealStatus !== 'pending') {
+            throw new UserInputError('该申诉已处理');
+        }
+        const wasApprovedRoot = review.status === VISIBLE_STATUS && !review.parentId;
+        review.appealStatus = 'approved';
+        review.appealResult = String(note ?? '').trim() || null;
+        review.appealReviewedBy = String(ctx.activeUserId ?? '');
+        review.appealReviewedAt = new Date();
+        review.status = HIDDEN_STATUS;
+        const saved = await this.connection.getRepository(ctx, Review).save(review);
+        if (wasApprovedRoot) {
+            await this.recomputeProductRating(ctx, saved.productId);
+        }
+        Logger.info(`Review appeal approved for review ${review.id}`, loggerCtx);
+        return saved;
+    }
+
+    /** 申诉驳回：评价维持原状，仅记录审核说明留痕。 */
+    async rejectReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review> {
+        const review = await this.connection.getEntityOrThrow(ctx, Review, id);
+        if (review.appealStatus !== 'pending') {
+            throw new UserInputError('该申诉已处理');
+        }
+        review.appealStatus = 'rejected';
+        review.appealResult = String(note ?? '').trim() || null;
+        review.appealReviewedBy = String(ctx.activeUserId ?? '');
+        review.appealReviewedAt = new Date();
+        return this.connection.getRepository(ctx, Review).save(review);
     }
 
     async getReviews(ctx: RequestContext, options?: ReviewListOptions): Promise<PaginatedList<Review>> {

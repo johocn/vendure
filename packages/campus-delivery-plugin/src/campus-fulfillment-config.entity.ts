@@ -67,6 +67,28 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ default: false }) shiftCheckEnabled: boolean;
     /** 自动拉黑阈值：近 30 天顾客主动取消订单达到该次数自动加入黑名单（0 = 关闭） */
     @Column({ type: 'int', default: 0 }) blacklistAutoCancelCount: number;
+    // 号码保护（P0）：开启后骑手/商家/客服侧只拿到脱敏号或虚拟号，顾客真实号不下发
+    @Column({ default: false }) privacyNumberEnabled: boolean;
+    /** 隐私号服务商：mask=仅脱敏（零依赖兜底），mock=本地虚拟号，aliyun/tencent=外部号池 */
+    @Column({ type: 'varchar', default: 'mask' }) privacyNumberProvider: string;
+    /** 虚拟号有效期（分钟），过期后重新申请；仅外部号池 provider 生效 */
+    @Column({ type: 'int', default: 60 }) privacyNumberTtlMinutes: number;
+    /** 隐私号小号区号/号码池前缀（provider 需要时配置） */
+    @Column({ type: 'varchar', nullable: true }) privacyNumberPrefix: string | null;
+    /** 食安公示：食品经营许可证编号 */
+    @Column({ type: 'varchar', nullable: true }) foodLicenseNo: string | null;
+    /** 食安公示：许可证照片 URL */
+    @Column({ type: 'varchar', nullable: true }) foodLicenseImage: string | null;
+    /** 食安公示：许可证到期日 YYYY-MM-DD（临近/过期 C 端标红） */
+    @Column({ type: 'varchar', nullable: true }) foodLicenseExpiry: string | null;
+    /** 食安公示：量化分级 A/B/C（空=未评级） */
+    @Column({ type: 'varchar', nullable: true }) foodSafetyGrade: string | null;
+    /** 食安公示：食品安全承诺书照片 URL */
+    @Column({ type: 'varchar', nullable: true }) foodSafetyCommitmentImage: string | null;
+    /** 食安公示：明厨亮灶直播/回放地址（空=未开通） */
+    @Column({ type: 'varchar', nullable: true }) kitchenLiveUrl: string | null;
+    /** 食安公示：是否在 C 端展示明厨亮灶入口 */
+    @Column({ default: false }) kitchenLiveEnabled: boolean;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

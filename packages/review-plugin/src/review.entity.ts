@@ -52,4 +52,30 @@ export class Review extends VendureEntity implements ChannelAware {
     /** 审核时间（approve/reject 留痕）；追评窗口以此为基准。 */
     @Column({ type: 'timestamp', nullable: true })
     reviewedAt?: Date | null;
+
+    // ---------------- 差评申诉（P0-4）----------------
+    // 列由 campus-delivery-plugin 的 p8-p0-privacy-food-safety 迁移补齐（iframe 环境 synchronize:false）。
+
+    /** null=未申诉；pending=待审核；approved=申诉成立（评价被隐藏）；rejected=申诉驳回 */
+    @Column({ type: 'varchar', nullable: true })
+    appealStatus: string | null;
+
+    @Column({ type: 'text', nullable: true })
+    appealReason: string | null;
+
+    @Column({ type: 'simple-json', nullable: true })
+    appealImages: string[] | null;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    appealAt: Date | null;
+
+    /** 审核说明（通过/驳回均留痕，同步展示给申诉人） */
+    @Column({ type: 'text', nullable: true })
+    appealResult: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    appealReviewedBy: string | null;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    appealReviewedAt: Date | null;
 }

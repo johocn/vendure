@@ -25,6 +25,14 @@ export interface WaimaiStore {
     openNow: boolean;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 食安公示（未配置的字段为 null，C 端不渲染对应行） */
+    foodLicenseNo: string | null;
+    foodLicenseImage: string | null;
+    foodLicenseExpiry: string | null;
+    foodSafetyGrade: string | null;
+    foodSafetyCommitmentImage: string | null;
+    kitchenLiveUrl: string | null;
+    kitchenLiveEnabled: boolean;
 }
 
 export interface CampusStoreConfigWithChannel {
@@ -67,6 +75,17 @@ export interface CampusStoreConfigWithChannel {
     timeoutCompensationCouponTemplateId: string | null;
     /** 动态计价配置 JSON 字符串（null=关闭，回退分区固定运费） */
     dynamicPricing: string | null;
+    privacyNumberEnabled: boolean;
+    privacyNumberProvider: string;
+    privacyNumberTtlMinutes: number;
+    privacyNumberPrefix: string | null;
+    foodLicenseNo: string | null;
+    foodLicenseImage: string | null;
+    foodLicenseExpiry: string | null;
+    foodSafetyGrade: string | null;
+    foodSafetyCommitmentImage: string | null;
+    kitchenLiveUrl: string | null;
+    kitchenLiveEnabled: boolean;
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
@@ -78,6 +97,10 @@ export function normalizePrintMode(v: unknown): PrintMode {
 }
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
+/** 隐私号服务商白名单：mask=仅脱敏，mock=本地虚拟号，aliyun/tencent=外部号池（缺凭证自动降级为 mask） */
+export const PRIVACY_PROVIDERS = ['mask', 'mock', 'aliyun', 'tencent'] as const;
+/** 食安量化分级：A/B/C（空=未评级） */
+const FOOD_GRADES = ['A', 'B', 'C'] as const;
 
 /** 数值配置合法区间（金额=分，时长=分钟）：与 campus-config 另一写入口同口径，超界直接拒绝 */
 const INT_RANGES: Record<string, [number, number]> = {
@@ -145,6 +168,13 @@ export class WaimaiStoreService {
                 openNow: isWithinBusinessHours(cf.waimaiBusinessHours ?? null) && !cfg.paused,
                 errandBaseFee: cfg.errandBaseFee ?? null,
                 freeShippingThreshold: cfg.freeShippingThreshold ?? null,
+                foodLicenseNo: cfg.foodLicenseNo ?? null,
+                foodLicenseImage: cfg.foodLicenseImage ?? null,
+                foodLicenseExpiry: cfg.foodLicenseExpiry ?? null,
+                foodSafetyGrade: cfg.foodSafetyGrade ?? null,
+                foodSafetyCommitmentImage: cfg.foodSafetyCommitmentImage ?? null,
+                kitchenLiveUrl: cfg.kitchenLiveEnabled ? cfg.kitchenLiveUrl ?? null : null,
+                kitchenLiveEnabled: cfg.kitchenLiveEnabled,
             });
         }
         return stores;
@@ -205,6 +235,17 @@ export class WaimaiStoreService {
             storeLng?: number | null;
             /** 动态计价 JSON 字符串；null/'' = 关闭 */
             dynamicPricing?: string | null;
+            privacyNumberEnabled?: boolean | null;
+            privacyNumberProvider?: string | null;
+            privacyNumberTtlMinutes?: number | null;
+            privacyNumberPrefix?: string | null;
+            foodLicenseNo?: string | null;
+            foodLicenseImage?: string | null;
+            foodLicenseExpiry?: string | null;
+            foodSafetyGrade?: string | null;
+            foodSafetyCommitmentImage?: string | null;
+            kitchenLiveUrl?: string | null;
+            kitchenLiveEnabled?: boolean | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
@@ -363,6 +404,54 @@ export class WaimaiStoreService {
             }
         }
 
+        // 号码保护：provider 白名单 + TTL 区间；外部号池缺凭证时由 PrivacyNumberService 运行时降级为脱敏
+        if (input.privacyNumberEnabled != null) cfg.privacyNumberEnabled = !!input.privacyNumberEnabled;
+        if (input.privacyNumberProvider != null) {
+            const provider = String(input.privacyNumberProvider || '').trim();
+            if (!PRIVACY_PROVIDERS.includes(provider as any)) {
+                throw new UserInputError(`不支持的隐私号服务商: ${provider || '(空)'}（仅接受 ${PRIVACY_PROVIDERS.join('/')}）`);
+            }
+            cfg.privacyNumberProvider = provider;
+        }
+        if (input.privacyNumberTtlMinutes != null) {
+            const ttl = Number(input.privacyNumberTtlMinutes);
+            if (!Number.isInteger(ttl) || ttl < 1 || ttl > 1440) {
+                throw new UserInputError('隐私号有效期必须为 1-1440 的整数（分钟）');
+            }
+            cfg.privacyNumberTtlMinutes = ttl;
+        }
+        if (input.privacyNumberPrefix !== undefined) {
+            cfg.privacyNumberPrefix = String(input.privacyNumberPrefix ?? '').trim() || null;
+        }
+
+        // 食安公示：空串归一为 null（未配置即 C 端不渲染）；等级/到期日做格式校验
+        const nullableText = (v: string | null | undefined) => (v === undefined ? undefined : String(v ?? '').trim() || null);
+        if (input.foodLicenseNo !== undefined) cfg.foodLicenseNo = nullableText(input.foodLicenseNo) ?? null;
+        if (input.foodLicenseImage !== undefined) cfg.foodLicenseImage = nullableText(input.foodLicenseImage) ?? null;
+        if (input.foodSafetyCommitmentImage !== undefined) {
+            cfg.foodSafetyCommitmentImage = nullableText(input.foodSafetyCommitmentImage) ?? null;
+        }
+        if (input.kitchenLiveUrl !== undefined) cfg.kitchenLiveUrl = nullableText(input.kitchenLiveUrl) ?? null;
+        if (input.foodLicenseExpiry !== undefined) {
+            const expiry = nullableText(input.foodLicenseExpiry);
+            if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+                throw new UserInputError('食品经营许可证到期日格式必须为 YYYY-MM-DD');
+            }
+            cfg.foodLicenseExpiry = expiry ?? null;
+        }
+        if (input.foodSafetyGrade !== undefined) {
+            const grade = nullableText(input.foodSafetyGrade);
+            if (grade && !FOOD_GRADES.includes(grade as any)) {
+                throw new UserInputError(`食品安全量化分级仅接受 ${FOOD_GRADES.join('/')}（空=未评级）`);
+            }
+            cfg.foodSafetyGrade = grade ?? null;
+        }
+        if (input.kitchenLiveEnabled != null) cfg.kitchenLiveEnabled = !!input.kitchenLiveEnabled;
+        // 明厨亮灶入口必须真的有地址，避免 C 端出现点不开的死入口
+        if (cfg.kitchenLiveEnabled && !cfg.kitchenLiveUrl) {
+            throw new UserInputError('开启明厨亮灶前请先填写直播/回放地址');
+        }
+
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
         const hasPoint = (r: 'R1' | 'R2') => {
@@ -468,6 +557,17 @@ export class WaimaiStoreService {
             storeLat: cfg?.storeLat ?? null,
             storeLng: cfg?.storeLng ?? null,
             dynamicPricing: cfg?.dynamicPricing ? JSON.stringify(cfg.dynamicPricing) : null,
+            privacyNumberEnabled: cfg?.privacyNumberEnabled ?? false,
+            privacyNumberProvider: cfg?.privacyNumberProvider ?? 'mask',
+            privacyNumberTtlMinutes: cfg?.privacyNumberTtlMinutes ?? 60,
+            privacyNumberPrefix: cfg?.privacyNumberPrefix ?? null,
+            foodLicenseNo: cfg?.foodLicenseNo ?? null,
+            foodLicenseImage: cfg?.foodLicenseImage ?? null,
+            foodLicenseExpiry: cfg?.foodLicenseExpiry ?? null,
+            foodSafetyGrade: cfg?.foodSafetyGrade ?? null,
+            foodSafetyCommitmentImage: cfg?.foodSafetyCommitmentImage ?? null,
+            kitchenLiveUrl: cfg?.kitchenLiveUrl ?? null,
+            kitchenLiveEnabled: cfg?.kitchenLiveEnabled ?? false,
         };
     }
 }
