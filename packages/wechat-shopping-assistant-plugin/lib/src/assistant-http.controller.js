@@ -90,6 +90,11 @@ let AssistantHttpController = class AssistantHttpController {
         // sso 转调附带的绑定用户手机号（路径 A：vendure 未绑定时免输入自动建档）
         const boundPhone = String(body.boundPhone || '').trim() || undefined;
         try {
+            // MsgId 幂等：微信重复投递（回调超时重试）不重复建单/重复回复
+            if (!(await this.assistantService.claimInboundDedup(msg))) {
+                res.json({ handled: false });
+                return;
+            }
             const out = await this.assistantService.processMessage(msg, { boundPhone });
             if (!out) {
                 res.json({ handled: false });

@@ -31,6 +31,8 @@ export type CreateOrderOutcome = {
 export interface PaymentMethodOption {
     code: string;
     name: string;
+    /** 支付处理器 code（如 cash-on-delivery=货到付款，免支付链接） */
+    handlerCode?: string;
 }
 /**
  * 微信对话下单：

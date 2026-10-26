@@ -88,6 +88,13 @@ export declare function buildOrderConfirmCard(touser: string, input: {
         name: string;
         canSwitch?: boolean;
     };
+    /** 门店预计送达分钟数（渠道配置），缺省时提示电话确认 */
+    etaMinutes?: number | null;
+}): TextMessage;
+/** 未达起送价：拒绝建单并提示差额 */
+export declare function buildMinOrderAmountText(touser: string, input: {
+    total: number;
+    minAmount: number;
 }): TextMessage;
 /** 选择支付方式：≥2 个可用时列出编号（0 返回重选地址） */
 export declare function buildPaymentPickText(touser: string, methods: Array<{

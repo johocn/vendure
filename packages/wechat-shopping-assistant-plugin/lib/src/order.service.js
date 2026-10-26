@@ -110,7 +110,7 @@ let AssistantOrderService = class AssistantOrderService {
      * 展示名取当前语言 → en → 首个翻译；未配置翻译时回退 code。
      */
     async listPaymentMethods(ctx) {
-        var _a;
+        var _a, _b;
         const channelId = Number((_a = ctx.channelId) !== null && _a !== void 0 ? _a : 0);
         if (!channelId)
             return [];
@@ -131,7 +131,11 @@ let AssistantOrderService = class AssistantOrderService {
                 if (seen.has(name))
                     continue;
                 seen.add(name);
-                options.push({ code: pm.code, name });
+                options.push({
+                    code: pm.code,
+                    name,
+                    handlerCode: ((_b = pm.handler) === null || _b === void 0 ? void 0 : _b.code) ? String(pm.handler.code) : undefined,
+                });
                 if (options.length >= PAYMENT_METHOD_LIMIT)
                     break;
             }

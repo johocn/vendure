@@ -36,6 +36,8 @@ export type CreateOrderOutcome =
 export interface PaymentMethodOption {
     code: string;
     name: string;
+    /** 支付处理器 code（如 cash-on-delivery=货到付款，免支付链接） */
+    handlerCode?: string;
 }
 
 /** 对话最多展示的支付方式数量（超出时联系客服到收银台选择） */
@@ -168,7 +170,11 @@ export class AssistantOrderService {
                 const name = this.paymentMethodName(pm, ctx.languageCode) || pm.code;
                 if (seen.has(name)) continue;
                 seen.add(name);
-                options.push({ code: pm.code, name });
+                options.push({
+                    code: pm.code,
+                    name,
+                    handlerCode: (pm.handler as any)?.code ? String((pm.handler as any).code) : undefined,
+                });
                 if (options.length >= PAYMENT_METHOD_LIMIT) break;
             }
             return options;

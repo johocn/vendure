@@ -123,8 +123,16 @@ export declare class AssistantService {
     private channelName;
     /** 渠道预计送达分钟数（未配置返回 null → 文案提示电话确认） */
     private channelDeliveryMinutes;
+    /** 渠道起送价（分）；未配置按 0 处理 */
+    private channelMinOrderAmount;
+    /**
+     * 下单前预检（确认卡与建单共用）：
+     * 地址解析 → 租户路由（必要时切店并重搜）→ 配送范围守卫 → 起送价。
+     * 返回 null 表示通过；否则为应直接回复给用户的消息。
+     */
+    private preflightOrder;
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
-    private claimDedup;
+    claimInboundDedup(msg: WechatInboundMessage): Promise<boolean>;
     private resolveChannelId;
     /** 地址流程目标渠道：优先复用既有会话的渠道（用户在该渠道搜的品），无会话按消息渠道 token */
     private resolveSessionChannelId;

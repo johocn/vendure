@@ -24,6 +24,7 @@ exports.maskPhone = maskPhone;
 exports.buildAddressListCard = buildAddressListCard;
 exports.buildAddrOpMenu = buildAddrOpMenu;
 exports.buildOrderConfirmCard = buildOrderConfirmCard;
+exports.buildMinOrderAmountText = buildMinOrderAmountText;
 exports.buildPaymentPickText = buildPaymentPickText;
 exports.buildPaymentMethodsInfoText = buildPaymentMethodsInfoText;
 exports.buildNoPaymentMethodText = buildNoPaymentMethodText;
@@ -273,10 +274,22 @@ function buildOrderConfirmCard(touser, input) {
     if (input.payment) {
         lines.push(`支付方式：${input.payment.name}${input.payment.canSwitch ? '（回复 9 更换）' : ''}`);
     }
+    lines.push(input.etaMinutes != null
+        ? `预计送达：约 ${input.etaMinutes} 分钟`
+        : '预计送达：门店电话确认送达时间');
     lines.push(((_a = input.payment) === null || _a === void 0 ? void 0 : _a.canSwitch)
         ? '回复 1 确认下单，回复 0 重选地址，回复 9 换支付方式'
         : '回复 1 确认下单，回复 0 重选地址');
     return { kind: 'text', touser, content: lines.join('\n') };
+}
+/** 未达起送价：拒绝建单并提示差额 */
+function buildMinOrderAmountText(touser, input) {
+    const diff = Math.max(input.minAmount - input.total, 0);
+    return {
+        kind: 'text',
+        touser,
+        content: `本店 ${formatPrice(input.minAmount)} 起送，当前合计 ${formatPrice(input.total)}，还差 ${formatPrice(diff)}。\n请继续回复商品名加购，或回复「客服」联系门店。\n${exports.SUPPORT_HINT}`,
+    };
 }
 /** 选择支付方式：≥2 个可用时列出编号（0 返回重选地址） */
 function buildPaymentPickText(touser, methods, lead) {

@@ -15,7 +15,7 @@ import { Channel, Customer } from '@vendure/core';
 
 // ============ 假件 ============
 
-function makeConnection() {
+function makeConnection(channelFields: Record<string, any> = {}) {
     const processed = new Set<string>();
     const sessions = new Map<string, any>();
     const customers = new Map<string, { id: number }>();
@@ -52,6 +52,7 @@ function makeConnection() {
                 shopName: '东利民粮油店',
                 shopIntro: '只做米、面、油 · 丰满区江南城区免费送货上门',
                 domain: 'www.youshop.cn/official-20',
+                ...channelFields,
             },
         }),
     };
@@ -181,9 +182,10 @@ function makeService(
         supportTickets?: any;
         guard?: any;
         route?: any;
+        channelFields?: Record<string, any>;
     } = {},
 ) {
-    const connection = makeConnection();
+    const connection = makeConnection(overrides.channelFields);
     const outbound: any[] = [];
     const sender = {
         setEchoMode: () => {},
@@ -536,23 +538,14 @@ describe('AssistantService 冒烟闭环', () => {
         expect(binding.calls[0].address).toBe('上海市浦东新区世纪大道100号');
     });
 
-    test('已绑定回复「买1」→ 地址列表 → 选址 → 确认卡 → 下单；重复 MsgId 跳过', async () => {
+    test('已绑定回复「买1」→ 默认地址直达确认卡 → 下单；重复 MsgId 跳过', async () => {
         const order = makeOrderStub(null);
         const { svc, connection, outbound } = makeService({ order });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
-        // 地址列表卡（⭐ 默认置顶），进入选址态
+        // 默认地址直接进确认卡（收货人/电话打码/地址），不再先列地址
         let last = outbound[outbound.length - 1];
-        expect(last.content).toContain('请选择收货地址');
-        expect(last.content).toContain('1 ⭐');
-        expect(last.content).toContain('张三');
-        expect(last.content).toContain('138****8000');
-        expect(last.content).toContain('回复 0 新增地址');
-        expect(connection.sessions.get('openid-user-1').state).toBe('addr_pick');
-        // 选地址 1 → 下单确认卡（收货人/电话打码/地址）
-        await svc.onMessage(textEvent('1', 'M3'));
-        last = outbound[outbound.length - 1];
         expect(last.content).toContain('海天生抽酱油 500ml ×1');
         expect(last.content).toContain('¥8.90');
         expect(last.content).toContain('收货人：张三');
@@ -561,7 +554,7 @@ describe('AssistantService 冒烟闭环', () => {
         expect(last.content).toContain('回复 1 确认下单');
         expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
         // 确认下单
-        await svc.onMessage(textEvent('1', 'M4'));
+        await svc.onMessage(textEvent('1', 'M3'));
         expect(order.calls.length).toBe(1);
         expect(order.calls[0].selections).toEqual([{ productId: '11', quantity: 1 }]);
         expect(order.calls[0].address).toEqual({
@@ -576,30 +569,28 @@ describe('AssistantService 冒烟闭环', () => {
         expect(connection.sessions.get('openid-user-1').state).toBeNull();
 
         // 微信重试：同 MsgId 再推一次 → 不重复下单
-        await svc.onMessage(textEvent('1', 'M4'));
+        await svc.onMessage(textEvent('1', 'M3'));
         expect(order.calls.length).toBe(1);
-        expect(outbound.length).toBe(4);
+        expect(outbound.length).toBe(3);
     });
 
-    test('「买2瓶酱油」数量进会话并用于下单（选址 → 确认四步）', async () => {
+    test('「买2瓶酱油」数量进会话并用于下单（确认卡 → 确认两步）', async () => {
         const order = makeOrderStub(null);
         const { svc, connection } = makeService({ order });
         connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
         await svc.onMessage(textEvent('买2瓶酱油', 'M1'));
         await svc.onMessage(textEvent('1', 'M2'));
         await svc.onMessage(textEvent('1', 'M3'));
-        await svc.onMessage(textEvent('1', 'M4'));
         expect(order.calls[0].selections).toEqual([{ productId: '11', quantity: 2 }]);
     });
 
-    test('库存不足 → 库存不足文案（选址确认后）', async () => {
+    test('库存不足 → 库存不足文案（确认卡确认后）', async () => {
         const order = makeOrderStub('stock');
         const { svc, connection, outbound } = makeService({ order });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
         await svc.onMessage(textEvent('1', 'M3'));
-        await svc.onMessage(textEvent('1', 'M4'));
         expect(outbound[outbound.length - 1].content).toContain('库存不足');
     });
 
@@ -794,9 +785,8 @@ describe('AssistantService 地址簿管理 + 下单选址（方案 B）', () => 
         const { svc, connection, outbound } = makeService({ order });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
-        await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3')); // 进确认卡
-        await svc.onMessage(textEvent('0', 'M4')); // 重选
+        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址 → 确认卡
+        await svc.onMessage(textEvent('0', 'M3')); // 重选
         const last = outbound[outbound.length - 1];
         expect(last.content).toContain('请选择收货地址');
         expect(connection.sessions.get('openid-user-1').state).toBe('addr_pick');
@@ -838,30 +828,30 @@ describe('AssistantService 地址簿管理 + 下单选址（方案 B）', () => 
         expect(outbound[outbound.length - 1].content).toContain('请回复新的收货地址');
     });
 
-    test('地址管理流中发「买1」→ 放行下单（重新列地址，order 上下文）', async () => {
+    test('地址管理流中发「买1」→ 放行下单（默认地址直达确认卡，order 上下文）', async () => {
         const { svc, connection, outbound } = makeService();
         connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('地址管理', 'M2')); // 进入管理流 flow=manage
         await svc.onMessage(textEvent('买1', 'M3')); // 改主意下单
         const last = outbound[outbound.length - 1];
-        expect(last.content).toContain('请选择收货地址');
+        expect(last.content).toContain('回复 1 确认下单');
         const session = connection.sessions.get('openid-user-1');
-        expect(session.state).toBe('addr_pick');
+        expect(session.state).toBe('order_confirm');
         expect(session.draft.flow).toBe('order');
         expect(session.draft.indices).toEqual([1]);
     });
 
-    test('下单选址流中改发「买2」→ 重新列地址并更新编号', async () => {
+    test('下单确认态改发「买2」→ 重新确认并更新编号', async () => {
         const { svc, connection, outbound } = makeService();
         connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
-        await svc.onMessage(textEvent('买1', 'M2')); // 地址列表 indices=[1]
+        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址直达确认卡 indices=[1]
         await svc.onMessage(textEvent('买2', 'M3')); // 改买第 2 个
         const last = outbound[outbound.length - 1];
-        expect(last.content).toContain('请选择收货地址');
+        expect(last.content).toContain('回复 1 确认下单');
         const session = connection.sessions.get('openid-user-1');
-        expect(session.state).toBe('addr_pick');
+        expect(session.state).toBe('order_confirm');
         expect(session.draft.flow).toBe('order');
         expect(session.draft.indices).toEqual([2]);
     });
@@ -1115,18 +1105,17 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
         connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
 
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
-        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址 → 地址选址
-        await svc.onMessage(textEvent('1', 'M3')); // 选地址 → 下单确认
+        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址 → 下单确认
         expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
 
-        await svc.onMessage(textEvent('客服', 'M4'));
+        await svc.onMessage(textEvent('客服', 'M3'));
         const last = outbound[outbound.length - 1];
         expect(last.content).toContain('关于这单：海天生抽酱油 500ml ×1');
         // 状态机未被打断
         expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
 
         // 仍可继续确认下单
-        await svc.onMessage(textEvent('1', 'M5'));
+        await svc.onMessage(textEvent('1', 'M4'));
         expect(outbound[outbound.length - 1].content).toContain('下单成功');
     });
 
@@ -1182,11 +1171,10 @@ describe('AssistantService 一键客服（全局生效，不打断状态机）',
 });
 
 describe('AssistantService 留言工单（≤200 字落库，保存后恢复原流程）', () => {
-    /** 走到下单确认态：搜索 → 买1 → 选默认地址 */
+    /** 走到下单确认态：搜索 → 买1（默认地址直达） */
     async function toOrderConfirm(svc: AssistantService) {
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3'));
     }
 
     test('下单确认态留言 → 工单落库（含商品上下文）→ 状态恢复可继续下单', async () => {
@@ -1240,7 +1228,7 @@ describe('AssistantService 留言工单（≤200 字落库，保存后恢复原�
 describe('AssistantService 支付方式（按租户渠道配置）', () => {
     const TWO_METHODS = [
         { code: 'wechatpay', name: '微信支付' },
-        { code: 'cash-on-delivery', name: '门店收银' },
+        { code: 'cash-on-delivery', name: '门店收银', handlerCode: 'cash-on-delivery' },
     ];
 
     test('「支付方式」查询 → 按渠道配置列出编号', async () => {
@@ -1261,31 +1249,31 @@ describe('AssistantService 支付方式（按租户渠道配置）', () => {
         expect(outbound[outbound.length - 1].content).toContain('本店暂未开通在线支付');
 
         await svc.onMessage(textEvent('买一瓶酱油', 'M2'));
-        await svc.onMessage(textEvent('买1', 'M3'));
-        await svc.onMessage(textEvent('1', 'M4')); // 选地址 → 确认时发现无支付方式
+        await svc.onMessage(textEvent('买1', 'M3')); // 默认地址 → 确认时发现无支付方式
         expect(outbound[outbound.length - 1].content).toContain('本店暂未开通在线支付');
         expect(order.calls).toHaveLength(0);
         expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
     });
 
-    test('多渠道：选址后先选支付方式（reply 2）→ 确认卡展示所选 → 下单成功带支付方式', async () => {
+    test('多渠道：默认地址后先选支付方式（reply 2）→ 确认卡展示所选 → 下单成功带支付方式且货到付款无支付链接', async () => {
         const order = makeOrderStub(null, TWO_METHODS);
         const { svc, connection, outbound } = makeService({ order });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3')); // 选默认地址
         let last = outbound[outbound.length - 1];
         expect(last.content).toContain('请选择支付方式');
         expect(connection.sessions.get('openid-user-1').state).toBe('pay_pick');
-        await svc.onMessage(textEvent('2', 'M4')); // 门店收银
+        await svc.onMessage(textEvent('2', 'M3')); // 门店收银
         last = outbound[outbound.length - 1];
         expect(last.content).toContain('支付方式：门店收银');
         expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
-        await svc.onMessage(textEvent('1', 'M5'));
+        await svc.onMessage(textEvent('1', 'M4'));
         last = outbound[outbound.length - 1];
         expect(last.content).toContain('下单成功');
         expect(last.content).toContain('支付方式：门店收银');
+        // 货到付款/门店收银：不传支付链接
+        expect(last.content).not.toContain('点击支付');
         expect(order.calls).toHaveLength(1);
     });
 
@@ -1295,7 +1283,6 @@ describe('AssistantService 支付方式（按租户渠道配置）', () => {
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3'));
         const last = outbound[outbound.length - 1];
         expect(last.content).toContain('支付方式：微信支付');
         expect(last.content).toContain('回复 1 确认下单');
@@ -1308,8 +1295,7 @@ describe('AssistantService 支付方式（按租户渠道配置）', () => {
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3'));
-        await svc.onMessage(textEvent('1', 'M4')); // 微信支付
+        await svc.onMessage(textEvent('1', 'M3')); // 微信支付
         let last = outbound[outbound.length - 1];
         expect(last.content).toContain('支付方式：微信支付');
         await svc.onMessage(textEvent('9', 'M5'));
@@ -1336,9 +1322,7 @@ describe('AssistantService 城市路由与配送守卫', () => {
         });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
-        await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3')); // 选地址 → 确认卡
-        await svc.onMessage(textEvent('1', 'M4')); // 确认下单 → 被守卫拦截
+        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址 → 确认卡前被守卫拦截
         const last = outbound[outbound.length - 1];
         expect(last.content).toContain('不在配送范围');
         expect(last.content).toContain('3 公里');
@@ -1366,9 +1350,7 @@ describe('AssistantService 城市路由与配送守卫', () => {
         });
         connection.customers.set('openid-user-1', { id: 42 });
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
-        await svc.onMessage(textEvent('买1', 'M2'));
-        await svc.onMessage(textEvent('1', 'M3'));
-        await svc.onMessage(textEvent('1', 'M4'));
+        await svc.onMessage(textEvent('买1', 'M2')); // 默认地址 → 确认卡前切店
         const last = outbound[outbound.length - 1];
         expect(last.content).toContain('已为你切换到「东利民」');
         expect(order.calls.length).toBe(0);
@@ -1377,5 +1359,58 @@ describe('AssistantService 城市路由与配送守卫', () => {
         const session = connection.sessions.get('openid-user-1');
         expect(session.channelId).toBe('111');
         expect(session.results.length).toBeGreaterThan(0);
+    });
+});
+
+describe('AssistantService 起送价与预计送达（渠道装修配置）', () => {
+    test('未达起送价 → 差额提示，不展示确认卡', async () => {
+        const order = makeOrderStub(null);
+        const { svc, connection, outbound } = makeService({
+            order,
+            // 起送价 ¥10.00（分），当前商品 ¥8.90
+            channelFields: { minOrderAmount: 1000 },
+        });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('本店 ¥10.00 起送');
+        expect(last.content).toContain('当前合计 ¥8.90');
+        expect(last.content).toContain('还差 ¥1.10');
+        expect(last.content).not.toContain('回复 1 确认下单');
+        expect(connection.sessions.get('openid-user-1').state ?? null).toBeNull();
+        expect(order.calls).toHaveLength(0);
+    });
+
+    test('达到起送价 → 正常展示确认卡', async () => {
+        const order = makeOrderStub(null);
+        const { svc, connection, outbound } = makeService({
+            order,
+            channelFields: { minOrderAmount: 890 },
+        });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        expect(outbound[outbound.length - 1].content).toContain('回复 1 确认下单');
+        expect(connection.sessions.get('openid-user-1').state).toBe('order_confirm');
+    });
+
+    test('渠道配置预计送达 → 确认卡与下单成功文案带时效', async () => {
+        const order = makeOrderStub(null);
+        const { svc, connection, outbound } = makeService({ order, channelFields: { deliveryMinutes: 45 } });
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        expect(outbound[outbound.length - 1].content).toContain('预计送达：约 45 分钟');
+        await svc.onMessage(textEvent('1', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('预计送达：约 45 分钟');
+    });
+
+    test('渠道未配置预计送达 → 提示门店电话确认', async () => {
+        const { svc, connection, outbound } = makeService({});
+        connection.customers.set('openid-user-1', { id: 42 });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        expect(outbound[outbound.length - 1].content).toContain('预计送达：门店电话确认送达时间');
     });
 });

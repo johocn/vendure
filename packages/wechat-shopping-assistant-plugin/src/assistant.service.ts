@@ -40,6 +40,7 @@ import {
     buildLocationInvalidText,
     buildLocationRecognizedText,
     buildLocationUnavailableText,
+    buildMinOrderAmountText,
     buildNearbyStoresText,
     buildNewsMessage,
     buildNoNearbyStoresText,
@@ -142,7 +143,7 @@ export class AssistantService {
 
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private async handle(msg: WechatInboundMessage): Promise<void> {
-        if (!(await this.claimDedup(msg))) return;
+        if (!(await this.claimInboundDedup(msg))) return;
         const out = await this.processMessage(msg);
         if (!out) return;
         const credentials = await this.credentialService.resolveForChannel(msg.channelToken, {});
@@ -1201,6 +1202,10 @@ export class AssistantService {
             items[0];
         if (!address) return buildAddressListCard(touser, [], 'order');
 
+        // 配送守卫/切店/起送价前移到确认卡之前：不通过则不展示确认卡
+        const blocked = await this.preflightOrder(ctx, touser, session, picked, address);
+        if (blocked) return blocked;
+
         // 支付方式完全由渠道配置驱动：0 个不建单；1 个自动选中；≥2 个先让用户选
         const ttl = this.opts.sessionTtlMinutes ?? 30;
         const methods = await this.orderService.listPaymentMethods(ctx);
@@ -1225,6 +1230,7 @@ export class AssistantService {
             total: picked.reduce((s, p) => s + p.price * (p.quantity ?? 1), 0),
             address,
             payment: { name: selected.name, canSwitch: methods.length > 1 },
+            etaMinutes: await this.channelDeliveryMinutes(session.channelId),
         });
     }
 
@@ -1377,13 +1383,24 @@ export class AssistantService {
             return buildBindGuideText(msg.fromUserName, this.loginUrl());
         }
 
-        // 已绑定：出地址列表选址（⭐默认置顶），无地址直接进新增
+        // 已绑定：默认地址直接用（守卫/起送价在确认卡前校验），否则出地址列表选址
         const ctx = await this.createShopCtx(session.channelId);
         const ttl = this.opts.sessionTtlMinutes ?? 30;
         const addressItems = await this.addressBook.list(ctx, customer.id);
         if (!addressItems.length) {
             await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', { indices, flow: 'order' }, ttl);
             return buildAddressListCard(msg.fromUserName, [], 'order');
+        }
+        const defaultAddr = addressItems.find(a => a.isDefault);
+        if (defaultAddr) {
+            const draft: AssistantFlowDraft = {
+                indices,
+                flow: 'order',
+                pickIndex: defaultAddr.index,
+                pickAddressId: defaultAddr.id,
+            };
+            await this.sessionService.setFlow(msg.fromUserName, 'order_confirm', draft, ttl);
+            return this.orderConfirmCard(ctx, msg.fromUserName, session, draft);
         }
         await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { indices, flow: 'order' }, ttl);
         return buildAddressListCard(msg.fromUserName, addressItems, 'order');
@@ -1399,9 +1416,9 @@ export class AssistantService {
         ctx: RequestContext,
         touser: string,
         customer: Customer,
-        picked: Array<{ productId: string; quantity?: number; title: string }>,
+        picked: Array<{ productId: string; quantity?: number; title: string; price?: number }>,
         addressId?: string,
-        payment?: { code: string; name: string },
+        payment?: { code: string; name: string; handlerCode?: string },
     ): Promise<OutboundMessage> {
         // 渠道未配置可用支付方式 → 不建单（后台关闭后下一次会话立即生效）
         const methods = await this.orderService.listPaymentMethods(ctx);
@@ -1422,82 +1439,10 @@ export class AssistantService {
         if (addrItem) {
             Logger.info(`Assistant order shipping address: addressId=${addrItem.id}`, loggerCtx);
         }
-        // 城市路由：解析地址 → 匹配租户 → 切换或校验范围（可用 ASSISTANT_CITY_ROUTING=off 关闭）
-        const routingOn = process.env.ASSISTANT_CITY_ROUTING !== 'off';
-        if (routingOn && addrItem?.streetLine1) {
-            const parsed = await this.deliveryGuard.parse(
-                ctx,
-                addrItem.streetLine1,
-                // 地址簿已存坐标：地理编码超时/失败时用它兜底判定城市
-                addrItem.latitude != null && addrItem.longitude != null
-                    ? { lat: Number(addrItem.latitude), lng: Number(addrItem.longitude) }
-                    : null,
-            );
-            if (!parsed) {
-                return buildOrderFailText(touser, '配送校验暂时不可用，请稍后再试');
-            }
-            const route = await this.tenantRouter.resolve(ctx, {
-                cityCode: parsed.cityCode,
-                currentChannelId: String(ctx.channelId),
-                lat: parsed.lat,
-                lng: parsed.lng,
-            });
-            // 排序第一的渠道不是当前渠道 → 切店（当前渠道即使也在候选内，精度/优先级更低时也要让位）
-            const target =
-                route.chosen && route.chosen.channelId !== String(ctx.channelId) ? route.chosen : null;
-            if (target) {
-                // 切店：用原关键词在新渠道重搜，结果写回会话（channelId 一并切换），让用户重新回编号
-                const session = await this.sessionService.getActive(touser);
-                const query = session?.query?.trim() ?? '';
-                await this.sessionService.saveDraft(
-                    touser,
-                    { cityCode: parsed.cityCode, resolvedChannelId: target.channelId, pendingQuery: query || null },
-                    this.opts.sessionTtlMinutes ?? 30,
-                );
-                let hits: CardProduct[] = [];
-                if (query) {
-                    try {
-                        hits = await this.searchService.searchProducts({
-                            query,
-                            channelId: target.channelId,
-                            locale: this.opts.searchLocale ?? 'zh',
-                            limit: this.opts.searchLimit ?? 5,
-                            storefrontUrl: this.storefront(),
-                            productUrlTemplate: this.opts.productUrlTemplate,
-                        });
-                    } catch (e) {
-                        Logger.warn(`Assistant switch-channel search failed: ${String(e)}`, loggerCtx);
-                    }
-                }
-                // 无论新店是否有货都切会话渠道并覆盖结果：否则旧店编号仍可下单，会在守卫处反复切店
-                await this.sessionService.saveResults(
-                    touser,
-                    target.channelId,
-                    hits.map(h => ({ ...h, quantity: picked[0]?.quantity ?? 1 })),
-                    query,
-                    this.opts.sessionTtlMinutes ?? 30,
-                );
-                await this.sessionService.clearFlow(touser);
-                Logger.info(
-                    `Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode} hits=${hits.length}`,
-                    loggerCtx,
-                );
-                return query && !hits.length
-                    ? buildChannelSwitchNoMatchText(touser, target.channelName, query)
-                    : buildChannelSwitchText(touser, target.channelName);
-            }
-            const guard = await this.deliveryGuard.checkParsed(ctx, String(ctx.channelId), parsed);
-            if (guard.status === 'UNKNOWN') {
-                return buildOrderFailText(touser, '配送校验暂时不可用，请稍后再试');
-            }
-            if (guard.status === 'OUT_OF_RANGE') {
-                return buildOutOfRangeText(touser, {
-                    address: addrItem.streetLine1,
-                    serviceAreaText: guard.serviceAreaText,
-                    channelName: await this.channelName(String(ctx.channelId)),
-                });
-            }
-        }
+        // 下单前二次兜底：租户路由 / 配送守卫 / 起送价（确认卡前已校验一次，防止后台配置变化）
+        const session = await this.sessionService.getActive(touser);
+        const blocked = await this.preflightOrder(ctx, touser, session, picked, addrItem);
+        if (blocked) return blocked;
         const outcome = await this.orderService.createOrder(
             ctx,
             customer,
@@ -1507,7 +1452,11 @@ export class AssistantService {
 
         switch (outcome.status) {
             case 'ok': {
-                const payUrl = this.payUrl(outcome.order.code);
+                // 货到付款/门店收银（cash-on-delivery）无需支付链接
+                const payUrl =
+                    selected.handlerCode === 'cash-on-delivery'
+                        ? undefined
+                        : this.payUrl(outcome.order.code);
                 Logger.info(`Assistant order created: ${outcome.order.code}`, loggerCtx);
                 return buildOrderSuccessText(touser, {
                     orderCode: outcome.order.code,
@@ -1542,8 +1491,118 @@ export class AssistantService {
         return cf.deliveryMinutes != null ? Number(cf.deliveryMinutes) : null;
     }
 
+    /** 渠道起送价（分）；未配置按 0 处理 */
+    private async channelMinOrderAmount(channelId: string): Promise<number> {
+        const ch = await this.connection.getRepository(Channel).findOne({ where: { id: channelId as any } });
+        const cf = (ch?.customFields ?? {}) as any;
+        return cf.minOrderAmount != null ? Math.max(Number(cf.minOrderAmount), 0) : 0;
+    }
+
+    /**
+     * 下单前预检（确认卡与建单共用）：
+     * 地址解析 → 租户路由（必要时切店并重搜）→ 配送范围守卫 → 起送价。
+     * 返回 null 表示通过；否则为应直接回复给用户的消息。
+     */
+    private async preflightOrder(
+        ctx: RequestContext,
+        touser: string,
+        session: WechatShoppingSession | null,
+        picked: Array<{ price?: number; quantity?: number }>,
+        address?: { streetLine1: string; latitude?: number | null; longitude?: number | null } | null,
+    ): Promise<OutboundMessage | null> {
+        const routingOn = process.env.ASSISTANT_CITY_ROUTING !== 'off';
+        if (routingOn && address?.streetLine1) {
+            const parsed = await this.deliveryGuard.parse(
+                ctx,
+                address.streetLine1,
+                // 地址簿已存坐标：地理编码超时/失败时用它兜底判定城市
+                address.latitude != null && address.longitude != null
+                    ? { lat: Number(address.latitude), lng: Number(address.longitude) }
+                    : null,
+            );
+            if (!parsed) {
+                return buildOrderFailText(touser, '配送校验暂时不可用，请稍后再试');
+            }
+            const route = await this.tenantRouter.resolve(ctx, {
+                cityCode: parsed.cityCode,
+                currentChannelId: String(ctx.channelId),
+                lat: parsed.lat,
+                lng: parsed.lng,
+            });
+            // 排序第一的渠道不是当前渠道 → 切店（当前渠道即使也在候选内，精度/优先级更低时也要让位）
+            const target =
+                route.chosen && route.chosen.channelId !== String(ctx.channelId) ? route.chosen : null;
+            if (target) {
+                if (!session) {
+                    return buildOrderFailText(touser, '会话已过期，请重新发送商品名');
+                }
+                // 切店：用原关键词在新渠道重搜，结果写回会话（channelId 一并切换），让用户重新回编号
+                const query = session.query?.trim() ?? '';
+                const ttl = this.opts.sessionTtlMinutes ?? 30;
+                await this.sessionService.saveDraft(
+                    touser,
+                    { cityCode: parsed.cityCode, resolvedChannelId: target.channelId, pendingQuery: query || null },
+                    ttl,
+                );
+                let hits: CardProduct[] = [];
+                if (query) {
+                    try {
+                        hits = await this.searchService.searchProducts({
+                            query,
+                            channelId: target.channelId,
+                            locale: this.opts.searchLocale ?? 'zh',
+                            limit: this.opts.searchLimit ?? 5,
+                            storefrontUrl: this.storefront(),
+                            productUrlTemplate: this.opts.productUrlTemplate,
+                        });
+                    } catch (e) {
+                        Logger.warn(`Assistant switch-channel search failed: ${String(e)}`, loggerCtx);
+                    }
+                }
+                // 无论新店是否有货都切会话渠道并覆盖结果：否则旧店编号仍可下单，会在守卫处反复切店
+                await this.sessionService.saveResults(
+                    touser,
+                    target.channelId,
+                    hits.map(h => ({ ...h, quantity: picked[0]?.quantity ?? 1 })),
+                    query,
+                    ttl,
+                );
+                await this.sessionService.clearFlow(touser);
+                Logger.info(
+                    `Assistant channel switched: ${ctx.channelId} → ${target.channelId} city=${parsed.cityCode} hits=${hits.length}`,
+                    loggerCtx,
+                );
+                return query && !hits.length
+                    ? buildChannelSwitchNoMatchText(touser, target.channelName, query)
+                    : buildChannelSwitchText(touser, target.channelName);
+            }
+            const guard = await this.deliveryGuard.checkParsed(ctx, String(ctx.channelId), parsed);
+            if (guard.status === 'UNKNOWN') {
+                return buildOrderFailText(touser, '配送校验暂时不可用，请稍后再试');
+            }
+            if (guard.status === 'OUT_OF_RANGE') {
+                return buildOutOfRangeText(touser, {
+                    address: address.streetLine1,
+                    serviceAreaText: guard.serviceAreaText,
+                    channelName: await this.channelName(String(ctx.channelId)),
+                });
+            }
+        }
+        const total = picked.reduce((sum, p) => sum + (p.price ?? 0) * (p.quantity ?? 1), 0);
+        const minAmount = await this.channelMinOrderAmount(String(ctx.channelId));
+        if (minAmount > 0 && total < minAmount) {
+            await this.sessionService.clearFlow(touser);
+            Logger.info(
+                `Assistant order blocked by minOrderAmount: channel=${ctx.channelId} total=${total} min=${minAmount}`,
+                loggerCtx,
+            );
+            return buildMinOrderAmountText(touser, { total, minAmount });
+        }
+        return null;
+    }
+
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
-    private async claimDedup(msg: WechatInboundMessage): Promise<boolean> {
+    async claimInboundDedup(msg: WechatInboundMessage): Promise<boolean> {
         const dedupKey = buildDedupKey(msg);
         try {
             await this.connection.getRepository(WechatProcessedMessage).insert({
