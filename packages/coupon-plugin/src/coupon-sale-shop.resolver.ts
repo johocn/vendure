@@ -35,8 +35,14 @@ export class CouponSaleShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('templateId', { nullable: true }) templateId?: ID,
         @Args('bundleId', { nullable: true }) bundleId?: ID,
+        @Args('storeId', { nullable: true }) storeId?: ID,
     ) {
-        return this.couponSaleService.createSaleOrder(ctx, templateId ?? null, bundleId ?? null);
+        return this.couponSaleService.createSaleOrder(
+            ctx,
+            templateId ?? null,
+            bundleId ?? null,
+            storeId ?? null,
+        );
     }
 
     @Mutation()

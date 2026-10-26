@@ -18,7 +18,7 @@ import { BillPaySettlement } from './bill-pay-settlement.entity';
 import { BillPayShopResolver } from './bill-pay-shop.resolver';
 import { BillPayPermissions, loggerCtx } from './constants';
 import { MerchantAgreement } from './merchant-agreement.entity';
-import { CreateBillPayTablesMigration } from './migrations';
+import { AddBillPayCouponColumnsMigration, CreateBillPayTablesMigration } from './migrations';
 
 const billPayOrderType = `
 type BillPayOrder implements Node {
@@ -32,6 +32,8 @@ type BillPayOrder implements Node {
     quoteAmount: Int
     actualAmount: Int
     discountDetail: JSON
+    couponCode: String
+    couponDiscount: Int
     status: BillPayStatus!
     remark: String
     quoteNote: String
@@ -63,6 +65,7 @@ input CreateBillPayOrderInput {
     merchantName: String!
     expectedAmount: Int!
     remark: String
+    couponCode: String
 }
 
 type BillPayDiscountItem {
@@ -140,7 +143,7 @@ type BillPayConfig {
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [BillPayOrder, MerchantAgreement, BillPaySettlement, BillPayChannelConfigEntity],
-    providers: [BillPayService, CreateBillPayTablesMigration],
+    providers: [BillPayService, CreateBillPayTablesMigration, AddBillPayCouponColumnsMigration],
     exports: [BillPayService],
     adminApiExtensions: {
         schema: () => gql`

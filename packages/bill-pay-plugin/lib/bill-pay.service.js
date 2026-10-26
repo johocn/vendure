@@ -13,9 +13,11 @@ exports.BillPayService = void 0;
 exports.setBillPayGateway = setBillPayGateway;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const wechatpay_plugin_1 = require("@vendure/wechatpay-plugin");
 const bill_pay_balance_port_1 = require("./bill-pay-balance-port");
 const bill_pay_config_entity_1 = require("./bill-pay-config.entity");
+const bill_pay_coupon_1 = require("./bill-pay-coupon");
 const bill_pay_order_entity_1 = require("./bill-pay-order.entity");
 const bill_pay_settlement_entity_1 = require("./bill-pay-settlement.entity");
 const merchant_agreement_entity_1 = require("./merchant-agreement.entity");
@@ -86,7 +88,7 @@ let BillPayService = class BillPayService {
     }
     /** 惰性报价过期：QUOTED 超期 → 回 PENDING_QUOTE（读路径收敛，不依赖定时器） */
     async normalizeQuoteExpiry(ctx, order) {
-        var _a;
+        var _a, _b, _c;
         if (order.status === 'QUOTED' &&
             order.quoteExpireAt &&
             order.quoteExpireAt.getTime() < Date.now()) {
@@ -98,6 +100,20 @@ let BillPayService = class BillPayService {
                 .execute();
             if (((_a = claim.affected) !== null && _a !== void 0 ? _a : 0) > 0) {
                 order.status = 'PENDING_QUOTE';
+                if (order.couponCode) {
+                    // 报价过期会回退人工报价，而人工改价会重写金额与明细、无法保留券抵扣；
+                    // 此时释放券并清空券字段，避免「有券码无抵扣」的脏单把券永久锁死。
+                    try {
+                        await this.releaseCoupon(ctx, order);
+                    }
+                    catch (e) {
+                        core_1.Logger.error(`BillPayOrder ${(_b = order.code) !== null && _b !== void 0 ? _b : order.id} quote expired but coupon ` +
+                            `${order.couponCode} release failed: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : '')}`, constants_1.loggerCtx);
+                    }
+                    order.couponCode = null;
+                    order.couponDiscount = null;
+                    await this.orderRepo(ctx).save(order);
+                }
             }
         }
         return order;
@@ -126,7 +142,7 @@ let BillPayService = class BillPayService {
     // ===== 客户侧 =====
     /** 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED */
     async createBillPayOrder(ctx, input) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const customerId = await this.currentCustomerId(ctx);
         const merchantName = String((_a = input.merchantName) !== null && _a !== void 0 ? _a : '').trim();
         if (!merchantName) {
@@ -159,6 +175,52 @@ let BillPayService = class BillPayService {
         if (todayTotal + expectedAmount > config.dailyLimitAmount) {
             throw new core_1.UserInputError('Daily bill pay limit exceeded');
         }
+        const couponCode = ((_c = input.couponCode) === null || _c === void 0 ? void 0 : _c.trim()) || null;
+        // 用券只能在自动报价路径完成：人工报价会重写 quoteAmount/discountDetail，
+        // 已预占的券会落成「有券码无抵扣」的脏单，故券路径直接拒绝转人工场景。
+        let couponPlan = null;
+        if (couponCode) {
+            if (config.couponEnabled !== true) {
+                throw new core_1.UserInputError('Coupon not enabled for bill pay');
+            }
+            const couponOutcome = (0, quote_engine_1.quoteBill)(expectedAmount, config);
+            if ((0, types_1.isQuoteRejected)(couponOutcome) || !config.autoQuote) {
+                if ((0, types_1.isQuoteRejected)(couponOutcome) && couponOutcome.reason === 'BELOW_MIN') {
+                    throw new core_1.UserInputError(`Amount below minimum (${config.minAmount})`);
+                }
+                if ((0, types_1.isQuoteRejected)(couponOutcome) && couponOutcome.reason === 'INVALID_AMOUNT') {
+                    throw new core_1.UserInputError('Invalid expectedAmount');
+                }
+                throw new core_1.UserInputError('Coupon not supported for manual quote amount');
+            }
+            const couponRepo = this.connection.getRepository(ctx, coupon_plugin_1.CustomerCoupon);
+            const cc = await couponRepo.findOne({
+                where: { code: couponCode },
+                relations: { template: { channels: true } },
+            });
+            // 统一文案：不区分他人的券/已用/过期，避免券码枚举泄露他人信息
+            if (!cc ||
+                cc.customerId !== customerId ||
+                cc.status !== 'UNUSED' ||
+                (cc.expiredAt && new Date(cc.expiredAt).getTime() <= Date.now())) {
+                throw new core_1.UserInputError('Coupon is not applicable to bill pay');
+            }
+            const tpl = cc.template;
+            const scene = (_d = tpl === null || tpl === void 0 ? void 0 : tpl.usageScene) !== null && _d !== void 0 ? _d : 'ONLINE';
+            // 券模板是 ChannelAware：必须属于当前渠道，否则跨租户券码可在本店买单抵扣
+            const inChannel = ((_e = tpl === null || tpl === void 0 ? void 0 : tpl.channels) !== null && _e !== void 0 ? _e : []).some((ch) => Number(ch.id) === Number(ctx.channelId));
+            if (!tpl || !tpl.enabled || !inChannel || (scene !== 'IN_STORE' && scene !== 'ALL')) {
+                throw new core_1.UserInputError('Coupon is not applicable to bill pay');
+            }
+            // 门槛按商家账单原价判定，与到店核销口径一致；券只抵「报价后应付」，不叠加到原价上
+            const computed = (0, coupon_plugin_1.computeInStoreBill)(tpl, expectedAmount);
+            if (!computed.ok) {
+                throw new core_1.UserInputError(coupon_plugin_1.IN_STORE_REASON_MESSAGES[computed.reason]);
+            }
+            const quote = (0, bill_pay_coupon_1.applyCouponToQuote)(couponOutcome, computed.discountAmount, tpl.name);
+            const discount = Math.min(computed.discountAmount, couponOutcome.payable);
+            couponPlan = { cc, quote, discount };
+        }
         const repo = this.orderRepo(ctx);
         let order = await repo.save(new bill_pay_order_entity_1.BillPayOrder({
             code: null,
@@ -168,8 +230,10 @@ let BillPayService = class BillPayService {
             quoteAmount: null,
             actualAmount: null,
             discountDetail: null,
+            couponCode,
+            couponDiscount: couponPlan ? couponPlan.discount : null,
             status: 'PENDING_QUOTE',
-            remark: (_c = input.remark) !== null && _c !== void 0 ? _c : null,
+            remark: (_f = input.remark) !== null && _f !== void 0 ? _f : null,
             quoteNote: null,
             quoteExpireAt: null,
             proofUrl: null,
@@ -183,6 +247,30 @@ let BillPayService = class BillPayService {
             order.code = `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
             order = await repo.save(order);
         }
+        if (couponPlan) {
+            // 先预占再落报价：并发同码下单时只有一单能占住券，另一单在报价落库前就被截断
+            const reserve = await this.connection
+                .getRepository(ctx, coupon_plugin_1.CustomerCoupon)
+                .createQueryBuilder()
+                .update(coupon_plugin_1.CustomerCoupon)
+                .set({ reservedOrderId: (_g = order.code) !== null && _g !== void 0 ? _g : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}` })
+                .where('id = :id AND status = :status AND reservedOrderId IS NULL', {
+                id: couponPlan.cc.id,
+                status: 'UNUSED',
+            })
+                .execute();
+            if (((_h = reserve.affected) !== null && _h !== void 0 ? _h : 0) === 0) {
+                order.status = 'CANCELLED';
+                await repo.save(order);
+                throw new core_1.UserInputError('Coupon is already in use');
+            }
+            this.applyQuoteFields(order, couponPlan.quote.payable, couponPlan.quote.discountDetail, config.quoteExpireMinutes);
+            order.status = 'QUOTED';
+            order = await repo.save(order);
+            core_1.Logger.info(`BillPayOrder ${(_j = order.code) !== null && _j !== void 0 ? _j : order.id} created with coupon ` +
+                `${couponPlan.cc.code} (quote=${couponPlan.quote.payable}, couponDiscount=${couponPlan.discount})`, constants_1.loggerCtx);
+            return order;
+        }
         // 自动报价：金额区间内且 autoQuote → 同步报价转 QUOTED；超 maxAmount 转人工（保持 PENDING_QUOTE）
         const outcome = (0, quote_engine_1.quoteBill)(expectedAmount, config);
         if (config.autoQuote && !(0, types_1.isQuoteRejected)(outcome)) {
@@ -193,17 +281,26 @@ let BillPayService = class BillPayService {
         else if ((0, types_1.isQuoteRejected)(outcome) && outcome.reason === 'INVALID_AMOUNT') {
             throw new core_1.UserInputError('Invalid expectedAmount');
         }
-        core_1.Logger.info(`BillPayOrder ${order.code} created (status=${order.status}, quote=${(_d = order.quoteAmount) !== null && _d !== void 0 ? _d : '-'})`, constants_1.loggerCtx);
+        core_1.Logger.info(`BillPayOrder ${order.code} created (status=${order.status}, quote=${(_k = order.quoteAmount) !== null && _k !== void 0 ? _k : '-'})`, constants_1.loggerCtx);
         return order;
     }
     /** 客户自助取消：仅 PENDING_QUOTE / QUOTED */
     async cancelBillPayOrder(ctx, id) {
+        var _a, _b, _c;
         const order = await this.loadOwnedOrder(ctx, id);
         if (order.status !== 'PENDING_QUOTE' && order.status !== 'QUOTED') {
             throw new core_1.UserInputError(`Bill pay order is ${order.status}, cannot cancel`);
         }
         order.status = 'CANCELLED';
-        return this.orderRepo(ctx).save(order);
+        const saved = await this.orderRepo(ctx).save(order);
+        try {
+            await this.releaseCoupon(ctx, order);
+        }
+        catch (e) {
+            // 取消失败于释放券会把券永久锁死，但不该阻断取消本身，记 error 供人工处理
+            core_1.Logger.error(`BillPayOrder ${(_a = saved.code) !== null && _a !== void 0 ? _a : saved.id} cancelled but coupon ${(_b = order.couponCode) !== null && _b !== void 0 ? _b : '-'} release failed: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : '')}`, constants_1.loggerCtx);
+        }
+        return saved;
     }
     /** 我的委托单 */
     async myBillPayOrders(ctx, statuses) {
@@ -264,7 +361,7 @@ let BillPayService = class BillPayService {
     }
     /** 微信回调结算入口：解析 BP-<id>，原子置 QUOTED → PAID（幂等，参照 coupon-sale L208-237） */
     async settleBillPayOrderByOutTradeNo(ctx, outTradeNo) {
-        var _a;
+        var _a, _b, _c;
         const m = String(outTradeNo).match(/^BP-(\d+)$/);
         if (!m) {
             throw new core_1.UserInputError('Invalid bill pay out_trade_no');
@@ -294,6 +391,13 @@ let BillPayService = class BillPayService {
                 await this.connection.commitOpenTransaction(orderCtx);
                 return; // 并发下已被他人结算
             }
+            // 与置 PAID 同事务核销券：券异常不阻断已到账的收款，只记日志供对账
+            try {
+                await this.redeemCoupon(orderCtx, order);
+            }
+            catch (e) {
+                core_1.Logger.error(`BillPayOrder ${outTradeNo} paid but coupon ${(_b = order.couponCode) !== null && _b !== void 0 ? _b : '-'} redemption failed: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : '')}`, constants_1.loggerCtx);
+            }
             await this.connection.commitOpenTransaction(orderCtx);
         }
         catch (e) {
@@ -319,7 +423,7 @@ let BillPayService = class BillPayService {
     }
     /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
     async payBillPayOrderWithBalance(ctx, id) {
-        var _a;
+        var _a, _b, _c, _d;
         const port = (0, bill_pay_balance_port_1.getBillPayBalancePort)();
         if (!port) {
             throw new core_1.UserInputError('Balance payment is not available');
@@ -334,8 +438,73 @@ let BillPayService = class BillPayService {
         order.paidAt = (_a = order.paidAt) !== null && _a !== void 0 ? _a : new Date();
         await this.orderRepo(ctx).save(order);
         await port.deductBalance(ctx, order.customerId, order.quoteAmount);
+        try {
+            await this.redeemCoupon(ctx, order);
+        }
+        catch (e) {
+            // 扣款成功后券核销失败不能回滚收款，记 error 供对账人工处理
+            core_1.Logger.error(`BillPayOrder ${(_b = order.code) !== null && _b !== void 0 ? _b : order.id} paid via balance but coupon ${(_c = order.couponCode) !== null && _c !== void 0 ? _c : '-'} redemption failed: ${String((_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : '')}`, constants_1.loggerCtx);
+        }
         const fresh = await this.orderRepo(ctx).findOne({ where: { id: order.id } });
         return fresh;
+    }
+    /**
+     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED）。
+     * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
+     */
+    async redeemCoupon(orderCtx, order) {
+        var _a, _b;
+        if (!order.couponCode)
+            return;
+        const ref = (_a = order.code) !== null && _a !== void 0 ? _a : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
+        const repo = this.connection.getRepository(orderCtx, coupon_plugin_1.CustomerCoupon);
+        const cc = await repo.findOne({ where: { code: order.couponCode } });
+        if (!cc) {
+            core_1.Logger.error(`BillPayOrder ${ref} paid but coupon ${order.couponCode} not found`, constants_1.loggerCtx);
+            return;
+        }
+        const claim = await repo
+            .createQueryBuilder()
+            .update(coupon_plugin_1.CustomerCoupon)
+            .set({
+            status: 'USED',
+            usedAt: new Date(),
+            usedOrderId: ref,
+            reservedOrderId: null,
+        })
+            .where('id = :id AND status = :status', { id: cc.id, status: 'UNUSED' })
+            .execute();
+        if (((_b = claim.affected) !== null && _b !== void 0 ? _b : 0) === 0) {
+            core_1.Logger.error(`BillPayOrder ${ref} paid but coupon ${order.couponCode} is ${cc.status}, not redeemed`, constants_1.loggerCtx);
+            return;
+        }
+        core_1.Logger.info(`BillPayOrder ${ref} paid, coupon ${order.couponCode} marked as USED`, constants_1.loggerCtx);
+    }
+    /**
+     * 取消 → 释放券：只回退本单预占（reservedOrderId）或本单已核销（usedOrderId）的券，
+     * 防止误释放已被其它委托单使用的券。
+     */
+    async releaseCoupon(ctx, order) {
+        var _a;
+        if (!order.couponCode)
+            return;
+        const ref = (_a = order.code) !== null && _a !== void 0 ? _a : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
+        await this.connection
+            .getRepository(ctx, coupon_plugin_1.CustomerCoupon)
+            .createQueryBuilder()
+            .update(coupon_plugin_1.CustomerCoupon)
+            .set({
+            status: 'UNUSED',
+            reservedOrderId: null,
+            usedOrderId: null,
+            usedAt: null,
+        })
+            .where('code = :code AND (reservedOrderId = :ref OR (status = :used AND usedOrderId = :ref))', {
+            code: order.couponCode,
+            ref,
+            used: 'USED',
+        })
+            .execute();
     }
     // ===== 管家工作台（admin-api）=====
     /** 人工改价：PENDING_QUOTE → QUOTED，note 必填 */

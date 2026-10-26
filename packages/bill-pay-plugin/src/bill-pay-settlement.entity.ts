@@ -52,6 +52,6 @@ export class BillPaySettlement extends VendureEntity {
     grossAmount: number;
 
     /** 记账时点 */
-    @Column({ type: 'timestamp' })
+    @Column({ type: Date })
     occurredAt: Date;
 }

@@ -39,6 +39,8 @@ type BillPayOrder implements Node {
     quoteAmount: Int
     actualAmount: Int
     discountDetail: JSON
+    couponCode: String
+    couponDiscount: Int
     status: BillPayStatus!
     remark: String
     quoteNote: String
@@ -70,6 +72,7 @@ input CreateBillPayOrderInput {
     merchantName: String!
     expectedAmount: Int!
     remark: String
+    couponCode: String
 }
 
 type BillPayDiscountItem {
@@ -191,7 +194,7 @@ exports.BillPayPlugin = BillPayPlugin = BillPayPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
         entities: [bill_pay_order_entity_1.BillPayOrder, merchant_agreement_entity_1.MerchantAgreement, bill_pay_settlement_entity_1.BillPaySettlement, bill_pay_config_entity_1.BillPayChannelConfigEntity],
-        providers: [bill_pay_service_1.BillPayService, migrations_1.CreateBillPayTablesMigration],
+        providers: [bill_pay_service_1.BillPayService, migrations_1.CreateBillPayTablesMigration, migrations_1.AddBillPayCouponColumnsMigration],
         exports: [bill_pay_service_1.BillPayService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `

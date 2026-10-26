@@ -14,6 +14,7 @@ exports.setCouponSaleGateway = setCouponSaleGateway;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const coupon_service_1 = require("./coupon.service");
+const coupon_store_service_1 = require("./coupon-store.service");
 const coupon_settlement_service_1 = require("./coupon-settlement.service");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
@@ -38,12 +39,15 @@ function setCouponSaleGateway(gw) {
  * 所有金额单位为「分」。订单/券的最终发放在 CouponService 内完成，本服务只做编排与状态机。
  */
 let CouponSaleService = class CouponSaleService {
-    constructor(connection, couponService, customerService, settlementService, channelService) {
+    constructor(connection, couponService, customerService, settlementService, channelService, 
+    // 券 ↔ 门店联动（同插件服务；历史调用不传 storeId，行为不变）
+    couponStoreService) {
         this.connection = connection;
         this.couponService = couponService;
         this.customerService = customerService;
         this.settlementService = settlementService;
         this.channelService = channelService;
+        this.couponStoreService = couponStoreService;
     }
     /** 当前请求的 customerId */
     async currentCustomerId(ctx) {
@@ -147,8 +151,8 @@ let CouponSaleService = class CouponSaleService {
             .getCount();
         return cnt === 0;
     }
-    /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */
-    async createSaleOrder(ctx, templateId, bundleId) {
+    /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单；可选指定使用门店 */
+    async createSaleOrder(ctx, templateId, bundleId, storeId) {
         var _a, _b, _c;
         if (!templateId && !bundleId) {
             throw new core_1.UserInputError('templateId or bundleId is required');
@@ -166,6 +170,8 @@ let CouponSaleService = class CouponSaleService {
         const studentApproved = ((_c = customer === null || customer === void 0 ? void 0 : customer.customFields) === null || _c === void 0 ? void 0 : _c.studentStatus) === 'approved';
         let amount = 0;
         let tpl = null;
+        // 本次购买涉及的模板 id（券包按逐张展开），用于门店覆盖校验
+        let coverageTemplateIds = [];
         // 监管参数组（T4）：默认宽松（未配置不校验），配置后才硬拦
         const limits = (0, coupon_sale_regulatory_1.extractBillpayLimits)(channel);
         if (templateId) {
@@ -174,12 +180,27 @@ let CouponSaleService = class CouponSaleService {
             await this.couponService.assertCustomerCanBuy(ctx, customerId, tpl);
             (0, coupon_sale_regulatory_1.assertTemplateWithinRegulatoryLimits)(tpl, limits);
             amount = tpl.salePrice;
+            coverageTemplateIds = [Number(templateId)];
         }
         else {
             const { bundle, items } = await this.loadSaleableBundle(ctx, bundleId);
             const itemTemplates = await this.assertBundleStock(items);
             (0, coupon_sale_regulatory_1.assertBundleWithinRegulatoryLimits)(bundle.salePrice, itemTemplates, items.map(i => i.quantity), limits);
             amount = bundle.salePrice;
+            coverageTemplateIds = Array.from(new Set(itemTemplates.map(t => Number(t.id))));
+        }
+        // 门店维度（可选）：校验模板覆盖范围 + 落门店快照；不要求门店当下营业
+        const effectiveStoreId = storeId != null ? Number(storeId) : null;
+        let storeSnapshot = null;
+        if (effectiveStoreId != null) {
+            if (!this.couponStoreService) {
+                throw new core_1.UserInputError('Merchant store service is not available');
+            }
+            const resolved = await this.couponStoreService.resolveStoreSnapshot(ctx, effectiveStoreId);
+            storeSnapshot = resolved.snapshot;
+            for (const coverageTemplateId of coverageTemplateIds) {
+                await this.couponStoreService.assertStoreCoverage(ctx, coverageTemplateId, effectiveStoreId);
+            }
         }
         const promo = (0, coupon_sale_1.resolvePromoPrice)(amount, {
             studentPrice: tpl === null || tpl === void 0 ? void 0 : tpl.studentPrice,
@@ -203,6 +224,8 @@ let CouponSaleService = class CouponSaleService {
             externalRef: null,
             remark: null,
             channelId: ctx.channelId,
+            storeId: effectiveStoreId,
+            storeSnapshot,
         }));
     }
     /** 余额支付（同步结算）：先发券 + 置 PAID，再扣款；扣款内部提交事务，三者一并落库 */
@@ -760,6 +783,7 @@ exports.CouponSaleService = CouponSaleService = __decorate([
         coupon_service_1.CouponService,
         core_1.CustomerService,
         coupon_settlement_service_1.CouponSettlementService,
-        core_1.ChannelService])
+        core_1.ChannelService,
+        coupon_store_service_1.CouponStoreService])
 ], CouponSaleService);
 //# sourceMappingURL=coupon-sale.service.js.map

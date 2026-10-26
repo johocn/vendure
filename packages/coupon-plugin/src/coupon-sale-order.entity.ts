@@ -66,6 +66,14 @@ export class CouponSaleOrder extends VendureEntity {
     @Column({ type: 'int', nullable: true })
     discountAmount: number | null;
 
+    /** 购券时选择的使用门店（merchant-plugin MerchantStore.id）；null = 未指定 */
+    @Column({ type: 'int', nullable: true })
+    storeId: number | null;
+
+    /** 购券时门店快照（name/address/phoneNumber/businessHoursText/lat/lng） */
+    @Column('simple-json', { nullable: true })
+    storeSnapshot: any | null;
+
     @ManyToOne(() => Channel, { eager: false })
     channel: Channel;
 

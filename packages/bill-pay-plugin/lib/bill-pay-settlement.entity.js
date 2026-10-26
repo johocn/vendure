@@ -65,7 +65,7 @@ __decorate([
     __metadata("design:type", Number)
 ], BillPaySettlement.prototype, "grossAmount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp' }),
+    (0, typeorm_1.Column)({ type: Date }),
     __metadata("design:type", Date)
 ], BillPaySettlement.prototype, "occurredAt", void 0);
 exports.BillPaySettlement = BillPaySettlement = __decorate([

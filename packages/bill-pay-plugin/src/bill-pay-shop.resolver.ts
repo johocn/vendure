@@ -40,7 +40,8 @@ export class BillPayShopResolver {
     @Allow(Permission.Authenticated)
     async createBillPayOrder(
         @Ctx() ctx: RequestContext,
-        @Args('input') input: { merchantName: string; expectedAmount: number; remark?: string },
+        @Args('input')
+        input: { merchantName: string; expectedAmount: number; remark?: string; couponCode?: string | null },
     ) {
         return this.billPayService.toGraph(await this.billPayService.createBillPayOrder(ctx, input));
     }

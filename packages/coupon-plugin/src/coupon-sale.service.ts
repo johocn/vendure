@@ -11,6 +11,7 @@ import {
 } from '@vendure/core';
 
 import { CouponService } from './coupon.service';
+import { CouponStoreService } from './coupon-store.service';
 import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
@@ -55,6 +56,8 @@ export class CouponSaleService {
         private customerService: CustomerService,
         private settlementService: CouponSettlementService,
         private channelService: ChannelService,
+        // 券 ↔ 门店联动（同插件服务；历史调用不传 storeId，行为不变）
+        private couponStoreService?: CouponStoreService,
     ) {}
 
     /** 当前请求的 customerId */
@@ -182,11 +185,12 @@ export class CouponSaleService {
         return cnt === 0;
     }
 
-    /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */
+    /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单；可选指定使用门店 */
     async createSaleOrder(
         ctx: RequestContext,
         templateId?: ID | null,
         bundleId?: ID | null,
+        storeId?: ID | null,
     ): Promise<CouponSaleOrder> {
         if (!templateId && !bundleId) {
             throw new UserInputError('templateId or bundleId is required');
@@ -205,6 +209,8 @@ export class CouponSaleService {
             ((customer as any)?.customFields?.studentStatus as string | undefined) === 'approved';
         let amount = 0;
         let tpl: CouponTemplate | null = null;
+        // 本次购买涉及的模板 id（券包按逐张展开），用于门店覆盖校验
+        let coverageTemplateIds: number[] = [];
         // 监管参数组（T4）：默认宽松（未配置不校验），配置后才硬拦
         const limits = extractBillpayLimits(channel);
         if (templateId) {
@@ -213,6 +219,7 @@ export class CouponSaleService {
             await this.couponService.assertCustomerCanBuy(ctx, customerId, tpl);
             assertTemplateWithinRegulatoryLimits(tpl, limits);
             amount = tpl.salePrice;
+            coverageTemplateIds = [Number(templateId)];
         } else {
             const { bundle, items } = await this.loadSaleableBundle(ctx, bundleId as ID);
             const itemTemplates = await this.assertBundleStock(items);
@@ -223,6 +230,20 @@ export class CouponSaleService {
                 limits,
             );
             amount = bundle.salePrice;
+            coverageTemplateIds = Array.from(new Set(itemTemplates.map(t => Number(t.id))));
+        }
+        // 门店维度（可选）：校验模板覆盖范围 + 落门店快照；不要求门店当下营业
+        const effectiveStoreId = storeId != null ? Number(storeId) : null;
+        let storeSnapshot: Record<string, any> | null = null;
+        if (effectiveStoreId != null) {
+            if (!this.couponStoreService) {
+                throw new UserInputError('Merchant store service is not available');
+            }
+            const resolved = await this.couponStoreService.resolveStoreSnapshot(ctx, effectiveStoreId);
+            storeSnapshot = resolved.snapshot;
+            for (const coverageTemplateId of coverageTemplateIds) {
+                await this.couponStoreService.assertStoreCoverage(ctx, coverageTemplateId, effectiveStoreId);
+            }
         }
         const promo = resolvePromoPrice(amount, {
             studentPrice: tpl?.studentPrice,
@@ -247,6 +268,8 @@ export class CouponSaleService {
                 externalRef: null,
                 remark: null,
                 channelId: ctx.channelId as number,
+                storeId: effectiveStoreId,
+                storeSnapshot,
             }),
         );
     }

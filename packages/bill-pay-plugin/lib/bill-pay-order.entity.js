@@ -53,6 +53,14 @@ __decorate([
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "discountDetail", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 64, nullable: true }),
+    __metadata("design:type", Object)
+], BillPayOrder.prototype, "couponCode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], BillPayOrder.prototype, "couponDiscount", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], BillPayOrder.prototype, "status", void 0);
@@ -65,7 +73,7 @@ __decorate([
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "quoteNote", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "quoteExpireAt", void 0);
 __decorate([
@@ -89,19 +97,19 @@ __decorate([
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "settleLedgerId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "paidAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "completedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "settledAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "refundedAt", void 0);
 __decorate([

@@ -84,6 +84,14 @@ __decorate([
     __metadata("design:type", Object)
 ], CouponSaleOrder.prototype, "discountAmount", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], CouponSaleOrder.prototype, "storeId", void 0);
+__decorate([
+    (0, typeorm_1.Column)('simple-json', { nullable: true }),
+    __metadata("design:type", Object)
+], CouponSaleOrder.prototype, "storeSnapshot", void 0);
+__decorate([
     (0, typeorm_1.ManyToOne)(() => core_1.Channel, { eager: false }),
     __metadata("design:type", core_1.Channel)
 ], CouponSaleOrder.prototype, "channel", void 0);

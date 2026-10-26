@@ -6,5 +6,6 @@ export * from './src/customer-coupon.entity';
 export * from './src/coupon.service';
 export * from './src/product-coupon-binding.entity';
 export * from './src/redeem-scope';
+export * from './src/in-store-bill';
 export * from './src/coupon-balance-port';
 export * from './src/coupon-expire-reminder.events';

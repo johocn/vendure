@@ -1,0 +1,89 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.localizedTextColumn = void 0;
+exports.localizeText = localizeText;
+exports.localizedParts = localizedParts;
+const core_1 = require("@vendure/core");
+/**
+ * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
+ * 序列化结果），读写时原样保留。商户与门店共用。
+ */
+exports.localizedTextColumn = {
+    to: (value) => value == null ? value : typeof value === 'string' ? value : JSON.stringify(value),
+    from: (value) => value,
+};
+/**
+ * 将文本解析为真正的对象形态。历史 / 旧版数据可能直接存了 JSON 字符串
+ * （例如 GraphQL `String!` 标量里塞入的 `'{"zh_Hans":"..","en":".."}'`），
+ * 这里做一次安全的反序列化：能解析成对象则返回对象，否则原样返回字符串。
+ */
+function unwrapLocalized(v) {
+    if (typeof v !== 'string') {
+        return v;
+    }
+    const trimmed = v.trim();
+    // 仅对看起来像 JSON 的可疑串尝试解析，避免误解析明文文案
+    if (trimmed.startsWith('{') || trimmed.startsWith('"')) {
+        try {
+            const parsed = JSON.parse(v);
+            if (parsed != null && typeof parsed === 'object') {
+                return parsed;
+            }
+        }
+        catch (_a) {
+            /* 不是合法 JSON，按纯字符串处理 */
+        }
+    }
+    return v;
+}
+/**
+ * 按当前会话语言 `locale` 求值本地化文本，逐级回退：
+ *  1. 纯字符串 → 直接返回（向后兼容既有 `name: string`）；
+ *  2. `locale` 命中 → 返回该语言文案；
+ *  3. `en` 兜底；
+ *  4. 记录中首个字符串值；
+ *  5. `fallback`（默认空串）。
+ */
+function localizeText(v, locale, fallback = '') {
+    // 兼容直接以 JSON 字符串存储的本地化内容
+    const value = unwrapLocalized(v);
+    if (value == null) {
+        return fallback;
+    }
+    if (typeof value === 'string') {
+        // 纯字符串（历史上单语言字段）原样返回
+        return value;
+    }
+    const rec = value;
+    const byLocale = rec[locale];
+    if (byLocale != null && typeof byLocale === 'string') {
+        return byLocale;
+    }
+    const en = rec[core_1.LanguageCode.en];
+    if (en != null && typeof en === 'string') {
+        return en;
+    }
+    const first = Object.values(rec).find(x => typeof x === 'string');
+    return first !== null && first !== void 0 ? first : fallback;
+}
+/**
+ * 将 LocalizedText 拆分为各语言的挂数字典（供后台编辑回显）。
+ * 纯字符串视作唯一文案（同时作为 zh_Hans / en 的兜底）；JSON 对象则按 key 展开。
+ */
+function localizedParts(v) {
+    const value = unwrapLocalized(v);
+    if (value == null) {
+        return {};
+    }
+    if (typeof value === 'string') {
+        return { zh_Hans: value, en: value };
+    }
+    const parts = {};
+    for (const [k, val] of Object.entries(value)) {
+        if (typeof val === 'string') {
+            parts[k] = val;
+        }
+    }
+    return parts;
+}
+//# sourceMappingURL=localize.js.map

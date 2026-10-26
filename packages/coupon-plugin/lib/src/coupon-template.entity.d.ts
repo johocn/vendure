@@ -69,5 +69,15 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     studentPrice?: number | null;
     /** 业态分类键（如 food/billiards；后台可配自由短串，建议 ≤30 字符）；空 = 未分类（前端落「更多」/按类型分组） */
     category?: string | null;
+    /**
+     * 优惠活动照片 URL（建议 16:9 或 2:1，用于列表卡缩略图与券商城头图）。
+     * 空 = 前端按券名生成场景插画兜底，不会出现空白图位。
+     */
+    activityImage?: string | null;
+    /**
+     * 门店覆盖范围：ALL（不限门店，默认）| MERCHANT（按商户）| STORE（指定门店）。
+     * 默认 ALL 且无 coupon_store_binding 记录时，券行为与改造前完全一致。
+     */
+    storeCoverage: string;
     channels: Channel[];
 }

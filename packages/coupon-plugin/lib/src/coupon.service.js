@@ -49,8 +49,10 @@ const TEMPLATE_UPDATE_ALLOWED = [
     'label',
     'studentPrice',
     'category',
+    'activityImage',
     'memberLevel',
     'newCustomerOnly',
+    'storeCoverage',
 ];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateCode(prefix) {
@@ -194,6 +196,7 @@ let CouponService = class CouponService {
         // 多语言入参（P5）：nameZh/nameEn/descZh/descEn 合并为 LocalizedText 对象。
         this.applyMultilingualInput(tpl, input);
         this.applyMarketingInput(tpl, input);
+        this.applyStoreCoverageInput(tpl, input);
         if (tpl.name == null) {
             throw new core_1.UserInputError('CouponTemplate name (or nameZh) is required');
         }
@@ -227,7 +230,19 @@ let CouponService = class CouponService {
         // 多语言入参（P5）：合并 nameZh/nameEn/descZh/descEn（保留既有其它语言文案）。
         this.applyMultilingualInput(tpl, input);
         this.applyMarketingInput(tpl, input);
+        this.applyStoreCoverageInput(tpl, input);
         return repo.save(tpl);
+    }
+    /**
+     * 门店覆盖范围入参规范化（create/update 共用）：仅接受 ALL|MERCHANT|STORE，
+     * 非法值回退 ALL（不限门店，与历史券行为一致）。
+     */
+    applyStoreCoverageInput(tpl, input) {
+        var _a;
+        if ((input === null || input === void 0 ? void 0 : input.storeCoverage) === undefined)
+            return;
+        const v = String((_a = input.storeCoverage) !== null && _a !== void 0 ? _a : '').trim().toUpperCase();
+        tpl.storeCoverage = v === 'MERCHANT' || v === 'STORE' ? v : 'ALL';
     }
     /**
      * 营销字段入参规范化（create/update 共用）：

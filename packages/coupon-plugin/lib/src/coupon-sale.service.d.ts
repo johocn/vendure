@@ -1,5 +1,6 @@
 import { ChannelService, CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CouponService } from './coupon.service';
+import { CouponStoreService } from './coupon-store.service';
 import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CouponSaleOrder } from './coupon-sale-order.entity';
@@ -17,7 +18,8 @@ export declare class CouponSaleService {
     private customerService;
     private settlementService;
     private channelService;
-    constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService, settlementService: CouponSettlementService, channelService: ChannelService);
+    private couponStoreService?;
+    constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService, settlementService: CouponSettlementService, channelService: ChannelService, couponStoreService?: CouponStoreService | undefined);
     /** 当前请求的 customerId */
     private currentCustomerId;
     /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数、首购/学生价资格信息与倒计时活动位 */
@@ -31,8 +33,8 @@ export declare class CouponSaleService {
     }>;
     /** 首购资格：本渠道无已支付（PAID）出售单 → true（每用户仅 1 次；取消/退款单不占资格） */
     private isFirstBuyEligible;
-    /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */
-    createSaleOrder(ctx: RequestContext, templateId?: ID | null, bundleId?: ID | null): Promise<CouponSaleOrder>;
+    /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单；可选指定使用门店 */
+    createSaleOrder(ctx: RequestContext, templateId?: ID | null, bundleId?: ID | null, storeId?: ID | null): Promise<CouponSaleOrder>;
     /** 余额支付（同步结算）：先发券 + 置 PAID，再扣款；扣款内部提交事务，三者一并落库 */
     paySaleOrderWithBalance(ctx: RequestContext, id: ID): Promise<CouponSaleOrder>;
     /** 生成微信支付参数（仅本人 PENDING 单），镜像 recharge-card 的 RC- 范式 */

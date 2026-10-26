@@ -20,6 +20,10 @@ export declare class BillPayOrder extends VendureEntity {
     actualAmount: number | null;
     /** 优惠明细 JSON：[{rule, label, amount}] */
     discountDetail: string | null;
+    /** 下单抵扣所用券码（null = 未用券）；与 couponDiscount 成对落库，便于对账追溯 */
+    couponCode: string | null;
+    /** 券实际抵扣额（分）；明细仍在 discountDetail，单独成列便于统计 */
+    couponDiscount: number | null;
     status: BillPayStatus;
     /** 客户备注（留言卡/包间等） */
     remark: string | null;

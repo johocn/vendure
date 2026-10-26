@@ -120,5 +120,11 @@ const types_1 = require("./types");
         const c = (0, quote_engine_1.parseBillPayConfig)({ autoQuote: false });
         (0, vitest_1.expect)(c.autoQuote).toBe(false);
     });
+    (0, vitest_1.it)('couponEnabled：仅布尔 true 开启，缺省/非布尔一律关闭（默认关闭）', () => {
+        (0, vitest_1.expect)((0, quote_engine_1.parseBillPayConfig)({ couponEnabled: true }).couponEnabled).toBe(true);
+        (0, vitest_1.expect)((0, quote_engine_1.parseBillPayConfig)({}).couponEnabled).toBe(false);
+        (0, vitest_1.expect)((0, quote_engine_1.parseBillPayConfig)({ couponEnabled: 'true' }).couponEnabled).toBe(false);
+        (0, vitest_1.expect)(types_1.DEFAULT_BILLPAY_CONFIG.couponEnabled).toBe(false);
+    });
 });
 //# sourceMappingURL=quote-engine.spec.js.map

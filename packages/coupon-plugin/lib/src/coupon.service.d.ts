@@ -46,6 +46,11 @@ export declare class CouponService {
     createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     /**
+     * 门店覆盖范围入参规范化（create/update 共用）：仅接受 ALL|MERCHANT|STORE，
+     * 非法值回退 ALL（不限门店，与历史券行为一致）。
+     */
+    private applyStoreCoverageInput;
+    /**
      * 营销字段入参规范化（create/update 共用）：
      * anchorPrice 仅接受正整数（分），非法/<=0 归 null（不展示划线价）；
      * label 去首尾空白、限 30 字符，空串归 null（不展示标签）。

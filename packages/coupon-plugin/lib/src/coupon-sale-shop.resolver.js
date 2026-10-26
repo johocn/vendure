@@ -34,8 +34,8 @@ let CouponSaleShopResolver = class CouponSaleShopResolver {
     async myCouponSaleOrders(ctx) {
         return this.couponSaleService.mySaleOrders(ctx);
     }
-    async createCouponSaleOrder(ctx, templateId, bundleId) {
-        return this.couponSaleService.createSaleOrder(ctx, templateId !== null && templateId !== void 0 ? templateId : null, bundleId !== null && bundleId !== void 0 ? bundleId : null);
+    async createCouponSaleOrder(ctx, templateId, bundleId, storeId) {
+        return this.couponSaleService.createSaleOrder(ctx, templateId !== null && templateId !== void 0 ? templateId : null, bundleId !== null && bundleId !== void 0 ? bundleId : null, storeId !== null && storeId !== void 0 ? storeId : null);
     }
     async payCouponSaleWithBalance(ctx, id) {
         return this.couponSaleService.paySaleOrderWithBalance(ctx, id);
@@ -81,8 +81,9 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('templateId', { nullable: true })),
     __param(2, (0, graphql_1.Args)('bundleId', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('storeId', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], CouponSaleShopResolver.prototype, "createCouponSaleOrder", null);
 __decorate([

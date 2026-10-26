@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateCouponReconcileMigration = exports.CreateCouponFrFMigration = exports.CreateCouponFissionMigration = exports.AddInStoreBillShopFieldsMigration = exports.CreateCouponSettlementMigration = exports.AddCouponCategoryFieldMigration = exports.AddCouponPromoFieldsMigration = exports.AddCouponMarketingFieldsMigration = exports.CreateCouponSaleMigration = exports.AddCouponDistributionChannelsMigration = exports.CreateInStoreBillMigration = exports.AddCouponUsageSceneMigration = exports.AddCouponIndexes20260919 = exports.CreateProductCouponBindingMigration = exports.AddCouponFieldsMigration = void 0;
+exports.CreateCouponStoreMigration = exports.CreateCouponReconcileMigration = exports.CreateCouponFrFMigration = exports.CreateCouponFissionMigration = exports.AddInStoreBillShopFieldsMigration = exports.CreateCouponSettlementMigration = exports.AddCouponActivityImageMigration = exports.AddCouponCategoryFieldMigration = exports.AddCouponPromoFieldsMigration = exports.AddCouponMarketingFieldsMigration = exports.CreateCouponSaleMigration = exports.AddCouponDistributionChannelsMigration = exports.CreateInStoreBillMigration = exports.AddCouponUsageSceneMigration = exports.AddCouponIndexes20260919 = exports.CreateProductCouponBindingMigration = exports.AddCouponFieldsMigration = void 0;
 // packages/coupon-plugin/src/migrations/index.ts
 var add_coupon_fields_1 = require("./add-coupon-fields");
 Object.defineProperty(exports, "AddCouponFieldsMigration", { enumerable: true, get: function () { return add_coupon_fields_1.AddCouponFieldsMigration; } });
@@ -22,6 +22,8 @@ var add_coupon_promo_fields_1 = require("./add-coupon-promo-fields");
 Object.defineProperty(exports, "AddCouponPromoFieldsMigration", { enumerable: true, get: function () { return add_coupon_promo_fields_1.AddCouponPromoFieldsMigration; } });
 var add_coupon_category_field_1 = require("./add-coupon-category-field");
 Object.defineProperty(exports, "AddCouponCategoryFieldMigration", { enumerable: true, get: function () { return add_coupon_category_field_1.AddCouponCategoryFieldMigration; } });
+var add_coupon_activity_image_1 = require("./add-coupon-activity-image");
+Object.defineProperty(exports, "AddCouponActivityImageMigration", { enumerable: true, get: function () { return add_coupon_activity_image_1.AddCouponActivityImageMigration; } });
 var create_coupon_settlement_1 = require("./create-coupon-settlement");
 Object.defineProperty(exports, "CreateCouponSettlementMigration", { enumerable: true, get: function () { return create_coupon_settlement_1.CreateCouponSettlementMigration; } });
 var add_in_store_bill_shop_fields_1 = require("./add-in-store-bill-shop-fields");
@@ -32,4 +34,6 @@ var create_coupon_frf_1 = require("./create-coupon-frf");
 Object.defineProperty(exports, "CreateCouponFrFMigration", { enumerable: true, get: function () { return create_coupon_frf_1.CreateCouponFrFMigration; } });
 var create_coupon_settlement_reconcile_1 = require("./create-coupon-settlement-reconcile");
 Object.defineProperty(exports, "CreateCouponReconcileMigration", { enumerable: true, get: function () { return create_coupon_settlement_reconcile_1.CreateCouponReconcileMigration; } });
+var create_coupon_store_1 = require("./create-coupon-store");
+Object.defineProperty(exports, "CreateCouponStoreMigration", { enumerable: true, get: function () { return create_coupon_store_1.CreateCouponStoreMigration; } });
 //# sourceMappingURL=index.js.map

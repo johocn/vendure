@@ -29,6 +29,7 @@ export declare class BillPayService {
         merchantName: string;
         expectedAmount: number;
         remark?: string | null;
+        couponCode?: string | null;
     }): Promise<BillPayOrder>;
     /** 客户自助取消：仅 PENDING_QUOTE / QUOTED */
     cancelBillPayOrder(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
@@ -43,6 +44,16 @@ export declare class BillPayService {
     private orderChannelCtx;
     /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
     payBillPayOrderWithBalance(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
+    /**
+     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED）。
+     * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
+     */
+    private redeemCoupon;
+    /**
+     * 取消 → 释放券：只回退本单预占（reservedOrderId）或本单已核销（usedOrderId）的券，
+     * 防止误释放已被其它委托单使用的券。
+     */
+    private releaseCoupon;
     /** 人工改价：PENDING_QUOTE → QUOTED，note 必填 */
     updateBillPayQuote(ctx: RequestContext, id: ID, quoteAmount: number, note: string): Promise<BillPayOrder>;
     /** 接单：PAID → IN_SERVICE，记录操作人；此后取消/退款仅人工入口 */

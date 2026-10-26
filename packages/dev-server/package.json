@@ -32,6 +32,7 @@
         "@vendure/after-sales-plugin": "0.0.1",
         "@vendure/eco-plugin": "0.0.1",
         "@vendure/member-level-plugin": "0.0.1",
+        "@vendure/merchant-plugin": "0.0.1",
         "@vendure/vcash-pos-plugin": "0.0.1",
         "@vendure/vcash-offline-plugin": "0.0.1",
         "@vendure/checkin-plugin": "0.0.1",

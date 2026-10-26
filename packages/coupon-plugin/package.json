@@ -15,6 +15,7 @@
     "e2e": "cross-env PACKAGE=coupon-plugin vitest --config vitest.config.mts --run"
   },
   "dependencies": {
+    "@vendure/merchant-plugin": "workspace:*",
     "@vendure/recharge-card-plugin": "workspace:*",
     "@vendure/wechatpay-plugin": "workspace:*"
   },

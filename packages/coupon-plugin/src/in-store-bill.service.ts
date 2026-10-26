@@ -107,6 +107,11 @@ export class InStoreBillService {
         if (cc.status !== 'UNUSED') {
             return { ok: false, reason: IN_STORE_REASON.COUPON_NOT_UNUSED };
         }
+        // 已被代买单预占的券状态仍是 UNUSED，但此时线下再核销会与线上委托单双花；
+        // 预占语义等同「不可用」，故复用已使用原因码。
+        if (cc.reservedOrderId) {
+            return { ok: false, reason: IN_STORE_REASON.COUPON_NOT_UNUSED };
+        }
         if (cc.expiredAt && new Date(cc.expiredAt).getTime() <= Date.now()) {
             return { ok: false, reason: IN_STORE_REASON.COUPON_EXPIRED };
         }

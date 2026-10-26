@@ -28,6 +28,10 @@ export declare class CouponSaleOrder extends VendureEntity {
     discountType: 'FIRST_BUY' | 'STUDENT' | null;
     /** 让利金额（分，base - final）；0/null = 无优惠 */
     discountAmount: number | null;
+    /** 购券时选择的使用门店（merchant-plugin MerchantStore.id）；null = 未指定 */
+    storeId: number | null;
+    /** 购券时门店快照（name/address/phoneNumber/businessHoursText/lat/lng） */
+    storeSnapshot: any | null;
     channel: Channel;
     channelId: number;
 }

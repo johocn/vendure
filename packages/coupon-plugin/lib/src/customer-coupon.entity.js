@@ -72,6 +72,10 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], CustomerCoupon.prototype, "saleOrderId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], CustomerCoupon.prototype, "redeemedStoreId", void 0);
 exports.CustomerCoupon = CustomerCoupon = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)(['customerId', 'templateId']),

@@ -30,6 +30,11 @@ import { CouponGrantBatch } from './coupon-grant-batch.entity';
 import { CouponSaleAdminResolver } from './coupon-sale-admin.resolver';
 import { CouponSaleShopResolver } from './coupon-sale-shop.resolver';
 import { CouponSaleService, setCouponSaleGateway } from './coupon-sale.service';
+import { CouponStoreAdminResolver } from './coupon-store-admin.resolver';
+import { CouponStoreShopResolver } from './coupon-store-shop.resolver';
+import { CouponStoreService } from './coupon-store.service';
+import { CouponStoreBinding } from './coupon-store-binding.entity';
+import { CouponRedemption } from './coupon-redemption.entity';
 import { CouponSettlementAdminResolver } from './coupon-settlement-admin.resolver';
 import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponSettlementReconcileService } from './coupon-settlement-reconcile.service';
@@ -57,11 +62,13 @@ import {
     CreateProductCouponBindingMigration,
     AddCouponPromoFieldsMigration,
     AddCouponCategoryFieldMigration,
+    AddCouponActivityImageMigration,
     CreateCouponSettlementMigration,
     AddInStoreBillShopFieldsMigration,
     CreateCouponFissionMigration,
     CreateCouponReconcileMigration,
     CreateCouponFrFMigration,
+    CreateCouponStoreMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -118,6 +125,8 @@ type CouponTemplate implements Node {
     label: String
     studentPrice: Int
     category: String
+    activityImage: String
+    storeCoverage: String!
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -144,12 +153,13 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponSettlementReconcileDiff, CouponFissionRecord, CouponGrantBatch, CouponDailyClaimRecord],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponSettlementReconcileDiff, CouponFissionRecord, CouponGrantBatch, CouponDailyClaimRecord, CouponStoreBinding, CouponRedemption],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
         CouponBindingService,
         CouponSaleService,
+        CouponStoreService,
         CouponSettlementService,
         CouponSettlementReconcileService,
         CouponExpireReminderService,
@@ -162,6 +172,7 @@ type CustomerCoupon implements Node {
         AddCouponMarketingFieldsMigration,
         AddCouponPromoFieldsMigration,
         AddCouponCategoryFieldMigration,
+        AddCouponActivityImageMigration,
         StudentVerificationService,
         AddCouponUsageSceneMigration,
         AddCouponDistributionChannelsMigration,
@@ -172,6 +183,7 @@ type CustomerCoupon implements Node {
         CreateCouponFissionMigration,
         CreateCouponReconcileMigration,
         CreateCouponFrFMigration,
+        CreateCouponStoreMigration,
     ],
     exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
@@ -407,6 +419,8 @@ type CustomerCoupon implements Node {
                 label: String
                 studentPrice: Int
                 category: String
+                activityImage: String
+                storeCoverage: String
             }
 
             input UpdateCouponTemplateInput {
@@ -441,6 +455,8 @@ type CustomerCoupon implements Node {
                 label: String
                 studentPrice: Int
                 category: String
+                activityImage: String
+                storeCoverage: String
             }
 
             input CouponTemplateListOptions
@@ -502,6 +518,7 @@ type CustomerCoupon implements Node {
                 externalRef: String
                 paidAt: DateTime
                 refundedAt: DateTime
+                storeId: ID
                 createdAt: DateTime!
             }
 
@@ -514,6 +531,37 @@ type CustomerCoupon implements Node {
                 skip: Int
                 take: Int
                 status: String
+            }
+
+            type CouponStoreBinding implements Node {
+                id: ID!
+                templateId: ID
+                bundleId: ID
+                merchantId: ID
+                storeId: ID!
+                type: String!
+                priority: Int!
+                isDefault: Boolean!
+                channelId: ID!
+            }
+
+            type CouponRedemption implements Node {
+                id: ID!
+                customerCouponId: ID!
+                couponCode: String!
+                templateId: ID!
+                saleOrderId: ID
+                merchantId: ID
+                storeId: ID!
+                channelId: ID!
+                redeemMode: String!
+                operatorId: ID
+                operatorName: String
+                redeemedAt: DateTime!
+                revokedAt: DateTime
+                revokeReason: String
+                amount: Int
+                deviceInfo: String
             }
 
             enum CouponSettlementStatus { PENDING SETTLED PAID_OUT REVERSED CANCELLED }
@@ -633,6 +681,8 @@ type CustomerCoupon implements Node {
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                couponStoreBindings(templateId: ID!): [CouponStoreBinding!]!
+                couponRedemptions(templateId: ID, storeId: ID, limit: Int): [CouponRedemption!]!
                 couponRedemptionStats(templateId: ID, from: String, to: String): [CouponRedemptionStat!]!
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
@@ -674,6 +724,7 @@ type CustomerCoupon implements Node {
                 createCouponBundle(input: CouponBundleInput!): CouponBundle!
                 updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
                 deleteCouponBundle(id: ID!): Boolean!
+                setCouponStoreBindings(templateId: ID!, storeIds: [ID!]!, coverage: String): [CouponStoreBinding!]!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 runCouponSettlementCycle: CouponSettlementCycleResult!
                 runCouponReconcile: CouponReconcileRunResult!
@@ -682,7 +733,7 @@ type CustomerCoupon implements Node {
                 couponWinBackGrant(templateId: ID!, days: Int!, notify: Boolean): CouponGrantBatch!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponSettlementAdminResolver, CouponBundleResolver, StudentAdminResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponSettlementAdminResolver, CouponBundleResolver, StudentAdminResolver, CouponStoreAdminResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
@@ -824,7 +875,30 @@ type CustomerCoupon implements Node {
                 status: String!
                 paidAt: DateTime
                 refundedAt: DateTime
+                storeId: ID
                 createdAt: DateTime!
+            }
+
+            type CouponStoreOption {
+                id: ID!
+                name: String!
+                address: String!
+                phoneNumber: String
+                businessHoursText: String
+                isOpenNow: Boolean!
+                distanceKm: Float
+                lat: Float
+                lng: Float
+                photos: [String!]!
+            }
+
+            type CouponRedemptionResult {
+                couponId: ID!
+                couponCode: String!
+                status: String!
+                storeId: ID!
+                storeName: String!
+                redeemedAt: DateTime!
             }
 
             type CouponWechatPayParams {
@@ -850,6 +924,8 @@ type CustomerCoupon implements Node {
                 couponCentreUpcoming(scene: CouponUsageScene): [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 customerCouponByCode(code: String!): CustomerCoupon
+                couponTemplateStores(templateId: ID!, lat: Float, lng: Float): [CouponStoreOption!]!
+                couponStoresForCoupon(code: String!, lat: Float, lng: Float): [CouponStoreOption!]!
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
@@ -864,10 +940,11 @@ type CustomerCoupon implements Node {
                 claimCoupon(templateId: ID!): CustomerCoupon!
                 claimProductCoupon(bindingId: ID!): CustomerCoupon!
                 redeemCouponByCode(claimCode: String!): CustomerCoupon!
+                redeemCouponAtStore(couponCode: String!, storeId: ID!): CouponRedemptionResult!
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
-                createCouponSaleOrder(templateId: ID, bundleId: ID): CouponSaleOrder!
+                createCouponSaleOrder(templateId: ID, bundleId: ID, storeId: ID): CouponSaleOrder!
                 payCouponSaleWithBalance(id: ID!): CouponSaleOrder!
                 createWechatCouponPayment(saleOrderId: ID!, tradeType: String, openid: String): CouponWechatPayResult!
                 cancelCouponSaleOrder(id: ID!): CouponSaleOrder!
@@ -880,7 +957,7 @@ type CustomerCoupon implements Node {
                 claimFlashCoupon(templateId: ID!): CouponFrFClaimResult!
             }
         `,
-        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver, CouponFissionShopResolver, CouponFrFShopResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver, CouponFissionShopResolver, CouponFrFShopResolver, CouponStoreShopResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);

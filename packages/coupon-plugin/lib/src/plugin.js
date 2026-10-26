@@ -38,6 +38,11 @@ const coupon_grant_batch_entity_1 = require("./coupon-grant-batch.entity");
 const coupon_sale_admin_resolver_1 = require("./coupon-sale-admin.resolver");
 const coupon_sale_shop_resolver_1 = require("./coupon-sale-shop.resolver");
 const coupon_sale_service_1 = require("./coupon-sale.service");
+const coupon_store_admin_resolver_1 = require("./coupon-store-admin.resolver");
+const coupon_store_shop_resolver_1 = require("./coupon-store-shop.resolver");
+const coupon_store_service_1 = require("./coupon-store.service");
+const coupon_store_binding_entity_1 = require("./coupon-store-binding.entity");
+const coupon_redemption_entity_1 = require("./coupon-redemption.entity");
 const coupon_settlement_admin_resolver_1 = require("./coupon-settlement-admin.resolver");
 const coupon_settlement_service_1 = require("./coupon-settlement.service");
 const coupon_settlement_reconcile_service_1 = require("./coupon-settlement-reconcile.service");
@@ -105,6 +110,8 @@ type CouponTemplate implements Node {
     label: String
     studentPrice: Int
     category: String
+    activityImage: String
+    storeCoverage: String!
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -313,12 +320,13 @@ CouponPlugin.options = {};
 exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem, coupon_settlement_order_entity_1.CouponSettlementOrder, coupon_settlement_reconcile_diff_entity_1.CouponSettlementReconcileDiff, coupon_fission_record_entity_1.CouponFissionRecord, coupon_grant_batch_entity_1.CouponGrantBatch, coupon_daily_claim_record_entity_1.CouponDailyClaimRecord],
+        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem, coupon_settlement_order_entity_1.CouponSettlementOrder, coupon_settlement_reconcile_diff_entity_1.CouponSettlementReconcileDiff, coupon_fission_record_entity_1.CouponFissionRecord, coupon_grant_batch_entity_1.CouponGrantBatch, coupon_daily_claim_record_entity_1.CouponDailyClaimRecord, coupon_store_binding_entity_1.CouponStoreBinding, coupon_redemption_entity_1.CouponRedemption],
         providers: [
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
             coupon_binding_service_1.CouponBindingService,
             coupon_sale_service_1.CouponSaleService,
+            coupon_store_service_1.CouponStoreService,
             coupon_settlement_service_1.CouponSettlementService,
             coupon_settlement_reconcile_service_1.CouponSettlementReconcileService,
             coupon_expire_reminder_service_1.CouponExpireReminderService,
@@ -331,6 +339,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.AddCouponMarketingFieldsMigration,
             migrations_1.AddCouponPromoFieldsMigration,
             migrations_1.AddCouponCategoryFieldMigration,
+            migrations_1.AddCouponActivityImageMigration,
             student_service_1.StudentVerificationService,
             migrations_1.AddCouponUsageSceneMigration,
             add_coupon_distribution_channels_1.AddCouponDistributionChannelsMigration,
@@ -341,6 +350,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.CreateCouponFissionMigration,
             migrations_1.CreateCouponReconcileMigration,
             migrations_1.CreateCouponFrFMigration,
+            migrations_1.CreateCouponStoreMigration,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService, coupon_sale_service_1.CouponSaleService],
         adminApiExtensions: {
@@ -576,6 +586,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 label: String
                 studentPrice: Int
                 category: String
+                activityImage: String
+                storeCoverage: String
             }
 
             input UpdateCouponTemplateInput {
@@ -610,6 +622,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 label: String
                 studentPrice: Int
                 category: String
+                activityImage: String
+                storeCoverage: String
             }
 
             input CouponTemplateListOptions
@@ -671,6 +685,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 externalRef: String
                 paidAt: DateTime
                 refundedAt: DateTime
+                storeId: ID
                 createdAt: DateTime!
             }
 
@@ -683,6 +698,37 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 skip: Int
                 take: Int
                 status: String
+            }
+
+            type CouponStoreBinding implements Node {
+                id: ID!
+                templateId: ID
+                bundleId: ID
+                merchantId: ID
+                storeId: ID!
+                type: String!
+                priority: Int!
+                isDefault: Boolean!
+                channelId: ID!
+            }
+
+            type CouponRedemption implements Node {
+                id: ID!
+                customerCouponId: ID!
+                couponCode: String!
+                templateId: ID!
+                saleOrderId: ID
+                merchantId: ID
+                storeId: ID!
+                channelId: ID!
+                redeemMode: String!
+                operatorId: ID
+                operatorName: String
+                redeemedAt: DateTime!
+                revokedAt: DateTime
+                revokeReason: String
+                amount: Int
+                deviceInfo: String
             }
 
             enum CouponSettlementStatus { PENDING SETTLED PAID_OUT REVERSED CANCELLED }
@@ -802,6 +848,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                couponStoreBindings(templateId: ID!): [CouponStoreBinding!]!
+                couponRedemptions(templateId: ID, storeId: ID, limit: Int): [CouponRedemption!]!
                 couponRedemptionStats(templateId: ID, from: String, to: String): [CouponRedemptionStat!]!
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
@@ -843,6 +891,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 createCouponBundle(input: CouponBundleInput!): CouponBundle!
                 updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
                 deleteCouponBundle(id: ID!): Boolean!
+                setCouponStoreBindings(templateId: ID!, storeIds: [ID!]!, coverage: String): [CouponStoreBinding!]!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 runCouponSettlementCycle: CouponSettlementCycleResult!
                 runCouponReconcile: CouponReconcileRunResult!
@@ -851,7 +900,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponWinBackGrant(templateId: ID!, days: Int!, notify: Boolean): CouponGrantBatch!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver, coupon_sale_admin_resolver_1.CouponSaleAdminResolver, coupon_settlement_admin_resolver_1.CouponSettlementAdminResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentAdminResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver, coupon_sale_admin_resolver_1.CouponSaleAdminResolver, coupon_settlement_admin_resolver_1.CouponSettlementAdminResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentAdminResolver, coupon_store_admin_resolver_1.CouponStoreAdminResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -993,7 +1042,30 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 status: String!
                 paidAt: DateTime
                 refundedAt: DateTime
+                storeId: ID
                 createdAt: DateTime!
+            }
+
+            type CouponStoreOption {
+                id: ID!
+                name: String!
+                address: String!
+                phoneNumber: String
+                businessHoursText: String
+                isOpenNow: Boolean!
+                distanceKm: Float
+                lat: Float
+                lng: Float
+                photos: [String!]!
+            }
+
+            type CouponRedemptionResult {
+                couponId: ID!
+                couponCode: String!
+                status: String!
+                storeId: ID!
+                storeName: String!
+                redeemedAt: DateTime!
             }
 
             type CouponWechatPayParams {
@@ -1019,6 +1091,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponCentreUpcoming(scene: CouponUsageScene): [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 customerCouponByCode(code: String!): CustomerCoupon
+                couponTemplateStores(templateId: ID!, lat: Float, lng: Float): [CouponStoreOption!]!
+                couponStoresForCoupon(code: String!, lat: Float, lng: Float): [CouponStoreOption!]!
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
@@ -1033,10 +1107,11 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 claimCoupon(templateId: ID!): CustomerCoupon!
                 claimProductCoupon(bindingId: ID!): CustomerCoupon!
                 redeemCouponByCode(claimCode: String!): CustomerCoupon!
+                redeemCouponAtStore(couponCode: String!, storeId: ID!): CouponRedemptionResult!
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
-                createCouponSaleOrder(templateId: ID, bundleId: ID): CouponSaleOrder!
+                createCouponSaleOrder(templateId: ID, bundleId: ID, storeId: ID): CouponSaleOrder!
                 payCouponSaleWithBalance(id: ID!): CouponSaleOrder!
                 createWechatCouponPayment(saleOrderId: ID!, tradeType: String, openid: String): CouponWechatPayResult!
                 cancelCouponSaleOrder(id: ID!): CouponSaleOrder!
@@ -1049,7 +1124,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 claimFlashCoupon(templateId: ID!): CouponFrFClaimResult!
             }
         `,
-            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentShopResolver, coupon_fission_shop_resolver_1.CouponFissionShopResolver, coupon_frf_shop_resolver_1.CouponFrFShopResolver],
+            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentShopResolver, coupon_fission_shop_resolver_1.CouponFissionShopResolver, coupon_frf_shop_resolver_1.CouponFrFShopResolver, coupon_store_shop_resolver_1.CouponStoreShopResolver],
         },
         configuration: (config) => {
             var _a, _b;

@@ -43,6 +43,14 @@ export class BillPayOrder extends VendureEntity {
     @Column({ type: 'text', nullable: true })
     discountDetail: string | null;
 
+    /** 下单抵扣所用券码（null = 未用券）；与 couponDiscount 成对落库，便于对账追溯 */
+    @Column({ type: 'varchar', length: 64, nullable: true })
+    couponCode: string | null;
+
+    /** 券实际抵扣额（分）；明细仍在 discountDetail，单独成列便于统计 */
+    @Column({ type: 'int', nullable: true })
+    couponDiscount: number | null;
+
     @Column({ type: 'varchar' })
     status: BillPayStatus;
 
@@ -55,7 +63,7 @@ export class BillPayOrder extends VendureEntity {
     quoteNote: string | null;
 
     /** 报价有效期（超时惰性失效回 PENDING_QUOTE） */
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: Date, nullable: true })
     quoteExpireAt: Date | null;
 
     /** 代付凭证（支付截图/小票 URL，受控访问） */
@@ -78,16 +86,16 @@ export class BillPayOrder extends VendureEntity {
     @Column({ type: 'int', nullable: true })
     settleLedgerId: number | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: Date, nullable: true })
     paidAt: Date | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: Date, nullable: true })
     completedAt: Date | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: Date, nullable: true })
     settledAt: Date | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: Date, nullable: true })
     refundedAt: Date | null;
 
     /** 超容忍阈值时的备注说明 */

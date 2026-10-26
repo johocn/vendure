@@ -144,4 +144,11 @@ describe('parseBillPayConfig', () => {
         const c = parseBillPayConfig({ autoQuote: false });
         expect(c.autoQuote).toBe(false);
     });
+
+    it('couponEnabled：仅布尔 true 开启，缺省/非布尔一律关闭（默认关闭）', () => {
+        expect(parseBillPayConfig({ couponEnabled: true }).couponEnabled).toBe(true);
+        expect(parseBillPayConfig({}).couponEnabled).toBe(false);
+        expect(parseBillPayConfig({ couponEnabled: 'true' }).couponEnabled).toBe(false);
+        expect(DEFAULT_BILLPAY_CONFIG.couponEnabled).toBe(false);
+    });
 });

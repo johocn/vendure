@@ -22,6 +22,7 @@ export declare class BillPayShopResolver {
         merchantName: string;
         expectedAmount: number;
         remark?: string;
+        couponCode?: string | null;
     }): Promise<any>;
     cancelBillPayOrder(ctx: RequestContext, id: ID): Promise<any>;
     createWechatBillPayment(ctx: RequestContext, id: ID, tradeType?: string, openid?: string): Promise<any>;

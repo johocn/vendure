@@ -30,4 +30,6 @@ export declare class CustomerCoupon extends VendureEntity {
     expiredAt?: Date;
     /** 溯源：该券由哪笔出售单生成（退款回收按此定位；非出售券为 null） */
     saleOrderId: number | null;
+    /** 到店核销门店 id（merchant-plugin MerchantStore.id）；未到店核销为 null */
+    redeemedStoreId: number | null;
 }

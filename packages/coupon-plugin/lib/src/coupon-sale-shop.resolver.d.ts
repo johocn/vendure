@@ -20,7 +20,7 @@ export declare class CouponSaleShopResolver {
         campaign: ReturnType<typeof import("./coupon-sale").resolveActiveCampaign> | null;
     }>;
     myCouponSaleOrders(ctx: RequestContext): Promise<import("./coupon-sale-order.entity").CouponSaleOrder[]>;
-    createCouponSaleOrder(ctx: RequestContext, templateId?: ID, bundleId?: ID): Promise<import("./coupon-sale-order.entity").CouponSaleOrder>;
+    createCouponSaleOrder(ctx: RequestContext, templateId?: ID, bundleId?: ID, storeId?: ID): Promise<import("./coupon-sale-order.entity").CouponSaleOrder>;
     payCouponSaleWithBalance(ctx: RequestContext, id: ID): Promise<import("./coupon-sale-order.entity").CouponSaleOrder>;
     createWechatCouponPayment(ctx: RequestContext, saleOrderId: ID, tradeType?: string, openid?: string): Promise<any>;
     cancelCouponSaleOrder(ctx: RequestContext, id: ID): Promise<import("./coupon-sale-order.entity").CouponSaleOrder>;
