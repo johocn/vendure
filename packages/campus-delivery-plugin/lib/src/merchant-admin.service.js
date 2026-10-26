@@ -21,6 +21,7 @@ const refund_payment_1 = require("./refund-payment");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const waimai_store_service_1 = require("./waimai-store.service");
 const privacy_number_service_1 = require("./privacy-number.service");
+const addon_fee_1 = require("./addon-fee");
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
  * 状态机（merchantConfirmEnabled 渠道）：支付 → pending_merchant（待商家接单）
@@ -299,6 +300,8 @@ let MerchantAdminService = class MerchantAdminService {
             + 'COALESCE(p."customFieldsWaimaisoldout", false) AS "soldOut", '
             + 'COALESCE(p."customFieldsWaimaimonthlysales", 0) AS "monthlySales", '
             + 'p."customFieldsWaimaipackingfee" AS "packingFee", '
+            + 'p."customFieldsWaimaiaddongroups" AS "addonGroups", '
+            + 'p."customFieldsWaimaicombo" AS "combo", '
             + '(SELECT COUNT(*)::int FROM product_variant pv WHERE pv."productId" = p.id AND pv."deletedAt" IS NULL) AS "variantCount" '
             + 'FROM product p '
             + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
@@ -323,6 +326,9 @@ let MerchantAdminService = class MerchantAdminService {
                     monthlySales: Number((_a = r.monthlySales) !== null && _a !== void 0 ? _a : 0),
                     variantCount: Number((_b = r.variantCount) !== null && _b !== void 0 ? _b : 0),
                     packingFee: r.packingFee == null ? null : Number(r.packingFee),
+                    // 加料组/套餐以 JSON 字符串回传，后台编辑 sheet 直接反序列化回填
+                    addonGroups: r.addonGroups == null ? null : String(r.addonGroups),
+                    combo: r.combo == null ? null : String(r.combo),
                 });
             }),
             total: Number((_b = (_a = countList === null || countList === void 0 ? void 0 : countList[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0),
@@ -364,6 +370,65 @@ let MerchantAdminService = class MerchantAdminService {
             customFields: { waimaiPackingFee: value },
         });
         return { ok: true, packingFee: value };
+    }
+    /** 商品加料组（P1-2）：空数组=清除；清洗后再序列化，脏数据不入库 */
+    async setProductAddonGroups(ctx, productId, rawGroups) {
+        var _a, _b, _c, _d;
+        await this.assertProductInChannel(ctx, productId);
+        const cleaned = (0, addon_fee_1.parseAddonGroups)(rawGroups);
+        // 显式上限校验：解析器会静默截断，这里对「用户确实提交了超限内容」直接报错更友好
+        const inputCount = Array.isArray(rawGroups) ? rawGroups.length : 0;
+        if (inputCount > addon_fee_1.ADDON_MAX_GROUPS) {
+            throw new core_1.UserInputError(`加料组最多 ${addon_fee_1.ADDON_MAX_GROUPS} 组`);
+        }
+        for (const g of Array.isArray(rawGroups) ? rawGroups : []) {
+            const opts = Array.isArray(g === null || g === void 0 ? void 0 : g.options) ? g.options : [];
+            if (opts.length > addon_fee_1.ADDON_MAX_OPTIONS_PER_GROUP) {
+                throw new core_1.UserInputError(`「${(_a = g === null || g === void 0 ? void 0 : g.name) !== null && _a !== void 0 ? _a : '加料'}」最多 ${addon_fee_1.ADDON_MAX_OPTIONS_PER_GROUP} 个选项`);
+            }
+            for (const o of opts) {
+                const n = Number((_b = o === null || o === void 0 ? void 0 : o.price) !== null && _b !== void 0 ? _b : 0);
+                if (Number.isFinite(n) && n > addon_fee_1.ADDON_MAX_PRICE_FEN) {
+                    throw new core_1.UserInputError('单个加料价格不能超过 1000 元');
+                }
+                if (Number.isFinite(n) && n < 0) {
+                    throw new core_1.UserInputError('加料价格不能为负数');
+                }
+            }
+            const min = Number((_c = g === null || g === void 0 ? void 0 : g.min) !== null && _c !== void 0 ? _c : 0);
+            const max = Number((_d = g === null || g === void 0 ? void 0 : g.max) !== null && _d !== void 0 ? _d : 0);
+            if (min > 0 && max > 0 && min > max) {
+                throw new core_1.UserInputError('「最少选」不能大于「最多选」');
+            }
+        }
+        const value = (0, addon_fee_1.serializeAddonGroups)(cleaned);
+        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+            customFields: { waimaiAddonGroups: value },
+        });
+        return { ok: true, addonGroups: value };
+    }
+    /** 商品套餐内容（P1-2）：传 null/空 items=清除（非套餐商品） */
+    async setProductCombo(ctx, productId, rawCombo) {
+        await this.assertProductInChannel(ctx, productId);
+        const inputItems = Array.isArray(rawCombo === null || rawCombo === void 0 ? void 0 : rawCombo.items) ? rawCombo.items : [];
+        if (inputItems.length > addon_fee_1.COMBO_MAX_ITEMS) {
+            throw new core_1.UserInputError(`套餐内含商品最多 ${addon_fee_1.COMBO_MAX_ITEMS} 项`);
+        }
+        const value = (0, addon_fee_1.serializeCombo)((0, addon_fee_1.parseCombo)(rawCombo));
+        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+            customFields: { waimaiCombo: value },
+        });
+        return { ok: true, combo: value };
+    }
+    /** 商品必须属于当前店铺渠道（越权防护：商家只能改本店商品） */
+    async assertProductInChannel(ctx, productId) {
+        const inChannel = await this.connection.getRepository(ctx, core_1.Product).createQueryBuilder('product')
+            .leftJoin('product.channels', 'channel')
+            .where('product.id = :id', { id: productId })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId })
+            .getOne();
+        if (!inChannel)
+            throw new core_1.UserInputError('商品不存在或不属于当前店铺');
     }
     async assertAnyChannelOrder(ctx, orderId) {
         var _a;

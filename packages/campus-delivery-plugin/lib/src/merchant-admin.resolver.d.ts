@@ -40,6 +40,16 @@ export declare class MerchantAdminResolver {
         ok: boolean;
         packingFee: number | null;
     }>;
+    /** 商品加料组（P1-2）：传空数组清除 */
+    campusMerchantSetProductAddonGroups(ctx: RequestContext, productId: ID, groups: string[]): Promise<{
+        ok: boolean;
+        addonGroups: string | null;
+    }>;
+    /** 商品套餐内容（P1-2）：传 null 清除 */
+    campusMerchantSetProductCombo(ctx: RequestContext, productId: ID, combo?: string | null): Promise<{
+        ok: boolean;
+        combo: string | null;
+    }>;
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     campusMerchantDispatchExternal(ctx: RequestContext, orderId: ID, provider: string): Promise<{
         ok: boolean;

@@ -35,6 +35,8 @@ const rider_ops_entities_1 = require("./rider-ops.entities");
 const p7_ops_tables_1 = require("./migrations/p7-ops-tables");
 const p8_p0_privacy_food_safety_1 = require("./migrations/p8-p0-privacy-food-safety");
 const p8_p1_packing_fee_1 = require("./migrations/p8-p1-packing-fee");
+const p8_p1_2_addon_combo_1 = require("./migrations/p8-p1-2-addon-combo");
+const addon_fee_process_1 = require("./addon-fee.process");
 const privacy_number_service_1 = require("./privacy-number.service");
 const add_withdraw_payout_1 = require("./migrations/add-withdraw-payout");
 const add_rider_location_1 = require("./migrations/add-rider-location");
@@ -133,6 +135,7 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, packing_fee_process_1.bindPackingFeeDeps)(this.injector.get(core_1.TransactionalConnection), this.injector.get(core_1.OrderService));
+        (0, addon_fee_process_1.bindAddonFeeDeps)(this.injector.get(core_1.TransactionalConnection), this.injector.get(core_1.OrderService));
         (0, order_gate_process_1.bindOrderGateConnection)(this.injector.get(core_1.TransactionalConnection));
         // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
         void this.grantDispatchPermission().catch(e => core_1.Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'));
@@ -264,6 +267,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p7_ops_tables_1.P7OpsTablesMigration,
             p8_p0_privacy_food_safety_1.P8P0Migration,
             p8_p1_packing_fee_1.P8P1PackingFeeMigration,
+            p8_p1_2_addon_combo_1.P8P1AddonComboMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -875,6 +879,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     variantCount: Int!
                     """商品级打包费单价（分/件）；null=沿用店铺配置金额"""
                     packingFee: Int
+                    """加料组配置 JSON 字符串（AddonGroupConfig[]）；null=无加料"""
+                    addonGroups: String
+                    """套餐内容 JSON 字符串（ComboConfig）；null=非套餐商品"""
+                    combo: String
                 }
 
                 type CampusMerchantProductList {
@@ -891,6 +899,18 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
                     packingFee: Int
+                }
+
+                """商品加料组保存结果：addonGroups 为清洗后的 JSON 字符串，null=已清除"""
+                type CampusMerchantAddonResult {
+                    ok: Boolean!
+                    addonGroups: String
+                }
+
+                """商品套餐保存结果：combo 为清洗后的 JSON 字符串，null=已清除"""
+                type CampusMerchantComboResult {
+                    ok: Boolean!
+                    combo: String
                 }
 
                 type CampusRiderEarningRow {
@@ -1144,6 +1164,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
                     campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
+                    """设置商品加料组（P1-2）：groups 为 AddonGroupConfig 的 JSON 字符串数组，空数组清除"""
+                    campusMerchantSetProductAddonGroups(productId: ID!, groups: [String!]!): CampusMerchantAddonResult!
+                    """设置商品套餐内容（P1-2）：combo 为 ComboConfig 的 JSON 字符串，null 清除"""
+                    campusMerchantSetProductCombo(productId: ID!, combo: String): CampusMerchantComboResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
@@ -1697,19 +1721,19 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
             ];
-            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])], Channel: [...((_f = config.customFields.Channel) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Channel) !== null && _g !== void 0 ? _g : [])], Product: [...((_h = config.customFields.Product) !== null && _h !== void 0 ? _h : []), ...((_j = custom_fields_1.campusCustomFields.Product) !== null && _j !== void 0 ? _j : [])], Address: [...((_k = config.customFields.Address) !== null && _k !== void 0 ? _k : []), ...((_l = custom_fields_1.campusCustomFields.Address) !== null && _l !== void 0 ? _l : [])] });
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], OrderLine: [...((_d = config.customFields.OrderLine) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.OrderLine) !== null && _e !== void 0 ? _e : [])], Customer: [...((_f = config.customFields.Customer) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Customer) !== null && _g !== void 0 ? _g : [])], Channel: [...((_h = config.customFields.Channel) !== null && _h !== void 0 ? _h : []), ...((_j = custom_fields_1.campusCustomFields.Channel) !== null && _j !== void 0 ? _j : [])], Product: [...((_k = config.customFields.Product) !== null && _k !== void 0 ? _k : []), ...((_l = custom_fields_1.campusCustomFields.Product) !== null && _l !== void 0 ? _l : [])], Address: [...((_m = config.customFields.Address) !== null && _m !== void 0 ? _m : []), ...((_o = custom_fields_1.campusCustomFields.Address) !== null && _o !== void 0 ? _o : [])] });
             config.shippingOptions.shippingCalculators = [
-                ...((_m = config.shippingOptions.shippingCalculators) !== null && _m !== void 0 ? _m : []),
+                ...((_p = config.shippingOptions.shippingCalculators) !== null && _p !== void 0 ? _p : []),
                 shipping_calculator_1.campusErrandCalculator,
             ];
             // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
             // 取消守卫：C 端在骑手已接单/配送中/已送达时不可自助取消（后台强制路径不受限）
-            config.orderOptions = Object.assign(Object.assign({}, ((_o = config.orderOptions) !== null && _o !== void 0 ? _o : {})), { process: [...((_q = (_p = config.orderOptions) === null || _p === void 0 ? void 0 : _p.process) !== null && _q !== void 0 ? _q : []), packing_fee_process_1.campusPackingFeeProcess, min_order_process_1.campusMinOrderProcess, order_gate_process_1.campusOrderGateProcess, cancel_guard_process_1.campusCancelGuardProcess] });
+            config.orderOptions = Object.assign(Object.assign({}, ((_q = config.orderOptions) !== null && _q !== void 0 ? _q : {})), { process: [...((_s = (_r = config.orderOptions) === null || _r === void 0 ? void 0 : _r.process) !== null && _s !== void 0 ? _s : []), packing_fee_process_1.campusPackingFeeProcess, addon_fee_process_1.campusAddonFeeProcess, min_order_process_1.campusMinOrderProcess, order_gate_process_1.campusOrderGateProcess, cancel_guard_process_1.campusCancelGuardProcess] });
             // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
             // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
             // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。

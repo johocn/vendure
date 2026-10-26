@@ -1,7 +1,21 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
+import { Allow, Ctx, ID, RequestContext, UserInputError } from '@vendure/core';
 import { CampusPermissions } from './permissions';
 import { MerchantAdminService } from './merchant-admin.service';
+
+/** JSON 字符串入参解析：语法错误直接以 UserInputError 反馈给后台，避免落库脏数据 */
+function parseJson(raw: string): any {
+    try {
+        return JSON.parse(raw);
+    } catch {
+        throw new UserInputError('配置格式不合法（JSON 解析失败）');
+    }
+}
+
+/** 逐条解析 JSON 字符串数组（空元素跳过） */
+function parseJsonList(raw: string[]): any[] {
+    return (raw ?? []).filter(s => String(s ?? '').trim() !== '').map(s => parseJson(String(s)));
+}
 
 @Resolver()
 export class MerchantAdminResolver {
@@ -90,6 +104,28 @@ export class MerchantAdminResolver {
         @Args({ name: 'packingFee', type: () => Number, nullable: true }) packingFee?: number | null,
     ) {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee ?? null);
+    }
+
+    /** 商品加料组（P1-2）：传空数组清除 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetProductAddonGroups(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+        @Args({ name: 'groups', type: () => [String] }) groups: string[],
+    ) {
+        return this.merchant.setProductAddonGroups(ctx, productId, parseJsonList(groups));
+    }
+
+    /** 商品套餐内容（P1-2）：传 null 清除 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetProductCombo(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+        @Args({ name: 'combo', type: () => String, nullable: true }) combo?: string | null,
+    ) {
+        return this.merchant.setProductCombo(ctx, productId, combo ? parseJson(combo) : null);
     }
 
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */

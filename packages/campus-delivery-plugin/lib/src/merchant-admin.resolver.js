@@ -17,6 +17,19 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const permissions_1 = require("./permissions");
 const merchant_admin_service_1 = require("./merchant-admin.service");
+/** JSON 字符串入参解析：语法错误直接以 UserInputError 反馈给后台，避免落库脏数据 */
+function parseJson(raw) {
+    try {
+        return JSON.parse(raw);
+    }
+    catch (_a) {
+        throw new core_1.UserInputError('配置格式不合法（JSON 解析失败）');
+    }
+}
+/** 逐条解析 JSON 字符串数组（空元素跳过） */
+function parseJsonList(raw) {
+    return (raw !== null && raw !== void 0 ? raw : []).filter(s => String(s !== null && s !== void 0 ? s : '').trim() !== '').map(s => parseJson(String(s)));
+}
 let MerchantAdminResolver = class MerchantAdminResolver {
     constructor(merchant) {
         this.merchant = merchant;
@@ -58,6 +71,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     async campusMerchantSetProductPackingFee(ctx, productId, packingFee) {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee !== null && packingFee !== void 0 ? packingFee : null);
+    }
+    /** 商品加料组（P1-2）：传空数组清除 */
+    async campusMerchantSetProductAddonGroups(ctx, productId, groups) {
+        return this.merchant.setProductAddonGroups(ctx, productId, parseJsonList(groups));
+    }
+    /** 商品套餐内容（P1-2）：传 null 清除 */
+    async campusMerchantSetProductCombo(ctx, productId, combo) {
+        return this.merchant.setProductCombo(ctx, productId, combo ? parseJson(combo) : null);
     }
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     async campusMerchantDispatchExternal(ctx, orderId, provider) {
@@ -175,6 +196,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantSetProductPackingFee", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __param(2, (0, graphql_1.Args)({ name: 'groups', type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetProductAddonGroups", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __param(2, (0, graphql_1.Args)({ name: 'combo', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetProductCombo", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

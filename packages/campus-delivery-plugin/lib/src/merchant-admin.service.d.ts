@@ -138,6 +138,18 @@ export declare class MerchantAdminService {
         ok: boolean;
         packingFee: number | null;
     }>;
+    /** 商品加料组（P1-2）：空数组=清除；清洗后再序列化，脏数据不入库 */
+    setProductAddonGroups(ctx: RequestContext, productId: ID, rawGroups: unknown): Promise<{
+        ok: boolean;
+        addonGroups: string | null;
+    }>;
+    /** 商品套餐内容（P1-2）：传 null/空 items=清除（非套餐商品） */
+    setProductCombo(ctx: RequestContext, productId: ID, rawCombo: unknown): Promise<{
+        ok: boolean;
+        combo: string | null;
+    }>;
+    /** 商品必须属于当前店铺渠道（越权防护：商家只能改本店商品） */
+    private assertProductInChannel;
     private assertAnyChannelOrder;
     private assertChannelOrder;
     private assertChannelOrderState;

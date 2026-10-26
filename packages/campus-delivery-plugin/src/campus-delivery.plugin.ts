@@ -36,6 +36,8 @@ import { CampusRiderReview, CampusRiderSession, CampusRiderShift } from './rider
 import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
 import { P8P0Migration } from './migrations/p8-p0-privacy-food-safety';
 import { P8P1PackingFeeMigration } from './migrations/p8-p1-packing-fee';
+import { P8P1AddonComboMigration } from './migrations/p8-p1-2-addon-combo';
+import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
 import { PrivacyNumberService } from './privacy-number.service';
 import { AddWithdrawPayoutMigration } from './migrations/add-withdraw-payout';
 import { AddRiderLocationMigration } from './migrations/add-rider-location';
@@ -132,6 +134,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P7OpsTablesMigration,
         P8P0Migration,
         P8P1PackingFeeMigration,
+        P8P1AddonComboMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -743,6 +746,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     variantCount: Int!
                     """商品级打包费单价（分/件）；null=沿用店铺配置金额"""
                     packingFee: Int
+                    """加料组配置 JSON 字符串（AddonGroupConfig[]）；null=无加料"""
+                    addonGroups: String
+                    """套餐内容 JSON 字符串（ComboConfig）；null=非套餐商品"""
+                    combo: String
                 }
 
                 type CampusMerchantProductList {
@@ -759,6 +766,18 @@ import { WaimaiStoreService } from './waimai-store.service';
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
                     packingFee: Int
+                }
+
+                """商品加料组保存结果：addonGroups 为清洗后的 JSON 字符串，null=已清除"""
+                type CampusMerchantAddonResult {
+                    ok: Boolean!
+                    addonGroups: String
+                }
+
+                """商品套餐保存结果：combo 为清洗后的 JSON 字符串，null=已清除"""
+                type CampusMerchantComboResult {
+                    ok: Boolean!
+                    combo: String
                 }
 
                 type CampusRiderEarningRow {
@@ -1012,6 +1031,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
                     campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
+                    """设置商品加料组（P1-2）：groups 为 AddonGroupConfig 的 JSON 字符串数组，空数组清除"""
+                    campusMerchantSetProductAddonGroups(productId: ID!, groups: [String!]!): CampusMerchantAddonResult!
+                    """设置商品套餐内容（P1-2）：combo 为 ComboConfig 的 JSON 字符串，null 清除"""
+                    campusMerchantSetProductCombo(productId: ID!, combo: String): CampusMerchantComboResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
@@ -1572,6 +1595,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         config.customFields = {
             ...config.customFields,
             Order: [...(config.customFields.Order ?? []), ...(campusCustomFields.Order ?? [])],
+            OrderLine: [...(config.customFields.OrderLine ?? []), ...(campusCustomFields.OrderLine ?? [])],
             Customer: [...(config.customFields.Customer ?? []), ...(campusCustomFields.Customer ?? [])],
             Channel: [...(config.customFields.Channel ?? []), ...(campusCustomFields.Channel ?? [])],
             Product: [...(config.customFields.Product ?? []), ...(campusCustomFields.Product ?? [])],
@@ -1585,7 +1609,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         // 取消守卫：C 端在骑手已接单/配送中/已送达时不可自助取消（后台强制路径不受限）
         config.orderOptions = {
             ...(config.orderOptions ?? {}),
-            process: [...(config.orderOptions?.process ?? []), campusPackingFeeProcess, campusMinOrderProcess, campusOrderGateProcess, campusCancelGuardProcess],
+            process: [...(config.orderOptions?.process ?? []), campusPackingFeeProcess, campusAddonFeeProcess, campusMinOrderProcess, campusOrderGateProcess, campusCancelGuardProcess],
         } as any;
         // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
         // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
@@ -1622,6 +1646,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
         bindMinOrderConnection(this.injector.get(TransactionalConnection));
         bindPackingFeeDeps(this.injector.get(TransactionalConnection), this.injector.get(OrderService));
+        bindAddonFeeDeps(this.injector.get(TransactionalConnection), this.injector.get(OrderService));
         bindOrderGateConnection(this.injector.get(TransactionalConnection));
         // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
         void this.grantDispatchPermission().catch(e =>
