@@ -70,4 +70,29 @@
 **必须跟进**：
 
 1. 线上现为「自动同步关闭」——**新增实体/字段/自定义字段必须写 migration**，不能再指望重启自动建列，否则运行期会报列不存在。
-2. `order` 表需择机重建回收 attnum（维护窗口：停服 → `pg_dump` 单表 → 重建/恢复 → 校验外键与索引），完成后方可考虑恢复 `DB_SYNC`（或永久保持关闭 + 迁移体系）。
+2. ~~`order` 表择机重建回收 attnum~~ —— **已于 2026-10-26 执行完成**，见 5.1。
+
+### 5.1 `order` 表重建记录（2026-10-26，已执行）
+
+**目标**：回收长期自动同步产生的 1417 个已删列（`order` 表 max attnum 1578，逼近 Postgres 1600 列上限）。
+
+**备份**：`/home/admin/backups/vendure_pre_order_rebuild_20261026_083350.dump`（全库 `pg_dump -Fc`，4.4 MB，2642 TOC / 323 个表数据，容器内外 md5 一致）。
+
+**演练**：先在临时库 `vendure_rebuild_dryrun`（还原同一备份）跑完整重建脚本，全部校验通过后再操作生产，演练库已删除。
+
+**步骤**（单事务 `psql -v ON_ERROR_STOP=1`，停服窗口约 1 分钟）：
+
+1. `pm2 stop vendure`（确认无残留连接）；
+2. `ALTER TABLE "order" RENAME TO order_old`，5 个索引/PK 改名加 `_old` 释放规范名（索引名为 schema 级唯一）；
+3. 按 `pg_dump --schema-only -t '"order"'` 的 DDL 建新表 `"order"`（161 列）+ `OWNER vendure`；
+4. `ALTER SEQUENCE order_id_seq OWNED BY "order".id` —— 必须在删旧表**之前**，否则序列随旧表一起被删；
+5. 建 PK + 4 个索引（规范名）；
+6. 断言新旧表 live 列顺序一致后 `INSERT INTO "order" SELECT * FROM order_old`（391 行）；
+7. 删 11 个指向旧表的子表外键 → `DROP TABLE order_old` → 按原定义（含 `ON UPDATE/DELETE CASCADE`）重建 11 个子表外键 + 本表 3 个外键；
+8. 事务内断言（行数 391、max attnum ≤ 200、入向外键 12、索引 5、序列归属新表）→ `COMMIT` → `ANALYZE`。
+
+**结果**：行数 391（未变）；`max attnum 1578 → 161`；`已删列 1417 → 0`；入向外键 12 条全部 `convalidated`；索引 5 个规范名；`order_id_seq.last_value=424`（实测 `nextval`=425 后已 `setval` 回 424）；表体积 376 kB → 264 kB；无 `order_old` 残留。
+
+**回归**：`pm2 start vendure` → `health=200`，日志无异常（`WechatShoppingAssistantPlugin initialized`）；公众号助手搜索链路正常返回商品卡片；`order_line` / `payment` 对 `order` 无孤儿行。
+
+**决定**：`DB_SYNC=0` **继续保持关闭**（表结构改动统一走 migration）。重建只回收历史 attnum；若恢复同步，每次启动仍会为 `order` 追加临时列并重新累积，故不恢复。
