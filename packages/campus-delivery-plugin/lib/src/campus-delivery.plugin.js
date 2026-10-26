@@ -970,8 +970,6 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
                     campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
-                    """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
-                    campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1144,6 +1142,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """运营代客改址：取货后也可代改，必须填写原因"""
                     campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
+                    """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
+                    campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
