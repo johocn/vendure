@@ -133,6 +133,11 @@ export declare class MerchantAdminService {
         ok: boolean;
         soldOut: boolean;
     }>;
+    /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
+    setProductPackingFee(ctx: RequestContext, productId: ID, packingFee: number | null): Promise<{
+        ok: boolean;
+        packingFee: number | null;
+    }>;
     private assertAnyChannelOrder;
     private assertChannelOrder;
     private assertChannelOrderState;

@@ -246,6 +246,26 @@ __decorate([
     (0, typeorm_1.Column)({ default: false }),
     __metadata("design:type", Boolean)
 ], CampusFulfillmentConfig.prototype, "kitchenLiveEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CampusFulfillmentConfig.prototype, "packingFeeEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'perItem' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "packingFeeMode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "packingFeeAmount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "packingFeeCap", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "packingFeeLabel", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

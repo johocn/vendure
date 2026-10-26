@@ -343,6 +343,7 @@ export class MerchantAdminService {
             'SELECT p.id AS "productId", COALESCE(pt.name, \'商品 #\' || p.id) AS name, '
             + 'COALESCE(p."customFieldsWaimaisoldout", false) AS "soldOut", '
             + 'COALESCE(p."customFieldsWaimaimonthlysales", 0) AS "monthlySales", '
+            + 'p."customFieldsWaimaipackingfee" AS "packingFee", '
             + '(SELECT COUNT(*)::int FROM product_variant pv WHERE pv."productId" = p.id AND pv."deletedAt" IS NULL) AS "variantCount" '
             + 'FROM product p '
             + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
@@ -369,6 +370,7 @@ export class MerchantAdminService {
                 soldOut: Boolean(r.soldOut),
                 monthlySales: Number(r.monthlySales ?? 0),
                 variantCount: Number(r.variantCount ?? 0),
+                packingFee: r.packingFee == null ? null : Number(r.packingFee),
             })),
             total: Number(countList?.[0]?.n ?? 0),
         };
@@ -386,6 +388,27 @@ export class MerchantAdminService {
             customFields: { waimaiSoldOut: Boolean(soldOut) },
         } as any);
         return { ok: true, soldOut: Boolean(soldOut) };
+    }
+
+    /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
+    async setProductPackingFee(ctx: RequestContext, productId: ID, packingFee: number | null) {
+        const inChannel = await this.connection.getRepository(ctx, Product).createQueryBuilder('product')
+            .leftJoin('product.channels', 'channel')
+            .where('product.id = :id', { id: productId as any })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId as any })
+            .getOne();
+        if (!inChannel) throw new UserInputError('商品不存在或不属于当前店铺');
+        let value: number | null = null;
+        if (packingFee != null) {
+            const n = Number(packingFee);
+            if (!Number.isFinite(n) || n < 0) throw new UserInputError('打包费必须为不小于 0 的数字（分/件）');
+            if (n > 100_000) throw new UserInputError('打包费单件超出允许上限（100000 分 = 1000 元）');
+            value = Math.round(n);
+        }
+        await this.connection.getRepository(ctx, Product).update(productId, {
+            customFields: { waimaiPackingFee: value },
+        } as any);
+        return { ok: true, packingFee: value };
     }
 
     private async assertAnyChannelOrder(ctx: RequestContext, orderId: ID) {

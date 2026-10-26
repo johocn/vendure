@@ -298,6 +298,7 @@ let MerchantAdminService = class MerchantAdminService {
         const rows = await this.connection.rawConnection.query('SELECT p.id AS "productId", COALESCE(pt.name, \'商品 #\' || p.id) AS name, '
             + 'COALESCE(p."customFieldsWaimaisoldout", false) AS "soldOut", '
             + 'COALESCE(p."customFieldsWaimaimonthlysales", 0) AS "monthlySales", '
+            + 'p."customFieldsWaimaipackingfee" AS "packingFee", '
             + '(SELECT COUNT(*)::int FROM product_variant pv WHERE pv."productId" = p.id AND pv."deletedAt" IS NULL) AS "variantCount" '
             + 'FROM product p '
             + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
@@ -321,6 +322,7 @@ let MerchantAdminService = class MerchantAdminService {
                     soldOut: Boolean(r.soldOut),
                     monthlySales: Number((_a = r.monthlySales) !== null && _a !== void 0 ? _a : 0),
                     variantCount: Number((_b = r.variantCount) !== null && _b !== void 0 ? _b : 0),
+                    packingFee: r.packingFee == null ? null : Number(r.packingFee),
                 });
             }),
             total: Number((_b = (_a = countList === null || countList === void 0 ? void 0 : countList[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0),
@@ -339,6 +341,29 @@ let MerchantAdminService = class MerchantAdminService {
             customFields: { waimaiSoldOut: Boolean(soldOut) },
         });
         return { ok: true, soldOut: Boolean(soldOut) };
+    }
+    /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
+    async setProductPackingFee(ctx, productId, packingFee) {
+        const inChannel = await this.connection.getRepository(ctx, core_1.Product).createQueryBuilder('product')
+            .leftJoin('product.channels', 'channel')
+            .where('product.id = :id', { id: productId })
+            .andWhere('channel.id = :ch', { ch: ctx.channelId })
+            .getOne();
+        if (!inChannel)
+            throw new core_1.UserInputError('商品不存在或不属于当前店铺');
+        let value = null;
+        if (packingFee != null) {
+            const n = Number(packingFee);
+            if (!Number.isFinite(n) || n < 0)
+                throw new core_1.UserInputError('打包费必须为不小于 0 的数字（分/件）');
+            if (n > 100000)
+                throw new core_1.UserInputError('打包费单件超出允许上限（100000 分 = 1000 元）');
+            value = Math.round(n);
+        }
+        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+            customFields: { waimaiPackingFee: value },
+        });
+        return { ok: true, packingFee: value };
     }
     async assertAnyChannelOrder(ctx, orderId) {
         var _a;

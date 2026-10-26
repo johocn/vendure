@@ -81,6 +81,17 @@ export class MerchantAdminResolver {
         return this.merchant.setProductSoldOut(ctx, productId, soldOut);
     }
 
+    /** 商品级打包费（分/件）：null 清除回落店铺配置 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetProductPackingFee(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+        @Args({ name: 'packingFee', type: () => Number, nullable: true }) packingFee?: number | null,
+    ) {
+        return this.merchant.setProductPackingFee(ctx, productId, packingFee ?? null);
+    }
+
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

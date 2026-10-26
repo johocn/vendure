@@ -35,6 +35,11 @@ export declare class MerchantAdminResolver {
         ok: boolean;
         soldOut: boolean;
     }>;
+    /** 商品级打包费（分/件）：null 清除回落店铺配置 */
+    campusMerchantSetProductPackingFee(ctx: RequestContext, productId: ID, packingFee?: number | null): Promise<{
+        ok: boolean;
+        packingFee: number | null;
+    }>;
     /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
     campusMerchantDispatchExternal(ctx: RequestContext, orderId: ID, provider: string): Promise<{
         ok: boolean;

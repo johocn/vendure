@@ -34,6 +34,7 @@ const chat_shop_resolver_1 = require("./chat-shop.resolver");
 const rider_ops_entities_1 = require("./rider-ops.entities");
 const p7_ops_tables_1 = require("./migrations/p7-ops-tables");
 const p8_p0_privacy_food_safety_1 = require("./migrations/p8-p0-privacy-food-safety");
+const p8_p1_packing_fee_1 = require("./migrations/p8-p1-packing-fee");
 const privacy_number_service_1 = require("./privacy-number.service");
 const add_withdraw_payout_1 = require("./migrations/add-withdraw-payout");
 const add_rider_location_1 = require("./migrations/add-rider-location");
@@ -80,6 +81,7 @@ const add_route_delivery_config_1 = require("./migrations/add-route-delivery-con
 const add_third_party_base_fee_1 = require("./migrations/add-third-party-base-fee");
 const cancel_guard_process_1 = require("./cancel-guard.process");
 const min_order_process_1 = require("./min-order.process");
+const packing_fee_process_1 = require("./packing-fee.process");
 const payment_timeout_admin_resolver_1 = require("./payment-timeout-admin.resolver");
 const payment_timeout_admin_service_1 = require("./payment-timeout-admin.service");
 const payment_timeout_job_1 = require("./payment-timeout.job");
@@ -130,6 +132,7 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     onApplicationBootstrap() {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
+        (0, packing_fee_process_1.bindPackingFeeDeps)(this.injector.get(core_1.TransactionalConnection), this.injector.get(core_1.OrderService));
         (0, order_gate_process_1.bindOrderGateConnection)(this.injector.get(core_1.TransactionalConnection));
         // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
         void this.grantDispatchPermission().catch(e => core_1.Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'));
@@ -260,6 +263,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p6_default_compensation_and_credit_recovery_1.P6DefaultCompensationMigration,
             p7_ops_tables_1.P7OpsTablesMigration,
             p8_p0_privacy_food_safety_1.P8P0Migration,
+            p8_p1_packing_fee_1.P8P1PackingFeeMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -605,6 +609,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     foodSafetyCommitmentImage: String
                     kitchenLiveUrl: String
                     kitchenLiveEnabled: Boolean!
+                    """打包费开关"""
+                    packingFeeEnabled: Boolean!
+                    """计费方式：perItem=按件累加 / perOrder=每单固定"""
+                    packingFeeMode: String!
+                    """打包费金额（分）：perItem=单件，perOrder=每单"""
+                    packingFeeAmount: Int!
+                    """单笔封顶（分，null=不封顶）"""
+                    packingFeeCap: Int
+                    """C 端展示名称（空=打包费）"""
+                    packingFeeLabel: String
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -664,6 +678,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     foodSafetyCommitmentImage: String
                     kitchenLiveUrl: String
                     kitchenLiveEnabled: Boolean
+                    packingFeeEnabled: Boolean
+                    packingFeeMode: String
+                    packingFeeAmount: Int
+                    packingFeeCap: Int
+                    packingFeeLabel: String
                 }
 
                 type RiderWithdrawalRequest {
@@ -854,6 +873,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     soldOut: Boolean!
                     monthlySales: Int!
                     variantCount: Int!
+                    """商品级打包费单价（分/件）；null=沿用店铺配置金额"""
+                    packingFee: Int
                 }
 
                 type CampusMerchantProductList {
@@ -864,6 +885,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 type CampusMerchantSoldOutResult {
                     ok: Boolean!
                     soldOut: Boolean!
+                }
+
+                type CampusMerchantPackingFeeResult {
+                    ok: Boolean!
+                    """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
+                    packingFee: Int
                 }
 
                 type CampusRiderEarningRow {
@@ -943,6 +970,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
                     campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
+                    """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
+                    campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1353,6 +1382,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     foodSafetyCommitmentImage: String
                     kitchenLiveUrl: String
                     kitchenLiveEnabled: Boolean!
+                    """打包费开关（C 端结算页预估用；最终金额以结算时落账为准）"""
+                    packingFeeEnabled: Boolean!
+                    """计费方式：perItem=按件累加 / perOrder=每单固定"""
+                    packingFeeMode: String!
+                    """打包费金额（分）：perItem=单件，perOrder=每单"""
+                    packingFeeAmount: Int!
+                    """单笔封顶（分，null=不封顶）"""
+                    packingFeeCap: Int
+                    """C 端展示名称（空=打包费）"""
+                    packingFeeLabel: String
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -1670,7 +1709,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             ];
             // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
             // 取消守卫：C 端在骑手已接单/配送中/已送达时不可自助取消（后台强制路径不受限）
-            config.orderOptions = Object.assign(Object.assign({}, ((_o = config.orderOptions) !== null && _o !== void 0 ? _o : {})), { process: [...((_q = (_p = config.orderOptions) === null || _p === void 0 ? void 0 : _p.process) !== null && _q !== void 0 ? _q : []), min_order_process_1.campusMinOrderProcess, order_gate_process_1.campusOrderGateProcess, cancel_guard_process_1.campusCancelGuardProcess] });
+            config.orderOptions = Object.assign(Object.assign({}, ((_o = config.orderOptions) !== null && _o !== void 0 ? _o : {})), { process: [...((_q = (_p = config.orderOptions) === null || _p === void 0 ? void 0 : _p.process) !== null && _q !== void 0 ? _q : []), packing_fee_process_1.campusPackingFeeProcess, min_order_process_1.campusMinOrderProcess, order_gate_process_1.campusOrderGateProcess, cancel_guard_process_1.campusCancelGuardProcess] });
             // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
             // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
             // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。

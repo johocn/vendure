@@ -28,6 +28,12 @@ export interface WaimaiStore {
     foodSafetyCommitmentImage: string | null;
     kitchenLiveUrl: string | null;
     kitchenLiveEnabled: boolean;
+    /** 打包费/餐盒费（C 端展示与前端预估口径；最终金额由结算 process 落 surcharge） */
+    packingFeeEnabled: boolean;
+    packingFeeMode: string;
+    packingFeeAmount: number;
+    packingFeeCap: number | null;
+    packingFeeLabel: string | null;
 }
 export interface CampusStoreConfigWithChannel {
     channelId: number;
@@ -94,6 +100,11 @@ export interface CampusStoreConfigWithChannel {
     foodSafetyCommitmentImage: string | null;
     kitchenLiveUrl: string | null;
     kitchenLiveEnabled: boolean;
+    packingFeeEnabled: boolean;
+    packingFeeMode: string;
+    packingFeeAmount: number;
+    packingFeeCap: number | null;
+    packingFeeLabel: string | null;
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
@@ -172,6 +183,11 @@ export declare class WaimaiStoreService {
         foodSafetyCommitmentImage?: string | null;
         kitchenLiveUrl?: string | null;
         kitchenLiveEnabled?: boolean | null;
+        packingFeeEnabled?: boolean | null;
+        packingFeeMode?: string | null;
+        packingFeeAmount?: number | null;
+        packingFeeCap?: number | null;
+        packingFeeLabel?: string | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

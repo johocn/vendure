@@ -89,6 +89,17 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) kitchenLiveUrl: string | null;
     /** 食安公示：是否在 C 端展示明厨亮灶入口 */
     @Column({ default: false }) kitchenLiveEnabled: boolean;
+    // 打包费/餐盒费（P1）：按单或按件计费，商品可覆盖单件费，结算时落一条 surcharge
+    /** 打包费开关（默认关） */
+    @Column({ default: false }) packingFeeEnabled: boolean;
+    /** 计费方式：perItem=按件累加（默认）/ perOrder=每单固定 */
+    @Column({ type: 'varchar', default: 'perItem' }) packingFeeMode: string;
+    /** 打包费金额（分）：perItem=单件金额；perOrder=每单金额 */
+    @Column({ type: 'int', default: 0 }) packingFeeAmount: number;
+    /** 单笔封顶（分；null=不封顶） */
+    @Column({ type: 'int', nullable: true }) packingFeeCap: number | null;
+    /** C 端展示名称（空=「打包费」） */
+    @Column({ type: 'varchar', nullable: true }) packingFeeLabel: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

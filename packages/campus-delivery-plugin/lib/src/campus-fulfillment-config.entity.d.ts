@@ -85,5 +85,15 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     kitchenLiveUrl: string | null;
     /** 食安公示：是否在 C 端展示明厨亮灶入口 */
     kitchenLiveEnabled: boolean;
+    /** 打包费开关（默认关） */
+    packingFeeEnabled: boolean;
+    /** 计费方式：perItem=按件累加（默认）/ perOrder=每单固定 */
+    packingFeeMode: string;
+    /** 打包费金额（分）：perItem=单件金额；perOrder=每单金额 */
+    packingFeeAmount: number;
+    /** 单笔封顶（分；null=不封顶） */
+    packingFeeCap: number | null;
+    /** C 端展示名称（空=「打包费」） */
+    packingFeeLabel: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

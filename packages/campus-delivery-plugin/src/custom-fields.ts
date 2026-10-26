@@ -79,6 +79,7 @@ export const campusCustomFields: CustomFields = {
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0
         { name: 'waimaiSoldOut', type: 'boolean', nullable: true, defaultValue: false }, // 一键沽清：售罄仍展示、不可加购
+        { name: 'waimaiPackingFee', type: 'int', nullable: true }, // 商品级打包费单价（分/件）；null=沿用店铺配置金额
     ],
     Customer: [
         { name: 'riderStatus', type: 'string', nullable: true }, // none/pending/approved/suspended

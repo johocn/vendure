@@ -35,6 +35,7 @@ import { ChatShopResolver } from './chat-shop.resolver';
 import { CampusRiderReview, CampusRiderSession, CampusRiderShift } from './rider-ops.entities';
 import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
 import { P8P0Migration } from './migrations/p8-p0-privacy-food-safety';
+import { P8P1PackingFeeMigration } from './migrations/p8-p1-packing-fee';
 import { PrivacyNumberService } from './privacy-number.service';
 import { AddWithdrawPayoutMigration } from './migrations/add-withdraw-payout';
 import { AddRiderLocationMigration } from './migrations/add-rider-location';
@@ -81,6 +82,7 @@ import { AddRouteDeliveryConfigMigration } from './migrations/add-route-delivery
 import { AddThirdPartyBaseFeeMigration } from './migrations/add-third-party-base-fee';
 import { campusCancelGuardProcess } from './cancel-guard.process';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
+import { bindPackingFeeDeps, campusPackingFeeProcess } from './packing-fee.process';
 import { PaymentTimeoutAdminResolver } from './payment-timeout-admin.resolver';
 import { PaymentTimeoutAdminService } from './payment-timeout-admin.service';
 import { PaymentTimeoutJob } from './payment-timeout.job';
@@ -129,6 +131,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P6DefaultCompensationMigration,
         P7OpsTablesMigration,
         P8P0Migration,
+        P8P1PackingFeeMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -474,6 +477,16 @@ import { WaimaiStoreService } from './waimai-store.service';
                     foodSafetyCommitmentImage: String
                     kitchenLiveUrl: String
                     kitchenLiveEnabled: Boolean!
+                    """打包费开关"""
+                    packingFeeEnabled: Boolean!
+                    """计费方式：perItem=按件累加 / perOrder=每单固定"""
+                    packingFeeMode: String!
+                    """打包费金额（分）：perItem=单件，perOrder=每单"""
+                    packingFeeAmount: Int!
+                    """单笔封顶（分，null=不封顶）"""
+                    packingFeeCap: Int
+                    """C 端展示名称（空=打包费）"""
+                    packingFeeLabel: String
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -533,6 +546,11 @@ import { WaimaiStoreService } from './waimai-store.service';
                     foodSafetyCommitmentImage: String
                     kitchenLiveUrl: String
                     kitchenLiveEnabled: Boolean
+                    packingFeeEnabled: Boolean
+                    packingFeeMode: String
+                    packingFeeAmount: Int
+                    packingFeeCap: Int
+                    packingFeeLabel: String
                 }
 
                 type RiderWithdrawalRequest {
@@ -723,6 +741,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     soldOut: Boolean!
                     monthlySales: Int!
                     variantCount: Int!
+                    """商品级打包费单价（分/件）；null=沿用店铺配置金额"""
+                    packingFee: Int
                 }
 
                 type CampusMerchantProductList {
@@ -733,6 +753,12 @@ import { WaimaiStoreService } from './waimai-store.service';
                 type CampusMerchantSoldOutResult {
                     ok: Boolean!
                     soldOut: Boolean!
+                }
+
+                type CampusMerchantPackingFeeResult {
+                    ok: Boolean!
+                    """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
+                    packingFee: Int
                 }
 
                 type CampusRiderEarningRow {
@@ -812,6 +838,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
                     campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
+                    """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
+                    campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1222,6 +1250,16 @@ import { WaimaiStoreService } from './waimai-store.service';
                     foodSafetyCommitmentImage: String
                     kitchenLiveUrl: String
                     kitchenLiveEnabled: Boolean!
+                    """打包费开关（C 端结算页预估用；最终金额以结算时落账为准）"""
+                    packingFeeEnabled: Boolean!
+                    """计费方式：perItem=按件累加 / perOrder=每单固定"""
+                    packingFeeMode: String!
+                    """打包费金额（分）：perItem=单件，perOrder=每单"""
+                    packingFeeAmount: Int!
+                    """单笔封顶（分，null=不封顶）"""
+                    packingFeeCap: Int
+                    """C 端展示名称（空=打包费）"""
+                    packingFeeLabel: String
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -1547,7 +1585,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         // 取消守卫：C 端在骑手已接单/配送中/已送达时不可自助取消（后台强制路径不受限）
         config.orderOptions = {
             ...(config.orderOptions ?? {}),
-            process: [...(config.orderOptions?.process ?? []), campusMinOrderProcess, campusOrderGateProcess, campusCancelGuardProcess],
+            process: [...(config.orderOptions?.process ?? []), campusPackingFeeProcess, campusMinOrderProcess, campusOrderGateProcess, campusCancelGuardProcess],
         } as any;
         // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
         // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
@@ -1583,6 +1621,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     onApplicationBootstrap(): void {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
         bindMinOrderConnection(this.injector.get(TransactionalConnection));
+        bindPackingFeeDeps(this.injector.get(TransactionalConnection), this.injector.get(OrderService));
         bindOrderGateConnection(this.injector.get(TransactionalConnection));
         // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
         void this.grantDispatchPermission().catch(e =>

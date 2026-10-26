@@ -3,6 +3,7 @@ import { Channel, RequestContext, TransactionalConnection, UserInputError } from
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusRoute, normalizeRouteFirstLeg, ROUTE_FIRST_LEG_OPTIONS } from './route-matrix';
 import { isWithinBusinessHours } from './business-hours';
+import { normalizePackingFeeMode, PACKING_FEE_MODES } from './packing-fee';
 
 export interface WaimaiStore {
     channelId: number;
@@ -33,6 +34,12 @@ export interface WaimaiStore {
     foodSafetyCommitmentImage: string | null;
     kitchenLiveUrl: string | null;
     kitchenLiveEnabled: boolean;
+    /** 打包费/餐盒费（C 端展示与前端预估口径；最终金额由结算 process 落 surcharge） */
+    packingFeeEnabled: boolean;
+    packingFeeMode: string;
+    packingFeeAmount: number;
+    packingFeeCap: number | null;
+    packingFeeLabel: string | null;
 }
 
 export interface CampusStoreConfigWithChannel {
@@ -86,6 +93,11 @@ export interface CampusStoreConfigWithChannel {
     foodSafetyCommitmentImage: string | null;
     kitchenLiveUrl: string | null;
     kitchenLiveEnabled: boolean;
+    packingFeeEnabled: boolean;
+    packingFeeMode: string;
+    packingFeeAmount: number;
+    packingFeeCap: number | null;
+    packingFeeLabel: string | null;
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
@@ -113,6 +125,8 @@ const INT_RANGES: Record<string, [number, number]> = {
     merchantAcceptMinutes: [0, 240],
     externalPushTimeoutMinutes: [1, 240],
     externalFallbackMinutes: [1, 240],
+    packingFeeAmount: [0, 100_000],
+    packingFeeCap: [0, 1_000_000],
 };
 
 /** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
@@ -175,6 +189,11 @@ export class WaimaiStoreService {
                 foodSafetyCommitmentImage: cfg.foodSafetyCommitmentImage ?? null,
                 kitchenLiveUrl: cfg.kitchenLiveEnabled ? cfg.kitchenLiveUrl ?? null : null,
                 kitchenLiveEnabled: cfg.kitchenLiveEnabled,
+                packingFeeEnabled: cfg.packingFeeEnabled ?? false,
+                packingFeeMode: normalizePackingFeeMode(cfg.packingFeeMode),
+                packingFeeAmount: cfg.packingFeeAmount ?? 0,
+                packingFeeCap: cfg.packingFeeCap ?? null,
+                packingFeeLabel: cfg.packingFeeLabel ?? null,
             });
         }
         return stores;
@@ -246,6 +265,11 @@ export class WaimaiStoreService {
             foodSafetyCommitmentImage?: string | null;
             kitchenLiveUrl?: string | null;
             kitchenLiveEnabled?: boolean | null;
+            packingFeeEnabled?: boolean | null;
+            packingFeeMode?: string | null;
+            packingFeeAmount?: number | null;
+            packingFeeCap?: number | null;
+            packingFeeLabel?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
@@ -452,6 +476,25 @@ export class WaimaiStoreService {
             throw new UserInputError('开启明厨亮灶前请先填写直播/回放地址');
         }
 
+        // 打包费：计费方式白名单 + 金额区间（nums 已做归一），开启时金额必须 > 0 且封顶不低于金额
+        if (input.packingFeeEnabled != null) cfg.packingFeeEnabled = !!input.packingFeeEnabled;
+        if (input.packingFeeMode != null) {
+            const mode = String(input.packingFeeMode || '').trim();
+            if (!PACKING_FEE_MODES.includes(mode as any)) {
+                throw new UserInputError(`不支持的打包费计费方式: ${mode || '(空)'}（仅接受 ${PACKING_FEE_MODES.join('/')}）`);
+            }
+            cfg.packingFeeMode = mode;
+        }
+        if (input.packingFeeAmount !== undefined) cfg.packingFeeAmount = nums.packingFeeAmount ?? 0;
+        if (input.packingFeeCap !== undefined) cfg.packingFeeCap = nums.packingFeeCap ?? null;
+        if (input.packingFeeLabel !== undefined) cfg.packingFeeLabel = nullableText(input.packingFeeLabel) ?? null;
+        if (cfg.packingFeeEnabled && (cfg.packingFeeAmount ?? 0) <= 0) {
+            throw new UserInputError('开启打包费时请填写大于 0 的金额');
+        }
+        if (cfg.packingFeeCap != null && cfg.packingFeeAmount != null && cfg.packingFeeCap < cfg.packingFeeAmount) {
+            throw new UserInputError('打包费单笔封顶不能小于单件/每单金额');
+        }
+
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
         const hasPoint = (r: 'R1' | 'R2') => {
@@ -568,6 +611,11 @@ export class WaimaiStoreService {
             foodSafetyCommitmentImage: cfg?.foodSafetyCommitmentImage ?? null,
             kitchenLiveUrl: cfg?.kitchenLiveUrl ?? null,
             kitchenLiveEnabled: cfg?.kitchenLiveEnabled ?? false,
+            packingFeeEnabled: cfg?.packingFeeEnabled ?? false,
+            packingFeeMode: normalizePackingFeeMode(cfg?.packingFeeMode),
+            packingFeeAmount: cfg?.packingFeeAmount ?? 0,
+            packingFeeCap: cfg?.packingFeeCap ?? null,
+            packingFeeLabel: cfg?.packingFeeLabel ?? null,
         };
     }
 }
