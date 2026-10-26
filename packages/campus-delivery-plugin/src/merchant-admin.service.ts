@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+    Channel,
     ID,
     Order,
     OrderService,
@@ -11,7 +12,8 @@ import {
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
-import { startOfCampusDay } from './campus-time';
+import { campusDayKey, startOfCampusDay } from './campus-time';
+import { isWithinBusinessHours, parseBusinessHours } from './business-hours';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
 import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
@@ -74,6 +76,37 @@ export interface MerchantBoard {
     completedTodayAmount: number;
 }
 
+/** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
+export interface MerchantStoreProfile {
+    storeName: string;
+    businessHours: string | null;
+    storeNotice: string | null;
+    storePhone: string | null;
+    paused: boolean;
+    openNow: boolean;
+}
+
+/** 经营数据分桶（分）：营业额=窗口内已送达订单实付合计；取消=窗口内取消单（全额退款口径） */
+export interface MerchantRevenueBucket {
+    orders: number;
+    gross: number;
+    avgTicket: number;
+    cancelled: number;
+    cancelledAmount: number;
+}
+
+export interface MerchantRevenueDay {
+    date: string; // MM-DD
+    orders: number;
+    gross: number;
+}
+
+export interface MerchantRevenue {
+    today: MerchantRevenueBucket;
+    last7: MerchantRevenueBucket;
+    days: MerchantRevenueDay[];
+}
+
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
  * 状态机（merchantConfirmEnabled 渠道）：支付 → pending_merchant（待商家接单）
@@ -91,6 +124,106 @@ export class MerchantAdminService {
         private orderService: OrderService,
         private privacy: PrivacyNumberService,
     ) {}
+
+    /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
+    async storeProfile(ctx: RequestContext): Promise<MerchantStoreProfile> {
+        const cfg = await this.config.getConfig(ctx);
+        const channel = await this.connection.getRepository(ctx, Channel)
+            .findOne({ where: { id: ctx.channelId as any } });
+        if (!channel) throw new UserInputError('当前店铺渠道不存在');
+        const hours = ((channel.customFields ?? {}) as any).waimaiBusinessHours ?? null;
+        return {
+            storeName: channel.code,
+            businessHours: hours,
+            storeNotice: cfg.storeNotice ?? null,
+            storePhone: cfg.storePhone ?? null,
+            paused: cfg.paused,
+            // 与 C 端 openNow / 下单闸门同口径：营业时段内且未临时休息
+            openNow: isWithinBusinessHours(hours) && !cfg.paused,
+        };
+    }
+
+    /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
+    async updateStore(
+        ctx: RequestContext,
+        input: { businessHours?: string | null; storeNotice?: string | null; storePhone?: string | null },
+    ): Promise<MerchantStoreProfile> {
+        const patch: Record<string, string | null> = {};
+        if (input.businessHours !== undefined) {
+            const raw = String(input.businessHours ?? '').trim();
+            if (raw) {
+                if (raw.length > 100) throw new UserInputError('营业时间不能超过 100 个字符');
+                // 必须能被营业时段解析器读懂，否则 C 端展示/下单闸门会误判
+                if (!parseBusinessHours(raw).length) {
+                    throw new UserInputError('营业时间格式不正确，示例：10:00-22:00 或 10:00-14:00,17:00-21:00');
+                }
+            }
+            const repo = this.connection.getRepository(ctx, Channel);
+            const channel = await repo.findOne({ where: { id: ctx.channelId as any } });
+            if (!channel) throw new UserInputError('当前店铺渠道不存在');
+            (channel.customFields as any).waimaiBusinessHours = raw || null;
+            await repo.save(channel);
+        }
+        if (input.storeNotice !== undefined) patch.storeNotice = String(input.storeNotice ?? '').trim() || null;
+        if (input.storePhone !== undefined) patch.storePhone = String(input.storePhone ?? '').trim() || null;
+        if (Object.keys(patch).length) await this.config.updateConfig(ctx, patch);
+        return this.storeProfile(ctx);
+    }
+
+    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款 */
+    async revenue(ctx: RequestContext): Promise<MerchantRevenue> {
+        const now = Date.now();
+        const today0 = startOfCampusDay(now);
+        const DAY_MS = 24 * 3600_000;
+        const since = today0 - 6 * DAY_MS;
+        const orders = await this.connection.getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere('order.customFields.hallStatus IS NOT NULL')
+            .andWhere('order.createdAt >= :since', { since: new Date(since) })
+            .getMany();
+        const dayMap = new Map<string, MerchantRevenueDay>();
+        for (let i = 6; i >= 0; i--) {
+            const key = campusDayKey(today0 - i * DAY_MS);
+            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0 });
+        }
+        const todayKey = campusDayKey(now);
+        const empty = (): MerchantRevenueBucket => ({ orders: 0, gross: 0, avgTicket: 0, cancelled: 0, cancelledAmount: 0 });
+        const today = empty();
+        const last7 = empty();
+        for (const o of orders) {
+            const cf = o.customFields as any;
+            const total = o.totalWithTax ?? 0;
+            if (o.state === 'Cancelled') {
+                const key = campusDayKey(new Date(o.createdAt).getTime());
+                last7.cancelled += 1;
+                last7.cancelledAmount += total;
+                if (key === todayKey) {
+                    today.cancelled += 1;
+                    today.cancelledAmount += total;
+                }
+                continue;
+            }
+            if (cf.deliveryStatus !== 'delivered' || !cf.deliveredAt) continue;
+            // 营业额按送达时间归日：跨零点订单计入实际送达当天
+            const key = campusDayKey(new Date(cf.deliveredAt).getTime());
+            const day = dayMap.get(key);
+            if (day) {
+                day.orders += 1;
+                day.gross += total;
+            }
+            last7.orders += 1;
+            last7.gross += total;
+            if (key === todayKey) {
+                today.orders += 1;
+                today.gross += total;
+            }
+        }
+        today.avgTicket = today.orders ? Math.round(today.gross / today.orders) : 0;
+        last7.avgTicket = last7.orders ? Math.round(last7.gross / last7.orders) : 0;
+        return { today, last7, days: [...dayMap.values()] };
+    }
 
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     async customerContact(ctx: RequestContext, orderId: ID) {

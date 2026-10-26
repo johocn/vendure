@@ -28,6 +28,32 @@ export class MerchantAdminResolver {
         return this.merchant.board(ctx);
     }
 
+    /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantStoreProfile(@Ctx() ctx: RequestContext) {
+        return this.merchant.storeProfile(ctx);
+    }
+
+    /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateStore(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'businessHours', type: () => String, nullable: true }) businessHours?: string | null,
+        @Args({ name: 'storeNotice', type: () => String, nullable: true }) storeNotice?: string | null,
+        @Args({ name: 'storePhone', type: () => String, nullable: true }) storePhone?: string | null,
+    ) {
+        return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
+    }
+
+    /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantRevenue(@Ctx() ctx: RequestContext) {
+        return this.merchant.revenue(ctx);
+    }
+
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantAcceptOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {

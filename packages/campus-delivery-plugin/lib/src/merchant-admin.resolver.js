@@ -38,6 +38,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantBoard(ctx) {
         return this.merchant.board(ctx);
     }
+    /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
+    async campusMerchantStoreProfile(ctx) {
+        return this.merchant.storeProfile(ctx);
+    }
+    /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
+    async campusMerchantUpdateStore(ctx, businessHours, storeNotice, storePhone) {
+        return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
+    }
+    /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
+    async campusMerchantRevenue(ctx) {
+        return this.merchant.revenue(ctx);
+    }
     async campusMerchantAcceptOrder(ctx, orderId) {
         return this.merchant.acceptOrder(ctx, orderId);
     }
@@ -110,6 +122,33 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantBoard", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantStoreProfile", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'businessHours', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'storeNotice', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'storePhone', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateStore", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantRevenue", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

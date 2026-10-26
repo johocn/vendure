@@ -457,6 +457,37 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     completedTodayAmount: Int!
                 }
 
+                """商家自助经营：门店资料（营业状态按校园时区判定）"""
+                type MerchantStoreProfile {
+                    storeName: String!
+                    businessHours: String
+                    storeNotice: String
+                    storePhone: String
+                    paused: Boolean!
+                    openNow: Boolean!
+                }
+
+                """经营数据分桶（分）：营业额=窗口内已送达订单实付；取消=窗口内取消单（全额退款口径）"""
+                type CampusMerchantRevenueBucket {
+                    orders: Int!
+                    gross: Int!
+                    avgTicket: Int!
+                    cancelled: Int!
+                    cancelledAmount: Int!
+                }
+
+                type CampusMerchantRevenueDay {
+                    date: String!
+                    orders: Int!
+                    gross: Int!
+                }
+
+                type CampusMerchantRevenue {
+                    today: CampusMerchantRevenueBucket!
+                    last7: CampusMerchantRevenueBucket!
+                    days: [CampusMerchantRevenueDay!]!
+                }
+
                 type DispatchAlert {
                     orderId: ID!
                     orderCode: String!
@@ -968,6 +999,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                     campusMerchantBoard: CampusMerchantBoard!
+                    """商家自助经营：门店资料（营业时间/公告/电话/营业状态）"""
+                    campusMerchantStoreProfile: MerchantStoreProfile!
+                    """商家自助经营数据：今日/近 7 日单量、营业额、客单价、取消退款"""
+                    campusMerchantRevenue: CampusMerchantRevenue!
                     """商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号"""
                     campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
@@ -1172,6 +1207,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
+                    """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
+                    campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
                     campusMerchantCancelExternal(orderId: ID!, reason: String): CampusExternalCancelResult!

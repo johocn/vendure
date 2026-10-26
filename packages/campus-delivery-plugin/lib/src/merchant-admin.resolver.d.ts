@@ -5,6 +5,12 @@ export declare class MerchantAdminResolver {
     constructor(merchant: MerchantAdminService);
     /** 商家接单工作台看板：本渠道待接单/备餐中/待取货/配送中 + 今日完成 */
     campusMerchantBoard(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantBoard>;
+    /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
+    campusMerchantStoreProfile(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
+    /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
+    campusMerchantUpdateStore(ctx: RequestContext, businessHours?: string | null, storeNotice?: string | null, storePhone?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
+    /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
+    campusMerchantRevenue(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantRevenue>;
     campusMerchantAcceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;

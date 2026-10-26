@@ -47,6 +47,33 @@ export interface MerchantBoard {
     completedToday: number;
     completedTodayAmount: number;
 }
+/** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
+export interface MerchantStoreProfile {
+    storeName: string;
+    businessHours: string | null;
+    storeNotice: string | null;
+    storePhone: string | null;
+    paused: boolean;
+    openNow: boolean;
+}
+/** 经营数据分桶（分）：营业额=窗口内已送达订单实付合计；取消=窗口内取消单（全额退款口径） */
+export interface MerchantRevenueBucket {
+    orders: number;
+    gross: number;
+    avgTicket: number;
+    cancelled: number;
+    cancelledAmount: number;
+}
+export interface MerchantRevenueDay {
+    date: string;
+    orders: number;
+    gross: number;
+}
+export interface MerchantRevenue {
+    today: MerchantRevenueBucket;
+    last7: MerchantRevenueBucket;
+    days: MerchantRevenueDay[];
+}
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
  * 状态机（merchantConfirmEnabled 渠道）：支付 → pending_merchant（待商家接单）
@@ -62,6 +89,16 @@ export declare class MerchantAdminService {
     private orderService;
     private privacy;
     constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService);
+    /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
+    storeProfile(ctx: RequestContext): Promise<MerchantStoreProfile>;
+    /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
+    updateStore(ctx: RequestContext, input: {
+        businessHours?: string | null;
+        storeNotice?: string | null;
+        storePhone?: string | null;
+    }): Promise<MerchantStoreProfile>;
+    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款 */
+    revenue(ctx: RequestContext): Promise<MerchantRevenue>;
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     customerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
     board(ctx: RequestContext): Promise<MerchantBoard>;

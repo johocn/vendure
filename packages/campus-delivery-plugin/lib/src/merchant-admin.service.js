@@ -16,6 +16,7 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const campus_time_1 = require("./campus-time");
+const business_hours_1 = require("./business-hours");
 const hall_service_1 = require("./hall.service");
 const refund_payment_1 = require("./refund-payment");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
@@ -37,6 +38,110 @@ let MerchantAdminService = class MerchantAdminService {
         this.thirdParty = thirdParty;
         this.orderService = orderService;
         this.privacy = privacy;
+    }
+    /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
+    async storeProfile(ctx) {
+        var _a, _b, _c, _d;
+        const cfg = await this.config.getConfig(ctx);
+        const channel = await this.connection.getRepository(ctx, core_1.Channel)
+            .findOne({ where: { id: ctx.channelId } });
+        if (!channel)
+            throw new core_1.UserInputError('当前店铺渠道不存在');
+        const hours = (_b = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {}).waimaiBusinessHours) !== null && _b !== void 0 ? _b : null;
+        return {
+            storeName: channel.code,
+            businessHours: hours,
+            storeNotice: (_c = cfg.storeNotice) !== null && _c !== void 0 ? _c : null,
+            storePhone: (_d = cfg.storePhone) !== null && _d !== void 0 ? _d : null,
+            paused: cfg.paused,
+            // 与 C 端 openNow / 下单闸门同口径：营业时段内且未临时休息
+            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused,
+        };
+    }
+    /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
+    async updateStore(ctx, input) {
+        var _a, _b, _c;
+        const patch = {};
+        if (input.businessHours !== undefined) {
+            const raw = String((_a = input.businessHours) !== null && _a !== void 0 ? _a : '').trim();
+            if (raw) {
+                if (raw.length > 100)
+                    throw new core_1.UserInputError('营业时间不能超过 100 个字符');
+                // 必须能被营业时段解析器读懂，否则 C 端展示/下单闸门会误判
+                if (!(0, business_hours_1.parseBusinessHours)(raw).length) {
+                    throw new core_1.UserInputError('营业时间格式不正确，示例：10:00-22:00 或 10:00-14:00,17:00-21:00');
+                }
+            }
+            const repo = this.connection.getRepository(ctx, core_1.Channel);
+            const channel = await repo.findOne({ where: { id: ctx.channelId } });
+            if (!channel)
+                throw new core_1.UserInputError('当前店铺渠道不存在');
+            channel.customFields.waimaiBusinessHours = raw || null;
+            await repo.save(channel);
+        }
+        if (input.storeNotice !== undefined)
+            patch.storeNotice = String((_b = input.storeNotice) !== null && _b !== void 0 ? _b : '').trim() || null;
+        if (input.storePhone !== undefined)
+            patch.storePhone = String((_c = input.storePhone) !== null && _c !== void 0 ? _c : '').trim() || null;
+        if (Object.keys(patch).length)
+            await this.config.updateConfig(ctx, patch);
+        return this.storeProfile(ctx);
+    }
+    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款 */
+    async revenue(ctx) {
+        var _a;
+        const now = Date.now();
+        const today0 = (0, campus_time_1.startOfCampusDay)(now);
+        const DAY_MS = 24 * 3600000;
+        const since = today0 - 6 * DAY_MS;
+        const orders = await this.connection.getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere('order.customFields.hallStatus IS NOT NULL')
+            .andWhere('order.createdAt >= :since', { since: new Date(since) })
+            .getMany();
+        const dayMap = new Map();
+        for (let i = 6; i >= 0; i--) {
+            const key = (0, campus_time_1.campusDayKey)(today0 - i * DAY_MS);
+            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0 });
+        }
+        const todayKey = (0, campus_time_1.campusDayKey)(now);
+        const empty = () => ({ orders: 0, gross: 0, avgTicket: 0, cancelled: 0, cancelledAmount: 0 });
+        const today = empty();
+        const last7 = empty();
+        for (const o of orders) {
+            const cf = o.customFields;
+            const total = (_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0;
+            if (o.state === 'Cancelled') {
+                const key = (0, campus_time_1.campusDayKey)(new Date(o.createdAt).getTime());
+                last7.cancelled += 1;
+                last7.cancelledAmount += total;
+                if (key === todayKey) {
+                    today.cancelled += 1;
+                    today.cancelledAmount += total;
+                }
+                continue;
+            }
+            if (cf.deliveryStatus !== 'delivered' || !cf.deliveredAt)
+                continue;
+            // 营业额按送达时间归日：跨零点订单计入实际送达当天
+            const key = (0, campus_time_1.campusDayKey)(new Date(cf.deliveredAt).getTime());
+            const day = dayMap.get(key);
+            if (day) {
+                day.orders += 1;
+                day.gross += total;
+            }
+            last7.orders += 1;
+            last7.gross += total;
+            if (key === todayKey) {
+                today.orders += 1;
+                today.gross += total;
+            }
+        }
+        today.avgTicket = today.orders ? Math.round(today.gross / today.orders) : 0;
+        last7.avgTicket = last7.orders ? Math.round(last7.gross / last7.orders) : 0;
+        return { today, last7, days: [...dayMap.values()] };
     }
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     async customerContact(ctx, orderId) {
