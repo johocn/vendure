@@ -19,12 +19,14 @@ import { HallService } from './hall.service';
 import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { normalizePrintMode } from './waimai-store.service';
+import { CloudPrintService } from './cloud-print.service';
 import { PrivacyNumberService } from './privacy-number.service';
 import {
     serializeAddonGroups,
     serializeCombo,
     parseAddonGroups,
     parseCombo,
+    addonDisplayText,
     ADDON_MAX_GROUPS,
     ADDON_MAX_OPTIONS_PER_GROUP,
     ADDON_MAX_PRICE_FEN,
@@ -60,6 +62,10 @@ export interface MerchantBoard {
     paused: boolean;
     merchantConfirmEnabled: boolean;
     printMode: 'off' | 'onPaid' | 'onAccepted';
+    /** 打印通道（P1-4）：local=前端 C-Lodop；feie/yilianyun=服务端云打印 */
+    printProvider: string;
+    /** 云通道是否已配齐账号/设备/密钥（未配齐时前端提示去配置） */
+    cloudPrintConfigured: boolean;
     storeName: string;
     storePhone: string | null;
     pending: MerchantBoardOrder[];
@@ -85,6 +91,43 @@ export interface MerchantStoreProfile {
     paused: boolean;
     openNow: boolean;
 }
+
+/** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
+export interface KitchenTicketLine {
+    name: string;
+    quantity: number;
+    addons: string[];
+}
+
+export interface KitchenTicket {
+    id: string;
+    code: string;
+    stage: 'pending' | 'cooking';
+    createdAt: Date;
+    waitingMinutes: number;
+    /** normal=<15min，warn=15-25min，late=>25min */
+    urgency: 'normal' | 'warn' | 'late';
+    zone: string;
+    building: string;
+    slotText: string;
+    note: string | null;
+    printedAt: Date | null;
+    total: number;
+    lines: KitchenTicketLine[];
+}
+
+export interface KitchenQueue {
+    tickets: KitchenTicket[];
+    pendingCount: number;
+    cookingCount: number;
+    lateCount: number;
+    warnMinutes: number;
+    lateMinutes: number;
+}
+
+/** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
+export const KDS_WARN_MINUTES = 15;
+export const KDS_LATE_MINUTES = 25;
 
 /** 经营数据分桶（分）：营业额=窗口内已送达订单实付合计；取消=窗口内取消单（全额退款口径） */
 export interface MerchantRevenueBucket {
@@ -123,6 +166,7 @@ export class MerchantAdminService {
         private thirdParty: ThirdPartyDeliveryService,
         private orderService: OrderService,
         private privacy: PrivacyNumberService,
+        private cloud: CloudPrintService,
     ) {}
 
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
@@ -293,10 +337,14 @@ export class MerchantAdminService {
         const delivering = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'grabbed');
         const pick = (s: string) => dtos.filter((_, i) => cfOf(active[i]).hallStatus === s);
         const completedTodayAmount = deliveredToday.reduce((s, o) => s + (o.total || 0), 0);
+        const printProvider = String(cfg.printProvider ?? 'local');
         return {
             paused: cfg.paused,
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
             printMode: normalizePrintMode(cfg.printMode),
+            printProvider,
+            cloudPrintConfigured:
+                printProvider !== 'local' && !!cfg.printAccount && !!cfg.printDeviceSn && !!cfg.printDeviceKey,
             storeName: ctx.channel?.code ?? '',
             storePhone: cfg.storePhone ?? null,
             pending,
@@ -323,6 +371,11 @@ export class MerchantAdminService {
         });
         if (!moved) throw new UserInputError('订单状态已变更，请刷新');
         this.notify.user(ctx, order.id as any, 'orderAccepted');
+        // 云打印（P1-4）：接单即出票（printMode=onAccepted 且走云通道）；失败只留任务记录，不阻塞接单
+        const cfg = await this.config.getConfig(ctx);
+        if (normalizePrintMode(cfg.printMode) === 'onAccepted' && String(cfg.printProvider ?? 'local') !== 'local') {
+            void this.cloud.printOrder(ctx, order.id as any, 'auto').catch(() => undefined);
+        }
         return { ok: true };
     }
 
@@ -475,6 +528,78 @@ export class MerchantAdminService {
             customFields: { waimaiPrintedAt: new Date() },
         } as any);
         return { ok: true };
+    }
+
+    /** 云打印一张小票（后端签名直连服务商）：成功即回写 printedAt */
+    async cloudPrint(ctx: RequestContext, orderId: ID) {
+        return this.cloud.printOrder(ctx, orderId, 'manual');
+    }
+
+    /** 云打印连通性测试（不占用订单） */
+    async cloudPrintTest(ctx: RequestContext) {
+        return this.cloud.testPrint(ctx);
+    }
+
+    /** 最近云打印任务（排障） */
+    async printJobs(ctx: RequestContext, limit?: number) {
+        return this.cloud.recentJobs(ctx, limit);
+    }
+
+    /** KDS 出餐屏队列：待接单 + 备餐中（按支付先后出票，超时标红） */
+    async kitchenQueue(ctx: RequestContext): Promise<KitchenQueue> {
+        const orders = await this.connection.getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere("order.customFields.hallStatus IN ('pending_merchant','accepted')")
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .orderBy('order.createdAt', 'ASC')
+            .getMany();
+        const buildingIds = new Set<string>();
+        for (const o of orders) {
+            const id = (o.customFields as any).buildingId;
+            if (id) buildingIds.add(String(id));
+        }
+        const buildings = buildingIds.size
+            ? await this.connection.getRepository(ctx, CampusBuilding).findByIds([...buildingIds])
+            : [];
+        const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
+        const now = Date.now();
+        const tickets: KitchenTicket[] = orders.map(o => {
+            const cf = o.customFields as any;
+            const waitingMinutes = Math.max(0, Math.floor((now - new Date(o.createdAt).getTime()) / 60000));
+            return {
+                id: String(o.id),
+                code: o.code,
+                stage: cf.hallStatus === 'accepted' ? 'cooking' : 'pending',
+                createdAt: o.createdAt,
+                waitingMinutes,
+                urgency: waitingMinutes >= KDS_LATE_MINUTES ? 'late' : waitingMinutes >= KDS_WARN_MINUTES ? 'warn' : 'normal',
+                zone: cf.campusZone ?? '',
+                building: cf.buildingId ? buildingNames.get(String(cf.buildingId)) ?? '' : '',
+                slotText: cf.deliverySlotText ?? '',
+                note: cf.note ?? null,
+                printedAt: (cf.waimaiPrintedAt as Date | undefined) ?? null,
+                total: o.total,
+                lines: (o.lines ?? []).map(l => {
+                    const addonsText = addonDisplayText((l.customFields as any)?.waimaiAddons);
+                    return {
+                        name: l.productVariant?.name ?? '',
+                        quantity: l.quantity,
+                        addons: addonsText ? addonsText.split(' / ') : [],
+                    };
+                }),
+            };
+        });
+        return {
+            tickets,
+            pendingCount: tickets.filter(t => t.stage === 'pending').length,
+            cookingCount: tickets.filter(t => t.stage === 'cooking').length,
+            lateCount: tickets.filter(t => t.urgency === 'late').length,
+            warnMinutes: KDS_WARN_MINUTES,
+            lateMinutes: KDS_LATE_MINUTES,
+        };
     }
 
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

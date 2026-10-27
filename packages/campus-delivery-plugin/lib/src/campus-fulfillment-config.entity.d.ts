@@ -37,6 +37,16 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     notifyTemplateAddressChanged: string | null;
     h5BaseUrl: string | null;
     printMode: string | null;
+    /** 打印通道：local（默认）/ feie / yilianyun */
+    printProvider: string;
+    /** 服务商账号：飞鹅用户名 / 易联云 client_id */
+    printAccount: string | null;
+    /** 设备编号：飞鹅 sn / 易联云 machine_code */
+    printDeviceSn: string | null;
+    /** 服务商密钥：飞鹅 ukey / 易联云 client_secret */
+    printDeviceKey: string | null;
+    /** 联数（1-5），默认 1 */
+    printCopies: number;
     /** 第一段由谁送（按路线）：R1 = merchant|owned，R3 = campus|owned|external；缺省 R1=merchant、R3=campus */
     routeFirstLeg: Record<string, string> | null;
     /** 校园交接点：R1/R2 各一个（键为路线号） */

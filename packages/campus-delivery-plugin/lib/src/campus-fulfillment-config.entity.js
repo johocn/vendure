@@ -159,6 +159,26 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "printMode", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 16, default: 'local' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "printProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 64, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "printAccount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 64, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "printDeviceSn", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 128, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "printDeviceKey", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 1 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "printCopies", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "routeFirstLeg", void 0);

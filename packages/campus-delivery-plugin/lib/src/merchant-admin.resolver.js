@@ -72,6 +72,22 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantMarkPrinted(ctx, orderId) {
         return this.merchant.markPrinted(ctx, orderId);
     }
+    /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
+    async campusMerchantKitchenQueue(ctx) {
+        return this.merchant.kitchenQueue(ctx);
+    }
+    /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
+    async campusMerchantCloudPrint(ctx, orderId) {
+        return this.merchant.cloudPrint(ctx, orderId);
+    }
+    /** 云打印连通性测试（不占用订单） */
+    async campusMerchantCloudPrintTest(ctx) {
+        return this.merchant.cloudPrintTest(ctx);
+    }
+    /** 最近云打印任务（后台排障：失败原因/耗时） */
+    async campusMerchantPrintJobs(ctx, limit) {
+        return this.merchant.printJobs(ctx, limit);
+    }
     /** 一键沽清：本店商品列表（含售罄标记） */
     async campusMerchantProducts(ctx, search, skip, take) {
         return this.merchant.products(ctx, search, skip, take);
@@ -204,6 +220,40 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantMarkPrinted", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantKitchenQueue", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantCloudPrint", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantCloudPrintTest", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'limit', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantPrintJobs", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

@@ -98,6 +98,37 @@ export class MerchantAdminResolver {
         return this.merchant.markPrinted(ctx, orderId);
     }
 
+    /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantKitchenQueue(@Ctx() ctx: RequestContext) {
+        return this.merchant.kitchenQueue(ctx);
+    }
+
+    /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantCloudPrint(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.cloudPrint(ctx, orderId);
+    }
+
+    /** 云打印连通性测试（不占用订单） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantCloudPrintTest(@Ctx() ctx: RequestContext) {
+        return this.merchant.cloudPrintTest(ctx);
+    }
+
+    /** 最近云打印任务（后台排障：失败原因/耗时） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantPrintJobs(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'limit', type: () => Number, nullable: true }) limit?: number,
+    ) {
+        return this.merchant.printJobs(ctx, limit);
+    }
+
     /** 一键沽清：本店商品列表（含售罄标记） */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)

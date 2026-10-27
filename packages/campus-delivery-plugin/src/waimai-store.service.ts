@@ -68,6 +68,12 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateAddressChanged: string | null;
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
+    /** 打印通道：local=本地 C-Lodop / feie=飞鹅 / yilianyun=易联云 */
+    printProvider: string;
+    printAccount: string | null;
+    printDeviceSn: string | null;
+    printDeviceKey: string | null;
+    printCopies: number;
     routeFirstLeg: Array<{ route: string; carrier: string }>;
     handoverPoints: Array<{ route: string; name: string; address: string | null; phone: string | null; lat: number; lng: number; isDefault: boolean }>;
     providerShopNo: Array<{ provider: string; shopNo: string }>;
@@ -102,6 +108,9 @@ export interface CampusStoreConfigWithChannel {
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
 type PrintMode = (typeof PRINT_MODES)[number];
+
+/** 打印通道白名单（P1-4）：local=本地 C-Lodop，feie=飞鹅云，yilianyun=易联云 */
+export const PRINT_PROVIDERS = ['local', 'feie', 'yilianyun'] as const;
 
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
 export function normalizePrintMode(v: unknown): PrintMode {
@@ -240,6 +249,11 @@ export class WaimaiStoreService {
             notifyTemplateAddressChanged?: string | null;
             h5BaseUrl?: string | null;
             printMode?: string | null;
+            printProvider?: string | null;
+            printAccount?: string | null;
+            printDeviceSn?: string | null;
+            printDeviceKey?: string | null;
+            printCopies?: number | null;
             timeoutCompensationEnabled?: boolean | null;
             timeoutGraceMinutes?: number | null;
             timeoutCompensationWindowHours?: number | null;
@@ -376,8 +390,31 @@ export class WaimaiStoreService {
             if (input[key] !== undefined) (cfg as any)[key] = input[key] ?? null;
         }
         if (input.h5BaseUrl !== undefined) cfg.h5BaseUrl = input.h5BaseUrl ?? null;
+        /** 空串归一为 null（未配置即 C 端/小票不渲染）；undefined=保留原值 */
+        const nullableText = (v: string | null | undefined) => (v === undefined ? undefined : String(v ?? '').trim() || null);
         if (input.printMode !== undefined) {
             cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        }
+        // 云打印通道（P1-4）：local 走前端 C-Lodop；云通道必须备齐账号/设备/密钥，否则自动出票必然失败
+        if (input.printProvider !== undefined && input.printProvider !== null) {
+            const provider = String(input.printProvider).trim();
+            if (!PRINT_PROVIDERS.includes(provider as any)) {
+                throw new UserInputError(`不支持的打印通道: ${provider || '(空)'}（仅接受 ${PRINT_PROVIDERS.join('/')}）`);
+            }
+            cfg.printProvider = provider;
+        }
+        if (input.printAccount !== undefined) cfg.printAccount = nullableText(input.printAccount) ?? null;
+        if (input.printDeviceSn !== undefined) cfg.printDeviceSn = nullableText(input.printDeviceSn) ?? null;
+        if (input.printDeviceKey !== undefined) cfg.printDeviceKey = nullableText(input.printDeviceKey) ?? null;
+        if (input.printCopies !== undefined && input.printCopies !== null) {
+            const copies = Number(input.printCopies);
+            if (!Number.isInteger(copies) || copies < 1 || copies > 5) {
+                throw new UserInputError('打印联数必须为 1-5 的整数');
+            }
+            cfg.printCopies = copies;
+        }
+        if (cfg.printProvider !== 'local' && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
+            throw new UserInputError('选择云打印时请填写服务商账号、设备编号与密钥');
         }
         // 超时赔付：未传即保留（旧表单不会清空已配值）
         if (input.timeoutCompensationEnabled != null) cfg.timeoutCompensationEnabled = input.timeoutCompensationEnabled;
@@ -449,7 +486,6 @@ export class WaimaiStoreService {
         }
 
         // 食安公示：空串归一为 null（未配置即 C 端不渲染）；等级/到期日做格式校验
-        const nullableText = (v: string | null | undefined) => (v === undefined ? undefined : String(v ?? '').trim() || null);
         if (input.foodLicenseNo !== undefined) cfg.foodLicenseNo = nullableText(input.foodLicenseNo) ?? null;
         if (input.foodLicenseImage !== undefined) cfg.foodLicenseImage = nullableText(input.foodLicenseImage) ?? null;
         if (input.foodSafetyCommitmentImage !== undefined) {
@@ -576,6 +612,11 @@ export class WaimaiStoreService {
             notifyTemplateAddressChanged: cfg?.notifyTemplateAddressChanged ?? null,
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
             printMode: normalizePrintMode(cfg?.printMode),
+            printProvider: cfg?.printProvider ?? 'local',
+            printAccount: cfg?.printAccount ?? null,
+            printDeviceSn: cfg?.printDeviceSn ?? null,
+            printDeviceKey: cfg?.printDeviceKey ?? null,
+            printCopies: cfg?.printCopies ?? 1,
             // 与实体默认值一致（timeoutCompensationEnabled default true）：无配置行时也应显示「已开启」
             timeoutCompensationEnabled: cfg?.timeoutCompensationEnabled ?? true,
             timeoutGraceMinutes: cfg?.timeoutGraceMinutes ?? 10,

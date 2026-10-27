@@ -61,6 +61,12 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateAddressChanged: string | null;
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
+    /** 打印通道：local=本地 C-Lodop / feie=飞鹅 / yilianyun=易联云 */
+    printProvider: string;
+    printAccount: string | null;
+    printDeviceSn: string | null;
+    printDeviceKey: string | null;
+    printCopies: number;
     routeFirstLeg: Array<{
         route: string;
         carrier: string;
@@ -108,6 +114,8 @@ export interface CampusStoreConfigWithChannel {
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
+/** 打印通道白名单（P1-4）：local=本地 C-Lodop，feie=飞鹅云，yilianyun=易联云 */
+export declare const PRINT_PROVIDERS: readonly ["local", "feie", "yilianyun"];
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
 export declare function normalizePrintMode(v: unknown): PrintMode;
 /** 隐私号服务商白名单：mask=仅脱敏，mock=本地虚拟号，aliyun/tencent=外部号池（缺凭证自动降级为 mask） */
@@ -144,6 +152,11 @@ export declare class WaimaiStoreService {
         notifyTemplateAddressChanged?: string | null;
         h5BaseUrl?: string | null;
         printMode?: string | null;
+        printProvider?: string | null;
+        printAccount?: string | null;
+        printDeviceSn?: string | null;
+        printDeviceKey?: string | null;
+        printCopies?: number | null;
         timeoutCompensationEnabled?: boolean | null;
         timeoutGraceMinutes?: number | null;
         timeoutCompensationWindowHours?: number | null;

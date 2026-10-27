@@ -37,6 +37,9 @@ import { P7OpsTablesMigration } from './migrations/p7-ops-tables';
 import { P8P0Migration } from './migrations/p8-p0-privacy-food-safety';
 import { P8P1PackingFeeMigration } from './migrations/p8-p1-packing-fee';
 import { P8P1AddonComboMigration } from './migrations/p8-p1-2-addon-combo';
+import { P8P1_4CloudPrintMigration } from './migrations/p8-p1-4-cloud-print-kds';
+import { CloudPrintService } from './cloud-print.service';
+import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
 import { PrivacyNumberService } from './privacy-number.service';
 import { AddWithdrawPayoutMigration } from './migrations/add-withdraw-payout';
@@ -120,7 +123,7 @@ import { WaimaiStoreService } from './waimai-store.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -135,6 +138,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P8P0Migration,
         P8P1PackingFeeMigration,
         P8P1AddonComboMigration,
+        P8P1_4CloudPrintMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -164,6 +168,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         ShippingProfileEnsureService,
         WaimaiStoreService,
         PrivacyNumberService,
+        CloudPrintService,
         MerchantAdminService,
         CampusNotifyService,
         ThirdPartyDeliveryService,
@@ -308,6 +313,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     paused: Boolean!
                     merchantConfirmEnabled: Boolean!
                     printMode: String!
+                    """打印通道（P1-4）：local=前端 C-Lodop / feie / yilianyun"""
+                    printProvider: String!
+                    """云通道账号/设备/密钥是否已配齐"""
+                    cloudPrintConfigured: Boolean!
                     storeName: String!
                     storePhone: String
                     pending: [MerchantBoardOrder!]!
@@ -322,6 +331,64 @@ import { WaimaiStoreService } from './waimai-store.service';
                     scheduled: [MerchantBoardOrder!]!
                     completedToday: Int!
                     completedTodayAmount: Int!
+                }
+
+                """KDS 出餐屏单行（含加料快照）"""
+                type CampusKitchenLine {
+                    name: String!
+                    quantity: Int!
+                    addons: [String!]!
+                }
+
+                """KDS 出餐票：pending=待接单，cooking=制作中；urgency=normal/warn/late"""
+                type CampusKitchenTicket {
+                    id: ID!
+                    code: String!
+                    stage: String!
+                    createdAt: DateTime!
+                    waitingMinutes: Int!
+                    urgency: String!
+                    zone: String!
+                    building: String!
+                    slotText: String!
+                    note: String
+                    printedAt: DateTime
+                    total: Int!
+                    lines: [CampusKitchenLine!]!
+                }
+
+                type CampusKitchenQueue {
+                    tickets: [CampusKitchenTicket!]!
+                    pendingCount: Int!
+                    cookingCount: Int!
+                    lateCount: Int!
+                    warnMinutes: Int!
+                    lateMinutes: Int!
+                }
+
+                """云打印结果：dryRun 保留给未接真实设备的联调场景"""
+                type CampusPrintResult {
+                    ok: Boolean!
+                    provider: String!
+                    dryRun: Boolean!
+                    jobId: ID
+                    error: String
+                }
+
+                """云打印任务留痕（排障/重打依据）"""
+                type CampusPrintJob {
+                    id: ID!
+                    orderId: ID
+                    orderCode: String
+                    provider: String!
+                    deviceSn: String
+                    status: String!
+                    triggerType: String!
+                    copies: Int!
+                    dryRun: Boolean!
+                    errorMessage: String
+                    durationMs: Int
+                    createdAt: DateTime!
                 }
 
                 """商家自助经营：门店资料（营业状态按校园时区判定）"""
@@ -493,6 +560,13 @@ import { WaimaiStoreService } from './waimai-store.service';
                     notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String!
+                    """打印通道（P1-4）：local / feie / yilianyun"""
+                    printProvider: String!
+                    printAccount: String
+                    printDeviceSn: String
+                    printDeviceKey: String
+                    """打印联数（1-5）"""
+                    printCopies: Int!
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
@@ -565,6 +639,12 @@ import { WaimaiStoreService } from './waimai-store.service';
                     notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String
+                    """打印通道：local（默认）/ feie / yilianyun；云通道须同时传账号/设备/密钥"""
+                    printProvider: String
+                    printAccount: String
+                    printDeviceSn: String
+                    printDeviceKey: String
+                    printCopies: Int
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
@@ -892,6 +972,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
                     campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
+                    """KDS 出餐屏（P1-4）：待接单/备餐中队列"""
+                    campusMerchantKitchenQueue: CampusKitchenQueue!
+                    """最近云打印任务（P1-4）"""
+                    campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1077,6 +1161,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
+                    """云打印一张小票（P1-4）：后端签名直连服务商，成功回写打印时间"""
+                    campusMerchantCloudPrint(orderId: ID!): CampusPrintResult!
+                    """云打印连通性测试（不占用订单）"""
+                    campusMerchantCloudPrintTest: CampusPrintResult!
                     campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
                     campusMerchantCancelExternal(orderId: ID!, reason: String): CampusExternalCancelResult!
                     """运营中心推送/重推外部快递"""

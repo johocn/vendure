@@ -44,6 +44,17 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) notifyTemplateAddressChanged: string | null; // 改址成功
     @Column({ type: 'varchar', nullable: true }) h5BaseUrl: string | null; // C 端 H5 站点 origin，如 https://www.yourbao.cn
     @Column({ type: 'varchar', nullable: true }) printMode: string | null; // 商家小票打印时机 'off' | 'onPaid' | 'onAccepted'（null=off）
+    // 云打印（P1-4）：local=前端 C-Lodop 本地打印；feie=飞鹅 / yilianyun=易联云
+    /** 打印通道：local（默认）/ feie / yilianyun */
+    @Column({ type: 'varchar', length: 16, default: 'local' }) printProvider: string;
+    /** 服务商账号：飞鹅用户名 / 易联云 client_id */
+    @Column({ type: 'varchar', length: 64, nullable: true }) printAccount: string | null;
+    /** 设备编号：飞鹅 sn / 易联云 machine_code */
+    @Column({ type: 'varchar', length: 64, nullable: true }) printDeviceSn: string | null;
+    /** 服务商密钥：飞鹅 ukey / 易联云 client_secret */
+    @Column({ type: 'varchar', length: 128, nullable: true }) printDeviceKey: string | null;
+    /** 联数（1-5），默认 1 */
+    @Column({ type: 'int', default: 1 }) printCopies: number;
     /** 第一段由谁送（按路线）：R1 = merchant|owned，R3 = campus|owned|external；缺省 R1=merchant、R3=campus */
     @Column({ type: 'simple-json', nullable: true })
     routeFirstLeg: Record<string, string> | null;

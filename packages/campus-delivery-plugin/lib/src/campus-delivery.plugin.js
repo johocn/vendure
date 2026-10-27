@@ -36,6 +36,9 @@ const p7_ops_tables_1 = require("./migrations/p7-ops-tables");
 const p8_p0_privacy_food_safety_1 = require("./migrations/p8-p0-privacy-food-safety");
 const p8_p1_packing_fee_1 = require("./migrations/p8-p1-packing-fee");
 const p8_p1_2_addon_combo_1 = require("./migrations/p8-p1-2-addon-combo");
+const p8_p1_4_cloud_print_kds_1 = require("./migrations/p8-p1-4-cloud-print-kds");
+const cloud_print_service_1 = require("./cloud-print.service");
+const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
 const privacy_number_service_1 = require("./privacy-number.service");
 const add_withdraw_payout_1 = require("./migrations/add-withdraw-payout");
@@ -253,7 +256,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -268,6 +271,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p8_p0_privacy_food_safety_1.P8P0Migration,
             p8_p1_packing_fee_1.P8P1PackingFeeMigration,
             p8_p1_2_addon_combo_1.P8P1AddonComboMigration,
+            p8_p1_4_cloud_print_kds_1.P8P1_4CloudPrintMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -297,6 +301,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
             privacy_number_service_1.PrivacyNumberService,
+            cloud_print_service_1.CloudPrintService,
             merchant_admin_service_1.MerchantAdminService,
             campus_notify_service_1.CampusNotifyService,
             third_party_delivery_service_1.ThirdPartyDeliveryService,
@@ -441,6 +446,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     paused: Boolean!
                     merchantConfirmEnabled: Boolean!
                     printMode: String!
+                    """打印通道（P1-4）：local=前端 C-Lodop / feie / yilianyun"""
+                    printProvider: String!
+                    """云通道账号/设备/密钥是否已配齐"""
+                    cloudPrintConfigured: Boolean!
                     storeName: String!
                     storePhone: String
                     pending: [MerchantBoardOrder!]!
@@ -455,6 +464,64 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     scheduled: [MerchantBoardOrder!]!
                     completedToday: Int!
                     completedTodayAmount: Int!
+                }
+
+                """KDS 出餐屏单行（含加料快照）"""
+                type CampusKitchenLine {
+                    name: String!
+                    quantity: Int!
+                    addons: [String!]!
+                }
+
+                """KDS 出餐票：pending=待接单，cooking=制作中；urgency=normal/warn/late"""
+                type CampusKitchenTicket {
+                    id: ID!
+                    code: String!
+                    stage: String!
+                    createdAt: DateTime!
+                    waitingMinutes: Int!
+                    urgency: String!
+                    zone: String!
+                    building: String!
+                    slotText: String!
+                    note: String
+                    printedAt: DateTime
+                    total: Int!
+                    lines: [CampusKitchenLine!]!
+                }
+
+                type CampusKitchenQueue {
+                    tickets: [CampusKitchenTicket!]!
+                    pendingCount: Int!
+                    cookingCount: Int!
+                    lateCount: Int!
+                    warnMinutes: Int!
+                    lateMinutes: Int!
+                }
+
+                """云打印结果：dryRun 保留给未接真实设备的联调场景"""
+                type CampusPrintResult {
+                    ok: Boolean!
+                    provider: String!
+                    dryRun: Boolean!
+                    jobId: ID
+                    error: String
+                }
+
+                """云打印任务留痕（排障/重打依据）"""
+                type CampusPrintJob {
+                    id: ID!
+                    orderId: ID
+                    orderCode: String
+                    provider: String!
+                    deviceSn: String
+                    status: String!
+                    triggerType: String!
+                    copies: Int!
+                    dryRun: Boolean!
+                    errorMessage: String
+                    durationMs: Int
+                    createdAt: DateTime!
                 }
 
                 """商家自助经营：门店资料（营业状态按校园时区判定）"""
@@ -626,6 +693,13 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String!
+                    """打印通道（P1-4）：local / feie / yilianyun"""
+                    printProvider: String!
+                    printAccount: String
+                    printDeviceSn: String
+                    printDeviceKey: String
+                    """打印联数（1-5）"""
+                    printCopies: Int!
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
@@ -698,6 +772,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String
+                    """打印通道：local（默认）/ feie / yilianyun；云通道须同时传账号/设备/密钥"""
+                    printProvider: String
+                    printAccount: String
+                    printDeviceSn: String
+                    printDeviceKey: String
+                    printCopies: Int
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
@@ -1025,6 +1105,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusOrderRiderTrack(orderId: ID, orderCode: String): CampusRiderTrack!
                     campusRiderTrack(riderCustomerId: ID!, from: String!, to: String!): CampusRiderTrack!
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
+                    """KDS 出餐屏（P1-4）：待接单/备餐中队列"""
+                    campusMerchantKitchenQueue: CampusKitchenQueue!
+                    """最近云打印任务（P1-4）"""
+                    campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1210,6 +1294,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
+                    """云打印一张小票（P1-4）：后端签名直连服务商，成功回写打印时间"""
+                    campusMerchantCloudPrint(orderId: ID!): CampusPrintResult!
+                    """云打印连通性测试（不占用订单）"""
+                    campusMerchantCloudPrintTest: CampusPrintResult!
                     campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
                     campusMerchantCancelExternal(orderId: ID!, reason: String): CampusExternalCancelResult!
                     """运营中心推送/重推外部快递"""

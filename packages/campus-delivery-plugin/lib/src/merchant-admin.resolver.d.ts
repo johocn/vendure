@@ -31,6 +31,14 @@ export declare class MerchantAdminResolver {
     campusMerchantMarkPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
+    campusMerchantKitchenQueue(ctx: RequestContext): Promise<import("./merchant-admin.service").KitchenQueue>;
+    /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
+    campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
+    /** 云打印连通性测试（不占用订单） */
+    campusMerchantCloudPrintTest(ctx: RequestContext): Promise<import("./cloud-print.service").CloudPrintResult>;
+    /** 最近云打印任务（后台排障：失败原因/耗时） */
+    campusMerchantPrintJobs(ctx: RequestContext, limit?: number): Promise<import("./cloud-print.service").CloudPrintJobRow[]>;
     /** 一键沽清：本店商品列表（含售罄标记） */
     campusMerchantProducts(ctx: RequestContext, search?: string, skip?: number, take?: number): Promise<{
         items: any;

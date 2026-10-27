@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WaimaiStoreService = exports.PRIVACY_PROVIDERS = void 0;
+exports.WaimaiStoreService = exports.PRIVACY_PROVIDERS = exports.PRINT_PROVIDERS = void 0;
 exports.normalizePrintMode = normalizePrintMode;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
@@ -18,6 +18,8 @@ const route_matrix_1 = require("./route-matrix");
 const business_hours_1 = require("./business-hours");
 const packing_fee_1 = require("./packing-fee");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
+/** 打印通道白名单（P1-4）：local=本地 C-Lodop，feie=飞鹅云，yilianyun=易联云 */
+exports.PRINT_PROVIDERS = ['local', 'feie', 'yilianyun'];
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
 function normalizePrintMode(v) {
     return PRINT_MODES.includes(v) ? v : 'off';
@@ -128,7 +130,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14;
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
         const routes = Array.from(new Set(((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).map(r => String(r))));
         const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
@@ -246,8 +248,34 @@ let WaimaiStoreService = class WaimaiStoreService {
         }
         if (input.h5BaseUrl !== undefined)
             cfg.h5BaseUrl = (_0 = input.h5BaseUrl) !== null && _0 !== void 0 ? _0 : null;
+        /** 空串归一为 null（未配置即 C 端/小票不渲染）；undefined=保留原值 */
+        const nullableText = (v) => (v === undefined ? undefined : String(v !== null && v !== void 0 ? v : '').trim() || null);
         if (input.printMode !== undefined) {
             cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        }
+        // 云打印通道（P1-4）：local 走前端 C-Lodop；云通道必须备齐账号/设备/密钥，否则自动出票必然失败
+        if (input.printProvider !== undefined && input.printProvider !== null) {
+            const provider = String(input.printProvider).trim();
+            if (!exports.PRINT_PROVIDERS.includes(provider)) {
+                throw new core_1.UserInputError(`不支持的打印通道: ${provider || '(空)'}（仅接受 ${exports.PRINT_PROVIDERS.join('/')}）`);
+            }
+            cfg.printProvider = provider;
+        }
+        if (input.printAccount !== undefined)
+            cfg.printAccount = (_1 = nullableText(input.printAccount)) !== null && _1 !== void 0 ? _1 : null;
+        if (input.printDeviceSn !== undefined)
+            cfg.printDeviceSn = (_2 = nullableText(input.printDeviceSn)) !== null && _2 !== void 0 ? _2 : null;
+        if (input.printDeviceKey !== undefined)
+            cfg.printDeviceKey = (_3 = nullableText(input.printDeviceKey)) !== null && _3 !== void 0 ? _3 : null;
+        if (input.printCopies !== undefined && input.printCopies !== null) {
+            const copies = Number(input.printCopies);
+            if (!Number.isInteger(copies) || copies < 1 || copies > 5) {
+                throw new core_1.UserInputError('打印联数必须为 1-5 的整数');
+            }
+            cfg.printCopies = copies;
+        }
+        if (cfg.printProvider !== 'local' && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
+            throw new core_1.UserInputError('选择云打印时请填写服务商账号、设备编号与密钥');
         }
         // 超时赔付：未传即保留（旧表单不会清空已配值）
         if (input.timeoutCompensationEnabled != null)
@@ -301,7 +329,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_12) {
+                catch (_15) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -327,19 +355,18 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.privacyNumberTtlMinutes = ttl;
         }
         if (input.privacyNumberPrefix !== undefined) {
-            cfg.privacyNumberPrefix = String((_1 = input.privacyNumberPrefix) !== null && _1 !== void 0 ? _1 : '').trim() || null;
+            cfg.privacyNumberPrefix = String((_4 = input.privacyNumberPrefix) !== null && _4 !== void 0 ? _4 : '').trim() || null;
         }
         // 食安公示：空串归一为 null（未配置即 C 端不渲染）；等级/到期日做格式校验
-        const nullableText = (v) => (v === undefined ? undefined : String(v !== null && v !== void 0 ? v : '').trim() || null);
         if (input.foodLicenseNo !== undefined)
-            cfg.foodLicenseNo = (_2 = nullableText(input.foodLicenseNo)) !== null && _2 !== void 0 ? _2 : null;
+            cfg.foodLicenseNo = (_5 = nullableText(input.foodLicenseNo)) !== null && _5 !== void 0 ? _5 : null;
         if (input.foodLicenseImage !== undefined)
-            cfg.foodLicenseImage = (_3 = nullableText(input.foodLicenseImage)) !== null && _3 !== void 0 ? _3 : null;
+            cfg.foodLicenseImage = (_6 = nullableText(input.foodLicenseImage)) !== null && _6 !== void 0 ? _6 : null;
         if (input.foodSafetyCommitmentImage !== undefined) {
-            cfg.foodSafetyCommitmentImage = (_4 = nullableText(input.foodSafetyCommitmentImage)) !== null && _4 !== void 0 ? _4 : null;
+            cfg.foodSafetyCommitmentImage = (_7 = nullableText(input.foodSafetyCommitmentImage)) !== null && _7 !== void 0 ? _7 : null;
         }
         if (input.kitchenLiveUrl !== undefined)
-            cfg.kitchenLiveUrl = (_5 = nullableText(input.kitchenLiveUrl)) !== null && _5 !== void 0 ? _5 : null;
+            cfg.kitchenLiveUrl = (_8 = nullableText(input.kitchenLiveUrl)) !== null && _8 !== void 0 ? _8 : null;
         if (input.foodLicenseExpiry !== undefined) {
             const expiry = nullableText(input.foodLicenseExpiry);
             if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
@@ -371,12 +398,12 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.packingFeeMode = mode;
         }
         if (input.packingFeeAmount !== undefined)
-            cfg.packingFeeAmount = (_6 = nums.packingFeeAmount) !== null && _6 !== void 0 ? _6 : 0;
+            cfg.packingFeeAmount = (_9 = nums.packingFeeAmount) !== null && _9 !== void 0 ? _9 : 0;
         if (input.packingFeeCap !== undefined)
-            cfg.packingFeeCap = (_7 = nums.packingFeeCap) !== null && _7 !== void 0 ? _7 : null;
+            cfg.packingFeeCap = (_10 = nums.packingFeeCap) !== null && _10 !== void 0 ? _10 : null;
         if (input.packingFeeLabel !== undefined)
-            cfg.packingFeeLabel = (_8 = nullableText(input.packingFeeLabel)) !== null && _8 !== void 0 ? _8 : null;
-        if (cfg.packingFeeEnabled && ((_9 = cfg.packingFeeAmount) !== null && _9 !== void 0 ? _9 : 0) <= 0) {
+            cfg.packingFeeLabel = (_11 = nullableText(input.packingFeeLabel)) !== null && _11 !== void 0 ? _11 : null;
+        if (cfg.packingFeeEnabled && ((_12 = cfg.packingFeeAmount) !== null && _12 !== void 0 ? _12 : 0) <= 0) {
             throw new core_1.UserInputError('开启打包费时请填写大于 0 的金额');
         }
         if (cfg.packingFeeCap != null && cfg.packingFeeAmount != null && cfg.packingFeeCap < cfg.packingFeeAmount) {
@@ -395,10 +422,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_10 = input.storeAddress) !== null && _10 !== void 0 ? _10 : '').trim();
+        const address = ((_13 = input.storeAddress) !== null && _13 !== void 0 ? _13 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_11 = input.storePhone) !== null && _11 !== void 0 ? _11 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_14 = input.storePhone) !== null && _14 !== void 0 ? _14 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -429,7 +456,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28;
         return {
             channelId,
             channelName,
@@ -456,13 +483,18 @@ let WaimaiStoreService = class WaimaiStoreService {
             notifyTemplateAddressChanged: (_v = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAddressChanged) !== null && _v !== void 0 ? _v : null,
             h5BaseUrl: (_w = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _w !== void 0 ? _w : null,
             printMode: normalizePrintMode(cfg === null || cfg === void 0 ? void 0 : cfg.printMode),
+            printProvider: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.printProvider) !== null && _x !== void 0 ? _x : 'local',
+            printAccount: (_y = cfg === null || cfg === void 0 ? void 0 : cfg.printAccount) !== null && _y !== void 0 ? _y : null,
+            printDeviceSn: (_z = cfg === null || cfg === void 0 ? void 0 : cfg.printDeviceSn) !== null && _z !== void 0 ? _z : null,
+            printDeviceKey: (_0 = cfg === null || cfg === void 0 ? void 0 : cfg.printDeviceKey) !== null && _0 !== void 0 ? _0 : null,
+            printCopies: (_1 = cfg === null || cfg === void 0 ? void 0 : cfg.printCopies) !== null && _1 !== void 0 ? _1 : 1,
             // 与实体默认值一致（timeoutCompensationEnabled default true）：无配置行时也应显示「已开启」
-            timeoutCompensationEnabled: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _x !== void 0 ? _x : true,
-            timeoutGraceMinutes: (_y = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutGraceMinutes) !== null && _y !== void 0 ? _y : 10,
-            timeoutCompensationWindowHours: (_z = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationWindowHours) !== null && _z !== void 0 ? _z : 24,
-            timeoutCompensationCouponTemplateId: (_0 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _0 !== void 0 ? _0 : null,
-            routeFirstLeg: Object.entries((_1 = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _1 !== void 0 ? _1 : {}).map(([route, carrier]) => ({ route, carrier })),
-            handoverPoints: Object.entries((_2 = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _2 !== void 0 ? _2 : {}).flatMap(([route, raw]) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => {
+            timeoutCompensationEnabled: (_2 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _2 !== void 0 ? _2 : true,
+            timeoutGraceMinutes: (_3 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutGraceMinutes) !== null && _3 !== void 0 ? _3 : 10,
+            timeoutCompensationWindowHours: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationWindowHours) !== null && _4 !== void 0 ? _4 : 24,
+            timeoutCompensationCouponTemplateId: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _5 !== void 0 ? _5 : null,
+            routeFirstLeg: Object.entries((_6 = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _6 !== void 0 ? _6 : {}).map(([route, carrier]) => ({ route, carrier })),
+            handoverPoints: Object.entries((_7 = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _7 !== void 0 ? _7 : {}).flatMap(([route, raw]) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => {
                 var _a, _b;
                 return ({
                     route,
@@ -474,29 +506,29 @@ let WaimaiStoreService = class WaimaiStoreService {
                     isDefault: !!p.isDefault,
                 });
             })),
-            providerShopNo: Object.entries((_3 = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _3 !== void 0 ? _3 : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
-            merchantAcceptMinutes: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _4 !== void 0 ? _4 : 5,
-            externalPushTimeoutMinutes: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _5 !== void 0 ? _5 : 10,
-            externalFallbackMinutes: (_6 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _6 !== void 0 ? _6 : 20,
-            storeLat: (_7 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _7 !== void 0 ? _7 : null,
-            storeLng: (_8 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _8 !== void 0 ? _8 : null,
+            providerShopNo: Object.entries((_8 = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _8 !== void 0 ? _8 : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
+            merchantAcceptMinutes: (_9 = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _9 !== void 0 ? _9 : 5,
+            externalPushTimeoutMinutes: (_10 = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _10 !== void 0 ? _10 : 10,
+            externalFallbackMinutes: (_11 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _11 !== void 0 ? _11 : 20,
+            storeLat: (_12 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _12 !== void 0 ? _12 : null,
+            storeLng: (_13 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _13 !== void 0 ? _13 : null,
             dynamicPricing: (cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) ? JSON.stringify(cfg.dynamicPricing) : null,
-            privacyNumberEnabled: (_9 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberEnabled) !== null && _9 !== void 0 ? _9 : false,
-            privacyNumberProvider: (_10 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberProvider) !== null && _10 !== void 0 ? _10 : 'mask',
-            privacyNumberTtlMinutes: (_11 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberTtlMinutes) !== null && _11 !== void 0 ? _11 : 60,
-            privacyNumberPrefix: (_12 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberPrefix) !== null && _12 !== void 0 ? _12 : null,
-            foodLicenseNo: (_13 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseNo) !== null && _13 !== void 0 ? _13 : null,
-            foodLicenseImage: (_14 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseImage) !== null && _14 !== void 0 ? _14 : null,
-            foodLicenseExpiry: (_15 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseExpiry) !== null && _15 !== void 0 ? _15 : null,
-            foodSafetyGrade: (_16 = cfg === null || cfg === void 0 ? void 0 : cfg.foodSafetyGrade) !== null && _16 !== void 0 ? _16 : null,
-            foodSafetyCommitmentImage: (_17 = cfg === null || cfg === void 0 ? void 0 : cfg.foodSafetyCommitmentImage) !== null && _17 !== void 0 ? _17 : null,
-            kitchenLiveUrl: (_18 = cfg === null || cfg === void 0 ? void 0 : cfg.kitchenLiveUrl) !== null && _18 !== void 0 ? _18 : null,
-            kitchenLiveEnabled: (_19 = cfg === null || cfg === void 0 ? void 0 : cfg.kitchenLiveEnabled) !== null && _19 !== void 0 ? _19 : false,
-            packingFeeEnabled: (_20 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeEnabled) !== null && _20 !== void 0 ? _20 : false,
+            privacyNumberEnabled: (_14 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberEnabled) !== null && _14 !== void 0 ? _14 : false,
+            privacyNumberProvider: (_15 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberProvider) !== null && _15 !== void 0 ? _15 : 'mask',
+            privacyNumberTtlMinutes: (_16 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberTtlMinutes) !== null && _16 !== void 0 ? _16 : 60,
+            privacyNumberPrefix: (_17 = cfg === null || cfg === void 0 ? void 0 : cfg.privacyNumberPrefix) !== null && _17 !== void 0 ? _17 : null,
+            foodLicenseNo: (_18 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseNo) !== null && _18 !== void 0 ? _18 : null,
+            foodLicenseImage: (_19 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseImage) !== null && _19 !== void 0 ? _19 : null,
+            foodLicenseExpiry: (_20 = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseExpiry) !== null && _20 !== void 0 ? _20 : null,
+            foodSafetyGrade: (_21 = cfg === null || cfg === void 0 ? void 0 : cfg.foodSafetyGrade) !== null && _21 !== void 0 ? _21 : null,
+            foodSafetyCommitmentImage: (_22 = cfg === null || cfg === void 0 ? void 0 : cfg.foodSafetyCommitmentImage) !== null && _22 !== void 0 ? _22 : null,
+            kitchenLiveUrl: (_23 = cfg === null || cfg === void 0 ? void 0 : cfg.kitchenLiveUrl) !== null && _23 !== void 0 ? _23 : null,
+            kitchenLiveEnabled: (_24 = cfg === null || cfg === void 0 ? void 0 : cfg.kitchenLiveEnabled) !== null && _24 !== void 0 ? _24 : false,
+            packingFeeEnabled: (_25 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeEnabled) !== null && _25 !== void 0 ? _25 : false,
             packingFeeMode: (0, packing_fee_1.normalizePackingFeeMode)(cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeMode),
-            packingFeeAmount: (_21 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeAmount) !== null && _21 !== void 0 ? _21 : 0,
-            packingFeeCap: (_22 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeCap) !== null && _22 !== void 0 ? _22 : null,
-            packingFeeLabel: (_23 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeLabel) !== null && _23 !== void 0 ? _23 : null,
+            packingFeeAmount: (_26 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeAmount) !== null && _26 !== void 0 ? _26 : 0,
+            packingFeeCap: (_27 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeCap) !== null && _27 !== void 0 ? _27 : null,
+            packingFeeLabel: (_28 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeLabel) !== null && _28 !== void 0 ? _28 : null,
         };
     }
 };
