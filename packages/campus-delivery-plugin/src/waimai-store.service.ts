@@ -104,10 +104,47 @@ export interface CampusStoreConfigWithChannel {
     packingFeeAmount: number;
     packingFeeCap: number | null;
     packingFeeLabel: string | null;
+    /** 小程序上架配置（P2-1） */
+    mpAppId: string | null;
+    mpCategory: string | null;
+    mpVersion: string | null;
+    mpListingStatus: MpListingStatus;
+    mpPrivacyUrl: string | null;
+    mpReviewNote: string | null;
+    /** 上架前检查是否齐全（AppID/类目/版本/隐私指引/客服电话/食品许可证） */
+    mpReady: boolean;
+    /** 上架前检查缺项 key（前端按 key 做 i18n 文案） */
+    mpMissing: string[];
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
 type PrintMode = (typeof PRINT_MODES)[number];
+
+/** 小程序上架状态白名单（P2-1） */
+const MP_LISTING_STATUSES = ['draft', 'inReview', 'online', 'rejected', 'offline'] as const;
+type MpListingStatus = (typeof MP_LISTING_STATUSES)[number];
+
+/** 上架前检查项：key → 读取 config 的必填值（key 与前端 i18n 对齐） */
+const MP_REQUIRED_ITEMS: Array<[string, (cfg: CampusFulfillmentConfig | undefined) => string | null]> = [
+    ['appId', cfg => cfg?.mpAppId ?? null],
+    ['category', cfg => cfg?.mpCategory ?? null],
+    ['version', cfg => cfg?.mpVersion ?? null],
+    ['privacyUrl', cfg => cfg?.mpPrivacyUrl ?? null],
+    ['contactPhone', cfg => cfg?.storePhone ?? null],
+    ['licenseNo', cfg => cfg?.foodLicenseNo ?? null],
+];
+
+/** 上架前检查：返回缺项 key（空数组=可提交/可上架） */
+export function mpListingMissing(cfg: CampusFulfillmentConfig | undefined): string[] {
+    return MP_REQUIRED_ITEMS
+        .filter(([, read]) => !String(read(cfg) ?? '').trim())
+        .map(([key]) => key);
+}
+
+/** 上架状态归一化：脏值回 'draft'，避免后台展示空白状态 */
+export function normalizeMpListingStatus(v: unknown): MpListingStatus {
+    return MP_LISTING_STATUSES.includes(v as MpListingStatus) ? (v as MpListingStatus) : 'draft';
+}
 
 /** 打印通道白名单（P1-4）：local=本地 C-Lodop，feie=飞鹅云，yilianyun=易联云 */
 export const PRINT_PROVIDERS = ['local', 'feie', 'yilianyun'] as const;
@@ -284,6 +321,12 @@ export class WaimaiStoreService {
             packingFeeAmount?: number | null;
             packingFeeCap?: number | null;
             packingFeeLabel?: string | null;
+            mpAppId?: string | null;
+            mpCategory?: string | null;
+            mpVersion?: string | null;
+            mpListingStatus?: string | null;
+            mpPrivacyUrl?: string | null;
+            mpReviewNote?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
@@ -531,6 +574,55 @@ export class WaimaiStoreService {
             throw new UserInputError('打包费单笔封顶不能小于单件/每单金额');
         }
 
+        // 小程序上架（P2-1）：AppID/版本/隐私指引做格式校验；置为已上架前必须通过上架前检查
+        if (input.mpAppId !== undefined) {
+            const appId = nullableText(input.mpAppId);
+            if (appId && !/^wx[0-9a-f]{16}$/i.test(appId)) {
+                throw new UserInputError('小程序 AppID 格式不合法（应为 wx + 16 位十六进制）');
+            }
+            cfg.mpAppId = appId ?? null;
+        }
+        if (input.mpCategory !== undefined) {
+            const cat = nullableText(input.mpCategory);
+            if (cat && cat.length > 64) throw new UserInputError('小程序服务类目不能超过 64 字符');
+            cfg.mpCategory = cat ?? null;
+        }
+        if (input.mpVersion !== undefined) {
+            const ver = nullableText(input.mpVersion);
+            if (ver && !/^\d{1,3}(\.\d{1,3}){1,2}$/.test(ver)) {
+                throw new UserInputError('小程序版本号格式不合法（应为 x.y 或 x.y.z）');
+            }
+            cfg.mpVersion = ver ?? null;
+        }
+        if (input.mpPrivacyUrl !== undefined) {
+            const url = nullableText(input.mpPrivacyUrl);
+            if (url && (!/^https?:\/\/[^\s]+$/i.test(url) || url.length > 255)) {
+                throw new UserInputError('隐私保护指引地址必须是 http(s) 链接且不超过 255 字符');
+            }
+            cfg.mpPrivacyUrl = url ?? null;
+        }
+        if (input.mpReviewNote !== undefined) {
+            const note = nullableText(input.mpReviewNote);
+            if (note && note.length > 500) throw new UserInputError('审核备注不能超过 500 字符');
+            cfg.mpReviewNote = note ?? null;
+        }
+        if (input.mpListingStatus != null) {
+            const status = String(input.mpListingStatus || '').trim();
+            if (!MP_LISTING_STATUSES.includes(status as MpListingStatus)) {
+                throw new UserInputError(
+                    `不支持的上架状态: ${status || '(空)'}（仅接受 ${MP_LISTING_STATUSES.join('/')}）`,
+                );
+            }
+            cfg.mpListingStatus = status as MpListingStatus;
+        }
+        // 置为「已上架」前必须齐全，避免审核资料缺项却对外宣称已上架
+        if (cfg.mpListingStatus === 'online') {
+            const missing = mpListingMissing(cfg);
+            if (missing.length) {
+                throw new UserInputError(`上架前请先补齐：${missing.join('、')}`);
+            }
+        }
+
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
         const hasPoint = (r: 'R1' | 'R2') => {
@@ -657,6 +749,14 @@ export class WaimaiStoreService {
             packingFeeAmount: cfg?.packingFeeAmount ?? 0,
             packingFeeCap: cfg?.packingFeeCap ?? null,
             packingFeeLabel: cfg?.packingFeeLabel ?? null,
+            mpAppId: cfg?.mpAppId ?? null,
+            mpCategory: cfg?.mpCategory ?? null,
+            mpVersion: cfg?.mpVersion ?? null,
+            mpListingStatus: normalizeMpListingStatus(cfg?.mpListingStatus),
+            mpPrivacyUrl: cfg?.mpPrivacyUrl ?? null,
+            mpReviewNote: cfg?.mpReviewNote ?? null,
+            mpReady: mpListingMissing(cfg).length === 0,
+            mpMissing: mpListingMissing(cfg),
         };
     }
 }

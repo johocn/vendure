@@ -37,6 +37,7 @@ const p8_p0_privacy_food_safety_1 = require("./migrations/p8-p0-privacy-food-saf
 const p8_p1_packing_fee_1 = require("./migrations/p8-p1-packing-fee");
 const p8_p1_2_addon_combo_1 = require("./migrations/p8-p1-2-addon-combo");
 const p8_p1_4_cloud_print_kds_1 = require("./migrations/p8-p1-4-cloud-print-kds");
+const p9_p2_mp_listing_1 = require("./migrations/p9-p2-mp-listing");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
@@ -272,6 +273,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p8_p1_packing_fee_1.P8P1PackingFeeMigration,
             p8_p1_2_addon_combo_1.P8P1AddonComboMigration,
             p8_p1_4_cloud_print_kds_1.P8P1_4CloudPrintMigration,
+            p9_p2_mp_listing_1.P9P2MpListingMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -728,6 +730,22 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     packingFeeCap: Int
                     """C 端展示名称（空=打包费）"""
                     packingFeeLabel: String
+                    """小程序 AppID（wx + 16 位十六进制）"""
+                    mpAppId: String
+                    """服务类目（如「餐饮/外卖」）"""
+                    mpCategory: String
+                    """当前上架版本号（x.y.z）"""
+                    mpVersion: String
+                    """上架状态：draft / inReview / online / rejected / offline"""
+                    mpListingStatus: String!
+                    """用户隐私保护指引地址"""
+                    mpPrivacyUrl: String
+                    """审核备注 / 驳回原因"""
+                    mpReviewNote: String
+                    """上架前检查是否齐全（AppID/类目/版本/隐私指引/客服电话/食品许可证）"""
+                    mpReady: Boolean!
+                    """上架前检查缺项 key：appId / category / version / privacyUrl / contactPhone / licenseNo"""
+                    mpMissing: [String!]!
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -798,6 +816,13 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     packingFeeAmount: Int
                     packingFeeCap: Int
                     packingFeeLabel: String
+                    mpAppId: String
+                    mpCategory: String
+                    mpVersion: String
+                    """上架状态：draft / inReview / online / rejected / offline"""
+                    mpListingStatus: String
+                    mpPrivacyUrl: String
+                    mpReviewNote: String
                 }
 
                 type RiderWithdrawalRequest {

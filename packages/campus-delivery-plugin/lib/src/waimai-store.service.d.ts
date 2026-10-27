@@ -1,4 +1,5 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
+import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 export interface WaimaiStore {
     channelId: number;
     channelToken: string;
@@ -111,9 +112,27 @@ export interface CampusStoreConfigWithChannel {
     packingFeeAmount: number;
     packingFeeCap: number | null;
     packingFeeLabel: string | null;
+    /** 小程序上架配置（P2-1） */
+    mpAppId: string | null;
+    mpCategory: string | null;
+    mpVersion: string | null;
+    mpListingStatus: MpListingStatus;
+    mpPrivacyUrl: string | null;
+    mpReviewNote: string | null;
+    /** 上架前检查是否齐全（AppID/类目/版本/隐私指引/客服电话/食品许可证） */
+    mpReady: boolean;
+    /** 上架前检查缺项 key（前端按 key 做 i18n 文案） */
+    mpMissing: string[];
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
+/** 小程序上架状态白名单（P2-1） */
+declare const MP_LISTING_STATUSES: readonly ["draft", "inReview", "online", "rejected", "offline"];
+type MpListingStatus = (typeof MP_LISTING_STATUSES)[number];
+/** 上架前检查：返回缺项 key（空数组=可提交/可上架） */
+export declare function mpListingMissing(cfg: CampusFulfillmentConfig | undefined): string[];
+/** 上架状态归一化：脏值回 'draft'，避免后台展示空白状态 */
+export declare function normalizeMpListingStatus(v: unknown): MpListingStatus;
 /** 打印通道白名单（P1-4）：local=本地 C-Lodop，feie=飞鹅云，yilianyun=易联云 */
 export declare const PRINT_PROVIDERS: readonly ["local", "feie", "yilianyun"];
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
@@ -201,6 +220,12 @@ export declare class WaimaiStoreService {
         packingFeeAmount?: number | null;
         packingFeeCap?: number | null;
         packingFeeLabel?: string | null;
+        mpAppId?: string | null;
+        mpCategory?: string | null;
+        mpVersion?: string | null;
+        mpListingStatus?: string | null;
+        mpPrivacyUrl?: string | null;
+        mpReviewNote?: string | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

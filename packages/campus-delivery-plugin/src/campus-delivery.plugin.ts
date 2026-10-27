@@ -38,6 +38,7 @@ import { P8P0Migration } from './migrations/p8-p0-privacy-food-safety';
 import { P8P1PackingFeeMigration } from './migrations/p8-p1-packing-fee';
 import { P8P1AddonComboMigration } from './migrations/p8-p1-2-addon-combo';
 import { P8P1_4CloudPrintMigration } from './migrations/p8-p1-4-cloud-print-kds';
+import { P9P2MpListingMigration } from './migrations/p9-p2-mp-listing';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -139,6 +140,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P8P1PackingFeeMigration,
         P8P1AddonComboMigration,
         P8P1_4CloudPrintMigration,
+        P9P2MpListingMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -595,6 +597,22 @@ import { WaimaiStoreService } from './waimai-store.service';
                     packingFeeCap: Int
                     """C 端展示名称（空=打包费）"""
                     packingFeeLabel: String
+                    """小程序 AppID（wx + 16 位十六进制）"""
+                    mpAppId: String
+                    """服务类目（如「餐饮/外卖」）"""
+                    mpCategory: String
+                    """当前上架版本号（x.y.z）"""
+                    mpVersion: String
+                    """上架状态：draft / inReview / online / rejected / offline"""
+                    mpListingStatus: String!
+                    """用户隐私保护指引地址"""
+                    mpPrivacyUrl: String
+                    """审核备注 / 驳回原因"""
+                    mpReviewNote: String
+                    """上架前检查是否齐全（AppID/类目/版本/隐私指引/客服电话/食品许可证）"""
+                    mpReady: Boolean!
+                    """上架前检查缺项 key：appId / category / version / privacyUrl / contactPhone / licenseNo"""
+                    mpMissing: [String!]!
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -665,6 +683,13 @@ import { WaimaiStoreService } from './waimai-store.service';
                     packingFeeAmount: Int
                     packingFeeCap: Int
                     packingFeeLabel: String
+                    mpAppId: String
+                    mpCategory: String
+                    mpVersion: String
+                    """上架状态：draft / inReview / online / rejected / offline"""
+                    mpListingStatus: String
+                    mpPrivacyUrl: String
+                    mpReviewNote: String
                 }
 
                 type RiderWithdrawalRequest {

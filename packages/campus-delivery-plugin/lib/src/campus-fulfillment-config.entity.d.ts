@@ -105,5 +105,17 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     packingFeeCap: number | null;
     /** C 端展示名称（空=「打包费」） */
     packingFeeLabel: string | null;
+    /** 小程序 AppID（wx + 16 位十六进制） */
+    mpAppId: string | null;
+    /** 服务类目（如「餐饮/外卖」） */
+    mpCategory: string | null;
+    /** 当前上架版本号（x.y.z） */
+    mpVersion: string | null;
+    /** 上架状态：draft/inReview/online/rejected/offline */
+    mpListingStatus: string;
+    /** 用户隐私保护指引地址（审核必填） */
+    mpPrivacyUrl: string | null;
+    /** 审核备注 / 驳回原因 */
+    mpReviewNote: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

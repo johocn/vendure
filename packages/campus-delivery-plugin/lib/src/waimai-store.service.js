@@ -10,6 +10,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaimaiStoreService = exports.PRIVACY_PROVIDERS = exports.PRINT_PROVIDERS = void 0;
+exports.mpListingMissing = mpListingMissing;
+exports.normalizeMpListingStatus = normalizeMpListingStatus;
 exports.normalizePrintMode = normalizePrintMode;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
@@ -18,6 +20,27 @@ const route_matrix_1 = require("./route-matrix");
 const business_hours_1 = require("./business-hours");
 const packing_fee_1 = require("./packing-fee");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
+/** 小程序上架状态白名单（P2-1） */
+const MP_LISTING_STATUSES = ['draft', 'inReview', 'online', 'rejected', 'offline'];
+/** 上架前检查项：key → 读取 config 的必填值（key 与前端 i18n 对齐） */
+const MP_REQUIRED_ITEMS = [
+    ['appId', cfg => { var _a; return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.mpAppId) !== null && _a !== void 0 ? _a : null; }],
+    ['category', cfg => { var _a; return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.mpCategory) !== null && _a !== void 0 ? _a : null; }],
+    ['version', cfg => { var _a; return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.mpVersion) !== null && _a !== void 0 ? _a : null; }],
+    ['privacyUrl', cfg => { var _a; return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.mpPrivacyUrl) !== null && _a !== void 0 ? _a : null; }],
+    ['contactPhone', cfg => { var _a; return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.storePhone) !== null && _a !== void 0 ? _a : null; }],
+    ['licenseNo', cfg => { var _a; return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.foodLicenseNo) !== null && _a !== void 0 ? _a : null; }],
+];
+/** 上架前检查：返回缺项 key（空数组=可提交/可上架） */
+function mpListingMissing(cfg) {
+    return MP_REQUIRED_ITEMS
+        .filter(([, read]) => { var _a; return !String((_a = read(cfg)) !== null && _a !== void 0 ? _a : '').trim(); })
+        .map(([key]) => key);
+}
+/** 上架状态归一化：脏值回 'draft'，避免后台展示空白状态 */
+function normalizeMpListingStatus(v) {
+    return MP_LISTING_STATUSES.includes(v) ? v : 'draft';
+}
 /** 打印通道白名单（P1-4）：local=本地 C-Lodop，feie=飞鹅云，yilianyun=易联云 */
 exports.PRINT_PROVIDERS = ['local', 'feie', 'yilianyun'];
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
@@ -409,6 +432,54 @@ let WaimaiStoreService = class WaimaiStoreService {
         if (cfg.packingFeeCap != null && cfg.packingFeeAmount != null && cfg.packingFeeCap < cfg.packingFeeAmount) {
             throw new core_1.UserInputError('打包费单笔封顶不能小于单件/每单金额');
         }
+        // 小程序上架（P2-1）：AppID/版本/隐私指引做格式校验；置为已上架前必须通过上架前检查
+        if (input.mpAppId !== undefined) {
+            const appId = nullableText(input.mpAppId);
+            if (appId && !/^wx[0-9a-f]{16}$/i.test(appId)) {
+                throw new core_1.UserInputError('小程序 AppID 格式不合法（应为 wx + 16 位十六进制）');
+            }
+            cfg.mpAppId = appId !== null && appId !== void 0 ? appId : null;
+        }
+        if (input.mpCategory !== undefined) {
+            const cat = nullableText(input.mpCategory);
+            if (cat && cat.length > 64)
+                throw new core_1.UserInputError('小程序服务类目不能超过 64 字符');
+            cfg.mpCategory = cat !== null && cat !== void 0 ? cat : null;
+        }
+        if (input.mpVersion !== undefined) {
+            const ver = nullableText(input.mpVersion);
+            if (ver && !/^\d{1,3}(\.\d{1,3}){1,2}$/.test(ver)) {
+                throw new core_1.UserInputError('小程序版本号格式不合法（应为 x.y 或 x.y.z）');
+            }
+            cfg.mpVersion = ver !== null && ver !== void 0 ? ver : null;
+        }
+        if (input.mpPrivacyUrl !== undefined) {
+            const url = nullableText(input.mpPrivacyUrl);
+            if (url && (!/^https?:\/\/[^\s]+$/i.test(url) || url.length > 255)) {
+                throw new core_1.UserInputError('隐私保护指引地址必须是 http(s) 链接且不超过 255 字符');
+            }
+            cfg.mpPrivacyUrl = url !== null && url !== void 0 ? url : null;
+        }
+        if (input.mpReviewNote !== undefined) {
+            const note = nullableText(input.mpReviewNote);
+            if (note && note.length > 500)
+                throw new core_1.UserInputError('审核备注不能超过 500 字符');
+            cfg.mpReviewNote = note !== null && note !== void 0 ? note : null;
+        }
+        if (input.mpListingStatus != null) {
+            const status = String(input.mpListingStatus || '').trim();
+            if (!MP_LISTING_STATUSES.includes(status)) {
+                throw new core_1.UserInputError(`不支持的上架状态: ${status || '(空)'}（仅接受 ${MP_LISTING_STATUSES.join('/')}）`);
+            }
+            cfg.mpListingStatus = status;
+        }
+        // 置为「已上架」前必须齐全，避免审核资料缺项却对外宣称已上架
+        if (cfg.mpListingStatus === 'online') {
+            const missing = mpListingMissing(cfg);
+            if (missing.length) {
+                throw new core_1.UserInputError(`上架前请先补齐：${missing.join('、')}`);
+            }
+        }
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
         const hasPoint = (r) => {
@@ -456,7 +527,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, _33;
         return {
             channelId,
             channelName,
@@ -529,6 +600,14 @@ let WaimaiStoreService = class WaimaiStoreService {
             packingFeeAmount: (_26 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeAmount) !== null && _26 !== void 0 ? _26 : 0,
             packingFeeCap: (_27 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeCap) !== null && _27 !== void 0 ? _27 : null,
             packingFeeLabel: (_28 = cfg === null || cfg === void 0 ? void 0 : cfg.packingFeeLabel) !== null && _28 !== void 0 ? _28 : null,
+            mpAppId: (_29 = cfg === null || cfg === void 0 ? void 0 : cfg.mpAppId) !== null && _29 !== void 0 ? _29 : null,
+            mpCategory: (_30 = cfg === null || cfg === void 0 ? void 0 : cfg.mpCategory) !== null && _30 !== void 0 ? _30 : null,
+            mpVersion: (_31 = cfg === null || cfg === void 0 ? void 0 : cfg.mpVersion) !== null && _31 !== void 0 ? _31 : null,
+            mpListingStatus: normalizeMpListingStatus(cfg === null || cfg === void 0 ? void 0 : cfg.mpListingStatus),
+            mpPrivacyUrl: (_32 = cfg === null || cfg === void 0 ? void 0 : cfg.mpPrivacyUrl) !== null && _32 !== void 0 ? _32 : null,
+            mpReviewNote: (_33 = cfg === null || cfg === void 0 ? void 0 : cfg.mpReviewNote) !== null && _33 !== void 0 ? _33 : null,
+            mpReady: mpListingMissing(cfg).length === 0,
+            mpMissing: mpListingMissing(cfg),
         };
     }
 };

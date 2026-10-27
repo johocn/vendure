@@ -111,6 +111,19 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'int', nullable: true }) packingFeeCap: number | null;
     /** C 端展示名称（空=「打包费」） */
     @Column({ type: 'varchar', nullable: true }) packingFeeLabel: string | null;
+    // 小程序上架配置（P2-1）：上架前检查 + 审核状态留痕，供运营按渠道维护
+    /** 小程序 AppID（wx + 16 位十六进制） */
+    @Column({ type: 'varchar', length: 64, nullable: true }) mpAppId: string | null;
+    /** 服务类目（如「餐饮/外卖」） */
+    @Column({ type: 'varchar', length: 64, nullable: true }) mpCategory: string | null;
+    /** 当前上架版本号（x.y.z） */
+    @Column({ type: 'varchar', length: 32, nullable: true }) mpVersion: string | null;
+    /** 上架状态：draft/inReview/online/rejected/offline */
+    @Column({ type: 'varchar', length: 16, default: 'draft' }) mpListingStatus: string;
+    /** 用户隐私保护指引地址（审核必填） */
+    @Column({ type: 'varchar', length: 255, nullable: true }) mpPrivacyUrl: string | null;
+    /** 审核备注 / 驳回原因 */
+    @Column({ type: 'varchar', length: 500, nullable: true }) mpReviewNote: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

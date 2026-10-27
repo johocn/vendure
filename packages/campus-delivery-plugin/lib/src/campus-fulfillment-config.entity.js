@@ -286,6 +286,30 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "packingFeeLabel", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 64, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "mpAppId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 64, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "mpCategory", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 32, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "mpVersion", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 16, default: 'draft' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "mpListingStatus", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 255, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "mpPrivacyUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 500, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "mpReviewNote", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])
