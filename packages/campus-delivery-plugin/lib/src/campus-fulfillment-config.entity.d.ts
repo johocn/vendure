@@ -121,5 +121,13 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     voiceSearchProvider: string;
     /** 拍照搜索服务商：mock（内置模拟识别）/ none（未开启） */
     imageSearchProvider: string;
+    /** 无人配送通道总开关 */
+    unmannedDeliveryEnabled: boolean;
+    /** 通道服务商：none / mock / meituan / xinshiji */
+    unmannedDeliveryProvider: string;
+    /** 通道接口地址（真实厂商必填） */
+    unmannedDeliveryEndpoint: string | null;
+    /** 通道密钥（真实厂商必填；后台只回「是否已配置」，不回明文） */
+    unmannedDeliveryKey: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

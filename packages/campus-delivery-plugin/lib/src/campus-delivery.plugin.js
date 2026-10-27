@@ -43,6 +43,10 @@ const p9_p3_ad_campaign_1 = require("./migrations/p9-p3-ad-campaign");
 const campus_ad_entity_1 = require("./campus-ad.entity");
 const campus_ad_service_1 = require("./campus-ad.service");
 const campus_ad_resolver_1 = require("./campus-ad.resolver");
+const campus_locker_entity_1 = require("./campus-locker.entity");
+const campus_locker_service_1 = require("./campus-locker.service");
+const campus_locker_resolver_1 = require("./campus-locker.resolver");
+const p9_p4_locker_1 = require("./migrations/p9-p4-locker");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
@@ -263,7 +267,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -282,6 +286,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p2_mp_listing_1.P9P2MpListingMigration,
             p9_p2_search_assist_1.P9P2SearchAssistMigration,
             p9_p3_ad_campaign_1.P9P3AdCampaignMigration,
+            p9_p4_locker_1.P9P4LockerMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -312,6 +317,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             waimai_store_service_1.WaimaiStoreService,
             search_assist_service_1.SearchAssistService,
             campus_ad_service_1.CampusAdService,
+            campus_locker_service_1.CampusLockerService,
             privacy_number_service_1.PrivacyNumberService,
             cloud_print_service_1.CloudPrintService,
             merchant_admin_service_1.MerchantAdminService,
@@ -1148,6 +1154,76 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     unitPriceFen: Int!
                 }
 
+                """智能取餐柜站点（P2-4）：后端只落站点与格口规模，柜机 SDK 待接"""
+                type CampusLockerStation {
+                    id: ID!
+                    channelId: ID!
+                    name: String!
+                    """柜机位置（如「东区 3 号楼一层大厅」）"""
+                    location: String!
+                    """服务商编码：self=自建"""
+                    provider: String!
+                    providerName: String!
+                    totalCells: Int!
+                    """可用格口（运营手工维护，本轮不接实时库存）"""
+                    availableCells: Int!
+                    openHours: String
+                    pickupGuide: String
+                    enabled: Boolean!
+                    sort: Int!
+                    createdBy: String
+                    createdAt: DateTime
+                }
+
+                input CampusLockerStationInput {
+                    name: String
+                    location: String
+                    provider: String
+                    totalCells: Int
+                    availableCells: Int
+                    openHours: String
+                    pickupGuide: String
+                    enabled: Boolean
+                    sort: Int
+                }
+
+                type CampusUnmannedProvider {
+                    code: String!
+                    name: String!
+                    needsEndpoint: Boolean!
+                    needsKey: Boolean!
+                }
+
+                """无人配送通道（P2-4 接口占位）：mock=模拟受理，真实厂商需 endpoint + key"""
+                type CampusUnmannedChannel {
+                    enabled: Boolean!
+                    provider: String!
+                    providerName: String!
+                    providers: [CampusUnmannedProvider!]!
+                    endpoint: String
+                    """密钥是否已配置（不返回明文）"""
+                    keyConfigured: Boolean!
+                    needsEndpoint: Boolean!
+                    needsKey: Boolean!
+                }
+
+                input CampusUnmannedChannelInput {
+                    enabled: Boolean
+                    provider: String
+                    endpoint: String
+                    key: String
+                }
+
+                type CampusUnmannedDeliveryResult {
+                    ok: Boolean!
+                    provider: String!
+                    providerName: String!
+                    """disabled / unconfigured / rejected / accepted"""
+                    status: String!
+                    requestNo: String
+                    message: String!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -1162,6 +1238,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAds: [CampusAdCampaign!]!
                     """平台侧：按渠道/状态查投放单"""
                     campusAdCampaigns(status: String, channelId: ID): [CampusAdCampaign!]!
+                    """智能取餐柜（P2-4）：本渠道站点（含停用）"""
+                    campusLockerStations: [CampusLockerStation!]!
+                    """无人配送通道（P2-4 接口占位）配置"""
+                    campusUnmannedChannel: CampusUnmannedChannel!
                     campusMerchantBoard: CampusMerchantBoard!
                     """商家自助经营：门店资料（营业时间/公告/电话/营业状态）"""
                     campusMerchantStoreProfile: MerchantStoreProfile!
@@ -1369,6 +1449,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantCancelAd(id: ID!): CampusAdCampaign!
                     """平台审核广告：通过转投放中，驳回须填原因"""
                     campusReviewAd(id: ID!, approve: Boolean!, note: String): CampusAdCampaign!
+                    """智能取餐柜（P2-4）：新增站点"""
+                    campusCreateLockerStation(input: CampusLockerStationInput!): CampusLockerStation!
+                    """智能取餐柜：编辑站点（只改传入字段）"""
+                    campusUpdateLockerStation(id: ID!, input: CampusLockerStationInput!): CampusLockerStation!
+                    """智能取餐柜：删除站点"""
+                    campusDeleteLockerStation(id: ID!): Boolean!
+                    """无人配送通道：保存配置（endpoint/key 传空串 = 清空）"""
+                    campusUpdateUnmannedChannel(input: CampusUnmannedChannelInput!): CampusUnmannedChannel!
+                    """无人配送调用占位：配置校验通过后模拟受理，返回模拟单号"""
+                    campusRequestUnmannedDelivery(orderId: ID!): CampusUnmannedDeliveryResult!
                     campusSettleAddressChange(id: ID!, action: String!, note: String): CampusAddressChangeRow!
                     """运营代客改址：取货后也可代改，必须填写原因"""
                     campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
@@ -1486,7 +1576,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1909,6 +1999,29 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusSearchAssist(type: String!, payload: String): CampusSearchAssistResult!
                     """C 端公开：按广告位取当前在投广告（最多 3 条，按投放金额降序）"""
                     campusActiveAds(slot: String!): [CampusActiveAd!]!
+                    """C 端公开：本渠道启用的智能取餐柜站点（P2-4）"""
+                    campusLockerStations: [CampusLockerStation!]!
+                    """C 端公开：无人配送是否开通（P2-4 接口占位）"""
+                    campusUnmannedDeliveryChannel: CampusUnmannedDeliveryChannelInfo!
+                }
+
+                """C 端取餐柜站点：仅启用站点，按 sort / 创建时间"""
+                type CampusLockerStation {
+                    id: ID!
+                    name: String!
+                    location: String!
+                    provider: String!
+                    providerName: String!
+                    totalCells: Int!
+                    availableCells: Int!
+                    openHours: String
+                    pickupGuide: String
+                }
+
+                type CampusUnmannedDeliveryChannelInfo {
+                    enabled: Boolean!
+                    provider: String!
+                    providerName: String!
                 }
 
                 type CampusMyAddressChange {
@@ -1962,7 +2075,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;

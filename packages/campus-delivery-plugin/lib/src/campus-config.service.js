@@ -199,6 +199,7 @@ let CampusConfigService = CampusConfigService_1 = class CampusConfigService {
             notifyTemplateDelivered: 128, notifyTemplateExceptionHandled: 128, notifyTemplateOrderPlaced: 128,
             notifyTemplatePaymentPending: 128, notifyTemplateCancelled: 128, notifyTemplateAfterSales: 128,
             notifyTemplateAddressChanged: 128,
+            unmannedDeliveryEndpoint: 255, unmannedDeliveryKey: 128,
         };
         for (const [field, limit] of Object.entries(stringLimits)) {
             const v = patch[field];
@@ -443,6 +444,8 @@ CampusConfigService.WRITABLE_FIELDS = new Set([
     'notifyTemplateAddressChanged', 'h5BaseUrl', 'printMode', 'routeFirstLeg', 'handoverPoints',
     'providerShopNo', 'merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes',
     'storeLat', 'storeLng', 'dynamicPricing', 'shiftCheckEnabled', 'blacklistAutoCancelCount',
+    // P2-4 无人配送通道（接口占位）
+    'unmannedDeliveryEnabled', 'unmannedDeliveryProvider', 'unmannedDeliveryEndpoint', 'unmannedDeliveryKey',
 ]);
 /** 整型配置的取值范围（分钟/百分比/分） */
 CampusConfigService.INT_RANGES = {

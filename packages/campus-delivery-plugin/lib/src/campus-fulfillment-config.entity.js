@@ -318,6 +318,22 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 16, default: 'mock' }),
     __metadata("design:type", String)
 ], CampusFulfillmentConfig.prototype, "imageSearchProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CampusFulfillmentConfig.prototype, "unmannedDeliveryEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 16, default: 'mock' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "unmannedDeliveryProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 255, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "unmannedDeliveryEndpoint", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 128, nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "unmannedDeliveryKey", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

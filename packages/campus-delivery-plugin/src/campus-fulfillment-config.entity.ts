@@ -129,6 +129,15 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', length: 16, default: 'mock' }) voiceSearchProvider: string;
     /** 拍照搜索服务商：mock（内置模拟识别）/ none（未开启） */
     @Column({ type: 'varchar', length: 16, default: 'mock' }) imageSearchProvider: string;
+    // 无人配送（P2-4）：接口占位，mock=模拟受理；真实厂商需 endpoint + key
+    /** 无人配送通道总开关 */
+    @Column({ default: false }) unmannedDeliveryEnabled: boolean;
+    /** 通道服务商：none / mock / meituan / xinshiji */
+    @Column({ type: 'varchar', length: 16, default: 'mock' }) unmannedDeliveryProvider: string;
+    /** 通道接口地址（真实厂商必填） */
+    @Column({ type: 'varchar', length: 255, nullable: true }) unmannedDeliveryEndpoint: string | null;
+    /** 通道密钥（真实厂商必填；后台只回「是否已配置」，不回明文） */
+    @Column({ type: 'varchar', length: 128, nullable: true }) unmannedDeliveryKey: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

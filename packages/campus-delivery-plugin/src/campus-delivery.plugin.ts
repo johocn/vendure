@@ -44,6 +44,10 @@ import { P9P3AdCampaignMigration } from './migrations/p9-p3-ad-campaign';
 import { CampusAdCampaign } from './campus-ad.entity';
 import { CampusAdService } from './campus-ad.service';
 import { CampusAdAdminResolver, CampusAdShopResolver } from './campus-ad.resolver';
+import { CampusLockerStation } from './campus-locker.entity';
+import { CampusLockerService } from './campus-locker.service';
+import { CampusLockerAdminResolver, CampusLockerShopResolver } from './campus-locker.resolver';
+import { P9P4LockerMigration } from './migrations/p9-p4-locker';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -130,7 +134,7 @@ import { SearchAssistService } from './search-assist.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -149,6 +153,7 @@ import { SearchAssistService } from './search-assist.service';
         P9P2MpListingMigration,
         P9P2SearchAssistMigration,
         P9P3AdCampaignMigration,
+        P9P4LockerMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -179,6 +184,7 @@ import { SearchAssistService } from './search-assist.service';
         WaimaiStoreService,
         SearchAssistService,
         CampusAdService,
+        CampusLockerService,
         PrivacyNumberService,
         CloudPrintService,
         MerchantAdminService,
@@ -1015,6 +1021,76 @@ import { SearchAssistService } from './search-assist.service';
                     unitPriceFen: Int!
                 }
 
+                """智能取餐柜站点（P2-4）：后端只落站点与格口规模，柜机 SDK 待接"""
+                type CampusLockerStation {
+                    id: ID!
+                    channelId: ID!
+                    name: String!
+                    """柜机位置（如「东区 3 号楼一层大厅」）"""
+                    location: String!
+                    """服务商编码：self=自建"""
+                    provider: String!
+                    providerName: String!
+                    totalCells: Int!
+                    """可用格口（运营手工维护，本轮不接实时库存）"""
+                    availableCells: Int!
+                    openHours: String
+                    pickupGuide: String
+                    enabled: Boolean!
+                    sort: Int!
+                    createdBy: String
+                    createdAt: DateTime
+                }
+
+                input CampusLockerStationInput {
+                    name: String
+                    location: String
+                    provider: String
+                    totalCells: Int
+                    availableCells: Int
+                    openHours: String
+                    pickupGuide: String
+                    enabled: Boolean
+                    sort: Int
+                }
+
+                type CampusUnmannedProvider {
+                    code: String!
+                    name: String!
+                    needsEndpoint: Boolean!
+                    needsKey: Boolean!
+                }
+
+                """无人配送通道（P2-4 接口占位）：mock=模拟受理，真实厂商需 endpoint + key"""
+                type CampusUnmannedChannel {
+                    enabled: Boolean!
+                    provider: String!
+                    providerName: String!
+                    providers: [CampusUnmannedProvider!]!
+                    endpoint: String
+                    """密钥是否已配置（不返回明文）"""
+                    keyConfigured: Boolean!
+                    needsEndpoint: Boolean!
+                    needsKey: Boolean!
+                }
+
+                input CampusUnmannedChannelInput {
+                    enabled: Boolean
+                    provider: String
+                    endpoint: String
+                    key: String
+                }
+
+                type CampusUnmannedDeliveryResult {
+                    ok: Boolean!
+                    provider: String!
+                    providerName: String!
+                    """disabled / unconfigured / rejected / accepted"""
+                    status: String!
+                    requestNo: String
+                    message: String!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -1029,6 +1105,10 @@ import { SearchAssistService } from './search-assist.service';
                     campusMerchantAds: [CampusAdCampaign!]!
                     """平台侧：按渠道/状态查投放单"""
                     campusAdCampaigns(status: String, channelId: ID): [CampusAdCampaign!]!
+                    """智能取餐柜（P2-4）：本渠道站点（含停用）"""
+                    campusLockerStations: [CampusLockerStation!]!
+                    """无人配送通道（P2-4 接口占位）配置"""
+                    campusUnmannedChannel: CampusUnmannedChannel!
                     campusMerchantBoard: CampusMerchantBoard!
                     """商家自助经营：门店资料（营业时间/公告/电话/营业状态）"""
                     campusMerchantStoreProfile: MerchantStoreProfile!
@@ -1236,6 +1316,16 @@ import { SearchAssistService } from './search-assist.service';
                     campusMerchantCancelAd(id: ID!): CampusAdCampaign!
                     """平台审核广告：通过转投放中，驳回须填原因"""
                     campusReviewAd(id: ID!, approve: Boolean!, note: String): CampusAdCampaign!
+                    """智能取餐柜（P2-4）：新增站点"""
+                    campusCreateLockerStation(input: CampusLockerStationInput!): CampusLockerStation!
+                    """智能取餐柜：编辑站点（只改传入字段）"""
+                    campusUpdateLockerStation(id: ID!, input: CampusLockerStationInput!): CampusLockerStation!
+                    """智能取餐柜：删除站点"""
+                    campusDeleteLockerStation(id: ID!): Boolean!
+                    """无人配送通道：保存配置（endpoint/key 传空串 = 清空）"""
+                    campusUpdateUnmannedChannel(input: CampusUnmannedChannelInput!): CampusUnmannedChannel!
+                    """无人配送调用占位：配置校验通过后模拟受理，返回模拟单号"""
+                    campusRequestUnmannedDelivery(orderId: ID!): CampusUnmannedDeliveryResult!
                     campusSettleAddressChange(id: ID!, action: String!, note: String): CampusAddressChangeRow!
                     """运营代客改址：取货后也可代改，必须填写原因"""
                     campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
@@ -1353,7 +1443,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1776,6 +1866,29 @@ import { SearchAssistService } from './search-assist.service';
                     campusSearchAssist(type: String!, payload: String): CampusSearchAssistResult!
                     """C 端公开：按广告位取当前在投广告（最多 3 条，按投放金额降序）"""
                     campusActiveAds(slot: String!): [CampusActiveAd!]!
+                    """C 端公开：本渠道启用的智能取餐柜站点（P2-4）"""
+                    campusLockerStations: [CampusLockerStation!]!
+                    """C 端公开：无人配送是否开通（P2-4 接口占位）"""
+                    campusUnmannedDeliveryChannel: CampusUnmannedDeliveryChannelInfo!
+                }
+
+                """C 端取餐柜站点：仅启用站点，按 sort / 创建时间"""
+                type CampusLockerStation {
+                    id: ID!
+                    name: String!
+                    location: String!
+                    provider: String!
+                    providerName: String!
+                    totalCells: Int!
+                    availableCells: Int!
+                    openHours: String
+                    pickupGuide: String
+                }
+
+                type CampusUnmannedDeliveryChannelInfo {
+                    enabled: Boolean!
+                    provider: String!
+                    providerName: String!
                 }
 
                 type CampusMyAddressChange {
@@ -1829,7 +1942,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
