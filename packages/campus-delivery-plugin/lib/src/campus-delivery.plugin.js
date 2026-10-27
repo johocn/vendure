@@ -69,6 +69,8 @@ const dispatch_admin_service_1 = require("./dispatch-admin.service");
 const dispatch_job_service_1 = require("./dispatch-job.service");
 const delivery_stats_resolver_1 = require("./delivery-stats.resolver");
 const delivery_stats_service_1 = require("./delivery-stats.service");
+const sales_stats_resolver_1 = require("./sales-stats.resolver");
+const sales_stats_service_1 = require("./sales-stats.service");
 const address_change_resolver_1 = require("./address-change.resolver");
 const address_change_service_1 = require("./address-change.service");
 const campus_address_change_entity_1 = require("./campus-address-change.entity");
@@ -317,6 +319,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             dispatch_job_service_1.DispatchJobService,
             dispatch_admin_service_1.DispatchAdminService,
             delivery_stats_service_1.DeliveryStatsService,
+            sales_stats_service_1.SalesStatsService,
             errand_service_1.ErrandService,
             r2_mark_service_1.R2MarkService,
             r4_tag_service_1.R4TagService,
@@ -1298,6 +1301,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
+                    """销售侧经营 BI（P4-1）：今日/7日/30日"""
+                    campusSalesStats(range: String): CampusSalesStats!
                     campusAddressChanges(status: String, orderId: ID, skip: Int, take: Int): [CampusAddressChangeRow!]!
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
@@ -1362,6 +1367,63 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     stages: [CampusDeliveryStage!]!
                     attribution: CampusDeliveryAttribution!
                     storeComparison: [CampusDeliveryStoreLine!]!
+                }
+
+                type CampusSalesKpi {
+                    orders: Int!
+                    gmvFen: Float!
+                    aovFen: Float!
+                    customers: Int!
+                    newCustomers: Int!
+                    repurchaseRate: Float!
+                }
+
+                type CampusSalesCompare {
+                    ordersPct: Float!
+                    gmvPct: Float!
+                    aovPct: Float!
+                    repurchaseRatePct: Float!
+                }
+
+                type CampusSalesHourPoint {
+                    hour: Int!
+                    orders: Int!
+                    gmvFen: Float!
+                }
+
+                type CampusSalesDayPoint {
+                    date: String!
+                    orders: Int!
+                    gmvFen: Float!
+                }
+
+                type CampusSalesProduct {
+                    productId: ID!
+                    name: String!
+                    quantity: Int!
+                    gmvFen: Float!
+                    """star 明星 / traffic 引流 / premium 利润 / slow 滞销"""
+                    quadrant: String!
+                }
+
+                type CampusSalesCohorts {
+                    once: Int!
+                    twiceToFour: Int!
+                    loyal: Int!
+                }
+
+                type CampusSalesStats {
+                    range: String!
+                    windowStart: DateTime!
+                    kpis: CampusSalesKpi!
+                    prev: CampusSalesKpi!
+                    compare: CampusSalesCompare!
+                    hourlyHeat: [CampusSalesHourPoint!]!
+                    dailyTrend: [CampusSalesDayPoint!]!
+                    products: [CampusSalesProduct!]!
+                    cohorts: CampusSalesCohorts!
+                    medianQuantity: Float!
+                    medianGmvFen: Float!
                 }
 
                 type CampusAddressChangeRow {
@@ -1625,7 +1687,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, sales_stats_resolver_1.SalesStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

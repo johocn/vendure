@@ -70,6 +70,8 @@ import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
 import { DeliveryStatsResolver } from './delivery-stats.resolver';
 import { DeliveryStatsService } from './delivery-stats.service';
+import { SalesStatsResolver } from './sales-stats.resolver';
+import { SalesStatsService } from './sales-stats.service';
 import { AddressChangeAdminResolver, AddressChangeShopResolver } from './address-change.resolver';
 import { AddressChangeService } from './address-change.service';
 import { CampusAddressChange } from './campus-address-change.entity';
@@ -184,6 +186,7 @@ import { SearchAssistService } from './search-assist.service';
         DispatchJobService,
         DispatchAdminService,
         DeliveryStatsService,
+        SalesStatsService,
         ErrandService,
         R2MarkService,
         R4TagService,
@@ -1165,6 +1168,8 @@ import { SearchAssistService } from './search-assist.service';
                     campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
+                    """销售侧经营 BI（P4-1）：今日/7日/30日"""
+                    campusSalesStats(range: String): CampusSalesStats!
                     campusAddressChanges(status: String, orderId: ID, skip: Int, take: Int): [CampusAddressChangeRow!]!
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
@@ -1229,6 +1234,63 @@ import { SearchAssistService } from './search-assist.service';
                     stages: [CampusDeliveryStage!]!
                     attribution: CampusDeliveryAttribution!
                     storeComparison: [CampusDeliveryStoreLine!]!
+                }
+
+                type CampusSalesKpi {
+                    orders: Int!
+                    gmvFen: Float!
+                    aovFen: Float!
+                    customers: Int!
+                    newCustomers: Int!
+                    repurchaseRate: Float!
+                }
+
+                type CampusSalesCompare {
+                    ordersPct: Float!
+                    gmvPct: Float!
+                    aovPct: Float!
+                    repurchaseRatePct: Float!
+                }
+
+                type CampusSalesHourPoint {
+                    hour: Int!
+                    orders: Int!
+                    gmvFen: Float!
+                }
+
+                type CampusSalesDayPoint {
+                    date: String!
+                    orders: Int!
+                    gmvFen: Float!
+                }
+
+                type CampusSalesProduct {
+                    productId: ID!
+                    name: String!
+                    quantity: Int!
+                    gmvFen: Float!
+                    """star 明星 / traffic 引流 / premium 利润 / slow 滞销"""
+                    quadrant: String!
+                }
+
+                type CampusSalesCohorts {
+                    once: Int!
+                    twiceToFour: Int!
+                    loyal: Int!
+                }
+
+                type CampusSalesStats {
+                    range: String!
+                    windowStart: DateTime!
+                    kpis: CampusSalesKpi!
+                    prev: CampusSalesKpi!
+                    compare: CampusSalesCompare!
+                    hourlyHeat: [CampusSalesHourPoint!]!
+                    dailyTrend: [CampusSalesDayPoint!]!
+                    products: [CampusSalesProduct!]!
+                    cohorts: CampusSalesCohorts!
+                    medianQuantity: Float!
+                    medianGmvFen: Float!
                 }
 
                 type CampusAddressChangeRow {
@@ -1492,7 +1554,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {

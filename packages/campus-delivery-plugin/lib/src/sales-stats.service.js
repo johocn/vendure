@@ -1,0 +1,260 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SalesStatsService = void 0;
+exports.normalizeSalesRange = normalizeSalesRange;
+exports.salesWindowStart = salesWindowStart;
+exports.salesPrevWindow = salesPrevWindow;
+exports.medianOf = medianOf;
+exports.aggregateSalesStats = aggregateSalesStats;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@vendure/core");
+const campus_time_1 = require("./campus-time");
+const RANGE_MS = {
+    '7d': 7 * 24 * 3600000,
+    '30d': 30 * 24 * 3600000,
+};
+/** 不计入销售的订单状态：草稿/未支付/已取消（只有已付款且未取消的单才算销售）。 */
+const NON_SALES_STATES = ['Draft', 'AddingItems', 'ArrangingPayment', 'Cancelled'];
+function normalizeSalesRange(v) {
+    return v === 'today' || v === '30d' ? v : '7d';
+}
+/** 本窗口起点：today=校园时区 0 点；7d/30d=滚动窗口。 */
+function salesWindowStart(range, now) {
+    if (range === 'today') {
+        return (0, campus_time_1.startOfCampusDay)(now);
+    }
+    return now - RANGE_MS[range];
+}
+/** 上一窗口：7d/30d=紧邻等长窗口；today=昨日同时长窗口（昨日 0 点 → 昨日同刻）。 */
+function salesPrevWindow(range, windowStart, now) {
+    if (range === 'today') {
+        const prevStart = windowStart - 24 * 3600000;
+        return { prevStart, prevEnd: prevStart + (now - windowStart) };
+    }
+    return { prevStart: windowStart - RANGE_MS[range], prevEnd: windowStart };
+}
+const round1 = (n) => Math.round(n * 10) / 10;
+/** 中位数（偶数取中间两数均值）；空集合返回 0。 */
+function medianOf(values) {
+    if (!values.length)
+        return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+/** 环比百分比：上期为 0 时返回 0（不做无穷大）。 */
+function pctOf(cur, prev) {
+    if (!prev)
+        return 0;
+    return round1(((cur - prev) / prev) * 100);
+}
+/** 有效销售单：已付款未取消 + 排除跑腿单（跑腿无商品，会污染菜品四象限与客单价）。 */
+function isSalesOrder(o) {
+    var _a;
+    if (NON_SALES_STATES.includes(o.state))
+        return false;
+    if ((_a = o.customFields) === null || _a === void 0 ? void 0 : _a.errandKind)
+        return false;
+    return true;
+}
+function kpisOf(orders, firstOrderAt, windowStart) {
+    var _a, _b;
+    const gmvFen = orders.reduce((s, o) => { var _a; return s + ((_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0); }, 0);
+    const custSet = new Set();
+    const orderCount = new Map();
+    for (const o of orders) {
+        const cid = ((_a = o.customer) === null || _a === void 0 ? void 0 : _a.id) != null ? Number(o.customer.id) : NaN;
+        if (!Number.isFinite(cid))
+            continue;
+        custSet.add(cid);
+        orderCount.set(cid, ((_b = orderCount.get(cid)) !== null && _b !== void 0 ? _b : 0) + 1);
+    }
+    let newCustomers = 0;
+    for (const cid of custSet) {
+        const first = firstOrderAt.get(cid);
+        if (first != null && first >= windowStart)
+            newCustomers++;
+    }
+    let repeaters = 0;
+    for (const n of orderCount.values())
+        if (n >= 2)
+            repeaters++;
+    return {
+        orders: orders.length,
+        gmvFen,
+        aovFen: orders.length ? Math.round(gmvFen / orders.length) : 0,
+        customers: custSet.size,
+        newCustomers,
+        repurchaseRate: custSet.size ? round1((repeaters / custSet.size) * 100) : 0,
+    };
+}
+/** 纯函数聚合（单测注入时间/数据）。
+ * 口径：销售单=已付款未取消且非跑腿；GMV=订单 totalWithTax 汇总；
+ * 四象限按「销量中位数 × 销售额中位数」分档（>= 中位为高）；新客=本窗口内首单。 */
+function aggregateSalesStats(args) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+    const { orders: raw, firstOrderAt, windowStart, prevStart, prevEnd, now, range } = args;
+    const curOrders = raw.filter(o => isSalesOrder(o) && new Date(o.createdAt).getTime() >= windowStart);
+    const prevOrders = raw.filter(o => {
+        const t = new Date(o.createdAt).getTime();
+        return isSalesOrder(o) && t >= prevStart && t < prevEnd;
+    });
+    const kpis = kpisOf(curOrders, firstOrderAt, windowStart);
+    const prev = kpisOf(prevOrders, firstOrderAt, prevStart);
+    // 时段热力：24 小时（今日只到当前小时，未来小时给 0）
+    const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, orders: 0, gmvFen: 0 }));
+    for (const o of curOrders) {
+        const h = (0, campus_time_1.campusHour)(new Date(o.createdAt).getTime());
+        hours[h].orders++;
+        hours[h].gmvFen += (_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0;
+    }
+    // 日趋势：7d/30d 按自然日；today 用时段热力即可，返回空数组
+    const dailyTrend = [];
+    if (range !== 'today') {
+        const dayCount = range === '7d' ? 7 : 30;
+        const map = new Map();
+        for (const o of curOrders) {
+            const key = (0, campus_time_1.campusDayKey)(new Date(o.createdAt).getTime());
+            const b = (_b = map.get(key)) !== null && _b !== void 0 ? _b : { orders: 0, gmvFen: 0 };
+            b.orders++;
+            b.gmvFen += (_c = o.totalWithTax) !== null && _c !== void 0 ? _c : 0;
+            map.set(key, b);
+        }
+        const today0 = (0, campus_time_1.startOfCampusDay)(now);
+        for (let i = dayCount - 1; i >= 0; i--) {
+            const key = (0, campus_time_1.campusDayKey)(today0 - i * 24 * 3600000);
+            const b = map.get(key);
+            dailyTrend.push({ date: key.slice(5), orders: (_d = b === null || b === void 0 ? void 0 : b.orders) !== null && _d !== void 0 ? _d : 0, gmvFen: (_e = b === null || b === void 0 ? void 0 : b.gmvFen) !== null && _e !== void 0 ? _e : 0 });
+        }
+    }
+    // 菜品聚合（按商品，非规格）
+    const byProduct = new Map();
+    for (const o of curOrders) {
+        for (const line of (_f = o.lines) !== null && _f !== void 0 ? _f : []) {
+            const product = (_g = line.productVariant) === null || _g === void 0 ? void 0 : _g.product;
+            if (!product)
+                continue;
+            const pid = String(product.id);
+            const b = (_h = byProduct.get(pid)) !== null && _h !== void 0 ? _h : { name: (_j = product.name) !== null && _j !== void 0 ? _j : `#${pid}`, quantity: 0, gmvFen: 0 };
+            b.quantity += (_k = line.quantity) !== null && _k !== void 0 ? _k : 0;
+            b.gmvFen += (_l = line.linePriceWithTax) !== null && _l !== void 0 ? _l : 0;
+            byProduct.set(pid, b);
+        }
+    }
+    const productList = [...byProduct.entries()].map(([productId, b]) => (Object.assign({ productId }, b)));
+    const medianQuantity = medianOf(productList.map(p => p.quantity));
+    const medianGmvFen = medianOf(productList.map(p => p.gmvFen));
+    const products = productList
+        .map(p => (Object.assign(Object.assign({}, p), { quadrant: (p.quantity >= medianQuantity
+            ? p.gmvFen >= medianGmvFen ? 'star' : 'traffic'
+            : p.gmvFen >= medianGmvFen ? 'premium' : 'slow') })))
+        .sort((a, b) => b.gmvFen - a.gmvFen || b.quantity - a.quantity)
+        .slice(0, 50);
+    // 复购分群：窗口内下单次数 1 / 2-4 / 5+
+    const orderCount = new Map();
+    for (const o of curOrders) {
+        const cid = ((_m = o.customer) === null || _m === void 0 ? void 0 : _m.id) != null ? Number(o.customer.id) : NaN;
+        if (!Number.isFinite(cid))
+            continue;
+        orderCount.set(cid, ((_o = orderCount.get(cid)) !== null && _o !== void 0 ? _o : 0) + 1);
+    }
+    const cohorts = { once: 0, twiceToFour: 0, loyal: 0 };
+    for (const n of orderCount.values()) {
+        if (n === 1)
+            cohorts.once++;
+        else if (n <= 4)
+            cohorts.twiceToFour++;
+        else
+            cohorts.loyal++;
+    }
+    return {
+        range,
+        windowStart: new Date(windowStart),
+        kpis,
+        prev,
+        compare: {
+            ordersPct: pctOf(kpis.orders, prev.orders),
+            gmvPct: pctOf(kpis.gmvFen, prev.gmvFen),
+            aovPct: pctOf(kpis.aovFen, prev.aovFen),
+            repurchaseRatePct: pctOf(kpis.repurchaseRate, prev.repurchaseRate),
+        },
+        hourlyHeat: hours,
+        dailyTrend,
+        products,
+        cohorts,
+        medianQuantity,
+        medianGmvFen,
+    };
+}
+let SalesStatsService = class SalesStatsService {
+    constructor(connection) {
+        this.connection = connection;
+    }
+    async stats(ctx, rangeInput) {
+        const range = normalizeSalesRange(rangeInput);
+        const now = Date.now();
+        const windowStart = salesWindowStart(range, now);
+        const { prevStart, prevEnd } = salesPrevWindow(range, windowStart, now);
+        const from = Math.min(prevStart, windowStart);
+        // 租户隔离：平台超管看全部；店铺级只看本渠道（与 campusDeliveryStats 一致）
+        const qb = this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.channels', 'channel')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .leftJoinAndSelect('order.lines', 'line')
+            .leftJoinAndSelect('line.productVariant', 'variant')
+            .leftJoinAndSelect('variant.product', 'product')
+            .where('order.createdAt >= :from', { from: new Date(from) })
+            .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
+            .andWhere('(order.customFields.errandKind IS NULL)');
+        if (!ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            qb.andWhere('channel.id = :ch', { ch: ctx.channelId });
+        }
+        const orders = (await qb.getMany());
+        // 新客判定需要客户历史首单时间：只对窗口内出现过的客户回查一次
+        const curCustomerIds = [
+            ...new Set(orders
+                .filter(o => new Date(o.createdAt).getTime() >= windowStart)
+                .map(o => { var _a; return (((_a = o.customer) === null || _a === void 0 ? void 0 : _a.id) != null ? Number(o.customer.id) : NaN); })
+                .filter(Number.isFinite)),
+        ];
+        const firstOrderAt = await this.firstOrderAt(ctx, curCustomerIds);
+        core_1.Logger.debug(`campusSalesStats ${range}: ${orders.length} orders, ${curCustomerIds.length} customers (channel ${ctx.channelId})`);
+        return aggregateSalesStats({ orders, firstOrderAt, windowStart, prevStart, prevEnd, now, range });
+    }
+    /** 客户全历史首单时间（分 → 用于新客判定）。空集合直接返回。 */
+    async firstOrderAt(ctx, customerIds) {
+        const map = new Map();
+        if (!customerIds.length)
+            return map;
+        const rows = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .select('order.customerId', 'customerId')
+            .addSelect('MIN(order.createdAt)', 'firstAt')
+            .where('order.customerId IN (:...ids)', { ids: customerIds })
+            .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
+            .groupBy('order.customerId')
+            .getRawMany();
+        for (const r of rows) {
+            map.set(Number(r.customerId), new Date(r.firstAt).getTime());
+        }
+        return map;
+    }
+};
+exports.SalesStatsService = SalesStatsService;
+exports.SalesStatsService = SalesStatsService = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [core_1.TransactionalConnection])
+], SalesStatsService);
+//# sourceMappingURL=sales-stats.service.js.map
