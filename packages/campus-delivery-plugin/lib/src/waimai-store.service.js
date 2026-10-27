@@ -19,6 +19,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const route_matrix_1 = require("./route-matrix");
 const business_hours_1 = require("./business-hours");
 const packing_fee_1 = require("./packing-fee");
+const search_assist_1 = require("./search-assist");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
 /** 小程序上架状态白名单（P2-1） */
 const MP_LISTING_STATUSES = ['draft', 'inReview', 'online', 'rejected', 'offline'];
@@ -153,7 +154,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
         const routes = Array.from(new Set(((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).map(r => String(r))));
         const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
@@ -352,7 +353,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_15) {
+                catch (_16) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -480,6 +481,16 @@ let WaimaiStoreService = class WaimaiStoreService {
                 throw new core_1.UserInputError(`上架前请先补齐：${missing.join('、')}`);
             }
         }
+        // 语音/拍照搜索（P2-2）：服务商白名单；none = 该入口关闭，未传（undefined）保留原值
+        for (const [field, label] of [['voiceSearchProvider', '语音搜索'], ['imageSearchProvider', '拍照搜索']]) {
+            if (input[field] === undefined)
+                continue;
+            const provider = String((_13 = input[field]) !== null && _13 !== void 0 ? _13 : '').trim();
+            if (!search_assist_1.SEARCH_ASSIST_PROVIDER_NAMES.includes(provider)) {
+                throw new core_1.UserInputError(`不支持的${label}服务商: ${provider || '(空)'}（仅接受 ${search_assist_1.SEARCH_ASSIST_PROVIDER_NAMES.join('/')}）`);
+            }
+            cfg[field] = provider;
+        }
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
         const hasPoint = (r) => {
@@ -493,10 +504,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_13 = input.storeAddress) !== null && _13 !== void 0 ? _13 : '').trim();
+        const address = ((_14 = input.storeAddress) !== null && _14 !== void 0 ? _14 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_14 = input.storePhone) !== null && _14 !== void 0 ? _14 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_15 = input.storePhone) !== null && _15 !== void 0 ? _15 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -608,6 +619,8 @@ let WaimaiStoreService = class WaimaiStoreService {
             mpReviewNote: (_33 = cfg === null || cfg === void 0 ? void 0 : cfg.mpReviewNote) !== null && _33 !== void 0 ? _33 : null,
             mpReady: mpListingMissing(cfg).length === 0,
             mpMissing: mpListingMissing(cfg),
+            voiceSearchProvider: (cfg === null || cfg === void 0 ? void 0 : cfg.voiceSearchProvider) || 'mock',
+            imageSearchProvider: (cfg === null || cfg === void 0 ? void 0 : cfg.imageSearchProvider) || 'mock',
         };
     }
 };

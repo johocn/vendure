@@ -124,6 +124,11 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true }) mpPrivacyUrl: string | null;
     /** 审核备注 / 驳回原因 */
     @Column({ type: 'varchar', length: 500, nullable: true }) mpReviewNote: string | null;
+    // 语音/拍照搜索（P2-2）：服务商按渠道可切换，none = 该入口关闭
+    /** 语音搜索服务商：mock（内置模拟识别）/ none（未开启） */
+    @Column({ type: 'varchar', length: 16, default: 'mock' }) voiceSearchProvider: string;
+    /** 拍照搜索服务商：mock（内置模拟识别）/ none（未开启） */
+    @Column({ type: 'varchar', length: 16, default: 'mock' }) imageSearchProvider: string;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

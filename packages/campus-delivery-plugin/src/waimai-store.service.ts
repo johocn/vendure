@@ -4,6 +4,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusRoute, normalizeRouteFirstLeg, ROUTE_FIRST_LEG_OPTIONS } from './route-matrix';
 import { isWithinBusinessHours } from './business-hours';
 import { normalizePackingFeeMode, PACKING_FEE_MODES } from './packing-fee';
+import { SEARCH_ASSIST_PROVIDER_NAMES } from './search-assist';
 
 export interface WaimaiStore {
     channelId: number;
@@ -115,6 +116,9 @@ export interface CampusStoreConfigWithChannel {
     mpReady: boolean;
     /** 上架前检查缺项 key（前端按 key 做 i18n 文案） */
     mpMissing: string[];
+    /** 语音/拍照搜索服务商（P2-2）：mock / none */
+    voiceSearchProvider: string;
+    imageSearchProvider: string;
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
@@ -327,6 +331,8 @@ export class WaimaiStoreService {
             mpListingStatus?: string | null;
             mpPrivacyUrl?: string | null;
             mpReviewNote?: string | null;
+            voiceSearchProvider?: string | null;
+            imageSearchProvider?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
@@ -623,6 +629,18 @@ export class WaimaiStoreService {
             }
         }
 
+        // 语音/拍照搜索（P2-2）：服务商白名单；none = 该入口关闭，未传（undefined）保留原值
+        for (const [field, label] of [['voiceSearchProvider', '语音搜索'], ['imageSearchProvider', '拍照搜索']] as const) {
+            if (input[field] === undefined) continue;
+            const provider = String(input[field] ?? '').trim();
+            if (!SEARCH_ASSIST_PROVIDER_NAMES.includes(provider as any)) {
+                throw new UserInputError(
+                    `不支持的${label}服务商: ${provider || '(空)'}（仅接受 ${SEARCH_ASSIST_PROVIDER_NAMES.join('/')}）`,
+                );
+            }
+            (cfg as any)[field] = provider;
+        }
+
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = routes;
         const hasPoint = (r: 'R1' | 'R2') => {
@@ -757,6 +775,8 @@ export class WaimaiStoreService {
             mpReviewNote: cfg?.mpReviewNote ?? null,
             mpReady: mpListingMissing(cfg).length === 0,
             mpMissing: mpListingMissing(cfg),
+            voiceSearchProvider: cfg?.voiceSearchProvider || 'mock',
+            imageSearchProvider: cfg?.imageSearchProvider || 'mock',
         };
     }
 }

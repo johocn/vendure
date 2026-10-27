@@ -38,6 +38,7 @@ const p8_p1_packing_fee_1 = require("./migrations/p8-p1-packing-fee");
 const p8_p1_2_addon_combo_1 = require("./migrations/p8-p1-2-addon-combo");
 const p8_p1_4_cloud_print_kds_1 = require("./migrations/p8-p1-4-cloud-print-kds");
 const p9_p2_mp_listing_1 = require("./migrations/p9-p2-mp-listing");
+const p9_p2_search_assist_1 = require("./migrations/p9-p2-search-assist");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
@@ -115,6 +116,7 @@ const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
 const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
 const waimai_store_service_1 = require("./waimai-store.service");
+const search_assist_service_1 = require("./search-assist.service");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
 // 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
@@ -274,6 +276,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p8_p1_2_addon_combo_1.P8P1AddonComboMigration,
             p8_p1_4_cloud_print_kds_1.P8P1_4CloudPrintMigration,
             p9_p2_mp_listing_1.P9P2MpListingMigration,
+            p9_p2_search_assist_1.P9P2SearchAssistMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -302,6 +305,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             r4_tag_service_1.R4TagService,
             shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
+            search_assist_service_1.SearchAssistService,
             privacy_number_service_1.PrivacyNumberService,
             cloud_print_service_1.CloudPrintService,
             merchant_admin_service_1.MerchantAdminService,
@@ -746,6 +750,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     mpReady: Boolean!
                     """上架前检查缺项 key：appId / category / version / privacyUrl / contactPhone / licenseNo"""
                     mpMissing: [String!]!
+                    """语音搜索服务商：mock（内置模拟）/ none（未开启）"""
+                    voiceSearchProvider: String!
+                    """拍照搜索服务商：mock（内置模拟）/ none（未开启）"""
+                    imageSearchProvider: String!
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -823,6 +831,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     mpListingStatus: String
                     mpPrivacyUrl: String
                     mpReviewNote: String
+                    """语音搜索服务商：mock / none（undefined=保留原值）"""
+                    voiceSearchProvider: String
+                    """拍照搜索服务商：mock / none（undefined=保留原值）"""
+                    imageSearchProvider: String
                 }
 
                 type RiderWithdrawalRequest {
@@ -1784,6 +1796,19 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     deliveryStatus: String
                 }
 
+                """语音/拍照搜索识别结果（P2-2）：keywords 可直接作为站内搜索词"""
+                type CampusSearchAssistResult {
+                    ok: Boolean!
+                    """识别类型：voice / image"""
+                    type: String!
+                    provider: String!
+                    """识别出的整句文本（仅用于回显，可能为空）"""
+                    text: String!
+                    keywords: [String!]!
+                    latencyMs: Int!
+                    error: String
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -1815,6 +1840,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
                     campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
                     campusRiderNav(orderId: ID!): CampusRiderNav
+                    """语音/拍照搜索识别：type=voice/image，按渠道配置的服务商（内置 mock）"""
+                    campusSearchAssist(type: String!, payload: String): CampusSearchAssistResult!
                 }
 
                 type CampusMyAddressChange {

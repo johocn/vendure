@@ -39,6 +39,7 @@ import { P8P1PackingFeeMigration } from './migrations/p8-p1-packing-fee';
 import { P8P1AddonComboMigration } from './migrations/p8-p1-2-addon-combo';
 import { P8P1_4CloudPrintMigration } from './migrations/p8-p1-4-cloud-print-kds';
 import { P9P2MpListingMigration } from './migrations/p9-p2-mp-listing';
+import { P9P2SearchAssistMigration } from './migrations/p9-p2-search-assist';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -116,6 +117,7 @@ import { bindCampusErrandCalculatorConnection, campusErrandCalculator } from './
 import { SlotLockService } from './slot-lock.service';
 import { WaimaiShopResolver } from './waimai-shop.resolver';
 import { WaimaiStoreService } from './waimai-store.service';
+import { SearchAssistService } from './search-assist.service';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -141,6 +143,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         P8P1AddonComboMigration,
         P8P1_4CloudPrintMigration,
         P9P2MpListingMigration,
+        P9P2SearchAssistMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -169,6 +172,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         R4TagService,
         ShippingProfileEnsureService,
         WaimaiStoreService,
+        SearchAssistService,
         PrivacyNumberService,
         CloudPrintService,
         MerchantAdminService,
@@ -613,6 +617,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     mpReady: Boolean!
                     """上架前检查缺项 key：appId / category / version / privacyUrl / contactPhone / licenseNo"""
                     mpMissing: [String!]!
+                    """语音搜索服务商：mock（内置模拟）/ none（未开启）"""
+                    voiceSearchProvider: String!
+                    """拍照搜索服务商：mock（内置模拟）/ none（未开启）"""
+                    imageSearchProvider: String!
                 }
 
                 """隐私联系方式（号码保护）：protected=false 时 display 即真实号"""
@@ -690,6 +698,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     mpListingStatus: String
                     mpPrivacyUrl: String
                     mpReviewNote: String
+                    """语音搜索服务商：mock / none（undefined=保留原值）"""
+                    voiceSearchProvider: String
+                    """拍照搜索服务商：mock / none（undefined=保留原值）"""
+                    imageSearchProvider: String
                 }
 
                 type RiderWithdrawalRequest {
@@ -1651,6 +1663,19 @@ import { WaimaiStoreService } from './waimai-store.service';
                     deliveryStatus: String
                 }
 
+                """语音/拍照搜索识别结果（P2-2）：keywords 可直接作为站内搜索词"""
+                type CampusSearchAssistResult {
+                    ok: Boolean!
+                    """识别类型：voice / image"""
+                    type: String!
+                    provider: String!
+                    """识别出的整句文本（仅用于回显，可能为空）"""
+                    text: String!
+                    keywords: [String!]!
+                    latencyMs: Int!
+                    error: String
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -1682,6 +1707,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
                     campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
                     campusRiderNav(orderId: ID!): CampusRiderNav
+                    """语音/拍照搜索识别：type=voice/image，按渠道配置的服务商（内置 mock）"""
+                    campusSearchAssist(type: String!, payload: String): CampusSearchAssistResult!
                 }
 
                 type CampusMyAddressChange {

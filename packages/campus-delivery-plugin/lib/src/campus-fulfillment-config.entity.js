@@ -310,6 +310,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 500, nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "mpReviewNote", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 16, default: 'mock' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "voiceSearchProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 16, default: 'mock' }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "imageSearchProvider", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

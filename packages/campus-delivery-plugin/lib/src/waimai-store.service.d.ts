@@ -123,6 +123,9 @@ export interface CampusStoreConfigWithChannel {
     mpReady: boolean;
     /** 上架前检查缺项 key（前端按 key 做 i18n 文案） */
     mpMissing: string[];
+    /** 语音/拍照搜索服务商（P2-2）：mock / none */
+    voiceSearchProvider: string;
+    imageSearchProvider: string;
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
@@ -226,6 +229,8 @@ export declare class WaimaiStoreService {
         mpListingStatus?: string | null;
         mpPrivacyUrl?: string | null;
         mpReviewNote?: string | null;
+        voiceSearchProvider?: string | null;
+        imageSearchProvider?: string | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

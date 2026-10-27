@@ -15,14 +15,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaimaiShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const search_assist_service_1 = require("./search-assist.service");
 const waimai_store_service_1 = require("./waimai-store.service");
 let WaimaiShopResolver = class WaimaiShopResolver {
-    constructor(stores) {
+    constructor(stores, assist) {
         this.stores = stores;
+        this.assist = assist;
     }
     /** 公开只读：C 端首页店铺列表（跨渠道元数据聚合） */
     async waimaiStoreList(ctx) {
         return this.stores.listStores(ctx);
+    }
+    /**
+     * 公开只读：语音/拍照搜索识别（P2-2）。
+     * 按当前渠道配置选择服务商（mock / none），返回可直接用于站内搜索的关键词。
+     */
+    async campusSearchAssist(ctx, type, payload) {
+        return this.assist.assist(ctx, type, payload);
     }
 };
 exports.WaimaiShopResolver = WaimaiShopResolver;
@@ -34,8 +43,19 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], WaimaiShopResolver.prototype, "waimaiStoreList", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('type')),
+    __param(2, (0, graphql_1.Args)('payload', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], WaimaiShopResolver.prototype, "campusSearchAssist", null);
 exports.WaimaiShopResolver = WaimaiShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [waimai_store_service_1.WaimaiStoreService])
+    __metadata("design:paramtypes", [waimai_store_service_1.WaimaiStoreService,
+        search_assist_service_1.SearchAssistService])
 ], WaimaiShopResolver);
 //# sourceMappingURL=waimai-shop.resolver.js.map

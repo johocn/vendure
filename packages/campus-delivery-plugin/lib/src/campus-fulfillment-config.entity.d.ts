@@ -117,5 +117,9 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     mpPrivacyUrl: string | null;
     /** 审核备注 / 驳回原因 */
     mpReviewNote: string | null;
+    /** 语音搜索服务商：mock（内置模拟识别）/ none（未开启） */
+    voiceSearchProvider: string;
+    /** 拍照搜索服务商：mock（内置模拟识别）/ none（未开启） */
+    imageSearchProvider: string;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }
