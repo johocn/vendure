@@ -52,11 +52,17 @@ function hashOf(text: string): number {
     return h;
 }
 
-/** payload 是否是可当文本用的内容（非 URL/base64 长串） */
+/**
+ * payload 是否是可当文本用的内容（非 URL / base64 / 本地文件路径）。
+ * 小程序临时文件（wxfile://...）、H5 blob 地址、系统路径都不能当识别文本，
+ * 否则文件名会被当成关键词填进搜索框。
+ */
 function textPayload(payload?: string | null): string | null {
     const s = String(payload ?? '').trim();
     if (!s || s.length > 40) return null;
-    if (/^(https?:\/\/|data:|file:)/i.test(s)) return null;
+    if (s.includes('://') || /^(data:|blob:|file:)/i.test(s)) return null;
+    if (/[\\/]/.test(s)) return null;
+    if (/\.(png|jpe?g|gif|webp|bmp|mp3|wav|m4a|aac|amr|silk)$/i.test(s)) return null;
     return s;
 }
 
