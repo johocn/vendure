@@ -39,6 +39,10 @@ const p8_p1_2_addon_combo_1 = require("./migrations/p8-p1-2-addon-combo");
 const p8_p1_4_cloud_print_kds_1 = require("./migrations/p8-p1-4-cloud-print-kds");
 const p9_p2_mp_listing_1 = require("./migrations/p9-p2-mp-listing");
 const p9_p2_search_assist_1 = require("./migrations/p9-p2-search-assist");
+const p9_p3_ad_campaign_1 = require("./migrations/p9-p3-ad-campaign");
+const campus_ad_entity_1 = require("./campus-ad.entity");
+const campus_ad_service_1 = require("./campus-ad.service");
+const campus_ad_resolver_1 = require("./campus-ad.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
@@ -259,7 +263,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -277,6 +281,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p8_p1_4_cloud_print_kds_1.P8P1_4CloudPrintMigration,
             p9_p2_mp_listing_1.P9P2MpListingMigration,
             p9_p2_search_assist_1.P9P2SearchAssistMigration,
+            p9_p3_ad_campaign_1.P9P3AdCampaignMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -306,6 +311,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
             search_assist_service_1.SearchAssistService,
+            campus_ad_service_1.CampusAdService,
             privacy_number_service_1.PrivacyNumberService,
             cloud_print_service_1.CloudPrintService,
             merchant_admin_service_1.MerchantAdminService,
@@ -1107,6 +1113,41 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     truncated: Boolean!
                 }
 
+                """广告投放单（P2-3）：商家自助下单 → 模拟支付 → 平台审核 → 按日期投放"""
+                type CampusAdCampaign {
+                    id: ID!
+                    channelId: ID!
+                    """广告位：homeBanner（首页横幅）/ shopTop（店铺页顶部）"""
+                    slot: String!
+                    title: String!
+                    imageUrl: String
+                    linkUrl: String
+                    """投放开始日（YYYY-MM-DD，含当日）"""
+                    startDate: String!
+                    """投放结束日（YYYY-MM-DD，含当日）"""
+                    endDate: String!
+                    days: Int!
+                    unitPriceFen: Int!
+                    totalFen: Int!
+                    """pendingPay / pendingReview / running / rejected / cancelled / finished（已结束按日期实时判定）"""
+                    status: String!
+                    """当前是否在展示窗口内"""
+                    live: Boolean!
+                    payRef: String
+                    paidAt: DateTime
+                    reviewNote: String
+                    reviewedBy: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime
+                }
+
+                type CampusAdSlot {
+                    code: String!
+                    name: String!
+                    """单日单价（分）"""
+                    unitPriceFen: Int!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -1115,6 +1156,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderApplications(status: String!, skip: Int, take: Int): RiderApplicationList!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+                    """广告位报价（分/天）"""
+                    campusAdSlots: [CampusAdSlot!]!
+                    """商家侧：本渠道广告投放单"""
+                    campusMerchantAds: [CampusAdCampaign!]!
+                    """平台侧：按渠道/状态查投放单"""
+                    campusAdCampaigns(status: String, channelId: ID): [CampusAdCampaign!]!
                     campusMerchantBoard: CampusMerchantBoard!
                     """商家自助经营：门店资料（营业时间/公告/电话/营业状态）"""
                     campusMerchantStoreProfile: MerchantStoreProfile!
@@ -1314,6 +1361,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+                    """商家下单广告（按天计费，下单即固化单价与总价，状态 pendingPay）"""
+                    campusMerchantCreateAd(slot: String!, title: String!, startDate: String!, endDate: String!, imageUrl: String, linkUrl: String): CampusAdCampaign!
+                    """商家支付广告费（模拟支付，转待审核；重复调用幂等）"""
+                    campusMerchantPayAd(id: ID!): CampusAdCampaign!
+                    """商家取消广告投放（仅未支付/待审核可取消）"""
+                    campusMerchantCancelAd(id: ID!): CampusAdCampaign!
+                    """平台审核广告：通过转投放中，驳回须填原因"""
+                    campusReviewAd(id: ID!, approve: Boolean!, note: String): CampusAdCampaign!
                     campusSettleAddressChange(id: ID!, action: String!, note: String): CampusAddressChangeRow!
                     """运营代客改址：取货后也可代改，必须填写原因"""
                     campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
@@ -1431,7 +1486,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1796,6 +1851,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     deliveryStatus: String
                 }
 
+                """C 端在投广告（P2-3）：仅返回当前渠道、指定广告位、投放窗口内的广告"""
+                type CampusActiveAd {
+                    id: ID!
+                    slot: String!
+                    title: String!
+                    imageUrl: String
+                    linkUrl: String
+                    endDate: String!
+                }
+
                 """语音/拍照搜索识别结果（P2-2）：keywords 可直接作为站内搜索词"""
                 type CampusSearchAssistResult {
                     ok: Boolean!
@@ -1842,6 +1907,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusRiderNav(orderId: ID!): CampusRiderNav
                     """语音/拍照搜索识别：type=voice/image，按渠道配置的服务商（内置 mock）"""
                     campusSearchAssist(type: String!, payload: String): CampusSearchAssistResult!
+                    """C 端公开：按广告位取当前在投广告（最多 3 条，按投放金额降序）"""
+                    campusActiveAds(slot: String!): [CampusActiveAd!]!
                 }
 
                 type CampusMyAddressChange {
@@ -1895,7 +1962,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;

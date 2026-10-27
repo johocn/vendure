@@ -40,6 +40,10 @@ import { P8P1AddonComboMigration } from './migrations/p8-p1-2-addon-combo';
 import { P8P1_4CloudPrintMigration } from './migrations/p8-p1-4-cloud-print-kds';
 import { P9P2MpListingMigration } from './migrations/p9-p2-mp-listing';
 import { P9P2SearchAssistMigration } from './migrations/p9-p2-search-assist';
+import { P9P3AdCampaignMigration } from './migrations/p9-p3-ad-campaign';
+import { CampusAdCampaign } from './campus-ad.entity';
+import { CampusAdService } from './campus-ad.service';
+import { CampusAdResolver } from './campus-ad.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -126,7 +130,7 @@ import { SearchAssistService } from './search-assist.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -144,6 +148,7 @@ import { SearchAssistService } from './search-assist.service';
         P8P1_4CloudPrintMigration,
         P9P2MpListingMigration,
         P9P2SearchAssistMigration,
+        P9P3AdCampaignMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -173,6 +178,7 @@ import { SearchAssistService } from './search-assist.service';
         ShippingProfileEnsureService,
         WaimaiStoreService,
         SearchAssistService,
+        CampusAdService,
         PrivacyNumberService,
         CloudPrintService,
         MerchantAdminService,
@@ -974,6 +980,41 @@ import { SearchAssistService } from './search-assist.service';
                     truncated: Boolean!
                 }
 
+                """广告投放单（P2-3）：商家自助下单 → 模拟支付 → 平台审核 → 按日期投放"""
+                type CampusAdCampaign {
+                    id: ID!
+                    channelId: ID!
+                    """广告位：homeBanner（首页横幅）/ shopTop（店铺页顶部）"""
+                    slot: String!
+                    title: String!
+                    imageUrl: String
+                    linkUrl: String
+                    """投放开始日（YYYY-MM-DD，含当日）"""
+                    startDate: String!
+                    """投放结束日（YYYY-MM-DD，含当日）"""
+                    endDate: String!
+                    days: Int!
+                    unitPriceFen: Int!
+                    totalFen: Int!
+                    """pendingPay / pendingReview / running / rejected / cancelled / finished（已结束按日期实时判定）"""
+                    status: String!
+                    """当前是否在展示窗口内"""
+                    live: Boolean!
+                    payRef: String
+                    paidAt: DateTime
+                    reviewNote: String
+                    reviewedBy: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime
+                }
+
+                type CampusAdSlot {
+                    code: String!
+                    name: String!
+                    """单日单价（分）"""
+                    unitPriceFen: Int!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -982,6 +1023,12 @@ import { SearchAssistService } from './search-assist.service';
                     riderApplications(status: String!, skip: Int, take: Int): RiderApplicationList!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+                    """广告位报价（分/天）"""
+                    campusAdSlots: [CampusAdSlot!]!
+                    """商家侧：本渠道广告投放单"""
+                    campusMerchantAds: [CampusAdCampaign!]!
+                    """平台侧：按渠道/状态查投放单"""
+                    campusAdCampaigns(status: String, channelId: ID): [CampusAdCampaign!]!
                     campusMerchantBoard: CampusMerchantBoard!
                     """商家自助经营：门店资料（营业时间/公告/电话/营业状态）"""
                     campusMerchantStoreProfile: MerchantStoreProfile!
@@ -1181,6 +1228,14 @@ import { SearchAssistService } from './search-assist.service';
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+                    """商家下单广告（按天计费，下单即固化单价与总价，状态 pendingPay）"""
+                    campusMerchantCreateAd(slot: String!, title: String!, startDate: String!, endDate: String!, imageUrl: String, linkUrl: String): CampusAdCampaign!
+                    """商家支付广告费（模拟支付，转待审核；重复调用幂等）"""
+                    campusMerchantPayAd(id: ID!): CampusAdCampaign!
+                    """商家取消广告投放（仅未支付/待审核可取消）"""
+                    campusMerchantCancelAd(id: ID!): CampusAdCampaign!
+                    """平台审核广告：通过转投放中，驳回须填原因"""
+                    campusReviewAd(id: ID!, approve: Boolean!, note: String): CampusAdCampaign!
                     campusSettleAddressChange(id: ID!, action: String!, note: String): CampusAddressChangeRow!
                     """运营代客改址：取货后也可代改，必须填写原因"""
                     campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
@@ -1298,7 +1353,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1663,6 +1718,16 @@ import { SearchAssistService } from './search-assist.service';
                     deliveryStatus: String
                 }
 
+                """C 端在投广告（P2-3）：仅返回当前渠道、指定广告位、投放窗口内的广告"""
+                type CampusActiveAd {
+                    id: ID!
+                    slot: String!
+                    title: String!
+                    imageUrl: String
+                    linkUrl: String
+                    endDate: String!
+                }
+
                 """语音/拍照搜索识别结果（P2-2）：keywords 可直接作为站内搜索词"""
                 type CampusSearchAssistResult {
                     ok: Boolean!
@@ -1709,6 +1774,8 @@ import { SearchAssistService } from './search-assist.service';
                     campusRiderNav(orderId: ID!): CampusRiderNav
                     """语音/拍照搜索识别：type=voice/image，按渠道配置的服务商（内置 mock）"""
                     campusSearchAssist(type: String!, payload: String): CampusSearchAssistResult!
+                    """C 端公开：按广告位取当前在投广告（最多 3 条，按投放金额降序）"""
+                    campusActiveAds(slot: String!): [CampusActiveAd!]!
                 }
 
                 type CampusMyAddressChange {
@@ -1762,7 +1829,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
