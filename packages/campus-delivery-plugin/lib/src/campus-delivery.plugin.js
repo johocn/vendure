@@ -48,6 +48,8 @@ const campus_locker_service_1 = require("./campus-locker.service");
 const campus_locker_resolver_1 = require("./campus-locker.resolver");
 const p9_p4_locker_1 = require("./migrations/p9-p4-locker");
 const p9_p5_rider_compliance_1 = require("./migrations/p9-p5-rider-compliance");
+const p9_p6_taste_profile_1 = require("./migrations/p9-p6-taste-profile");
+const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
@@ -289,6 +291,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p3_ad_campaign_1.P9P3AdCampaignMigration,
             p9_p4_locker_1.P9P4LockerMigration,
             p9_p5_rider_compliance_1.P9P5RiderComplianceMigration,
+            p9_p6_taste_profile_1.P9P6TasteProfileMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -2046,6 +2049,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
                     campusMyRiderRating: CampusRiderRating!
                     campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
+                    """本人云端口味偏好 JSON（未登录返回空串）"""
+                    campusMyTasteProfile: String
                     campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
                     campusRiderNav(orderId: ID!): CampusRiderNav
                     """语音/拍照搜索识别：type=voice/image，按渠道配置的服务商（内置 mock）"""
@@ -2110,6 +2115,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
                     campusChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String): CampusAddressChangeResult!
                     applyOrderInvoice(orderId: ID!, invoiceInfo: String!): Boolean!
+                    """保存本人云端口味偏好（空串=清除）"""
+                    campusUpdateTasteProfile(input: String!): String!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
@@ -2128,7 +2135,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver, taste_profile_shop_resolver_1.TasteProfileShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;

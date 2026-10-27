@@ -49,6 +49,8 @@ import { CampusLockerService } from './campus-locker.service';
 import { CampusLockerAdminResolver, CampusLockerShopResolver } from './campus-locker.resolver';
 import { P9P4LockerMigration } from './migrations/p9-p4-locker';
 import { P9P5RiderComplianceMigration } from './migrations/p9-p5-rider-compliance';
+import { P9P6TasteProfileMigration } from './migrations/p9-p6-taste-profile';
+import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -156,6 +158,7 @@ import { SearchAssistService } from './search-assist.service';
         P9P3AdCampaignMigration,
         P9P4LockerMigration,
         P9P5RiderComplianceMigration,
+        P9P6TasteProfileMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -1913,6 +1916,8 @@ import { SearchAssistService } from './search-assist.service';
                     campusMyRiderAppeals(skip: Int, take: Int): [CampusMyRiderAppeal!]!
                     campusMyRiderRating: CampusRiderRating!
                     campusMyRiderReviews(skip: Int, take: Int): [CampusMyRiderReviewRow!]!
+                    """本人云端口味偏好 JSON（未登录返回空串）"""
+                    campusMyTasteProfile: String
                     campusMyShifts(from: String, to: String): [CampusRiderShiftRow!]!
                     campusRiderNav(orderId: ID!): CampusRiderNav
                     """语音/拍照搜索识别：type=voice/image，按渠道配置的服务商（内置 mock）"""
@@ -1977,6 +1982,8 @@ import { SearchAssistService } from './search-assist.service';
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
                     campusChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String): CampusAddressChangeResult!
                     applyOrderInvoice(orderId: ID!, invoiceInfo: String!): Boolean!
+                    """保存本人云端口味偏好（空串=清除）"""
+                    campusUpdateTasteProfile(input: String!): String!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
@@ -1995,7 +2002,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

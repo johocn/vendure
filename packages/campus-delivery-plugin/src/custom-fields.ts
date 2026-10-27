@@ -107,6 +107,8 @@ export const campusCustomFields: CustomFields = {
         { name: 'riderBackgroundCheckAt', type: 'datetime', nullable: true },
         { name: 'avatarUrl', type: 'string', nullable: true }, // 头像 URL（uploadCustomerAsset 产物）
         { name: 'invoiceTitles', type: 'string', nullable: true }, // 发票抬头列表 JSON（≤5 条，spec §3.2）
+        // P3-1 口味偏好云端同步：JSON {spicy, avoid[], allergens[], tableware}，与 C 端 utils/taste-profile.ts 同结构
+        { name: 'tasteProfile', type: 'text', nullable: true },
     ],
     Address: [
         { name: 'zoneId', type: 'string', nullable: true }, // 校园分区 ID（campusZones 引用）
