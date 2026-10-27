@@ -1770,6 +1770,13 @@ import { SearchAssistService } from './search-assist.service';
                     customFields: CampusHallOrderCustomFields
                 }
 
+                """批量接单逐单结果（P3-3）：单条失败不影响其余，message 为后端原文"""
+                type CampusGrabResult {
+                    orderId: ID!
+                    ok: Boolean!
+                    message: String
+                }
+
                 type CampusFavoriteVariant {
                     variantId: ID!
                     channelId: ID!
@@ -1977,6 +1984,8 @@ import { SearchAssistService } from './search-assist.service';
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String, healthCertImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
+                    """批量接单（P3-3）：逐单独立事务，返回每条结果；单渠道一次最多 10 单"""
+                    campusGrabOrders(orderIds: [ID!]!): [CampusGrabResult!]!
                     campusStartTask(orderId: ID!, code: String): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!

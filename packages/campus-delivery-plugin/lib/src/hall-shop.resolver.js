@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HallShopResolver = exports.OrderDeliveryShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const graphql_2 = require("graphql");
 const campus_config_service_1 = require("./campus-config.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
@@ -65,6 +66,33 @@ let HallShopResolver = class HallShopResolver {
     /** grab 失败（已被抢/抢自己的/非骑手）由 service 抛 UserInputError/ForbiddenError，Vendure 转 GraphQL 错误。 */
     async campusGrabOrder(ctx, orderId) {
         return this.grab.grab(ctx, orderId);
+    }
+    /** 批量接单（P3-3）：勾选多单一次提交。逐单独立事务，失败不影响其余，返回逐单结果。
+     * 上限 10：防止一次提交过多导致长事务/锁竞争；超限直接报错（不静默截断）。
+     * 注意：同渠道内的订单才可一次提交（ctx 渠道决定班次/配置口径），跨渠道由前端分组。 */
+    async campusGrabOrders(ctx, orderIds) {
+        var _a;
+        await this.riderService.assertApprovedRider(ctx);
+        if (!(orderIds === null || orderIds === void 0 ? void 0 : orderIds.length))
+            throw new core_1.UserInputError('请先选择要接的订单');
+        if (orderIds.length > 10)
+            throw new core_1.UserInputError('一次最多接 10 单');
+        const results = [];
+        const seen = new Set();
+        for (const id of orderIds) {
+            const key = String(id);
+            if (seen.has(key))
+                continue; // 前端重复勾选不重复抢
+            seen.add(key);
+            try {
+                await this.grab.grab(ctx, id);
+                results.push({ orderId: key, ok: true, message: null });
+            }
+            catch (e) {
+                results.push({ orderId: key, ok: false, message: (_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : '接单失败' });
+            }
+        }
+        return results;
     }
     /** 拒单：仅限被指派且未取货的骑手；订单回大厅 + 骑手扣分。 */
     async campusRejectAssignment(ctx, orderId) {
@@ -126,6 +154,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], HallShopResolver.prototype, "campusGrabOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'orderIds', type: () => [graphql_2.GraphQLID] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], HallShopResolver.prototype, "campusGrabOrders", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

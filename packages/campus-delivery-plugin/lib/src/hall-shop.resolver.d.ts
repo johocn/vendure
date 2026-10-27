@@ -30,6 +30,14 @@ export declare class HallShopResolver {
     constructor(grab: HallGrabService, config: CampusConfigService, riderService: RiderService, connection: TransactionalConnection, hall: HallService, credit: RiderCreditService);
     /** grab 失败（已被抢/抢自己的/非骑手）由 service 抛 UserInputError/ForbiddenError，Vendure 转 GraphQL 错误。 */
     campusGrabOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
+    /** 批量接单（P3-3）：勾选多单一次提交。逐单独立事务，失败不影响其余，返回逐单结果。
+     * 上限 10：防止一次提交过多导致长事务/锁竞争；超限直接报错（不静默截断）。
+     * 注意：同渠道内的订单才可一次提交（ctx 渠道决定班次/配置口径），跨渠道由前端分组。 */
+    campusGrabOrders(ctx: RequestContext, orderIds: ID[]): Promise<{
+        orderId: string;
+        ok: boolean;
+        message: string | null;
+    }[]>;
     /** 拒单：仅限被指派且未取货的骑手；订单回大厅 + 骑手扣分。 */
     campusRejectAssignment(ctx: RequestContext, orderId: ID): Promise<{
         backToHall: boolean;

@@ -9,6 +9,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { GraphQLID } from 'graphql';
 import { CampusConfigService } from './campus-config.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -54,6 +55,34 @@ export class HallShopResolver {
     @Allow(Permission.Authenticated)
     async campusGrabOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.grab.grab(ctx, orderId);
+    }
+
+    /** 批量接单（P3-3）：勾选多单一次提交。逐单独立事务，失败不影响其余，返回逐单结果。
+     * 上限 10：防止一次提交过多导致长事务/锁竞争；超限直接报错（不静默截断）。
+     * 注意：同渠道内的订单才可一次提交（ctx 渠道决定班次/配置口径），跨渠道由前端分组。 */
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async campusGrabOrders(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'orderIds', type: () => [GraphQLID] }) orderIds: ID[],
+    ) {
+        await this.riderService.assertApprovedRider(ctx);
+        if (!orderIds?.length) throw new UserInputError('请先选择要接的订单');
+        if (orderIds.length > 10) throw new UserInputError('一次最多接 10 单');
+        const results: Array<{ orderId: string; ok: boolean; message: string | null }> = [];
+        const seen = new Set<string>();
+        for (const id of orderIds) {
+            const key = String(id);
+            if (seen.has(key)) continue;   // 前端重复勾选不重复抢
+            seen.add(key);
+            try {
+                await this.grab.grab(ctx, id);
+                results.push({ orderId: key, ok: true, message: null });
+            } catch (e: any) {
+                results.push({ orderId: key, ok: false, message: e?.message ?? '接单失败' });
+            }
+        }
+        return results;
     }
 
     /** 拒单：仅限被指派且未取货的骑手；订单回大厅 + 骑手扣分。 */
