@@ -30,6 +30,10 @@ let RiderAdminResolver = class RiderAdminResolver {
     async campusSetRiderStatus(ctx, customerId, status) {
         return this.riderService.setRiderStatus(ctx, Number(customerId), status);
     }
+    /** P2-5 骑手合规：登记/更新健康证、保险、背调，返回最新合规判定 */
+    async campusUpdateRiderCompliance(ctx, customerId, input) {
+        return this.riderService.updateCompliance(ctx, Number(customerId), input);
+    }
     /** 骑手提现申请列表（status=ALL/PENDING/PAID/REJECTED）。
      * 钱包为平台级（余额跨渠道汇总），列表按设计不限定店铺渠道；审核权限 CampusAuditRider。 */
     async riderWithdrawals(ctx, status, skip, take) {
@@ -70,6 +74,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], RiderAdminResolver.prototype, "campusSetRiderStatus", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusAuditRider),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('customerId')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], RiderAdminResolver.prototype, "campusUpdateRiderCompliance", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusAuditRider),

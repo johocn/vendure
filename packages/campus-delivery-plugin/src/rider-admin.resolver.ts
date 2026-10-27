@@ -3,6 +3,7 @@ import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
 import { RiderService } from './rider.service';
 import { CampusPermissions } from './permissions';
 import { RiderWalletService } from './rider-wallet.service';
+import type { RiderCompliancePatch } from './rider-compliance';
 
 @Resolver()
 export class RiderAdminResolver {
@@ -31,6 +32,17 @@ export class RiderAdminResolver {
         @Args('status') status: 'approved' | 'suspended' | 'none',
     ) {
         return this.riderService.setRiderStatus(ctx, Number(customerId), status);
+    }
+
+    /** P2-5 骑手合规：登记/更新健康证、保险、背调，返回最新合规判定 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusAuditRider as any)
+    async campusUpdateRiderCompliance(
+        @Ctx() ctx: RequestContext,
+        @Args('customerId') customerId: ID,
+        @Args('input') input: RiderCompliancePatch,
+    ) {
+        return this.riderService.updateCompliance(ctx, Number(customerId), input);
     }
 
     /** 骑手提现申请列表（status=ALL/PENDING/PAID/REJECTED）。

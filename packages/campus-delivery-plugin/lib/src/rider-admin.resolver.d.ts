@@ -1,6 +1,7 @@
 import { ID, RequestContext } from '@vendure/core';
 import { RiderService } from './rider.service';
 import { RiderWalletService } from './rider-wallet.service';
+import type { RiderCompliancePatch } from './rider-compliance';
 export declare class RiderAdminResolver {
     private riderService;
     private wallet;
@@ -12,6 +13,10 @@ export declare class RiderAdminResolver {
     }>;
     campusSetRiderStatus(ctx: RequestContext, customerId: ID, status: 'approved' | 'suspended' | 'none'): Promise<{
         status: "approved" | "none" | "suspended";
+    }>;
+    /** P2-5 骑手合规：登记/更新健康证、保险、背调，返回最新合规判定 */
+    campusUpdateRiderCompliance(ctx: RequestContext, customerId: ID, input: RiderCompliancePatch): Promise<import("./rider-compliance").RiderComplianceResult & {
+        customerId: number;
     }>;
     /** 骑手提现申请列表（status=ALL/PENDING/PAID/REJECTED）。
      * 钱包为平台级（余额跨渠道汇总），列表按设计不限定店铺渠道；审核权限 CampusAuditRider。 */

@@ -13,6 +13,7 @@ exports.RiderService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const rider_ops_service_1 = require("./rider-ops.service");
+const rider_compliance_1 = require("./rider-compliance");
 const CREDIT_LIMIT = 60;
 let RiderService = class RiderService {
     constructor(connection, customerService, riderOps) {
@@ -38,6 +39,7 @@ let RiderService = class RiderService {
         const studentNo = String((_b = input.studentNo) !== null && _b !== void 0 ? _b : '').trim();
         const campus = String((_c = input.campus) !== null && _c !== void 0 ? _c : '').trim();
         const idImg = input.idImg == null ? null : String(input.idImg).trim();
+        const healthCertImg = input.healthCertImg == null ? null : String(input.healthCertImg).trim();
         if (!realName || !studentNo || !campus) {
             throw new core_1.UserInputError('请填写姓名、学号和校区');
         }
@@ -48,6 +50,9 @@ let RiderService = class RiderService {
         if (idImg && idImg.length > 500) {
             throw new core_1.UserInputError('证件图片地址不合法');
         }
+        if (healthCertImg && healthCertImg.length > 500) {
+            throw new core_1.UserInputError('健康证图片地址不合法');
+        }
         const current = String((_e = (_d = customer.customFields) === null || _d === void 0 ? void 0 : _d.riderStatus) !== null && _e !== void 0 ? _e : 'none');
         // 已停用账号不得自助复申请（否则改回 pending 可绕过停用）；
         // 已通过审核者仅更新资料，保留 approved（重新提交不能把在职骑手打回待审）
@@ -55,13 +60,7 @@ let RiderService = class RiderService {
             throw new core_1.UserInputError('骑手账号已停用，请联系管理员');
         const status = current === 'approved' ? 'approved' : 'pending';
         await this.connection.getRepository(ctx, core_1.Customer).update(customer.id, {
-            customFields: {
-                riderStatus: status,
-                riderRealName: realName,
-                riderStudentNo: studentNo,
-                riderCampus: campus,
-                riderIdImg: idImg,
-            },
+            customFields: Object.assign({ riderStatus: status, riderRealName: realName, riderStudentNo: studentNo, riderCampus: campus, riderIdImg: idImg }, (healthCertImg ? { riderHealthCertImg: healthCertImg } : {})),
         });
         return { status };
     }
@@ -121,10 +120,15 @@ let RiderService = class RiderService {
         if (((_a = cf.riderCredit) !== null && _a !== void 0 ? _a : 100) < CREDIT_LIMIT) {
             throw new core_1.ForbiddenError();
         }
+        // P2-5 合规阻断：健康证/保险过期或背调未通过时不得接单
+        const compliance = (0, rider_compliance_1.evaluateRiderCompliance)(cf);
+        if (compliance.blocked) {
+            throw new core_1.UserInputError('骑手合规资料已失效（健康证/保险过期或背调未通过），请联系管理员');
+        }
         return customer;
     }
     async myRiderProfile(ctx) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const customer = await this.requireCustomer(ctx);
         const cf = ((_a = customer.customFields) !== null && _a !== void 0 ? _a : {});
         return {
@@ -134,16 +138,45 @@ let RiderService = class RiderService {
             riderStudentNo: (_d = cf.riderStudentNo) !== null && _d !== void 0 ? _d : null,
             riderCampus: (_e = cf.riderCampus) !== null && _e !== void 0 ? _e : null,
             riderCredit: (_f = cf.riderCredit) !== null && _f !== void 0 ? _f : null,
+            // P2-5：合规明细（骑手端展示到期提醒；不暴露任何其他骑手数据）
+            compliance: (0, rider_compliance_1.evaluateRiderCompliance)(cf),
+            riderHealthCertExpiry: (_g = cf.riderHealthCertExpiry) !== null && _g !== void 0 ? _g : null,
+            riderInsuranceExpiry: (_h = cf.riderInsuranceExpiry) !== null && _h !== void 0 ? _h : null,
         };
+    }
+    /** P2-5 平台审核：登记/更新骑手合规资料（健康证 / 保险 / 背调），返回最新合规判定 */
+    async updateCompliance(ctx, customerId, input) {
+        var _a, _b;
+        await this.assertCustomerInChannel(ctx, customerId);
+        let patch;
+        try {
+            patch = (0, rider_compliance_1.normalizeCompliancePatch)(input !== null && input !== void 0 ? input : {});
+        }
+        catch (e) {
+            throw new core_1.UserInputError((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : '合规资料不合法');
+        }
+        if (Object.keys(patch).length) {
+            await this.connection.getRepository(ctx, core_1.Customer).update(customerId, { customFields: patch });
+        }
+        const customer = await this.connection.getRepository(ctx, core_1.Customer).findOne({ where: { id: customerId } });
+        const compliance = (0, rider_compliance_1.evaluateRiderCompliance)(((_b = customer === null || customer === void 0 ? void 0 : customer.customFields) !== null && _b !== void 0 ? _b : {}));
+        return Object.assign({ customerId }, compliance);
     }
     /** 骑手上下线开关 + 心跳：大厅轮询页每 15s 调 online=true 即续命 */
     async setOnline(ctx, online) {
-        var _a, _b;
+        var _a, _b, _c;
         const customer = await this.requireCustomer(ctx);
         const status = String((_b = (_a = customer.customFields) === null || _a === void 0 ? void 0 : _a.riderStatus) !== null && _b !== void 0 ? _b : 'none');
         // 未过审（none/pending/suspended）不得上线：避免待审/停用账号写心跳污染在线运力
         if (online && status !== 'approved')
             throw new core_1.ForbiddenError();
+        // P2-5 合规阻断：合规资料失效（过期/背调未通过）不得上线
+        if (online) {
+            const compliance = (0, rider_compliance_1.evaluateRiderCompliance)(((_c = customer.customFields) !== null && _c !== void 0 ? _c : {}));
+            if (compliance.blocked) {
+                throw new core_1.UserInputError('骑手合规资料已失效（健康证/保险过期或背调未通过），请联系管理员');
+            }
+        }
         await this.connection.getRepository(ctx, core_1.Customer).update(customer.id, {
             customFields: { riderOnlineAt: online ? new Date() : null },
         });

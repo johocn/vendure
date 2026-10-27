@@ -48,6 +48,7 @@ import { CampusLockerStation } from './campus-locker.entity';
 import { CampusLockerService } from './campus-locker.service';
 import { CampusLockerAdminResolver, CampusLockerShopResolver } from './campus-locker.resolver';
 import { P9P4LockerMigration } from './migrations/p9-p4-locker';
+import { P9P5RiderComplianceMigration } from './migrations/p9-p5-rider-compliance';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -154,6 +155,7 @@ import { SearchAssistService } from './search-assist.service';
         P9P2SearchAssistMigration,
         P9P3AdCampaignMigration,
         P9P4LockerMigration,
+        P9P5RiderComplianceMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -738,6 +740,34 @@ import { SearchAssistService } from './search-assist.service';
                     total: Int!
                 }
 
+                """骑手合规判定项（P2-5：健康证/保险/背调）"""
+                type RiderComplianceItem {
+                    key: String!
+                    label: String!
+                    """ok / expiring / expired / pending / missing / failed"""
+                    status: String!
+                    expiry: DateTime
+                    detail: String
+                }
+
+                type RiderComplianceResult {
+                    customerId: ID!
+                    ok: Boolean!
+                    blocked: Boolean!
+                    pending: Boolean!
+                    items: [RiderComplianceItem!]!
+                }
+
+                input RiderComplianceInput {
+                    healthCertNo: String
+                    healthCertImg: String
+                    healthCertExpiry: DateTime
+                    insuranceNo: String
+                    insuranceExpiry: DateTime
+                    """none / pending / passed / failed"""
+                    backgroundCheck: String
+                }
+
                 type CampusSupportTicket {
                     id: ID!
                     customerId: ID!
@@ -1303,6 +1333,8 @@ import { SearchAssistService } from './search-assist.service';
                     campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
                     campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
+                    """骑手合规登记（P2-5：健康证/保险/背调），返回最新合规判定"""
+                    campusUpdateRiderCompliance(customerId: ID!, input: RiderComplianceInput!): RiderComplianceResult!
                     campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
                     campusBackToHall(orderId: ID!, note: String): CampusDispatchResult!
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
@@ -1485,6 +1517,27 @@ import { SearchAssistService } from './search-assist.service';
                     riderStudentNo: String
                     riderCampus: String
                     riderCredit: Int
+                    """P2-5 合规明细（骑手端到期提醒）"""
+                    compliance: RiderCompliance
+                    riderHealthCertExpiry: DateTime
+                    riderInsuranceExpiry: DateTime
+                }
+
+                """骑手合规判定项（P2-5）"""
+                type RiderComplianceItem {
+                    key: String!
+                    label: String!
+                    """ok / expiring / expired / pending / missing / failed"""
+                    status: String!
+                    expiry: DateTime
+                    detail: String
+                }
+
+                type RiderCompliance {
+                    ok: Boolean!
+                    blocked: Boolean!
+                    pending: Boolean!
+                    items: [RiderComplianceItem!]!
                 }
 
                 type RiderApplyResult {
@@ -1913,7 +1966,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
 
                 extend type Mutation {
-                    applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
+                    applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String, healthCertImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
                     campusStartTask(orderId: ID!, code: String): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!

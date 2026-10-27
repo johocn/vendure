@@ -29,8 +29,8 @@ let RiderShopResolver = class RiderShopResolver {
         this.connection = connection;
     }
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
-    async applyRider(ctx, realName, studentNo, campus, idImg) {
-        return this.riderService.applyRider(ctx, { realName, studentNo, campus, idImg });
+    async applyRider(ctx, realName, studentNo, campus, idImg, healthCertImg) {
+        return this.riderService.applyRider(ctx, { realName, studentNo, campus, idImg, healthCertImg });
     }
     async myRiderProfile(ctx) {
         return this.riderService.myRiderProfile(ctx);
@@ -81,8 +81,9 @@ __decorate([
     __param(2, (0, graphql_1.Args)('studentNo')),
     __param(3, (0, graphql_1.Args)('campus')),
     __param(4, (0, graphql_1.Args)('idImg', { nullable: true })),
+    __param(5, (0, graphql_1.Args)('healthCertImg', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, String, String, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], RiderShopResolver.prototype, "applyRider", null);
 __decorate([

@@ -25,8 +25,9 @@ export class RiderShopResolver {
         @Args('studentNo') studentNo: string,
         @Args('campus') campus: string,
         @Args('idImg', { nullable: true }) idImg?: string,
+        @Args('healthCertImg', { nullable: true }) healthCertImg?: string,
     ) {
-        return this.riderService.applyRider(ctx, { realName, studentNo, campus, idImg });
+        return this.riderService.applyRider(ctx, { realName, studentNo, campus, idImg, healthCertImg });
     }
 
     @Query()

@@ -11,7 +11,7 @@ export declare class RiderShopResolver {
     private connection;
     constructor(riderService: RiderService, configService: CampusConfigService, capacity: CapacityService, wallet: RiderWalletService, connection: TransactionalConnection);
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
-    applyRider(ctx: RequestContext, realName: string, studentNo: string, campus: string, idImg?: string): Promise<{
+    applyRider(ctx: RequestContext, realName: string, studentNo: string, campus: string, idImg?: string, healthCertImg?: string): Promise<{
         status: string;
     }>;
     myRiderProfile(ctx: RequestContext): Promise<{
@@ -21,6 +21,9 @@ export declare class RiderShopResolver {
         riderStudentNo: any;
         riderCampus: any;
         riderCredit: any;
+        compliance: import("./rider-compliance").RiderComplianceResult;
+        riderHealthCertExpiry: any;
+        riderInsuranceExpiry: any;
     }>;
     /** 骑手钱包：可用余额 / 冻结中 / 累计收入 */
     myRiderWallet(ctx: RequestContext): Promise<{

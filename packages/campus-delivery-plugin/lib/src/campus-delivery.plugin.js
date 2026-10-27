@@ -47,6 +47,7 @@ const campus_locker_entity_1 = require("./campus-locker.entity");
 const campus_locker_service_1 = require("./campus-locker.service");
 const campus_locker_resolver_1 = require("./campus-locker.resolver");
 const p9_p4_locker_1 = require("./migrations/p9-p4-locker");
+const p9_p5_rider_compliance_1 = require("./migrations/p9-p5-rider-compliance");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
 const addon_fee_process_1 = require("./addon-fee.process");
@@ -287,6 +288,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p2_search_assist_1.P9P2SearchAssistMigration,
             p9_p3_ad_campaign_1.P9P3AdCampaignMigration,
             p9_p4_locker_1.P9P4LockerMigration,
+            p9_p5_rider_compliance_1.P9P5RiderComplianceMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -871,6 +873,34 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     total: Int!
                 }
 
+                """骑手合规判定项（P2-5：健康证/保险/背调）"""
+                type RiderComplianceItem {
+                    key: String!
+                    label: String!
+                    """ok / expiring / expired / pending / missing / failed"""
+                    status: String!
+                    expiry: DateTime
+                    detail: String
+                }
+
+                type RiderComplianceResult {
+                    customerId: ID!
+                    ok: Boolean!
+                    blocked: Boolean!
+                    pending: Boolean!
+                    items: [RiderComplianceItem!]!
+                }
+
+                input RiderComplianceInput {
+                    healthCertNo: String
+                    healthCertImg: String
+                    healthCertExpiry: DateTime
+                    insuranceNo: String
+                    insuranceExpiry: DateTime
+                    """none / pending / passed / failed"""
+                    backgroundCheck: String
+                }
+
                 type CampusSupportTicket {
                     id: ID!
                     customerId: ID!
@@ -1436,6 +1466,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
                     campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
+                    """骑手合规登记（P2-5：健康证/保险/背调），返回最新合规判定"""
+                    campusUpdateRiderCompliance(customerId: ID!, input: RiderComplianceInput!): RiderComplianceResult!
                     campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
                     campusBackToHall(orderId: ID!, note: String): CampusDispatchResult!
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
@@ -1618,6 +1650,27 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderStudentNo: String
                     riderCampus: String
                     riderCredit: Int
+                    """P2-5 合规明细（骑手端到期提醒）"""
+                    compliance: RiderCompliance
+                    riderHealthCertExpiry: DateTime
+                    riderInsuranceExpiry: DateTime
+                }
+
+                """骑手合规判定项（P2-5）"""
+                type RiderComplianceItem {
+                    key: String!
+                    label: String!
+                    """ok / expiring / expired / pending / missing / failed"""
+                    status: String!
+                    expiry: DateTime
+                    detail: String
+                }
+
+                type RiderCompliance {
+                    ok: Boolean!
+                    blocked: Boolean!
+                    pending: Boolean!
+                    items: [RiderComplianceItem!]!
                 }
 
                 type RiderApplyResult {
@@ -2046,7 +2099,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
 
                 extend type Mutation {
-                    applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
+                    applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String, healthCertImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
                     campusStartTask(orderId: ID!, code: String): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!

@@ -97,6 +97,14 @@ export const campusCustomFields: CustomFields = {
         { name: 'riderIdImg', type: 'string', nullable: true },
         { name: 'riderCredit', type: 'int', nullable: true, defaultValue: 100 },
         { name: 'riderOnlineAt', type: 'datetime', nullable: true }, // 心跳时间戳，「在线」= approved && 5min 内有心跳
+        // P2-5 骑手合规：健康证 / 保险 / 背景调查（到期与未通过由 rider-compliance.ts 实时判定）
+        { name: 'riderHealthCertNo', type: 'string', nullable: true },
+        { name: 'riderHealthCertImg', type: 'string', nullable: true },
+        { name: 'riderHealthCertExpiry', type: 'datetime', nullable: true },
+        { name: 'riderInsuranceNo', type: 'string', nullable: true },
+        { name: 'riderInsuranceExpiry', type: 'datetime', nullable: true },
+        { name: 'riderBackgroundCheck', type: 'string', nullable: true }, // none/pending/passed/failed
+        { name: 'riderBackgroundCheckAt', type: 'datetime', nullable: true },
         { name: 'avatarUrl', type: 'string', nullable: true }, // 头像 URL（uploadCustomerAsset 产物）
         { name: 'invoiceTitles', type: 'string', nullable: true }, // 发票抬头列表 JSON（≤5 条，spec §3.2）
     ],

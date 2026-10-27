@@ -1,5 +1,6 @@
 import { Customer, CustomerService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RiderOpsService } from './rider-ops.service';
+import { type RiderCompliancePatch, type RiderComplianceResult } from './rider-compliance';
 export declare class RiderService {
     private connection;
     private customerService;
@@ -12,6 +13,7 @@ export declare class RiderService {
         studentNo: string;
         campus: string;
         idImg?: string;
+        healthCertImg?: string;
     }): Promise<{
         status: string;
     }>;
@@ -32,6 +34,13 @@ export declare class RiderService {
         riderStudentNo: any;
         riderCampus: any;
         riderCredit: any;
+        compliance: RiderComplianceResult;
+        riderHealthCertExpiry: any;
+        riderInsuranceExpiry: any;
+    }>;
+    /** P2-5 平台审核：登记/更新骑手合规资料（健康证 / 保险 / 背调），返回最新合规判定 */
+    updateCompliance(ctx: RequestContext, customerId: number, input: RiderCompliancePatch): Promise<RiderComplianceResult & {
+        customerId: number;
     }>;
     /** 骑手上下线开关 + 心跳：大厅轮询页每 15s 调 online=true 即续命 */
     setOnline(ctx: RequestContext, online: boolean): Promise<{
