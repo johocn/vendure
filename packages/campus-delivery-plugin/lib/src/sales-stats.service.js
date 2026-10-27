@@ -58,6 +58,15 @@ function pctOf(cur, prev) {
         return 0;
     return round1(((cur - prev) / prev) * 100);
 }
+/** 商品名是翻译字段（ProductTranslation），优先中文，其次第一条翻译。 */
+function productNameOf(product) {
+    var _a, _b;
+    if (product.name)
+        return product.name;
+    const translations = (_a = product.translations) !== null && _a !== void 0 ? _a : [];
+    const hit = (_b = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh')) !== null && _b !== void 0 ? _b : translations[0];
+    return (hit === null || hit === void 0 ? void 0 : hit.name) || `#${product.id}`;
+}
 /** 有效销售单：已付款未取消 + 排除跑腿单（跑腿无商品，会污染菜品四象限与客单价）。 */
 function isSalesOrder(o) {
     var _a;
@@ -102,7 +111,7 @@ function kpisOf(orders, firstOrderAt, windowStart) {
  * 口径：销售单=已付款未取消且非跑腿；GMV=订单 totalWithTax 汇总；
  * 四象限按「销量中位数 × 销售额中位数」分档（>= 中位为高）；新客=本窗口内首单。 */
 function aggregateSalesStats(args) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     const { orders: raw, firstOrderAt, windowStart, prevStart, prevEnd, now, range } = args;
     const curOrders = raw.filter(o => isSalesOrder(o) && new Date(o.createdAt).getTime() >= windowStart);
     const prevOrders = raw.filter(o => {
@@ -145,9 +154,9 @@ function aggregateSalesStats(args) {
             if (!product)
                 continue;
             const pid = String(product.id);
-            const b = (_h = byProduct.get(pid)) !== null && _h !== void 0 ? _h : { name: (_j = product.name) !== null && _j !== void 0 ? _j : `#${pid}`, quantity: 0, gmvFen: 0 };
-            b.quantity += (_k = line.quantity) !== null && _k !== void 0 ? _k : 0;
-            b.gmvFen += (_l = line.linePriceWithTax) !== null && _l !== void 0 ? _l : 0;
+            const b = (_h = byProduct.get(pid)) !== null && _h !== void 0 ? _h : { name: productNameOf(product), quantity: 0, gmvFen: 0 };
+            b.quantity += (_j = line.quantity) !== null && _j !== void 0 ? _j : 0;
+            b.gmvFen += (_k = line.linePriceWithTax) !== null && _k !== void 0 ? _k : 0;
             byProduct.set(pid, b);
         }
     }
@@ -163,10 +172,10 @@ function aggregateSalesStats(args) {
     // 复购分群：窗口内下单次数 1 / 2-4 / 5+
     const orderCount = new Map();
     for (const o of curOrders) {
-        const cid = ((_m = o.customer) === null || _m === void 0 ? void 0 : _m.id) != null ? Number(o.customer.id) : NaN;
+        const cid = ((_l = o.customer) === null || _l === void 0 ? void 0 : _l.id) != null ? Number(o.customer.id) : NaN;
         if (!Number.isFinite(cid))
             continue;
-        orderCount.set(cid, ((_o = orderCount.get(cid)) !== null && _o !== void 0 ? _o : 0) + 1);
+        orderCount.set(cid, ((_m = orderCount.get(cid)) !== null && _m !== void 0 ? _m : 0) + 1);
     }
     const cohorts = { once: 0, twiceToFour: 0, loyal: 0 };
     for (const n of orderCount.values()) {
@@ -215,6 +224,7 @@ let SalesStatsService = class SalesStatsService {
             .leftJoinAndSelect('order.lines', 'line')
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
+            .leftJoinAndSelect('product.translations', 'productTrans')
             .where('order.createdAt >= :from', { from: new Date(from) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
             .andWhere('(order.customFields.errandKind IS NULL)');

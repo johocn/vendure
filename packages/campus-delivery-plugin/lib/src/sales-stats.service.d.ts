@@ -10,6 +10,10 @@ export interface SalesOrderLineLike {
         product?: {
             id: unknown;
             name?: string | null;
+            translations?: Array<{
+                languageCode: string;
+                name: string;
+            }> | null;
         } | null;
     } | null;
 }

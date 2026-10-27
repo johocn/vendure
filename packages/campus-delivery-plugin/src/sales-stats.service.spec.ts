@@ -17,7 +17,8 @@ const line = (quantity: number, priceFen: number, productId: number, productName
     productVariant: {
         id: productId * 10,
         name: `${productName}-默认`,
-        product: { id: productId, name: productName },
+        // 线上商品名来自 ProductTranslation（Product.name 为空），这里按真实结构造数据
+        product: { id: productId, translations: [{ languageCode: 'zh-Hans', name: productName }] },
     },
 });
 

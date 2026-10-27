@@ -19,7 +19,11 @@ export interface SalesOrderLineLike {
     productVariant?: {
         id: unknown;
         name?: string | null;
-        product?: { id: unknown; name?: string | null } | null;
+        product?: {
+            id: unknown;
+            name?: string | null;
+            translations?: Array<{ languageCode: string; name: string }> | null;
+        } | null;
     } | null;
 }
 
@@ -137,6 +141,14 @@ function pctOf(cur: number, prev: number): number {
     return round1(((cur - prev) / prev) * 100);
 }
 
+/** 商品名是翻译字段（ProductTranslation），优先中文，其次第一条翻译。 */
+function productNameOf(product: NonNullable<NonNullable<SalesOrderLineLike['productVariant']>['product']>): string {
+    if (product.name) return product.name;
+    const translations = product.translations ?? [];
+    const hit = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh') ?? translations[0];
+    return hit?.name || `#${product.id}`;
+}
+
 /** 有效销售单：已付款未取消 + 排除跑腿单（跑腿无商品，会污染菜品四象限与客单价）。 */
 function isSalesOrder(o: SalesOrderLike): boolean {
     if (NON_SALES_STATES.includes(o.state)) return false;
@@ -229,7 +241,7 @@ export function aggregateSalesStats(args: {
             const product = line.productVariant?.product;
             if (!product) continue;
             const pid = String(product.id);
-            const b = byProduct.get(pid) ?? { name: product.name ?? `#${pid}`, quantity: 0, gmvFen: 0 };
+            const b = byProduct.get(pid) ?? { name: productNameOf(product), quantity: 0, gmvFen: 0 };
             b.quantity += line.quantity ?? 0;
             b.gmvFen += line.linePriceWithTax ?? 0;
             byProduct.set(pid, b);
@@ -302,6 +314,7 @@ export class SalesStatsService {
             .leftJoinAndSelect('order.lines', 'line')
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
+            .leftJoinAndSelect('product.translations', 'productTrans')
             .where('order.createdAt >= :from', { from: new Date(from) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
             .andWhere('(order.customFields.errandKind IS NULL)');
