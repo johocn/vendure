@@ -12,6 +12,7 @@ export interface ChannelResolveResult {
     customFields: {
         shopName: string | null;
         shopLogo: string | null;
+        billPayStoreImage: string | null;
         shopIntro: string | null;
         servicePhone: string | null;
         shopContent: string | null;
@@ -80,6 +81,7 @@ export class DomainResolverService {
             customFields: {
                 shopName: cf.shopName ?? null,
                 shopLogo: cf.shopLogo ?? null,
+                billPayStoreImage: cf.billPayStoreImage ?? null,
                 shopIntro: cf.shopIntro ?? null,
                 servicePhone: cf.servicePhone ?? null,
                 shopContent: cf.shopContent ?? null,

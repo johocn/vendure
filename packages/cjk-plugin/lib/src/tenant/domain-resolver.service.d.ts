@@ -9,6 +9,7 @@ export interface ChannelResolveResult {
     customFields: {
         shopName: string | null;
         shopLogo: string | null;
+        billPayStoreImage: string | null;
         shopIntro: string | null;
         servicePhone: string | null;
         shopContent: string | null;

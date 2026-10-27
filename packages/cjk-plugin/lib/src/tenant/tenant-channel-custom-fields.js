@@ -331,6 +331,15 @@ exports.tenantChannelCustomFields = {
             ],
         },
         {
+            name: 'billPayStoreImage',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '买单券门店照片 URL' }],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '买单券券卡门头图；建议 1:1、≥800×800；留空回退默认分享图 → 店铺 Logo → 店名首字插画' },
+            ],
+        },
+        {
             name: 'basicConfig',
             type: 'struct',
             nullable: true,

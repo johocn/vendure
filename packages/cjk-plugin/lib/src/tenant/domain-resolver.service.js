@@ -45,7 +45,7 @@ let DomainResolverService = class DomainResolverService {
     }
     /** Channel -> ChannelResolveResult 的统一映射（渠道 token 与装修 customFields） */
     toResult(channel) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const cf = channel.customFields || {};
         return {
             token: channel.token,
@@ -53,11 +53,12 @@ let DomainResolverService = class DomainResolverService {
             customFields: {
                 shopName: (_a = cf.shopName) !== null && _a !== void 0 ? _a : null,
                 shopLogo: (_b = cf.shopLogo) !== null && _b !== void 0 ? _b : null,
-                shopIntro: (_c = cf.shopIntro) !== null && _c !== void 0 ? _c : null,
-                servicePhone: (_d = cf.servicePhone) !== null && _d !== void 0 ? _d : null,
-                shopContent: (_e = cf.shopContent) !== null && _e !== void 0 ? _e : null,
-                displayTemplate: (_f = cf.displayTemplate) !== null && _f !== void 0 ? _f : null,
-                themeId: (_g = cf.themeId) !== null && _g !== void 0 ? _g : null,
+                billPayStoreImage: (_c = cf.billPayStoreImage) !== null && _c !== void 0 ? _c : null,
+                shopIntro: (_d = cf.shopIntro) !== null && _d !== void 0 ? _d : null,
+                servicePhone: (_e = cf.servicePhone) !== null && _e !== void 0 ? _e : null,
+                shopContent: (_f = cf.shopContent) !== null && _f !== void 0 ? _f : null,
+                displayTemplate: (_g = cf.displayTemplate) !== null && _g !== void 0 ? _g : null,
+                themeId: (_h = cf.themeId) !== null && _h !== void 0 ? _h : null,
             },
         };
     }

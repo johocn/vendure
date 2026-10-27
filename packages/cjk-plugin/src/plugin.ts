@@ -2160,6 +2160,7 @@ function mergeCustomFields<T extends { name: string }>(
                 type ChannelResolveCustomFields {
                     shopName: String
                     shopLogo: String
+                    billPayStoreImage: String
                     shareImageUrl: String
                     shopIntro: String
                     servicePhone: String

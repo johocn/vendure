@@ -2426,6 +2426,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 type ChannelResolveCustomFields {
                     shopName: String
                     shopLogo: String
+                    billPayStoreImage: String
                     shareImageUrl: String
                     shopIntro: String
                     servicePhone: String

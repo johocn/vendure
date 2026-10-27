@@ -57,6 +57,18 @@ export class ChannelCustomColumnMigration implements OnApplicationBootstrap {
                         }),
                     );
                 }
+                // billPayStoreImage 买单券门店照片（券卡门头图，留空由前端回退）
+                const BILL_PAY_STORE_IMAGE_COL = 'customFieldsBillpaystoreimage';
+                if (!(await queryRunner.hasColumn(tableName, BILL_PAY_STORE_IMAGE_COL))) {
+                    await queryRunner.addColumn(
+                        tableName,
+                        new TableColumn({
+                            name: BILL_PAY_STORE_IMAGE_COL,
+                            type: 'varchar(255)',
+                            isNullable: true,
+                        }),
+                    );
+                }
             } finally {
                 await queryRunner.release();
             }
