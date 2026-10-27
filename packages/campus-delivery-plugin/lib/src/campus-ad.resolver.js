@@ -12,18 +12,20 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CampusAdResolver = void 0;
+exports.CampusAdShopResolver = exports.CampusAdAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const permissions_1 = require("./permissions");
 const campus_ad_service_1 = require("./campus-ad.service");
 /**
- * P2-3 广告位与商家自助投放计费。
+ * P2-3 广告位与商家自助投放计费（admin-api）。
  * - 商家（CampusMerchant）：看广告位报价、下单、模拟支付、取消
  * - 平台（CampusConfig）：按渠道查投放单、审核通过/驳回
- * - C 端公开：按广告位取当前在投广告
+ *
+ * 注意：admin/shop 两套 schema 字段不同，resolver 必须拆开注册，
+ * 否则任一侧缺失字段都会在启动时报 "defined in resolvers, but not in schema"。
  */
-let CampusAdResolver = class CampusAdResolver {
+let CampusAdAdminResolver = class CampusAdAdminResolver {
     constructor(ads) {
         this.ads = ads;
     }
@@ -48,18 +50,15 @@ let CampusAdResolver = class CampusAdResolver {
     async campusReviewAd(ctx, id, approve, note) {
         return this.ads.review(ctx, id, approve, note);
     }
-    async campusActiveAds(ctx, slot) {
-        return this.ads.activeAds(ctx, slot);
-    }
 };
-exports.CampusAdResolver = CampusAdResolver;
+exports.CampusAdAdminResolver = CampusAdAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant, permissions_1.CampusPermissions.CampusConfig),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusAdSlots", null);
+], CampusAdAdminResolver.prototype, "campusAdSlots", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
@@ -67,7 +66,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusMerchantAds", null);
+], CampusAdAdminResolver.prototype, "campusMerchantAds", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
@@ -81,7 +80,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String, String, String, String, Object, Object]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusMerchantCreateAd", null);
+], CampusAdAdminResolver.prototype, "campusMerchantCreateAd", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
@@ -90,7 +89,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusMerchantPayAd", null);
+], CampusAdAdminResolver.prototype, "campusMerchantPayAd", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
@@ -99,7 +98,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusMerchantCancelAd", null);
+], CampusAdAdminResolver.prototype, "campusMerchantCancelAd", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
@@ -109,7 +108,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusAdCampaigns", null);
+], CampusAdAdminResolver.prototype, "campusAdCampaigns", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
@@ -120,7 +119,21 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Boolean, Object]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusReviewAd", null);
+], CampusAdAdminResolver.prototype, "campusReviewAd", null);
+exports.CampusAdAdminResolver = CampusAdAdminResolver = __decorate([
+    (0, graphql_1.Resolver)(),
+    __metadata("design:paramtypes", [campus_ad_service_1.CampusAdService])
+], CampusAdAdminResolver);
+/** P2-3 广告位（shop-api）：C 端公开只读取当前在投广告 */
+let CampusAdShopResolver = class CampusAdShopResolver {
+    constructor(ads) {
+        this.ads = ads;
+    }
+    async campusActiveAds(ctx, slot) {
+        return this.ads.activeAds(ctx, slot);
+    }
+};
+exports.CampusAdShopResolver = CampusAdShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Public),
@@ -129,9 +142,9 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
-], CampusAdResolver.prototype, "campusActiveAds", null);
-exports.CampusAdResolver = CampusAdResolver = __decorate([
+], CampusAdShopResolver.prototype, "campusActiveAds", null);
+exports.CampusAdShopResolver = CampusAdShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [campus_ad_service_1.CampusAdService])
-], CampusAdResolver);
+], CampusAdShopResolver);
 //# sourceMappingURL=campus-ad.resolver.js.map

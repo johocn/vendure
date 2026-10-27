@@ -43,7 +43,7 @@ import { P9P2SearchAssistMigration } from './migrations/p9-p2-search-assist';
 import { P9P3AdCampaignMigration } from './migrations/p9-p3-ad-campaign';
 import { CampusAdCampaign } from './campus-ad.entity';
 import { CampusAdService } from './campus-ad.service';
-import { CampusAdResolver } from './campus-ad.resolver';
+import { CampusAdAdminResolver, CampusAdShopResolver } from './campus-ad.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
 import { bindAddonFeeDeps, campusAddonFeeProcess } from './addon-fee.process';
@@ -1353,7 +1353,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1829,7 +1829,7 @@ import { SearchAssistService } from './search-assist.service';
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

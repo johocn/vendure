@@ -4,13 +4,15 @@ import { CampusPermissions } from './permissions';
 import { CampusAdService } from './campus-ad.service';
 
 /**
- * P2-3 广告位与商家自助投放计费。
+ * P2-3 广告位与商家自助投放计费（admin-api）。
  * - 商家（CampusMerchant）：看广告位报价、下单、模拟支付、取消
  * - 平台（CampusConfig）：按渠道查投放单、审核通过/驳回
- * - C 端公开：按广告位取当前在投广告
+ *
+ * 注意：admin/shop 两套 schema 字段不同，resolver 必须拆开注册，
+ * 否则任一侧缺失字段都会在启动时报 "defined in resolvers, but not in schema"。
  */
 @Resolver()
-export class CampusAdResolver {
+export class CampusAdAdminResolver {
     constructor(private ads: CampusAdService) {}
 
     @Query()
@@ -71,6 +73,12 @@ export class CampusAdResolver {
     ) {
         return this.ads.review(ctx, id, approve, note);
     }
+}
+
+/** P2-3 广告位（shop-api）：C 端公开只读取当前在投广告 */
+@Resolver()
+export class CampusAdShopResolver {
+    constructor(private ads: CampusAdService) {}
 
     @Query()
     @Allow(Permission.Public)
