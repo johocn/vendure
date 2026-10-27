@@ -107,6 +107,48 @@ describe('campusErrandCalculator', () => {
         expect(res!.metadata?.freeShipping).toBeUndefined();
     });
 
+    // ===== P3-4 配送费阶梯计价（按商品金额分档替换基价） =====
+    it('阶梯：命中「门槛 <= 商品金额」的最高档替换基价', async () => {
+        zoneRepo.find.mockResolvedValue([{ name: '东区', fee: 300 }]);
+        cfgRepo.findOne.mockResolvedValue({
+            deliveryFeeTiers: [{ minAmount: 2000, fee: 200 }, { minAmount: 4000, fee: 100 }],
+        });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { subTotalWithTax: 4500, customFields: { fulfillmentRoute: 'R1', campusZone: '东区' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(100);
+        expect(res!.metadata).toMatchObject({ zoneFee: 300, baseFee: 100, tier: { minAmount: 4000, fee: 100 } });
+    });
+
+    it('阶梯：未达最低档回退分区固定运费', async () => {
+        zoneRepo.find.mockResolvedValue([{ name: '东区', fee: 300 }]);
+        cfgRepo.findOne.mockResolvedValue({ deliveryFeeTiers: [{ minAmount: 2000, fee: 200 }] });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { subTotalWithTax: 1500, customFields: { fulfillmentRoute: 'R3', campusZone: '东区' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(300);
+        expect(res!.metadata?.tier).toBeUndefined();
+    });
+
+    it('阶梯：满免优先于阶梯（达门槛直接 0）', async () => {
+        zoneRepo.find.mockResolvedValue([{ name: '东区', fee: 300 }]);
+        cfgRepo.findOne.mockResolvedValue({
+            freeShippingThreshold: 3000,
+            deliveryFeeTiers: [{ minAmount: 2000, fee: 100 }],
+        });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { subTotalWithTax: 3500, customFields: { fulfillmentRoute: 'R1', campusZone: '东区' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(0);
+        expect(res!.metadata?.freeShipping).toBe(true);
+    });
+
     // ===== 动态计价覆盖跑腿/第三方（2026-10-23） =====
     const dynamicMul = (multiplier: number) => JSON.stringify({
         enabled: true, peakWindows: [], supply: null, manualMultiplier: multiplier, maxAddFee: 600,

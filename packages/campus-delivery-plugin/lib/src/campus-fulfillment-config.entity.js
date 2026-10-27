@@ -87,6 +87,10 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "freeShippingThreshold", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "deliveryFeeTiers", void 0);
+__decorate([
     (0, typeorm_1.Column)({ default: false }),
     __metadata("design:type", Boolean)
 ], CampusFulfillmentConfig.prototype, "merchantConfirmEnabled", void 0);

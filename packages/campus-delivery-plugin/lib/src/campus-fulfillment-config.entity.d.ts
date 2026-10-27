@@ -18,6 +18,11 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     errandBaseFee: number | null;
     thirdPartyBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 配送费阶梯（P3-4）：按商品金额分档替换分区运费基价，[{minAmount:分, fee:分}]，null=不启用 */
+    deliveryFeeTiers: Array<{
+        minAmount: number;
+        fee: number;
+    }> | null;
     merchantConfirmEnabled: boolean;
     merchantAutoOpenMinutes: number;
     timeoutCompensationEnabled: boolean;

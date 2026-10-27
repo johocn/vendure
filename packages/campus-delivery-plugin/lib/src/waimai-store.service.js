@@ -19,6 +19,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const route_matrix_1 = require("./route-matrix");
 const business_hours_1 = require("./business-hours");
 const packing_fee_1 = require("./packing-fee");
+const delivery_fee_tiers_1 = require("./delivery-fee-tiers");
 const search_assist_1 = require("./search-assist");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
 /** 小程序上架状态白名单（P2-1） */
@@ -122,6 +123,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 openNow: (0, business_hours_1.isWithinBusinessHours)((_o = cf.waimaiBusinessHours) !== null && _o !== void 0 ? _o : null) && !cfg.paused,
                 errandBaseFee: (_p = cfg.errandBaseFee) !== null && _p !== void 0 ? _p : null,
                 freeShippingThreshold: (_q = cfg.freeShippingThreshold) !== null && _q !== void 0 ? _q : null,
+                deliveryFeeTiers: cfg.deliveryFeeTiers ? JSON.stringify(cfg.deliveryFeeTiers) : null,
                 foodLicenseNo: (_r = cfg.foodLicenseNo) !== null && _r !== void 0 ? _r : null,
                 foodLicenseImage: (_s = cfg.foodLicenseImage) !== null && _s !== void 0 ? _s : null,
                 foodLicenseExpiry: (_t = cfg.foodLicenseExpiry) !== null && _t !== void 0 ? _t : null,
@@ -266,6 +268,29 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.thirdPartyBaseFee = (_x = nums.thirdPartyBaseFee) !== null && _x !== void 0 ? _x : null;
         if (input.freeShippingThreshold !== undefined)
             cfg.freeShippingThreshold = (_y = nums.freeShippingThreshold) !== null && _y !== void 0 ? _y : null;
+        // 配送费阶梯（P3-4）：未传即保留；传 null/空串关闭；JSON 解析失败或档位非法直接拒绝
+        if (input.deliveryFeeTiers !== undefined) {
+            let raw = input.deliveryFeeTiers;
+            if (typeof raw === 'string') {
+                const text = raw.trim();
+                if (!text)
+                    raw = null;
+                else {
+                    try {
+                        raw = JSON.parse(text);
+                    }
+                    catch (_16) {
+                        throw new core_1.UserInputError('配送费阶梯不是合法 JSON');
+                    }
+                }
+            }
+            try {
+                cfg.deliveryFeeTiers = (0, delivery_fee_tiers_1.normalizeDeliveryFeeTiers)(raw);
+            }
+            catch (e) {
+                throw new core_1.UserInputError((e === null || e === void 0 ? void 0 : e.message) || '配送费阶梯不合法');
+            }
+        }
         for (const key of NOTIFY_TEMPLATE_FIELDS) {
             if (input[key] !== undefined)
                 cfg[key] = (_z = input[key]) !== null && _z !== void 0 ? _z : null;
@@ -353,7 +378,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_16) {
+                catch (_17) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -553,6 +578,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             errandBaseFee: (_h = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _h !== void 0 ? _h : null,
             thirdPartyBaseFee: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.thirdPartyBaseFee) !== null && _j !== void 0 ? _j : null,
             freeShippingThreshold: (_k = cfg === null || cfg === void 0 ? void 0 : cfg.freeShippingThreshold) !== null && _k !== void 0 ? _k : null,
+            deliveryFeeTiers: (cfg === null || cfg === void 0 ? void 0 : cfg.deliveryFeeTiers) ? JSON.stringify(cfg.deliveryFeeTiers) : null,
             notifyTemplateAccepted: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAccepted) !== null && _l !== void 0 ? _l : null,
             notifyTemplateRiderAssigned: (_m = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateRiderAssigned) !== null && _m !== void 0 ? _m : null,
             notifyTemplateCookingDone: (_o = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCookingDone) !== null && _o !== void 0 ? _o : null,

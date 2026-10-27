@@ -49,6 +49,7 @@ const campus_locker_resolver_1 = require("./campus-locker.resolver");
 const p9_p4_locker_1 = require("./migrations/p9-p4-locker");
 const p9_p5_rider_compliance_1 = require("./migrations/p9-p5-rider-compliance");
 const p9_p6_taste_profile_1 = require("./migrations/p9-p6-taste-profile");
+const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tiers");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
@@ -292,6 +293,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p4_locker_1.P9P4LockerMigration,
             p9_p5_rider_compliance_1.P9P5RiderComplianceMigration,
             p9_p6_taste_profile_1.P9P6TasteProfileMigration,
+            p9_p7_delivery_fee_tiers_1.P9P7DeliveryFeeTiersMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -380,6 +382,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     merchantConfirmEnabled: Boolean!
                     merchantAutoOpenMinutes: Int!
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
@@ -401,6 +405,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     compensationCouponTemplateId: String
                     merchantConfirmEnabled: Boolean
                     merchantAutoOpenMinutes: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
@@ -707,6 +713,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     errandBaseFee: Int
                     thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
@@ -806,6 +814,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     errandBaseFee: Int
                     thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
@@ -1766,6 +1776,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     openNow: Boolean!
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     foodLicenseNo: String
                     foodLicenseImage: String
                     foodLicenseExpiry: String

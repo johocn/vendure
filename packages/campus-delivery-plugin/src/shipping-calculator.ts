@@ -2,6 +2,7 @@ import { Customer, ID, LanguageCode, Order, ShippingCalculator, TransactionalCon
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
+import { parseDeliveryFeeTiers, resolveDeliveryFeeTier } from './delivery-fee-tiers';
 
 /**
  * 校园单运费 calculator：R5 跑腿单固定起步价（errandBaseFee）+ R1/R3 分区运费（zone.fee）。
@@ -185,10 +186,13 @@ export async function quoteZoneFee(
             metadata: { zoneName: zone.name, calculator: 'campus-errand', freeShipping: true, originalPrice: zone.fee, threshold },
         };
     }
+    // 配送费阶梯（P3-4）：按商品金额取命中档位替换基价；未达最低档回退分区固定运费
+    const tier = resolveDeliveryFeeTier(parseDeliveryFeeTiers(cfg?.deliveryFeeTiers), goods);
+    const baseFee = tier ? tier.fee : zone.fee;
     const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
     const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
-    const quote = quoteDynamicFee({ baseFee: zone.fee, config: pricing, at: new Date(), backlog, onlineRiders });
+    const quote = quoteDynamicFee({ baseFee, config: pricing, at: new Date(), backlog, onlineRiders });
     return {
         price: quote.price,
         priceIncludesTax: true,
@@ -196,10 +200,12 @@ export async function quoteZoneFee(
         metadata: {
             zoneName: zone.name,
             calculator: 'campus-errand',
+            zoneFee: zone.fee,
             baseFee: quote.baseFee,
             addFee: quote.addFee,
             breakdown: quote.breakdown,
             pricing: pricing.enabled ? 'dynamic' : 'zone-fee',
+            ...(tier ? { tier: { minAmount: tier.minAmount, fee: tier.fee } } : {}),
         },
     };
 }

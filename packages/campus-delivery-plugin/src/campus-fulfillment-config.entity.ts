@@ -22,6 +22,9 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'int', nullable: true }) errandBaseFee: number | null; // R5 跑腿起步价（分；null=默认 200）
     @Column({ type: 'int', nullable: true }) thirdPartyBaseFee: number | null; // R2 第三方到校配送基价（分；null=不接管，沿用店铺普通快递运费）
     @Column({ type: 'int', nullable: true }) freeShippingThreshold: number | null; // 满 X 元免配送费（分；null=不启用，仅 R1/R3 外卖单）
+    /** 配送费阶梯（P3-4）：按商品金额分档替换分区运费基价，[{minAmount:分, fee:分}]，null=不启用 */
+    @Column({ type: 'simple-json', nullable: true })
+    deliveryFeeTiers: Array<{ minAmount: number; fee: number }> | null;
     @Column({ default: false }) merchantConfirmEnabled: boolean; // 商家接单确认模式：支付后先待商家接单，出餐完成才入大厅
     @Column({ type: 'int', default: 15 }) merchantAutoOpenMinutes: number; // 商家未处理（待接单/备餐中）超时自动入厅，防卡单
     // 超时赔付（P0）：开关默认开，缺券模板时扫到会限频告警（等运营补配置）

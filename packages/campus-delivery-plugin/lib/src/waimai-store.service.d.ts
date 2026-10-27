@@ -21,6 +21,8 @@ export interface WaimaiStore {
     openNow: boolean;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 配送费阶梯（P3-4）JSON 字符串：[{minAmount:分, fee:分}]，null=不启用 */
+    deliveryFeeTiers: string | null;
     /** 食安公示（未配置的字段为 null，C 端不渲染对应行） */
     foodLicenseNo: string | null;
     foodLicenseImage: string | null;
@@ -50,6 +52,8 @@ export interface CampusStoreConfigWithChannel {
     errandBaseFee: number | null;
     thirdPartyBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 配送费阶梯（P3-4）JSON 字符串：[{minAmount:分, fee:分}]，null=不启用 */
+    deliveryFeeTiers: string | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;
@@ -162,6 +166,11 @@ export declare class WaimaiStoreService {
         errandBaseFee?: number | null;
         thirdPartyBaseFee?: number | null;
         freeShippingThreshold?: number | null;
+        /** 配送费阶梯：JSON 字符串（[{minAmount:分, fee:分}]）或数组；null/空=不启用 */
+        deliveryFeeTiers?: Array<{
+            minAmount: number;
+            fee: number;
+        }> | string | null;
         notifyTemplateAccepted?: string | null;
         notifyTemplateRiderAssigned?: string | null;
         notifyTemplateCookingDone?: string | null;

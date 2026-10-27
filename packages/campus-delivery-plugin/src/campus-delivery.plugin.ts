@@ -50,6 +50,7 @@ import { CampusLockerAdminResolver, CampusLockerShopResolver } from './campus-lo
 import { P9P4LockerMigration } from './migrations/p9-p4-locker';
 import { P9P5RiderComplianceMigration } from './migrations/p9-p5-rider-compliance';
 import { P9P6TasteProfileMigration } from './migrations/p9-p6-taste-profile';
+import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-tiers';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -159,6 +160,7 @@ import { SearchAssistService } from './search-assist.service';
         P9P4LockerMigration,
         P9P5RiderComplianceMigration,
         P9P6TasteProfileMigration,
+        P9P7DeliveryFeeTiersMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -247,6 +249,8 @@ import { SearchAssistService } from './search-assist.service';
                     merchantConfirmEnabled: Boolean!
                     merchantAutoOpenMinutes: Int!
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     """超时赔付回扫窗口（小时，1-168），默认 24"""
@@ -268,6 +272,8 @@ import { SearchAssistService } from './search-assist.service';
                     compensationCouponTemplateId: String
                     merchantConfirmEnabled: Boolean
                     merchantAutoOpenMinutes: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
                     timeoutCompensationWindowHours: Int
@@ -574,6 +580,8 @@ import { SearchAssistService } from './search-assist.service';
                     errandBaseFee: Int
                     thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
@@ -673,6 +681,8 @@ import { SearchAssistService } from './search-assist.service';
                     errandBaseFee: Int
                     thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
@@ -1633,6 +1643,8 @@ import { SearchAssistService } from './search-assist.service';
                     openNow: Boolean!
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""
+                    deliveryFeeTiers: String
                     foodLicenseNo: String
                     foodLicenseImage: String
                     foodLicenseExpiry: String

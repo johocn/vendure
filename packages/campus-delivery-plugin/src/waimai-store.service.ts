@@ -4,6 +4,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusRoute, normalizeRouteFirstLeg, ROUTE_FIRST_LEG_OPTIONS } from './route-matrix';
 import { isWithinBusinessHours } from './business-hours';
 import { normalizePackingFeeMode, PACKING_FEE_MODES } from './packing-fee';
+import { normalizeDeliveryFeeTiers } from './delivery-fee-tiers';
 import { SEARCH_ASSIST_PROVIDER_NAMES } from './search-assist';
 
 export interface WaimaiStore {
@@ -27,6 +28,8 @@ export interface WaimaiStore {
     openNow: boolean;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 配送费阶梯（P3-4）JSON 字符串：[{minAmount:分, fee:分}]，null=不启用 */
+    deliveryFeeTiers: string | null;
     /** 食安公示（未配置的字段为 null，C 端不渲染对应行） */
     foodLicenseNo: string | null;
     foodLicenseImage: string | null;
@@ -57,6 +60,8 @@ export interface CampusStoreConfigWithChannel {
     errandBaseFee: number | null;
     thirdPartyBaseFee: number | null;
     freeShippingThreshold: number | null;
+    /** 配送费阶梯（P3-4）JSON 字符串：[{minAmount:分, fee:分}]，null=不启用 */
+    deliveryFeeTiers: string | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;
@@ -232,6 +237,7 @@ export class WaimaiStoreService {
                 openNow: isWithinBusinessHours(cf.waimaiBusinessHours ?? null) && !cfg.paused,
                 errandBaseFee: cfg.errandBaseFee ?? null,
                 freeShippingThreshold: cfg.freeShippingThreshold ?? null,
+                deliveryFeeTiers: cfg.deliveryFeeTiers ? JSON.stringify(cfg.deliveryFeeTiers) : null,
                 foodLicenseNo: cfg.foodLicenseNo ?? null,
                 foodLicenseImage: cfg.foodLicenseImage ?? null,
                 foodLicenseExpiry: cfg.foodLicenseExpiry ?? null,
@@ -278,6 +284,8 @@ export class WaimaiStoreService {
             errandBaseFee?: number | null;
             thirdPartyBaseFee?: number | null;
             freeShippingThreshold?: number | null;
+            /** 配送费阶梯：JSON 字符串（[{minAmount:分, fee:分}]）或数组；null/空=不启用 */
+            deliveryFeeTiers?: Array<{ minAmount: number; fee: number }> | string | null;
             notifyTemplateAccepted?: string | null;
             notifyTemplateRiderAssigned?: string | null;
             notifyTemplateCookingDone?: string | null;
@@ -435,6 +443,26 @@ export class WaimaiStoreService {
         // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
         if (input.thirdPartyBaseFee !== undefined) cfg.thirdPartyBaseFee = nums.thirdPartyBaseFee ?? null;
         if (input.freeShippingThreshold !== undefined) cfg.freeShippingThreshold = nums.freeShippingThreshold ?? null;
+        // 配送费阶梯（P3-4）：未传即保留；传 null/空串关闭；JSON 解析失败或档位非法直接拒绝
+        if (input.deliveryFeeTiers !== undefined) {
+            let raw: any = input.deliveryFeeTiers;
+            if (typeof raw === 'string') {
+                const text = raw.trim();
+                if (!text) raw = null;
+                else {
+                    try {
+                        raw = JSON.parse(text);
+                    } catch {
+                        throw new UserInputError('配送费阶梯不是合法 JSON');
+                    }
+                }
+            }
+            try {
+                cfg.deliveryFeeTiers = normalizeDeliveryFeeTiers(raw);
+            } catch (e: any) {
+                throw new UserInputError(e?.message || '配送费阶梯不合法');
+            }
+        }
         for (const key of NOTIFY_TEMPLATE_FIELDS) {
             if (input[key] !== undefined) (cfg as any)[key] = input[key] ?? null;
         }
@@ -710,6 +738,7 @@ export class WaimaiStoreService {
             errandBaseFee: cfg?.errandBaseFee ?? null,
             thirdPartyBaseFee: cfg?.thirdPartyBaseFee ?? null,
             freeShippingThreshold: cfg?.freeShippingThreshold ?? null,
+            deliveryFeeTiers: cfg?.deliveryFeeTiers ? JSON.stringify(cfg.deliveryFeeTiers) : null,
             notifyTemplateAccepted: cfg?.notifyTemplateAccepted ?? null,
             notifyTemplateRiderAssigned: cfg?.notifyTemplateRiderAssigned ?? null,
             notifyTemplateCookingDone: cfg?.notifyTemplateCookingDone ?? null,

@@ -18,6 +18,7 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
+const delivery_fee_tiers_1 = require("./delivery-fee-tiers");
 /** 本地日期 YYYY-MM-DD（slotDate 为本地日期字符串，勿用 UTC 的 toISOString） */
 function localDateStr(d) {
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -259,6 +260,18 @@ let CampusConfigService = CampusConfigService_1 = class CampusConfigService {
                 throw new core_1.UserInputError(`${field} 必须是对象`);
             }
         }
+        // 配送费阶梯（P3-4）：接受数组或 JSON 字符串，统一严格校验后存数组
+        if (patch.deliveryFeeTiers !== undefined) {
+            try {
+                const raw = typeof patch.deliveryFeeTiers === 'string'
+                    ? (String(patch.deliveryFeeTiers).trim() ? JSON.parse(patch.deliveryFeeTiers) : null)
+                    : patch.deliveryFeeTiers;
+                patch.deliveryFeeTiers = (0, delivery_fee_tiers_1.normalizeDeliveryFeeTiers)(raw);
+            }
+            catch (e) {
+                throw new core_1.UserInputError((e === null || e === void 0 ? void 0 : e.message) || '配送费阶梯不合法');
+            }
+        }
         if (patch.handoverPoints !== undefined && patch.handoverPoints !== null) {
             const points = patch.handoverPoints;
             if (typeof points !== 'object' || Array.isArray(points)) {
@@ -435,7 +448,7 @@ CampusConfigService.WRITABLE_FIELDS = new Set([
     'routesEnabled', 'riderCommissionRate', 'autoAssignMinutes', 'paused', 'autoRefundMinutes',
     'inProgressSlaMinutes', 'compensationCouponTemplateId', 'deliveryMinutes', 'minOrderAmount',
     'deliveryFee', 'storeAddress', 'storePhone', 'storeNotice', 'errandBaseFee', 'thirdPartyBaseFee',
-    'freeShippingThreshold', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
+    'freeShippingThreshold', 'deliveryFeeTiers', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
     'timeoutCompensationEnabled', 'timeoutGraceMinutes', 'timeoutCompensationWindowHours',
     'timeoutCompensationCouponTemplateId',
     'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',

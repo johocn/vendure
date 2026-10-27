@@ -5,6 +5,7 @@ import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { DeliverySlot } from './delivery-slot.entity';
+import { normalizeDeliveryFeeTiers } from './delivery-fee-tiers';
 
 /** 本地日期 YYYY-MM-DD（slotDate 为本地日期字符串，勿用 UTC 的 toISOString） */
 function localDateStr(d: Date): string {
@@ -173,7 +174,7 @@ export class CampusConfigService {
         'routesEnabled', 'riderCommissionRate', 'autoAssignMinutes', 'paused', 'autoRefundMinutes',
         'inProgressSlaMinutes', 'compensationCouponTemplateId', 'deliveryMinutes', 'minOrderAmount',
         'deliveryFee', 'storeAddress', 'storePhone', 'storeNotice', 'errandBaseFee', 'thirdPartyBaseFee',
-        'freeShippingThreshold', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
+        'freeShippingThreshold', 'deliveryFeeTiers', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
         'timeoutCompensationEnabled', 'timeoutGraceMinutes', 'timeoutCompensationWindowHours',
         'timeoutCompensationCouponTemplateId',
         'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
@@ -287,6 +288,17 @@ export class CampusConfigService {
             const v = (patch as any)[field];
             if (v !== undefined && v !== null && (typeof v !== 'object' || Array.isArray(v))) {
                 throw new UserInputError(`${field} 必须是对象`);
+            }
+        }
+        // 配送费阶梯（P3-4）：接受数组或 JSON 字符串，统一严格校验后存数组
+        if (patch.deliveryFeeTiers !== undefined) {
+            try {
+                const raw = typeof patch.deliveryFeeTiers === 'string'
+                    ? (String(patch.deliveryFeeTiers).trim() ? JSON.parse(patch.deliveryFeeTiers as any) : null)
+                    : patch.deliveryFeeTiers;
+                patch.deliveryFeeTiers = normalizeDeliveryFeeTiers(raw) as any;
+            } catch (e: any) {
+                throw new UserInputError(e?.message || '配送费阶梯不合法');
             }
         }
         if (patch.handoverPoints !== undefined && patch.handoverPoints !== null) {

@@ -55,18 +55,19 @@ export declare function quoteZoneFee(conn: TransactionalConnection, channelId: I
         freeShipping: boolean;
         originalPrice: number;
         threshold: number;
-        baseFee?: undefined;
-        addFee?: undefined;
-        breakdown?: undefined;
-        pricing?: undefined;
     };
 } | {
     price: number;
     priceIncludesTax: boolean;
     taxRate: number;
     metadata: {
+        tier?: {
+            minAmount: number;
+            fee: number;
+        } | undefined;
         zoneName: string;
         calculator: string;
+        zoneFee: number;
         baseFee: number;
         addFee: number;
         breakdown: import("./dynamic-pricing").PricingBreakdownItem[];

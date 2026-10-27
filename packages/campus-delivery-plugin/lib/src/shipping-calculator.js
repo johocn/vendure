@@ -11,6 +11,7 @@ const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const dynamic_pricing_1 = require("./dynamic-pricing");
+const delivery_fee_tiers_1 = require("./delivery-fee-tiers");
 /**
  * 校园单运费 calculator：R5 跑腿单固定起步价（errandBaseFee）+ R1/R3 分区运费（zone.fee）。
  * 适用：R5 跑腿单（orderKind='errand'）+ R1/R3 外卖单（fulfillmentRoute，plan2 §Task6/7 结算链路
@@ -172,22 +173,18 @@ async function quoteZoneFee(conn, channelId, zone, cfg, order) {
             metadata: { zoneName: zone.name, calculator: 'campus-errand', freeShipping: true, originalPrice: zone.fee, threshold },
         };
     }
+    // 配送费阶梯（P3-4）：按商品金额取命中档位替换基价；未达最低档回退分区固定运费
+    const tier = (0, delivery_fee_tiers_1.resolveDeliveryFeeTier)((0, delivery_fee_tiers_1.parseDeliveryFeeTiers)(cfg === null || cfg === void 0 ? void 0 : cfg.deliveryFeeTiers), goods);
+    const baseFee = tier ? tier.fee : zone.fee;
     const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_d = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _d !== void 0 ? _d : null);
     const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
     const onlineRiders = pricing.enabled && pricing.supply ? await readOnlineRiderCount(conn, channelId) : 0;
-    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: zone.fee, config: pricing, at: new Date(), backlog, onlineRiders });
+    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee, config: pricing, at: new Date(), backlog, onlineRiders });
     return {
         price: quote.price,
         priceIncludesTax: true,
         taxRate: 0,
-        metadata: {
-            zoneName: zone.name,
-            calculator: 'campus-errand',
-            baseFee: quote.baseFee,
-            addFee: quote.addFee,
-            breakdown: quote.breakdown,
-            pricing: pricing.enabled ? 'dynamic' : 'zone-fee',
-        },
+        metadata: Object.assign({ zoneName: zone.name, calculator: 'campus-errand', zoneFee: zone.fee, baseFee: quote.baseFee, addFee: quote.addFee, breakdown: quote.breakdown, pricing: pricing.enabled ? 'dynamic' : 'zone-fee' }, (tier ? { tier: { minAmount: tier.minAmount, fee: tier.fee } } : {})),
     };
 }
 //# sourceMappingURL=shipping-calculator.js.map
