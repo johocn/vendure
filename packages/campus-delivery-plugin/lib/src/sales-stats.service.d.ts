@@ -85,7 +85,7 @@ export interface SalesStatsPayload {
     medianGmvFen: number;
 }
 export declare function normalizeSalesRange(v?: string | null): SalesRange;
-/** 本窗口起点：today=校园时区 0 点；7d/30d=滚动窗口。 */
+/** 本窗口起点：today=校园时区今日 0 点；7d/30d=「近 N 个自然日」的 0 点（与日趋势补零区间对齐）。 */
 export declare function salesWindowStart(range: SalesRange, now: number): number;
 /** 上一窗口：7d/30d=紧邻等长窗口；today=昨日同时长窗口（昨日 0 点 → 昨日同刻）。 */
 export declare function salesPrevWindow(range: SalesRange, windowStart: number, now: number): {

@@ -66,6 +66,11 @@ describe('normalizeSalesRange / 窗口', () => {
         expect(prevEnd - prevStart).toBe(now - ws);
     });
 
+    it('7d 起点对齐到「近 7 个自然日」的 0 点', () => {
+        expect(salesWindowStart('7d', now)).toBe(new Date('2026-10-21T00:00:00+08:00').getTime());
+        expect(salesWindowStart('30d', now)).toBe(new Date('2026-09-28T00:00:00+08:00').getTime());
+    });
+
     it('7d 上一窗口=紧邻等长', () => {
         const ws = salesWindowStart('7d', now);
         const { prevStart, prevEnd } = salesPrevWindow('7d', ws, now);

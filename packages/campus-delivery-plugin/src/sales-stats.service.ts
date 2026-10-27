@@ -103,12 +103,13 @@ export function normalizeSalesRange(v?: string | null): SalesRange {
     return v === 'today' || v === '30d' ? v : '7d';
 }
 
-/** 本窗口起点：today=校园时区 0 点；7d/30d=滚动窗口。 */
+/** 本窗口起点：today=校园时区今日 0 点；7d/30d=「近 N 个自然日」的 0 点（与日趋势补零区间对齐）。 */
 export function salesWindowStart(range: SalesRange, now: number): number {
     if (range === 'today') {
         return startOfCampusDay(now);
     }
-    return now - RANGE_MS[range];
+    const days = range === '7d' ? 7 : 30;
+    return startOfCampusDay(now - (days - 1) * 24 * 3600_000);
 }
 
 /** 上一窗口：7d/30d=紧邻等长窗口；today=昨日同时长窗口（昨日 0 点 → 昨日同刻）。 */
