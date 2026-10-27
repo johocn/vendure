@@ -570,12 +570,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     date: String!
                     orders: Int!
                     gross: Int!
+                    cancelled: Int!
+                    cancelledAmount: Int!
                 }
 
                 type CampusMerchantRevenue {
                     today: CampusMerchantRevenueBucket!
                     last7: CampusMerchantRevenueBucket!
                     days: [CampusMerchantRevenueDay!]!
+                    """P3-2 导出用：近 30 日（含今日）逐日明细，口径与 days 一致"""
+                    days30: [CampusMerchantRevenueDay!]!
                 }
 
                 type DispatchAlert {

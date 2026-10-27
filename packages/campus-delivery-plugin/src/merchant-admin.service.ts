@@ -142,12 +142,16 @@ export interface MerchantRevenueDay {
     date: string; // MM-DD
     orders: number;
     gross: number;
+    cancelled: number;
+    cancelledAmount: number;
 }
 
 export interface MerchantRevenue {
     today: MerchantRevenueBucket;
     last7: MerchantRevenueBucket;
     days: MerchantRevenueDay[];
+    /** P3-2 导出用：近 30 日（含今日）逐日明细，口径与 days 完全一致 */
+    days30: MerchantRevenueDay[];
 }
 
 /**
@@ -214,12 +218,14 @@ export class MerchantAdminService {
         return this.storeProfile(ctx);
     }
 
-    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款 */
+    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款；另附近 30 日逐日明细供导出 */
     async revenue(ctx: RequestContext): Promise<MerchantRevenue> {
         const now = Date.now();
         const today0 = startOfCampusDay(now);
         const DAY_MS = 24 * 3600_000;
-        const since = today0 - 6 * DAY_MS;
+        const DAYS = 30;
+        const since = today0 - (DAYS - 1) * DAY_MS;
+        const last7From = campusDayKey(today0 - 6 * DAY_MS);
         const orders = await this.connection.getRepository(ctx, Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -228,9 +234,9 @@ export class MerchantAdminService {
             .andWhere('order.createdAt >= :since', { since: new Date(since) })
             .getMany();
         const dayMap = new Map<string, MerchantRevenueDay>();
-        for (let i = 6; i >= 0; i--) {
+        for (let i = DAYS - 1; i >= 0; i--) {
             const key = campusDayKey(today0 - i * DAY_MS);
-            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0 });
+            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
         }
         const todayKey = campusDayKey(now);
         const empty = (): MerchantRevenueBucket => ({ orders: 0, gross: 0, avgTicket: 0, cancelled: 0, cancelledAmount: 0 });
@@ -241,11 +247,20 @@ export class MerchantAdminService {
             const total = o.totalWithTax ?? 0;
             if (o.state === 'Cancelled') {
                 const key = campusDayKey(new Date(o.createdAt).getTime());
-                last7.cancelled += 1;
-                last7.cancelledAmount += total;
-                if (key === todayKey) {
-                    today.cancelled += 1;
-                    today.cancelledAmount += total;
+                // 逐日口径：取消单按「下单日」归日，全额退款计 cancelledAmount
+                const day = dayMap.get(key);
+                if (day) {
+                    day.cancelled += 1;
+                    day.cancelledAmount += total;
+                }
+                // 窗口口径只统计近 7 日（查询窗口已扩到 30 日，必须显式收窄）
+                if (key >= last7From) {
+                    last7.cancelled += 1;
+                    last7.cancelledAmount += total;
+                    if (key === todayKey) {
+                        today.cancelled += 1;
+                        today.cancelledAmount += total;
+                    }
                 }
                 continue;
             }
@@ -257,16 +272,19 @@ export class MerchantAdminService {
                 day.orders += 1;
                 day.gross += total;
             }
-            last7.orders += 1;
-            last7.gross += total;
-            if (key === todayKey) {
-                today.orders += 1;
-                today.gross += total;
+            if (key >= last7From) {
+                last7.orders += 1;
+                last7.gross += total;
+                if (key === todayKey) {
+                    today.orders += 1;
+                    today.gross += total;
+                }
             }
         }
         today.avgTicket = today.orders ? Math.round(today.gross / today.orders) : 0;
         last7.avgTicket = last7.orders ? Math.round(last7.gross / last7.orders) : 0;
-        return { today, last7, days: [...dayMap.values()] };
+        const allDays = [...dayMap.values()];
+        return { today, last7, days: allDays.slice(-7), days30: allDays };
     }
 
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */

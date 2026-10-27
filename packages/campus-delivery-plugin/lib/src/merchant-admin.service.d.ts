@@ -106,11 +106,15 @@ export interface MerchantRevenueDay {
     date: string;
     orders: number;
     gross: number;
+    cancelled: number;
+    cancelledAmount: number;
 }
 export interface MerchantRevenue {
     today: MerchantRevenueBucket;
     last7: MerchantRevenueBucket;
     days: MerchantRevenueDay[];
+    /** P3-2 导出用：近 30 日（含今日）逐日明细，口径与 days 完全一致 */
+    days30: MerchantRevenueDay[];
 }
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
@@ -136,7 +140,7 @@ export declare class MerchantAdminService {
         storeNotice?: string | null;
         storePhone?: string | null;
     }): Promise<MerchantStoreProfile>;
-    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款 */
+    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款；另附近 30 日逐日明细供导出 */
     revenue(ctx: RequestContext): Promise<MerchantRevenue>;
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     customerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;

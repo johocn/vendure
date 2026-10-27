@@ -92,13 +92,15 @@ let MerchantAdminService = class MerchantAdminService {
             await this.config.updateConfig(ctx, patch);
         return this.storeProfile(ctx);
     }
-    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款 */
+    /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款；另附近 30 日逐日明细供导出 */
     async revenue(ctx) {
         var _a;
         const now = Date.now();
         const today0 = (0, campus_time_1.startOfCampusDay)(now);
         const DAY_MS = 24 * 3600000;
-        const since = today0 - 6 * DAY_MS;
+        const DAYS = 30;
+        const since = today0 - (DAYS - 1) * DAY_MS;
+        const last7From = (0, campus_time_1.campusDayKey)(today0 - 6 * DAY_MS);
         const orders = await this.connection.getRepository(ctx, core_1.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -107,9 +109,9 @@ let MerchantAdminService = class MerchantAdminService {
             .andWhere('order.createdAt >= :since', { since: new Date(since) })
             .getMany();
         const dayMap = new Map();
-        for (let i = 6; i >= 0; i--) {
+        for (let i = DAYS - 1; i >= 0; i--) {
             const key = (0, campus_time_1.campusDayKey)(today0 - i * DAY_MS);
-            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0 });
+            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
         }
         const todayKey = (0, campus_time_1.campusDayKey)(now);
         const empty = () => ({ orders: 0, gross: 0, avgTicket: 0, cancelled: 0, cancelledAmount: 0 });
@@ -120,11 +122,20 @@ let MerchantAdminService = class MerchantAdminService {
             const total = (_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0;
             if (o.state === 'Cancelled') {
                 const key = (0, campus_time_1.campusDayKey)(new Date(o.createdAt).getTime());
-                last7.cancelled += 1;
-                last7.cancelledAmount += total;
-                if (key === todayKey) {
-                    today.cancelled += 1;
-                    today.cancelledAmount += total;
+                // 逐日口径：取消单按「下单日」归日，全额退款计 cancelledAmount
+                const day = dayMap.get(key);
+                if (day) {
+                    day.cancelled += 1;
+                    day.cancelledAmount += total;
+                }
+                // 窗口口径只统计近 7 日（查询窗口已扩到 30 日，必须显式收窄）
+                if (key >= last7From) {
+                    last7.cancelled += 1;
+                    last7.cancelledAmount += total;
+                    if (key === todayKey) {
+                        today.cancelled += 1;
+                        today.cancelledAmount += total;
+                    }
                 }
                 continue;
             }
@@ -137,16 +148,19 @@ let MerchantAdminService = class MerchantAdminService {
                 day.orders += 1;
                 day.gross += total;
             }
-            last7.orders += 1;
-            last7.gross += total;
-            if (key === todayKey) {
-                today.orders += 1;
-                today.gross += total;
+            if (key >= last7From) {
+                last7.orders += 1;
+                last7.gross += total;
+                if (key === todayKey) {
+                    today.orders += 1;
+                    today.gross += total;
+                }
             }
         }
         today.avgTicket = today.orders ? Math.round(today.gross / today.orders) : 0;
         last7.avgTicket = last7.orders ? Math.round(last7.gross / last7.orders) : 0;
-        return { today, last7, days: [...dayMap.values()] };
+        const allDays = [...dayMap.values()];
+        return { today, last7, days: allDays.slice(-7), days30: allDays };
     }
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     async customerContact(ctx, orderId) {
