@@ -14,6 +14,13 @@ export interface SalesOrderLineLike {
                 languageCode: string;
                 name: string;
             }> | null;
+            collections?: Array<{
+                id: unknown;
+                translations?: Array<{
+                    languageCode: string;
+                    name: string;
+                }> | null;
+            }> | null;
         } | null;
     } | null;
 }
@@ -68,6 +75,11 @@ export interface SalesProductRow {
     quantity: number;
     gmvFen: number;
     quadrant: SalesQuadrant;
+    /** 所属分类（可能多个；商品结构导出按分类筛选用） */
+    categories: Array<{
+        id: string;
+        name: string;
+    }>;
 }
 export interface SalesCohorts {
     once: number;

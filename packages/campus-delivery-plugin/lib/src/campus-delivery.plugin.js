@@ -1412,6 +1412,13 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     gmvFen: Float!
                     """star 明星 / traffic 引流 / premium 利润 / slow 滞销"""
                     quadrant: String!
+                    """所属分类（商品结构导出按分类筛选用）"""
+                    categories: [CampusSalesProductCategory!]!
+                }
+
+                type CampusSalesProductCategory {
+                    id: ID!
+                    name: String!
                 }
 
                 type CampusSalesCohorts {

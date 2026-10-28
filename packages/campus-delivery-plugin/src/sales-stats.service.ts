@@ -22,6 +22,10 @@ export interface SalesOrderLineLike {
             id: unknown;
             name?: string | null;
             translations?: Array<{ languageCode: string; name: string }> | null;
+            collections?: Array<{
+                id: unknown;
+                translations?: Array<{ languageCode: string; name: string }> | null;
+            }> | null;
         } | null;
     } | null;
 }
@@ -79,6 +83,8 @@ export interface SalesProductRow {
     quantity: number;
     gmvFen: number;
     quadrant: SalesQuadrant;
+    /** 所属分类（可能多个；商品结构导出按分类筛选用） */
+    categories: Array<{ id: string; name: string }>;
 }
 
 export interface SalesCohorts {
@@ -170,6 +176,17 @@ function productNameOf(product: NonNullable<NonNullable<SalesOrderLineLike['prod
     const translations = product.translations ?? [];
     const hit = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh') ?? translations[0];
     return hit?.name || `#${product.id}`;
+}
+
+/** 商品所属分类（Collection），名称优先中文，其次第一条翻译。 */
+function categoriesOf(
+    product: NonNullable<NonNullable<SalesOrderLineLike['productVariant']>['product']>,
+): Array<{ id: string; name: string }> {
+    return (product.collections ?? []).map(c => {
+        const translations = c.translations ?? [];
+        const hit = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh') ?? translations[0];
+        return { id: String(c.id), name: hit?.name || `#${c.id}` };
+    });
 }
 
 /** 有效销售单：已付款未取消 + 排除跑腿单（跑腿无商品，会污染菜品四象限与客单价）。 */
@@ -265,13 +282,13 @@ export function aggregateSalesStats(args: {
     }
 
     // 菜品聚合（按商品，非规格）
-    const byProduct = new Map<string, { name: string; quantity: number; gmvFen: number }>();
+    const byProduct = new Map<string, { name: string; quantity: number; gmvFen: number; categories: Array<{ id: string; name: string }> }>();
     for (const o of curOrders) {
         for (const line of o.lines ?? []) {
             const product = line.productVariant?.product;
             if (!product) continue;
             const pid = String(product.id);
-            const b = byProduct.get(pid) ?? { name: productNameOf(product), quantity: 0, gmvFen: 0 };
+            const b = byProduct.get(pid) ?? { name: productNameOf(product), quantity: 0, gmvFen: 0, categories: categoriesOf(product) };
             b.quantity += line.quantity ?? 0;
             b.gmvFen += line.linePriceWithTax ?? 0;
             byProduct.set(pid, b);
@@ -365,6 +382,8 @@ export class SalesStatsService {
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
             .leftJoinAndSelect('product.translations', 'productTrans')
+            .leftJoinAndSelect('product.collections', 'collection')
+            .leftJoinAndSelect('collection.translations', 'collectionTrans')
             .where('order.createdAt >= :from', { from: new Date(queryFrom) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
             .andWhere('(order.customFields.errandKind IS NULL)');

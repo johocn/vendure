@@ -300,3 +300,49 @@ describe('custom 任意起止日期', () => {
         expect(() => customSalesWindow('2024-01-01', '2025-12-31')).toThrow('不能超过 366 天');
     });
 });
+
+describe('商品所属分类（商品结构导出按分类筛选）', () => {
+    const lineWithCats = (
+        productId: number,
+        productName: string,
+        cats: Array<{ id: number; zh?: string }>,
+    ) => ({
+        quantity: 1,
+        linePriceWithTax: 1000,
+        productVariant: {
+            id: productId * 10,
+            name: `${productName}-默认`,
+            product: {
+                id: productId,
+                translations: [{ languageCode: 'zh-Hans', name: productName }],
+                collections: cats.map(c => ({
+                    id: c.id,
+                    translations: c.zh
+                        ? [{ languageCode: 'en', name: 'x' }, { languageCode: 'zh-Hans', name: c.zh }]
+                        : [],
+                })),
+            },
+        },
+    });
+
+    it('带出全部所属分类且名称优先中文；无分类返回空数组', () => {
+        const res = aggregateSalesStats({
+            ...baseArgs,
+            orders: [
+                order({
+                    id: 1,
+                    customerId: 11,
+                    createdAt: hoursAgo(1),
+                    totalWithTax: 2000,
+                    lines: [lineWithCats(1, '宫保鸡丁', [{ id: 5, zh: '热菜' }, { id: 6 }]), lineWithCats(2, '米饭', [])],
+                }),
+            ],
+            firstOrderAt: new Map(),
+        });
+        expect(res.products.find(p => p.productId === '1')?.categories).toEqual([
+            { id: '5', name: '热菜' },
+            { id: '6', name: '#6' },
+        ]);
+        expect(res.products.find(p => p.productId === '2')?.categories).toEqual([]);
+    });
+});

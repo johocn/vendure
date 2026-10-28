@@ -87,6 +87,16 @@ function productNameOf(product) {
     const hit = (_b = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh')) !== null && _b !== void 0 ? _b : translations[0];
     return (hit === null || hit === void 0 ? void 0 : hit.name) || `#${product.id}`;
 }
+/** 商品所属分类（Collection），名称优先中文，其次第一条翻译。 */
+function categoriesOf(product) {
+    var _a;
+    return ((_a = product.collections) !== null && _a !== void 0 ? _a : []).map(c => {
+        var _a, _b;
+        const translations = (_a = c.translations) !== null && _a !== void 0 ? _a : [];
+        const hit = (_b = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh')) !== null && _b !== void 0 ? _b : translations[0];
+        return { id: String(c.id), name: (hit === null || hit === void 0 ? void 0 : hit.name) || `#${c.id}` };
+    });
+}
 /** 有效销售单：已付款未取消 + 排除跑腿单（跑腿无商品，会污染菜品四象限与客单价）。 */
 function isSalesOrder(o) {
     var _a;
@@ -179,7 +189,7 @@ function aggregateSalesStats(args) {
             if (!product)
                 continue;
             const pid = String(product.id);
-            const b = (_j = byProduct.get(pid)) !== null && _j !== void 0 ? _j : { name: productNameOf(product), quantity: 0, gmvFen: 0 };
+            const b = (_j = byProduct.get(pid)) !== null && _j !== void 0 ? _j : { name: productNameOf(product), quantity: 0, gmvFen: 0, categories: categoriesOf(product) };
             b.quantity += (_k = line.quantity) !== null && _k !== void 0 ? _k : 0;
             b.gmvFen += (_l = line.linePriceWithTax) !== null && _l !== void 0 ? _l : 0;
             byProduct.set(pid, b);
@@ -270,6 +280,8 @@ let SalesStatsService = class SalesStatsService {
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
             .leftJoinAndSelect('product.translations', 'productTrans')
+            .leftJoinAndSelect('product.collections', 'collection')
+            .leftJoinAndSelect('collection.translations', 'collectionTrans')
             .where('order.createdAt >= :from', { from: new Date(queryFrom) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
             .andWhere('(order.customFields.errandKind IS NULL)');
