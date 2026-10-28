@@ -184,7 +184,7 @@ let MerchantAdminService = class MerchantAdminService {
     /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
     async channelBusinessHours(ctx) {
         var _a;
-        const rows = await this.connection.rawConnection.query('SELECT "customFieldsWaimaiBusinessHours" AS hours FROM channel WHERE id = $1', [ctx.channelId]);
+        const rows = await this.connection.rawConnection.query('SELECT "customFieldsWaimaibusinesshours" AS hours FROM channel WHERE id = $1', [ctx.channelId]);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         const hours = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.hours;
         return hours == null || hours === '' ? null : String(hours);

@@ -316,7 +316,7 @@ export class MerchantAdminService {
     /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
     private async channelBusinessHours(ctx: RequestContext): Promise<string | null> {
         const rows: any = await this.connection.rawConnection.query(
-            'SELECT "customFieldsWaimaiBusinessHours" AS hours FROM channel WHERE id = $1',
+            'SELECT "customFieldsWaimaibusinesshours" AS hours FROM channel WHERE id = $1',
             [ctx.channelId as any],
         );
         const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
