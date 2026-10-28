@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+    Channel,
     ChannelService,
     CustomerService,
     ID,
@@ -8,6 +9,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { In } from 'typeorm';
 
 import {
     computeInStoreBill,
@@ -22,6 +24,7 @@ import { getBillPayBalancePort } from './bill-pay-balance-port';
 import { BillPayChannelConfigEntity } from './bill-pay-config.entity';
 import { applyCouponToQuote } from './bill-pay-coupon';
 import { BillPayOrder } from './bill-pay-order.entity';
+import { resolveCouponRecoveryAction } from './bill-pay-coupon-recovery';
 import { BillPaySettlement } from './bill-pay-settlement.entity';
 import { computeSettlementCost } from './bill-pay-settlement-calc';
 import { MerchantAgreement } from './merchant-agreement.entity';
@@ -55,6 +58,9 @@ const SETTABLE_STATUSES: BillPayStatus[] = [
     'CANCELLED',
     'REFUNDED',
 ];
+
+/** 券核销补偿单轮扫描上限，避免一次性大事务；成功补偿的券会移出候选集，下轮继续推进 */
+const COUPON_RECOVERY_BATCH = 200;
 
 /**
  * 代买单编排服务：委托单状态机（设计文档 §3）+ 支付链路（§5）+ 台账结算（§10）。
@@ -931,6 +937,117 @@ export class BillPayService {
         // 残留预占清理（UNUSED 保持 UNUSED、RETURNED 保持 RETURNED，只清本单预占）
         await this.releaseCoupon(ctx, order);
         Logger.info(`BillPayOrder ${ref} refunded, coupon ${order.couponCode} returned`, loggerCtx);
+    }
+
+    /**
+     * 券核销补偿（定时任务调用，幂等可重入）：
+     * 扫描仍被 BP- 单预占的 UNUSED/RETURNED 券，按对应买单状态决定动作：
+     * - 已支付及之后：重试核销，补偿回调/余额支付时核销失败的场景；
+     * - 已取消/已退款/查无此单：释放残留预占，避免券被永久锁死；
+     * - 待报价/已报价：客户仍可继续支付，保持预占不动；
+     * 已过期券不在此处理（由券过期逻辑惰性收敛）。
+     */
+    async recoverCouponRedemptions(): Promise<{
+        scanned: number;
+        redeemed: number;
+        released: number;
+        failed: number;
+    }> {
+        const now = new Date();
+        const couponRepo = this.connection.rawConnection.getRepository(CustomerCoupon);
+        const orderRepo = this.connection.rawConnection.getRepository(BillPayOrder);
+        const coupons = await couponRepo
+            .createQueryBuilder('cc')
+            .where("cc.status IN ('UNUSED','RETURNED')")
+            .andWhere("cc.reservedOrderId LIKE 'BP-%'")
+            .andWhere('(cc.expiredAt IS NULL OR cc.expiredAt > :now)', { now })
+            .orderBy('cc.id', 'ASC')
+            .take(COUPON_RECOVERY_BATCH)
+            .getMany();
+        if (coupons.length === 0) {
+            return { scanned: 0, redeemed: 0, released: 0, failed: 0 };
+        }
+        const refs = [...new Set(coupons.map(c => String(c.reservedOrderId)))];
+        const orders = await orderRepo.find({ where: { code: In(refs) } });
+        const orderByCode = new Map(orders.map(o => [String(o.code), o] as const));
+        // 定时环境无请求 ctx：按订单渠道惰性构建 admin ctx（同过期提醒扫描范式）
+        const channels = await this.connection.rawConnection.getRepository(Channel).find();
+        const channelById = new Map(channels.map(ch => [Number(ch.id), ch] as const));
+        const ctxByChannel = new Map<number, RequestContext>();
+        const ctxFor = (channelId: number): RequestContext | null => {
+            const cached = ctxByChannel.get(channelId);
+            if (cached) {
+                return cached;
+            }
+            const channel = channelById.get(channelId);
+            if (!channel) {
+                return null;
+            }
+            const ctx = new RequestContext({
+                apiType: 'admin',
+                channel,
+                isAuthorized: true,
+                authorizedAsOwnerOnly: false,
+            });
+            ctxByChannel.set(channelId, ctx);
+            return ctx;
+        };
+
+        let redeemed = 0;
+        let released = 0;
+        let failed = 0;
+        for (const cc of coupons) {
+            const ref = String(cc.reservedOrderId);
+            const order = orderByCode.get(ref) ?? null;
+            const action = resolveCouponRecoveryAction(order?.status ?? null);
+            if (action === 'SKIP') {
+                continue;
+            }
+            if (action === 'RELEASE') {
+                // 订单终态/不存在：直接清预占（保持 UNUSED/RETURNED 原状态，不复活已消耗券）
+                const res = await couponRepo
+                    .createQueryBuilder()
+                    .update(CustomerCoupon)
+                    .set({
+                        reservedOrderId: null as any,
+                        usedOrderId: null as any,
+                        usedAt: null as any,
+                    })
+                    .where(
+                        "id = :id AND status IN ('UNUSED','RETURNED') AND reservedOrderId = :ref",
+                        { id: cc.id, ref },
+                    )
+                    .execute();
+                released += res.affected ?? 0;
+                continue;
+            }
+            if (!order) {
+                failed++;
+                continue;
+            }
+            const ctx = ctxFor(Number(order.channelId));
+            if (!ctx) {
+                failed++;
+                continue;
+            }
+            try {
+                await this.redeemCoupon(ctx, order);
+                redeemed++;
+            } catch (e: any) {
+                failed++;
+                Logger.error(
+                    `Coupon recovery: BillPayOrder ${ref} coupon ${cc.code} redeem failed: ${String(
+                        e?.message ?? '',
+                    )}`,
+                    loggerCtx,
+                );
+            }
+        }
+        Logger.info(
+            `BillPay coupon recovery: scanned=${coupons.length} redeemed=${redeemed} released=${released} failed=${failed}`,
+            loggerCtx,
+        );
+        return { scanned: coupons.length, redeemed, released, failed };
     }
 
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */

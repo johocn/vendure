@@ -87,6 +87,20 @@ export declare class BillPayService {
      * 若不清理会被永久锁死（扫码与再下单都被拒）。
      */
     private returnCouponOnRefund;
+    /**
+     * 券核销补偿（定时任务调用，幂等可重入）：
+     * 扫描仍被 BP- 单预占的 UNUSED/RETURNED 券，按对应买单状态决定动作：
+     * - 已支付及之后：重试核销，补偿回调/余额支付时核销失败的场景；
+     * - 已取消/已退款/查无此单：释放残留预占，避免券被永久锁死；
+     * - 待报价/已报价：客户仍可继续支付，保持预占不动；
+     * 已过期券不在此处理（由券过期逻辑惰性收敛）。
+     */
+    recoverCouponRedemptions(): Promise<{
+        scanned: number;
+        redeemed: number;
+        released: number;
+        failed: number;
+    }>;
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */
     adminList(ctx: RequestContext, opts: {
         skip?: number;

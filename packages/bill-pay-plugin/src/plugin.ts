@@ -279,6 +279,32 @@ export class BillPayPlugin {
             Logger.info('BillPay balance port unavailable (recharge-card not registered)', loggerCtx);
         }
 
+        // 券核销补偿（定时兜底）：重试已支付单的券核销、释放终态单的残留预占。
+        // 默认开启（10 分钟），BILLPAY_COUPON_RECOVERY_MS=0 可显式关闭；延迟 60s 首跑避开启动窗口。
+        const recoveryMs = Number(process.env.BILLPAY_COUPON_RECOVERY_MS ?? 600000);
+        if (recoveryMs > 0) {
+            const billPayService = this.injector.get(BillPayService);
+            let running = false;
+            const recover = () => {
+                if (running) {
+                    return; // 上轮未结束不叠加，防止慢查询时任务堆叠
+                }
+                running = true;
+                billPayService
+                    .recoverCouponRedemptions()
+                    .catch(e =>
+                        Logger.error(`BillPay coupon recovery failed: ${e?.message ?? e}`, loggerCtx),
+                    )
+                    .finally(() => {
+                        running = false;
+                    });
+            };
+            const firstRun = setTimeout(recover, 60000);
+            firstRun.unref?.();
+            setInterval(recover, recoveryMs);
+            Logger.info(`BillPay coupon recovery enabled (every ${recoveryMs}ms)`, loggerCtx);
+        }
+
         Logger.info('BillPayPlugin initialized', loggerCtx);
     }
 }

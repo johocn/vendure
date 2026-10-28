@@ -157,6 +157,7 @@ let BillPayPlugin = BillPayPlugin_1 = class BillPayPlugin {
         return BillPayPlugin_1;
     }
     async onApplicationBootstrap() {
+        var _a, _b;
         this.injector = new core_2.Injector(this.moduleRef);
         // 微信网关引用 + BP- 前缀回调结算注册（可选依赖 wechatpay-plugin）
         try {
@@ -189,6 +190,29 @@ let BillPayPlugin = BillPayPlugin_1 = class BillPayPlugin {
         catch (e) {
             (0, bill_pay_balance_port_1.setBillPayBalancePort)(null);
             core_2.Logger.info('BillPay balance port unavailable (recharge-card not registered)', constants_1.loggerCtx);
+        }
+        // 券核销补偿（定时兜底）：重试已支付单的券核销、释放终态单的残留预占。
+        // 默认开启（10 分钟），BILLPAY_COUPON_RECOVERY_MS=0 可显式关闭；延迟 60s 首跑避开启动窗口。
+        const recoveryMs = Number((_a = process.env.BILLPAY_COUPON_RECOVERY_MS) !== null && _a !== void 0 ? _a : 600000);
+        if (recoveryMs > 0) {
+            const billPayService = this.injector.get(bill_pay_service_1.BillPayService);
+            let running = false;
+            const recover = () => {
+                if (running) {
+                    return; // 上轮未结束不叠加，防止慢查询时任务堆叠
+                }
+                running = true;
+                billPayService
+                    .recoverCouponRedemptions()
+                    .catch(e => { var _a; return core_2.Logger.error(`BillPay coupon recovery failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx); })
+                    .finally(() => {
+                    running = false;
+                });
+            };
+            const firstRun = setTimeout(recover, 60000);
+            (_b = firstRun.unref) === null || _b === void 0 ? void 0 : _b.call(firstRun);
+            setInterval(recover, recoveryMs);
+            core_2.Logger.info(`BillPay coupon recovery enabled (every ${recoveryMs}ms)`, constants_1.loggerCtx);
         }
         core_2.Logger.info('BillPayPlugin initialized', constants_1.loggerCtx);
     }
