@@ -83,6 +83,8 @@ export declare class BillPayService {
      * 退款退券：本单已核销的券 USED → RETURNED，清 usedOrderId/usedAt（券恢复可用直至过期）。
      * 与 coupon-plugin returnCoupon 一致：核销流水保留、不写 revokedAt；
      * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等。
+     * 另释放「支付时核销失败」残留的本单预占：这类券仍是 UNUSED/RETURNED + reservedOrderId=本单，
+     * 若不清理会被永久锁死（扫码与再下单都被拒）。
      */
     private returnCouponOnRefund;
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */

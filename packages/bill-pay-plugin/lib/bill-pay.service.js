@@ -709,52 +709,63 @@ let BillPayService = class BillPayService {
             throw new core_1.UserInputError('quoteAmount missing');
         }
         const repo = this.orderRepo(ctx);
-        if (order.paymentMethod === 'balance') {
-            const port = (0, bill_pay_balance_port_1.getBillPayBalancePort)();
-            if (!port) {
-                throw new core_1.UserInputError('Balance refund is not available');
-            }
-            const claim = await repo
-                .createQueryBuilder()
-                .update(bill_pay_order_entity_1.BillPayOrder)
-                .set({ status: 'REFUNDED', refundedAt: new Date() })
-                .where('id = :id AND status = :status', { id: order.id, status: 'PAID' })
-                .execute();
-            if (((_a = claim.affected) !== null && _a !== void 0 ? _a : 0) === 0) {
-                throw new core_1.UserInputError('Bill pay order is not refundable now');
-            }
-            await port.addBalance(ctx, order.customerId, order.quoteAmount);
-        }
-        else {
-            if (!gatewayService) {
-                throw new core_1.UserInputError('Payment gateway not configured');
-            }
-            const outTradeNo = (_c = (_b = order.payRef) !== null && _b !== void 0 ? _b : order.code) !== null && _c !== void 0 ? _c : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
-            await gatewayService.refundBarePayment(ctx, {
-                outTradeNo,
-                // out_refund_no 同样限制 6~64 位，数字段补零到 6 位避免 BPR-30 类短号被拒
-                outRefundNo: `BPR-${String(order.id).padStart(6, '0')}`,
-                refund: order.quoteAmount,
-                total: order.quoteAmount,
-                reason: reason !== null && reason !== void 0 ? reason : undefined,
-            });
-            const claim = await repo
-                .createQueryBuilder()
-                .update(bill_pay_order_entity_1.BillPayOrder)
-                .set({ status: 'REFUNDED', refundedAt: new Date() })
-                .where('id = :id AND status = :status', { id: order.id, status: 'PAID' })
-                .execute();
-            if (((_d = claim.affected) !== null && _d !== void 0 ? _d : 0) === 0) {
-                throw new core_1.UserInputError('Bill pay order is not refundable now');
-            }
-        }
-        // 退款退券（口径对齐 coupon-plugin 订单退款）：退款已完成即不可逆，券回退失败只记 error
+        // 单据已确认 REFUNDED 才退券：余额分支后续补款失败、或退款流程异常时，券也不能被永久锁死
+        let couponReturnPending = false;
         try {
-            await this.returnCouponOnRefund(ctx, order);
+            if (order.paymentMethod === 'balance') {
+                const port = (0, bill_pay_balance_port_1.getBillPayBalancePort)();
+                if (!port) {
+                    throw new core_1.UserInputError('Balance refund is not available');
+                }
+                const claim = await repo
+                    .createQueryBuilder()
+                    .update(bill_pay_order_entity_1.BillPayOrder)
+                    .set({ status: 'REFUNDED', refundedAt: new Date() })
+                    .where('id = :id AND status = :status', { id: order.id, status: 'PAID' })
+                    .execute();
+                if (((_a = claim.affected) !== null && _a !== void 0 ? _a : 0) === 0) {
+                    throw new core_1.UserInputError('Bill pay order is not refundable now');
+                }
+                couponReturnPending = true;
+                await port.addBalance(ctx, order.customerId, order.quoteAmount);
+            }
+            else {
+                if (!gatewayService) {
+                    throw new core_1.UserInputError('Payment gateway not configured');
+                }
+                const outTradeNo = (_c = (_b = order.payRef) !== null && _b !== void 0 ? _b : order.code) !== null && _c !== void 0 ? _c : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
+                await gatewayService.refundBarePayment(ctx, {
+                    outTradeNo,
+                    // out_refund_no 同样限制 6~64 位，数字段补零到 6 位避免 BPR-30 类短号被拒
+                    outRefundNo: `BPR-${String(order.id).padStart(6, '0')}`,
+                    refund: order.quoteAmount,
+                    total: order.quoteAmount,
+                    reason: reason !== null && reason !== void 0 ? reason : undefined,
+                });
+                // 微信分支：状态认领成功才算退款落账；失败时单据可能仍是 PAID，不能提前退券
+                const claim = await repo
+                    .createQueryBuilder()
+                    .update(bill_pay_order_entity_1.BillPayOrder)
+                    .set({ status: 'REFUNDED', refundedAt: new Date() })
+                    .where('id = :id AND status = :status', { id: order.id, status: 'PAID' })
+                    .execute();
+                if (((_d = claim.affected) !== null && _d !== void 0 ? _d : 0) === 0) {
+                    throw new core_1.UserInputError('Bill pay order is not refundable now');
+                }
+                couponReturnPending = true;
+            }
         }
-        catch (e) {
-            core_1.Logger.error(`BillPayOrder ${(_e = order.code) !== null && _e !== void 0 ? _e : order.id} refunded but coupon ${(_f = order.couponCode) !== null && _f !== void 0 ? _f : '-'} return failed: ` +
-                String((_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : ''), constants_1.loggerCtx);
+        finally {
+            // 退款已落账即不可逆，券回退失败只记 error（幂等，可人工重试）
+            if (couponReturnPending) {
+                try {
+                    await this.returnCouponOnRefund(ctx, order);
+                }
+                catch (e) {
+                    core_1.Logger.error(`BillPayOrder ${(_e = order.code) !== null && _e !== void 0 ? _e : order.id} refunded but coupon ${(_f = order.couponCode) !== null && _f !== void 0 ? _f : '-'} return failed: ` +
+                        String((_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : ''), constants_1.loggerCtx);
+                }
+            }
         }
         return (await repo.findOne({ where: { id: order.id } }));
     }
@@ -762,6 +773,8 @@ let BillPayService = class BillPayService {
      * 退款退券：本单已核销的券 USED → RETURNED，清 usedOrderId/usedAt（券恢复可用直至过期）。
      * 与 coupon-plugin returnCoupon 一致：核销流水保留、不写 revokedAt；
      * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等。
+     * 另释放「支付时核销失败」残留的本单预占：这类券仍是 UNUSED/RETURNED + reservedOrderId=本单，
+     * 若不清理会被永久锁死（扫码与再下单都被拒）。
      */
     async returnCouponOnRefund(ctx, order) {
         var _a;
@@ -779,6 +792,8 @@ let BillPayService = class BillPayService {
             ref,
         })
             .execute();
+        // 残留预占清理（UNUSED 保持 UNUSED、RETURNED 保持 RETURNED，只清本单预占）
+        await this.releaseCoupon(ctx, order);
         core_1.Logger.info(`BillPayOrder ${ref} refunded, coupon ${order.couponCode} returned`, constants_1.loggerCtx);
     }
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */
