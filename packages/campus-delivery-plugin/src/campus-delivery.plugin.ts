@@ -133,6 +133,10 @@ import { SlotLockService } from './slot-lock.service';
 import { WaimaiShopResolver } from './waimai-shop.resolver';
 import { WaimaiStoreService } from './waimai-store.service';
 import { SearchAssistService } from './search-assist.service';
+import { P11TelemetryMigration } from './migrations/p11-telemetry';
+import { CampusErrorReport, CampusTrackEvent } from './telemetry.entities';
+import { TelemetryAdminResolver, TelemetryShopResolver } from './telemetry.resolver';
+import { TelemetryService } from './telemetry.service';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -141,7 +145,7 @@ import { SearchAssistService } from './search-assist.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -165,6 +169,7 @@ import { SearchAssistService } from './search-assist.service';
         P9P6TasteProfileMigration,
         P9P7DeliveryFeeTiersMigration,
         P10ReviewAlertMigration,
+        P11TelemetryMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -189,6 +194,7 @@ import { SearchAssistService } from './search-assist.service';
         DispatchAdminService,
         DeliveryStatsService,
         SalesStatsService,
+        TelemetryService,
         ErrandService,
         R2MarkService,
         R4TagService,
@@ -1554,9 +1560,74 @@ import { SearchAssistService } from './search-assist.service';
                     resendPaymentTimeoutRemind(taskId: ID!): Boolean!
                     runPaymentTimeoutCompensation: Int!
                 }
+
+                """P4-4 系统监控：单事件计数（Top 事件榜）"""
+                type CampusEventCount {
+                    name: String!
+                    count: Int!
+                }
+
+                """P4-4 近 7 日趋势点（按校园自然日）"""
+                type CampusTrackDayPoint {
+                    date: String!
+                    events: Int!
+                    errors: Int!
+                }
+
+                type CampusTrackEventStats {
+                    todayEvents: Int!
+                    totalEvents: Int!
+                    todayErrors: Int!
+                    totalErrors: Int!
+                    """今日去重顾客数（游客不计）"""
+                    affectedUsers: Int!
+                    trend: [CampusTrackDayPoint!]!
+                    topEvents: [CampusEventCount!]!
+                }
+
+                type CampusTrackEvent implements Node {
+                    id: ID!
+                    eventName: String!
+                    page: String
+                    sessionId: String
+                    customerId: ID
+                    """事件属性原始 JSON"""
+                    props: String
+                    createdAt: DateTime!
+                }
+
+                type CampusTrackEventList implements PaginatedList {
+                    items: [CampusTrackEvent!]!
+                    totalItems: Int!
+                }
+
+                type CampusErrorReport implements Node {
+                    id: ID!
+                    """c-end / admin"""
+                    source: String!
+                    """error / warn"""
+                    level: String!
+                    message: String!
+                    stack: String
+                    page: String
+                    url: String
+                    customerId: ID
+                    createdAt: DateTime!
+                }
+
+                type CampusErrorReportList implements PaginatedList {
+                    items: [CampusErrorReport!]!
+                    totalItems: Int!
+                }
+
+                extend type Query {
+                    campusTrackEventStats: CampusTrackEventStats!
+                    campusTrackEventList(eventName: String, skip: Int, take: Int): CampusTrackEventList!
+                    campusErrorReportList(level: String, skip: Int, take: Int): CampusErrorReportList!
+                }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver, TelemetryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -2088,10 +2159,38 @@ import { SearchAssistService } from './search-assist.service';
                     campusCloseChat(conversationId: ID!): CampusMyChatConversation!
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
+                    """P4-4 批量埋点上报（匿名可用），返回入库条数"""
+                    campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
+                    """P4-4 前端错误上报（匿名可用）"""
+                    campusReportError(input: CampusErrorReportInput!): Boolean!
+                }
+
+                input CampusTrackEventInput {
+                    eventName: String!
+                    page: String
+                    sessionId: String
+                    """JSON 字符串或对象"""
+                    props: String
+                    createdAt: String
+                }
+
+                input CampusTrackEventBatchInput {
+                    events: [CampusTrackEventInput!]!
+                }
+
+                input CampusErrorReportInput {
+                    """c-end / admin，缺省 c-end"""
+                    source: String
+                    """error / warn，缺省 error"""
+                    level: String
+                    message: String!
+                    stack: String
+                    page: String
+                    url: String
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver, TelemetryShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

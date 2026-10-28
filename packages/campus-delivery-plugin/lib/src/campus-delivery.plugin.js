@@ -132,6 +132,10 @@ const slot_lock_service_1 = require("./slot-lock.service");
 const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
 const waimai_store_service_1 = require("./waimai-store.service");
 const search_assist_service_1 = require("./search-assist.service");
+const p11_telemetry_1 = require("./migrations/p11-telemetry");
+const telemetry_entities_1 = require("./telemetry.entities");
+const telemetry_resolver_1 = require("./telemetry.resolver");
+const telemetry_service_1 = require("./telemetry.service");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
 // 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
@@ -274,7 +278,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -298,6 +302,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p6_taste_profile_1.P9P6TasteProfileMigration,
             p9_p7_delivery_fee_tiers_1.P9P7DeliveryFeeTiersMigration,
             p10_review_alert_1.P10ReviewAlertMigration,
+            p11_telemetry_1.P11TelemetryMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -322,6 +327,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             dispatch_admin_service_1.DispatchAdminService,
             delivery_stats_service_1.DeliveryStatsService,
             sales_stats_service_1.SalesStatsService,
+            telemetry_service_1.TelemetryService,
             errand_service_1.ErrandService,
             r2_mark_service_1.R2MarkService,
             r4_tag_service_1.R4TagService,
@@ -1687,9 +1693,74 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     resendPaymentTimeoutRemind(taskId: ID!): Boolean!
                     runPaymentTimeoutCompensation: Int!
                 }
+
+                """P4-4 系统监控：单事件计数（Top 事件榜）"""
+                type CampusEventCount {
+                    name: String!
+                    count: Int!
+                }
+
+                """P4-4 近 7 日趋势点（按校园自然日）"""
+                type CampusTrackDayPoint {
+                    date: String!
+                    events: Int!
+                    errors: Int!
+                }
+
+                type CampusTrackEventStats {
+                    todayEvents: Int!
+                    totalEvents: Int!
+                    todayErrors: Int!
+                    totalErrors: Int!
+                    """今日去重顾客数（游客不计）"""
+                    affectedUsers: Int!
+                    trend: [CampusTrackDayPoint!]!
+                    topEvents: [CampusEventCount!]!
+                }
+
+                type CampusTrackEvent implements Node {
+                    id: ID!
+                    eventName: String!
+                    page: String
+                    sessionId: String
+                    customerId: ID
+                    """事件属性原始 JSON"""
+                    props: String
+                    createdAt: DateTime!
+                }
+
+                type CampusTrackEventList implements PaginatedList {
+                    items: [CampusTrackEvent!]!
+                    totalItems: Int!
+                }
+
+                type CampusErrorReport implements Node {
+                    id: ID!
+                    """c-end / admin"""
+                    source: String!
+                    """error / warn"""
+                    level: String!
+                    message: String!
+                    stack: String
+                    page: String
+                    url: String
+                    customerId: ID
+                    createdAt: DateTime!
+                }
+
+                type CampusErrorReportList implements PaginatedList {
+                    items: [CampusErrorReport!]!
+                    totalItems: Int!
+                }
+
+                extend type Query {
+                    campusTrackEventStats: CampusTrackEventStats!
+                    campusTrackEventList(eventName: String, skip: Int, take: Int): CampusTrackEventList!
+                    campusErrorReportList(level: String, skip: Int, take: Int): CampusErrorReportList!
+                }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, sales_stats_resolver_1.SalesStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, sales_stats_resolver_1.SalesStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver, telemetry_resolver_1.TelemetryAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -2221,10 +2292,38 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusCloseChat(conversationId: ID!): CampusMyChatConversation!
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
+                    """P4-4 批量埋点上报（匿名可用），返回入库条数"""
+                    campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
+                    """P4-4 前端错误上报（匿名可用）"""
+                    campusReportError(input: CampusErrorReportInput!): Boolean!
+                }
+
+                input CampusTrackEventInput {
+                    eventName: String!
+                    page: String
+                    sessionId: String
+                    """JSON 字符串或对象"""
+                    props: String
+                    createdAt: String
+                }
+
+                input CampusTrackEventBatchInput {
+                    events: [CampusTrackEventInput!]!
+                }
+
+                input CampusErrorReportInput {
+                    """c-end / admin，缺省 c-end"""
+                    source: String
+                    """error / warn，缺省 error"""
+                    level: String
+                    message: String!
+                    stack: String
+                    page: String
+                    url: String
                 }
             `;
             },
-            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver, taste_profile_shop_resolver_1.TasteProfileShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver, taste_profile_shop_resolver_1.TasteProfileShopResolver, telemetry_resolver_1.TelemetryShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
