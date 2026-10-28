@@ -55,6 +55,16 @@ export declare class MerchantAdminResolver {
         soldOut: boolean;
         count: number;
     }>;
+    /** 沽清次日自动恢复：查询开关与待恢复件数 */
+    campusMerchantSoldOutAutoRestore(ctx: RequestContext): Promise<{
+        enabled: boolean;
+        pending: number;
+    }>;
+    /** 沽清次日自动恢复：开关 */
+    campusMerchantSetSoldOutAutoRestore(ctx: RequestContext, enabled: boolean): Promise<{
+        enabled: boolean;
+        pending: number;
+    }>;
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     campusMerchantSetProductPackingFee(ctx: RequestContext, productId: ID, packingFee?: number | null): Promise<{
         ok: boolean;

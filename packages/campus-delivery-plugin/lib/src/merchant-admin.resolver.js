@@ -100,6 +100,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantSetAllProductsSoldOut(ctx, soldOut) {
         return this.merchant.setAllProductsSoldOut(ctx, soldOut);
     }
+    /** 沽清次日自动恢复：查询开关与待恢复件数 */
+    async campusMerchantSoldOutAutoRestore(ctx) {
+        return this.merchant.getSoldOutAutoRestore(ctx);
+    }
+    /** 沽清次日自动恢复：开关 */
+    async campusMerchantSetSoldOutAutoRestore(ctx, enabled) {
+        return this.merchant.setSoldOutAutoRestore(ctx, enabled);
+    }
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     async campusMerchantSetProductPackingFee(ctx, productId, packingFee) {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee !== null && packingFee !== void 0 ? packingFee : null);
@@ -288,6 +296,23 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Boolean]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantSetAllProductsSoldOut", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSoldOutAutoRestore", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('enabled')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Boolean]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetSoldOutAutoRestore", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

@@ -51,6 +51,9 @@ const p9_p5_rider_compliance_1 = require("./migrations/p9-p5-rider-compliance");
 const p9_p6_taste_profile_1 = require("./migrations/p9-p6-taste-profile");
 const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tiers");
 const p10_review_alert_1 = require("./migrations/p10-review-alert");
+const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restore");
+const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
+const campus_soldout_batch_entity_1 = require("./campus-soldout-batch.entity");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
@@ -171,6 +174,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
             .init()
             .then(() => paymentTimeoutJob.startCompensationLoop())
             .catch(e => core_1.Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
+        // 沽清次日自动恢复（§66）：自管定时器，每日 04:00 把「全店沽清」批次恢复在售
+        this.injector.get(soldout_auto_restore_job_1.SoldOutAutoRestoreJob).start();
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
@@ -279,7 +284,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport, campus_soldout_batch_entity_1.CampusSoldOutBatch],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -304,6 +309,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p7_delivery_fee_tiers_1.P9P7DeliveryFeeTiersMigration,
             p10_review_alert_1.P10ReviewAlertMigration,
             p11_telemetry_1.P11TelemetryMigration,
+            p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
+            soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -1121,6 +1128,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     count: Int!
                 }
 
+                """沽清次日自动恢复：enabled 为店铺开关，pending 为当前登记的待恢复件数"""
+                type CampusSoldOutAutoRestore {
+                    enabled: Boolean!
+                    pending: Int!
+                }
+
                 type CampusMerchantPackingFeeResult {
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
@@ -1341,6 +1354,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantKitchenQueue: CampusKitchenQueue!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
+                    """沽清次日自动恢复（§66）：开关与待恢复件数"""
+                    campusMerchantSoldOutAutoRestore: CampusSoldOutAutoRestore!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1638,6 +1653,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusDeleteRiderShift(id: ID!): CampusRemoveResult!
                     campusMerchantSetProductSoldOut(productId: ID!, soldOut: Boolean!): CampusMerchantSoldOutResult!
                     campusMerchantSetAllProductsSoldOut(soldOut: Boolean!): CampusMerchantSoldOutBatchResult!
+                    """沽清次日自动恢复（§66）：开关；开启后每日 04:00 把全店沽清批次恢复在售"""
+                    campusMerchantSetSoldOutAutoRestore(enabled: Boolean!): CampusSoldOutAutoRestore!
                 }
 
                 type CampusMerchantOpResult {

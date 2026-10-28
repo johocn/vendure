@@ -227,6 +227,20 @@ export declare class MerchantAdminService {
         soldOut: boolean;
         count: number;
     }>;
+    /** 清除全店沽清批次登记（传 productId 只清该商品） */
+    clearSoldOutBatch(ctx: RequestContext, opts: {
+        productId?: number;
+    }): Promise<void>;
+    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用） */
+    getSoldOutAutoRestore(ctx: RequestContext): Promise<{
+        enabled: boolean;
+        pending: number;
+    }>;
+    setSoldOutAutoRestore(ctx: RequestContext, enabled: boolean): Promise<{
+        enabled: boolean;
+        pending: number;
+    }>;
+    private countSoldOutBatch;
     /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
     setProductPackingFee(ctx: RequestContext, productId: ID, packingFee: number | null): Promise<{
         ok: boolean;

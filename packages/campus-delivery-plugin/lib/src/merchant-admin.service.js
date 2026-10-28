@@ -550,6 +550,8 @@ let MerchantAdminService = class MerchantAdminService {
         await this.connection.getRepository(ctx, core_1.Product).update(productId, {
             customFields: { waimaiSoldOut: Boolean(soldOut) },
         });
+        // 手动开关即代表「非全店沽清批次」：清掉批次登记，次日自动恢复不再动它
+        await this.clearSoldOutBatch(ctx, { productId: productId });
         return { ok: true, soldOut: Boolean(soldOut) };
     }
     /** 全店批量沽清 / 批量恢复：仅本渠道商品，返回实际影响条数（打烊后一键恢复用） */
@@ -560,8 +562,46 @@ let MerchantAdminService = class MerchantAdminService {
             + 'WHERE pc."productId" = p.id AND pc."channelId" = $1 '
             + 'RETURNING p.id', [ctx.channelId, flag]);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
-        const count = Array.isArray(list) ? list.length : 0;
-        return { ok: true, soldOut: flag, count };
+        const ids = (Array.isArray(list) ? list : []).map((r) => Number(r.id));
+        if (flag) {
+            // 登记批次：仅供次日 04:00 自动恢复命中这些商品
+            await this.connection.rawConnection.query('INSERT INTO campus_soldout_batch ("channelId", "productId") '
+                + 'SELECT $1, unnest($2::int[]) '
+                + 'ON CONFLICT ("channelId", "productId") DO NOTHING', [ctx.channelId, ids]);
+        }
+        else {
+            await this.clearSoldOutBatch(ctx, {});
+        }
+        return { ok: true, soldOut: flag, count: ids.length };
+    }
+    /** 清除全店沽清批次登记（传 productId 只清该商品） */
+    async clearSoldOutBatch(ctx, opts) {
+        if (opts.productId != null) {
+            await this.connection.rawConnection.query('DELETE FROM campus_soldout_batch WHERE "channelId" = $1 AND "productId" = $2', [ctx.channelId, opts.productId]);
+            return;
+        }
+        await this.connection.rawConnection.query('DELETE FROM campus_soldout_batch WHERE "channelId" = $1', [ctx.channelId]);
+    }
+    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用） */
+    async getSoldOutAutoRestore(ctx) {
+        var _a;
+        const channel = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: ctx.channelId } });
+        const enabled = ((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.waimaiSoldOutAutoRestore) !== false;
+        const pending = await this.countSoldOutBatch(ctx.channelId);
+        return { enabled, pending };
+    }
+    async setSoldOutAutoRestore(ctx, enabled) {
+        await this.connection.getRepository(ctx, core_1.Channel).update(ctx.channelId, {
+            customFields: { waimaiSoldOutAutoRestore: Boolean(enabled) },
+        });
+        const pending = await this.countSoldOutBatch(ctx.channelId);
+        return { enabled: Boolean(enabled), pending };
+    }
+    async countSoldOutBatch(channelId) {
+        var _a, _b;
+        const rows = await this.connection.rawConnection.query('SELECT COUNT(*)::int AS n FROM campus_soldout_batch WHERE "channelId" = $1', [channelId]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return Number(Array.isArray(list) ? (_b = (_a = list[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0 : 0) || 0;
     }
     /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
     async setProductPackingFee(ctx, productId, packingFee) {

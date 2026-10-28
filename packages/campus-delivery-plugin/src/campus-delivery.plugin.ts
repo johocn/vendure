@@ -52,6 +52,9 @@ import { P9P5RiderComplianceMigration } from './migrations/p9-p5-rider-complianc
 import { P9P6TasteProfileMigration } from './migrations/p9-p6-taste-profile';
 import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-tiers';
 import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
+import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-restore';
+import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
+import { CampusSoldOutBatch } from './campus-soldout-batch.entity';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -146,7 +149,7 @@ import { TelemetryService } from './telemetry.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport, CampusSoldOutBatch],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -171,6 +174,8 @@ import { TelemetryService } from './telemetry.service';
         P9P7DeliveryFeeTiersMigration,
         P10ReviewAlertMigration,
         P11TelemetryMigration,
+        P11SoldOutAutoRestoreMigration,
+        SoldOutAutoRestoreJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -988,6 +993,12 @@ import { TelemetryService } from './telemetry.service';
                     count: Int!
                 }
 
+                """沽清次日自动恢复：enabled 为店铺开关，pending 为当前登记的待恢复件数"""
+                type CampusSoldOutAutoRestore {
+                    enabled: Boolean!
+                    pending: Int!
+                }
+
                 type CampusMerchantPackingFeeResult {
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
@@ -1208,6 +1219,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantKitchenQueue: CampusKitchenQueue!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
+                    """沽清次日自动恢复（§66）：开关与待恢复件数"""
+                    campusMerchantSoldOutAutoRestore: CampusSoldOutAutoRestore!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1505,6 +1518,8 @@ import { TelemetryService } from './telemetry.service';
                     campusDeleteRiderShift(id: ID!): CampusRemoveResult!
                     campusMerchantSetProductSoldOut(productId: ID!, soldOut: Boolean!): CampusMerchantSoldOutResult!
                     campusMerchantSetAllProductsSoldOut(soldOut: Boolean!): CampusMerchantSoldOutBatchResult!
+                    """沽清次日自动恢复（§66）：开关；开启后每日 04:00 把全店沽清批次恢复在售"""
+                    campusMerchantSetSoldOutAutoRestore(enabled: Boolean!): CampusSoldOutAutoRestore!
                 }
 
                 type CampusMerchantOpResult {
@@ -2281,6 +2296,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             .init()
             .then(() => paymentTimeoutJob.startCompensationLoop())
             .catch(e => Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
+        // 沽清次日自动恢复（§66）：自管定时器，每日 04:00 把「全店沽清」批次恢复在售
+        this.injector.get(SoldOutAutoRestoreJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));

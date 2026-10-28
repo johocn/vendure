@@ -162,6 +162,23 @@ export class MerchantAdminResolver {
         return this.merchant.setAllProductsSoldOut(ctx, soldOut);
     }
 
+    /** 沽清次日自动恢复：查询开关与待恢复件数 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSoldOutAutoRestore(@Ctx() ctx: RequestContext) {
+        return this.merchant.getSoldOutAutoRestore(ctx);
+    }
+
+    /** 沽清次日自动恢复：开关 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetSoldOutAutoRestore(
+        @Ctx() ctx: RequestContext,
+        @Args('enabled') enabled: boolean,
+    ) {
+        return this.merchant.setSoldOutAutoRestore(ctx, enabled);
+    }
+
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
