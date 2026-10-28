@@ -12,6 +12,8 @@ import {
 } from '@vendure/core';
 import { CouponService } from '@vendure/coupon-plugin';
 
+import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+
 import { loggerCtx } from './constants';
 import { Review } from './review.entity';
 import { ReviewAlert, ReviewAlertCouponStatus, ReviewAlertRule, ReviewAlertStatus } from './review-alert.entity';
@@ -36,6 +38,10 @@ export interface ReviewAlertListOptions {
     skip?: number;
     take?: number;
     status?: string;
+    /** 创建时间下界（ISO 字符串），用于导出的时间段筛选 */
+    from?: string;
+    /** 创建时间上界（ISO 字符串） */
+    to?: string;
 }
 
 export interface ReviewAlertStats {
@@ -164,11 +170,26 @@ export class ReviewAlertService {
         if (status && !ALERT_STATUSES.includes(status as ReviewAlertStatus)) {
             throw new UserInputError('预警状态不合法');
         }
-        const take = Math.min(100, Math.max(1, Number(options?.take) || 20));
+        const take = Math.min(500, Math.max(1, Number(options?.take) || 20));
         const skip = Math.max(0, Number(options?.skip) || 0);
+        const from = options?.from ? new Date(options.from) : null;
+        const to = options?.to ? new Date(options.to) : null;
+        if (from && Number.isNaN(from.getTime())) {
+            throw new UserInputError('起始时间不合法');
+        }
+        if (to && Number.isNaN(to.getTime())) {
+            throw new UserInputError('结束时间不合法');
+        }
         const where: any = { channelId: ctx.channelId as number };
         if (status) {
             where.status = status;
+        }
+        if (from && to) {
+            where.createdAt = Between(from, to);
+        } else if (from) {
+            where.createdAt = MoreThanOrEqual(from);
+        } else if (to) {
+            where.createdAt = LessThanOrEqual(to);
         }
         const [items, totalItems] = await this.connection.getRepository(ctx, ReviewAlert).findAndCount({
             where,

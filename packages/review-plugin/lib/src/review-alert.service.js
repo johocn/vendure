@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const typeorm_1 = require("typeorm");
 const constants_1 = require("./constants");
 const review_entity_1 = require("./review.entity");
 const review_alert_entity_1 = require("./review-alert.entity");
@@ -133,11 +134,28 @@ let ReviewAlertService = class ReviewAlertService {
         if (status && !ALERT_STATUSES.includes(status)) {
             throw new core_2.UserInputError('预警状态不合法');
         }
-        const take = Math.min(100, Math.max(1, Number(options === null || options === void 0 ? void 0 : options.take) || 20));
+        const take = Math.min(500, Math.max(1, Number(options === null || options === void 0 ? void 0 : options.take) || 20));
         const skip = Math.max(0, Number(options === null || options === void 0 ? void 0 : options.skip) || 0);
+        const from = (options === null || options === void 0 ? void 0 : options.from) ? new Date(options.from) : null;
+        const to = (options === null || options === void 0 ? void 0 : options.to) ? new Date(options.to) : null;
+        if (from && Number.isNaN(from.getTime())) {
+            throw new core_2.UserInputError('起始时间不合法');
+        }
+        if (to && Number.isNaN(to.getTime())) {
+            throw new core_2.UserInputError('结束时间不合法');
+        }
         const where = { channelId: ctx.channelId };
         if (status) {
             where.status = status;
+        }
+        if (from && to) {
+            where.createdAt = (0, typeorm_1.Between)(from, to);
+        }
+        else if (from) {
+            where.createdAt = (0, typeorm_1.MoreThanOrEqual)(from);
+        }
+        else if (to) {
+            where.createdAt = (0, typeorm_1.LessThanOrEqual)(to);
         }
         const [items, totalItems] = await this.connection.getRepository(ctx, review_alert_entity_1.ReviewAlert).findAndCount({
             where,

@@ -17,6 +17,10 @@ export interface ReviewAlertListOptions {
     skip?: number;
     take?: number;
     status?: string;
+    /** 创建时间下界（ISO 字符串），用于导出的时间段筛选 */
+    from?: string;
+    /** 创建时间上界（ISO 字符串） */
+    to?: string;
 }
 export interface ReviewAlertStats {
     newCount: number;

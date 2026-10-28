@@ -145,6 +145,10 @@ const adminSchema = () => gql `
         skip: Int
         take: Int
         status: String
+        "创建时间下界（ISO 字符串）"
+        from: String
+        "创建时间上界（ISO 字符串）"
+        to: String
     }
 
     input UpdateReviewAlertRuleInput {
