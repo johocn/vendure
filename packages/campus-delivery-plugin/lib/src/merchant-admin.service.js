@@ -61,6 +61,7 @@ let MerchantAdminService = class MerchantAdminService {
             paused: cfg.paused,
             // 与 C 端 openNow / 下单闸门同口径：营业时段内且未临时休息
             openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused,
+            nextTransition: (0, business_hours_1.nextBusinessTransition)(hours),
         };
     }
     /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
@@ -180,6 +181,14 @@ let MerchantAdminService = class MerchantAdminService {
             phone: (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.phoneNumber) !== null && _b !== void 0 ? _b : null,
         });
     }
+    /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
+    async channelBusinessHours(ctx) {
+        var _a;
+        const rows = await this.connection.rawConnection.query('SELECT "customFieldsWaimaiBusinessHours" AS hours FROM channel WHERE id = $1', [ctx.channelId]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const hours = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.hours;
+        return hours == null || hours === '' ? null : String(hours);
+    }
     async board(ctx) {
         var _a, _b, _c, _d;
         const cfg = await this.config.getConfig(ctx);
@@ -232,8 +241,13 @@ let MerchantAdminService = class MerchantAdminService {
         const pick = (s) => dtos.filter((_, i) => cfOf(active[i]).hallStatus === s);
         const completedTodayAmount = deliveredToday.reduce((s, o) => s + (o.total || 0), 0);
         const printProvider = String((_a = cfg.printProvider) !== null && _a !== void 0 ? _a : 'local');
+        // 营业时间（自动开关门）：轻量原生查询，避免工作台 10s 轮询时反复实例化 Channel 实体
+        const hours = await this.channelBusinessHours(ctx);
         return {
             paused: cfg.paused,
+            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused,
+            businessHours: hours,
+            nextTransition: (0, business_hours_1.nextBusinessTransition)(hours),
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
             printMode: (0, waimai_store_service_1.normalizePrintMode)(cfg.printMode),
             printProvider,

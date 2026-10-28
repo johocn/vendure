@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { campusNowMinutes, isWithinBusinessHours, parseBusinessHours } from './business-hours';
+import { campusNowMinutes, isWithinBusinessHours, nextBusinessTransition, parseBusinessHours } from './business-hours';
 
 /** 构造某校园时刻的 UTC 毫秒（UTC+8） */
 const atCampus = (h: number, m: number) => Date.UTC(2026, 0, 15, h - 8, m);
@@ -53,5 +53,45 @@ describe('isWithinBusinessHours', () => {
 
     it('按校园时区（UTC+8）换算，不随服务器时区漂移', () => {
         expect(campusNowMinutes(atCampus(12, 30))).toBe(750);
+    });
+});
+
+describe('nextBusinessTransition', () => {
+    it('未配置营业时间 → null（无自动切换）', () => {
+        expect(nextBusinessTransition(null, atCampus(12, 0))).toBeNull();
+        expect(nextBusinessTransition('', atCampus(12, 0))).toBeNull();
+    });
+
+    it('营业中：下一次是打烊', () => {
+        expect(nextBusinessTransition('10:00-21:00', atCampus(20, 30))).toEqual({
+            action: 'close', at: '21:00', inMinutes: 30, today: true,
+        });
+    });
+
+    it('打烊后：下一次开门（今天晚市 / 明天早市）', () => {
+        const hours = '10:00-14:00,17:00-21:00';
+        expect(nextBusinessTransition(hours, atCampus(15, 0))).toEqual({
+            action: 'open', at: '17:00', inMinutes: 120, today: true,
+        });
+        expect(nextBusinessTransition(hours, atCampus(22, 0))).toEqual({
+            action: 'open', at: '10:00', inMinutes: 720, today: false,
+        });
+    });
+
+    it('跨零点时段：凌晨 1 点时下一次是 2 点打烊', () => {
+        expect(nextBusinessTransition('18:00-02:00', atCampus(1, 0))).toEqual({
+            action: 'close', at: '02:00', inMinutes: 60, today: true,
+        });
+        // 凌晨 3 点（已打烊）下一次是当天 18:00 开门
+        expect(nextBusinessTransition('18:00-02:00', atCampus(3, 0))).toEqual({
+            action: 'open', at: '18:00', inMinutes: 900, today: true,
+        });
+    });
+
+    it('刚好到点：跳过当前时刻，取下一个边界', () => {
+        // 21:00 整点打烊后立刻检查 → 次日 10:00 开门
+        expect(nextBusinessTransition('10:00-21:00', atCampus(21, 0))).toEqual({
+            action: 'open', at: '10:00', inMinutes: 780, today: false,
+        });
     });
 });

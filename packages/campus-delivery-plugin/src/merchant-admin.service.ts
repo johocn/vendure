@@ -13,7 +13,7 @@ import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { campusDayKey, startOfCampusDay } from './campus-time';
-import { isWithinBusinessHours, parseBusinessHours } from './business-hours';
+import { BusinessTransition, isWithinBusinessHours, nextBusinessTransition, parseBusinessHours } from './business-hours';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
 import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
@@ -60,6 +60,12 @@ export interface MerchantBoardOrder {
 
 export interface MerchantBoard {
     paused: boolean;
+    /** 营业时段内且未临时休息（与 C 端 openNow 同口径，自动开关门生效依据） */
+    openNow: boolean;
+    /** 本店营业时间（Channel 自定义字段，空=全天营业） */
+    businessHours: string | null;
+    /** 下一次自动开门/打烊（null=全天营业或未配置） */
+    nextTransition: BusinessTransition | null;
     merchantConfirmEnabled: boolean;
     printMode: 'off' | 'onPaid' | 'onAccepted';
     /** 打印通道（P1-4）：local=前端 C-Lodop；feie/yilianyun=服务端云打印 */
@@ -90,6 +96,8 @@ export interface MerchantStoreProfile {
     storePhone: string | null;
     paused: boolean;
     openNow: boolean;
+    /** 下一次自动开门/打烊（null=全天营业或未配置），供经营设置页倒计时与打烊前提醒 */
+    nextTransition: BusinessTransition | null;
 }
 
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
@@ -188,6 +196,7 @@ export class MerchantAdminService {
             paused: cfg.paused,
             // 与 C 端 openNow / 下单闸门同口径：营业时段内且未临时休息
             openNow: isWithinBusinessHours(hours) && !cfg.paused,
+            nextTransition: nextBusinessTransition(hours),
         };
     }
 
@@ -304,6 +313,17 @@ export class MerchantAdminService {
         });
     }
 
+    /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
+    private async channelBusinessHours(ctx: RequestContext): Promise<string | null> {
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT "customFieldsWaimaiBusinessHours" AS hours FROM channel WHERE id = $1',
+            [ctx.channelId as any],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const hours = list?.[0]?.hours;
+        return hours == null || hours === '' ? null : String(hours);
+    }
+
     async board(ctx: RequestContext): Promise<MerchantBoard> {
         const cfg = await this.config.getConfig(ctx);
         const repo = this.connection.getRepository(ctx, Order);
@@ -356,8 +376,13 @@ export class MerchantAdminService {
         const pick = (s: string) => dtos.filter((_, i) => cfOf(active[i]).hallStatus === s);
         const completedTodayAmount = deliveredToday.reduce((s, o) => s + (o.total || 0), 0);
         const printProvider = String(cfg.printProvider ?? 'local');
+        // 营业时间（自动开关门）：轻量原生查询，避免工作台 10s 轮询时反复实例化 Channel 实体
+        const hours = await this.channelBusinessHours(ctx);
         return {
             paused: cfg.paused,
+            openNow: isWithinBusinessHours(hours) && !cfg.paused,
+            businessHours: hours,
+            nextTransition: nextBusinessTransition(hours),
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
             printMode: normalizePrintMode(cfg.printMode),
             printProvider,

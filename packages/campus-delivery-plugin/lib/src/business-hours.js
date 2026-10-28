@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseBusinessHours = parseBusinessHours;
 exports.campusNowMinutes = campusNowMinutes;
 exports.isWithinBusinessHours = isWithinBusinessHours;
+exports.nextBusinessTransition = nextBusinessTransition;
 /**
  * 店铺营业时间解析（后端）：与 C 端 `utils/store-status.ts` 同口径，避免两侧判断不一致。
  * 支持全角冒号、多种连接符、逗号/顿号/分号分隔的多时段；跨零点（如 18:00-02:00）。
@@ -52,5 +53,40 @@ function isWithinBusinessHours(raw, now = Date.now()) {
     const cur = campusNowMinutes(now);
     return ranges.some(r => cur >= r.start && cur < r.end)
         || ranges.some(r => cur + 1440 >= r.start && cur + 1440 < r.end);
+}
+function toHM(min) {
+    const m = ((min % 1440) + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+/**
+ * 下一次切换点：取所有时段起点/终点中「严格晚于当前分钟」的最近一个。
+ * 未配置营业时间 → null（全天营业，无自动切换）。
+ */
+function nextBusinessTransition(raw, now = Date.now()) {
+    const ranges = parseBusinessHours(raw);
+    if (!ranges.length)
+        return null;
+    const cur = campusNowMinutes(now);
+    let best = null;
+    for (const r of ranges) {
+        // 跨零点时段：起点/终点在相邻两天都会出现，取 -1/0/+1 三天覆盖
+        for (const k of [-1, 0, 1]) {
+            for (const b of [
+                { at: r.start + k * 1440, action: 'open' },
+                { at: r.end + k * 1440, action: 'close' },
+            ]) {
+                if (b.at > cur && (!best || b.at < best.at))
+                    best = b;
+            }
+        }
+    }
+    if (!best)
+        return null;
+    return {
+        action: best.action,
+        at: toHM(best.at),
+        inMinutes: best.at - cur,
+        today: best.at < 1440,
+    };
 }
 //# sourceMappingURL=business-hours.js.map

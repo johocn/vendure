@@ -48,3 +48,52 @@ export function isWithinBusinessHours(raw: string | null | undefined, now: numbe
     return ranges.some(r => cur >= r.start && cur < r.end)
         || ranges.some(r => cur + 1440 >= r.start && cur + 1440 < r.end);
 }
+
+/** 下一次营业状态切换（自动开门 / 自动打烊），供商家端倒计时与打烊前提醒使用 */
+export interface BusinessTransition {
+    /** open=到点自动开门，close=到点自动打烊 */
+    action: 'open' | 'close';
+    /** 切换时刻 "HH:mm" */
+    at: string;
+    /** 距切换还有多少分钟（>=1） */
+    inMinutes: number;
+    /** 切换发生在今天（false=明天） */
+    today: boolean;
+}
+
+function toHM(min: number): string {
+    const m = ((min % 1440) + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/**
+ * 下一次切换点：取所有时段起点/终点中「严格晚于当前分钟」的最近一个。
+ * 未配置营业时间 → null（全天营业，无自动切换）。
+ */
+export function nextBusinessTransition(
+    raw: string | null | undefined,
+    now: number = Date.now(),
+): BusinessTransition | null {
+    const ranges = parseBusinessHours(raw);
+    if (!ranges.length) return null;
+    const cur = campusNowMinutes(now);
+    let best: { at: number; action: 'open' | 'close' } | null = null;
+    for (const r of ranges) {
+        // 跨零点时段：起点/终点在相邻两天都会出现，取 -1/0/+1 三天覆盖
+        for (const k of [-1, 0, 1]) {
+            for (const b of [
+                { at: r.start + k * 1440, action: 'open' as const },
+                { at: r.end + k * 1440, action: 'close' as const },
+            ]) {
+                if (b.at > cur && (!best || b.at < best.at)) best = b;
+            }
+        }
+    }
+    if (!best) return null;
+    return {
+        action: best.action,
+        at: toHM(best.at),
+        inMinutes: best.at - cur,
+        today: best.at < 1440,
+    };
+}

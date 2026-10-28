@@ -489,8 +489,24 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     lines: [MerchantBoardLine!]!
                 }
 
+                """营业时间自动切换（自动开门 / 自动打烊）：inMinutes=距切换分钟数，today=是否发生在今天"""
+                type CampusBusinessTransition {
+                    """open=到点自动开门，close=到点自动打烊"""
+                    action: String!
+                    """切换时刻 HH:mm"""
+                    at: String!
+                    inMinutes: Int!
+                    today: Boolean!
+                }
+
                 type CampusMerchantBoard {
                     paused: Boolean!
+                    """营业时段内且未临时休息（自动开关门生效依据）"""
+                    openNow: Boolean!
+                    """本店营业时间（空=全天营业）"""
+                    businessHours: String
+                    """下一次自动开门/打烊（null=全天营业）"""
+                    nextTransition: CampusBusinessTransition
                     merchantConfirmEnabled: Boolean!
                     printMode: String!
                     """打印通道（P1-4）：local=前端 C-Lodop / feie / yilianyun"""
@@ -579,6 +595,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     paused: Boolean!
                     openNow: Boolean!
+                    """下一次自动开门/打烊（null=全天营业）"""
+                    nextTransition: CampusBusinessTransition
                 }
 
                 """经营数据分桶（分）：营业额=窗口内已送达订单实付；取消=窗口内取消单（全额退款口径）"""

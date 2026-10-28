@@ -1,6 +1,7 @@
 import { ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { BusinessTransition } from './business-hours';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
@@ -31,6 +32,12 @@ export interface MerchantBoardOrder {
 }
 export interface MerchantBoard {
     paused: boolean;
+    /** 营业时段内且未临时休息（与 C 端 openNow 同口径，自动开关门生效依据） */
+    openNow: boolean;
+    /** 本店营业时间（Channel 自定义字段，空=全天营业） */
+    businessHours: string | null;
+    /** 下一次自动开门/打烊（null=全天营业或未配置） */
+    nextTransition: BusinessTransition | null;
     merchantConfirmEnabled: boolean;
     printMode: 'off' | 'onPaid' | 'onAccepted';
     /** 打印通道（P1-4）：local=前端 C-Lodop；feie/yilianyun=服务端云打印 */
@@ -60,6 +67,8 @@ export interface MerchantStoreProfile {
     storePhone: string | null;
     paused: boolean;
     openNow: boolean;
+    /** 下一次自动开门/打烊（null=全天营业或未配置），供经营设置页倒计时与打烊前提醒 */
+    nextTransition: BusinessTransition | null;
 }
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
 export interface KitchenTicketLine {
@@ -144,6 +153,8 @@ export declare class MerchantAdminService {
     revenue(ctx: RequestContext): Promise<MerchantRevenue>;
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     customerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
+    /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
+    private channelBusinessHours;
     board(ctx: RequestContext): Promise<MerchantBoard>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{
