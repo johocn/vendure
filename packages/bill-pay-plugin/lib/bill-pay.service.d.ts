@@ -49,7 +49,7 @@ export declare class BillPayService {
     /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
     payBillPayOrderWithBalance(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
     /**
-     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED），并补写券核销流水。
+     * 支付成功 → 核销券（幂等：仅 UNUSED/RETURNED 可置 USED），并补写券核销流水。
      * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
      */
     private redeemCoupon;
@@ -58,7 +58,8 @@ export declare class BillPayService {
      * - 买单无门店维度：storeId 记 0（0 即「非门店核销」，可按 0 区分统计）；
      * - merchantId 取订单商户快照，核销金额取本单券抵扣额（分）；
      * - 用 rawConnection 的独立仓库写入，避免流水写失败把已到账的支付事务拖入回滚；
-     * - 一张券终身只核销一次，已有流水则跳过（重试幂等）。
+     * - 按「每次核销」落流水，不按券查重：退款将券回退为 RETURNED 后可再次核销，
+     *   同券多次核销需各记一条；幂等由 redeemCoupon 的 USED 原子置位（每次支付仅一次核销）保证。
      */
     private recordCouponRedemption;
     /**

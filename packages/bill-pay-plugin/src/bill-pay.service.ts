@@ -256,10 +256,11 @@ export class BillPayService {
                 relations: { template: { channels: true } },
             });
             // 统一文案：不区分他人的券/已用/过期，避免券码枚举泄露他人信息
+            // RETURNED（退款回退）与平台其它链路一致，视为可用
             if (
                 !cc ||
                 cc.customerId !== customerId ||
-                cc.status !== 'UNUSED' ||
+                (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') ||
                 (cc.expiredAt && new Date(cc.expiredAt).getTime() <= Date.now())
             ) {
                 throw new UserInputError('Coupon is not applicable to bill pay');
@@ -324,9 +325,8 @@ export class BillPayService {
                 .createQueryBuilder()
                 .update(CustomerCoupon)
                 .set({ reservedOrderId: order.code ?? `${BILLPAY_CODE_PREFIX}${order.id}` })
-                .where('id = :id AND status = :status AND reservedOrderId IS NULL', {
+                .where("id = :id AND status IN ('UNUSED', 'RETURNED') AND reservedOrderId IS NULL", {
                     id: couponPlan.cc.id,
-                    status: 'UNUSED',
                 })
                 .execute();
             if ((reserve.affected ?? 0) === 0) {
@@ -543,7 +543,7 @@ export class BillPayService {
     }
 
     /**
-     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED），并补写券核销流水。
+     * 支付成功 → 核销券（幂等：仅 UNUSED/RETURNED 可置 USED），并补写券核销流水。
      * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
      */
     private async redeemCoupon(orderCtx: RequestContext, order: BillPayOrder): Promise<void> {
@@ -565,7 +565,7 @@ export class BillPayService {
                 usedOrderId: ref,
                 reservedOrderId: null as any,
             })
-            .where('id = :id AND status = :status', { id: cc.id, status: 'UNUSED' })
+            .where("id = :id AND status IN ('UNUSED', 'RETURNED')", { id: cc.id })
             .execute();
         if ((claim.affected ?? 0) === 0) {
             Logger.error(
@@ -583,7 +583,8 @@ export class BillPayService {
      * - 买单无门店维度：storeId 记 0（0 即「非门店核销」，可按 0 区分统计）；
      * - merchantId 取订单商户快照，核销金额取本单券抵扣额（分）；
      * - 用 rawConnection 的独立仓库写入，避免流水写失败把已到账的支付事务拖入回滚；
-     * - 一张券终身只核销一次，已有流水则跳过（重试幂等）。
+     * - 按「每次核销」落流水，不按券查重：退款将券回退为 RETURNED 后可再次核销，
+     *   同券多次核销需各记一条；幂等由 redeemCoupon 的 USED 原子置位（每次支付仅一次核销）保证。
      */
     private async recordCouponRedemption(
         order: BillPayOrder,
@@ -592,8 +593,6 @@ export class BillPayService {
     ): Promise<void> {
         try {
             const repo = this.connection.rawConnection.getRepository(CouponRedemption);
-            const exists = await repo.findOne({ where: { customerCouponId: Number(cc.id) } });
-            if (exists) return;
             await repo.save(
                 new CouponRedemption({
                     customerCouponId: Number(cc.id),
