@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     aggregateSalesStats,
+    customSalesWindow,
     medianOf,
     normalizeSalesRange,
     salesPrevWindow,
@@ -228,5 +229,74 @@ describe('aggregateSalesStats', () => {
         expect(res.dailyTrend).toHaveLength(7);
         expect(res.dailyTrend[6].orders).toBe(1);
         expect(res.dailyTrend.reduce((s, d) => s + d.orders, 0)).toBe(1);
+    });
+});
+
+describe('custom 任意起止日期', () => {
+    // 2026-10-20 ~ 2026-10-26（7 个自然日）
+    const w = customSalesWindow('2026-10-20', '2026-10-26');
+    const at = (s: string) => new Date(s);
+    const customArgs = {
+        windowStart: w.start,
+        prevStart: w.prevStart,
+        prevEnd: w.prevEnd,
+        now,
+        range: 'custom' as const,
+        windowEnd: w.end,
+    };
+
+    it('口径：from 当天 0 点 ~ to 次日 0 点（含首尾），上一窗口紧邻等长', () => {
+        expect(w.start).toBe(at('2026-10-20T00:00:00+08:00').getTime());
+        expect(w.end).toBe(at('2026-10-27T00:00:00+08:00').getTime());
+        expect(w.prevStart).toBe(at('2026-10-13T00:00:00+08:00').getTime());
+        expect(w.prevEnd).toBe(w.start);
+    });
+
+    it('首尾日都计入、区间外不计入；上期只算紧邻窗口', () => {
+        const res = aggregateSalesStats({
+            ...customArgs,
+            orders: [
+                order({ id: 1, customerId: 11, createdAt: at('2026-10-20T00:00:00+08:00'), totalWithTax: 3000 }),
+                order({ id: 2, customerId: 12, createdAt: at('2026-10-26T23:59:00+08:00'), totalWithTax: 3000 }),
+                // 区间外：结束日次日 0 点（在 now 之后，当前/上期都不算）
+                order({ id: 3, customerId: 13, createdAt: at('2026-10-27T00:00:00+08:00'), totalWithTax: 3000 }),
+                // 开始日前一刻：不进当前区间，但落在上一窗口（10-13 ~ 10-20）
+                order({ id: 4, customerId: 14, createdAt: at('2026-10-19T23:59:00+08:00'), totalWithTax: 3000 }),
+                // 上一窗口
+                order({ id: 5, customerId: 15, createdAt: at('2026-10-15T10:00:00+08:00'), totalWithTax: 2000 }),
+            ],
+            firstOrderAt: new Map(),
+        });
+        expect(res.kpis.orders).toBe(2);
+        expect(res.kpis.gmvFen).toBe(6000);
+        expect(res.prev.orders).toBe(2);
+        expect(res.prev.gmvFen).toBe(5000);
+        expect(res.dailyTrend).toHaveLength(7);
+        expect(res.dailyTrend[0]).toEqual({ date: '10-20', orders: 1, gmvFen: 3000 });
+        expect(res.dailyTrend[6]).toEqual({ date: '10-26', orders: 1, gmvFen: 3000 });
+    });
+
+    it('区间在过去（windowEnd < now）时趋势仍按实际天数补零', () => {
+        const p = customSalesWindow('2026-10-01', '2026-10-05');
+        const res = aggregateSalesStats({
+            windowStart: p.start,
+            prevStart: p.prevStart,
+            prevEnd: p.prevEnd,
+            now,
+            range: 'custom',
+            windowEnd: p.end,
+            orders: [order({ id: 1, customerId: 11, createdAt: at('2026-10-03T12:00:00+08:00'), totalWithTax: 1000 })],
+            firstOrderAt: new Map(),
+        });
+        expect(res.dailyTrend).toHaveLength(5);
+        expect(res.dailyTrend.map(d => d.date)).toEqual(['10-01', '10-02', '10-03', '10-04', '10-05']);
+        expect(res.dailyTrend[2].orders).toBe(1);
+    });
+
+    it('非法入参抛 UserInputError：缺参 / 格式错 / 结束早于开始 / 超 366 天', () => {
+        expect(() => customSalesWindow('', '2026-10-26')).toThrow('日期格式不合法');
+        expect(() => customSalesWindow('abc', '2026-10-26')).toThrow('日期格式不合法');
+        expect(() => customSalesWindow('2026-10-26', '2026-10-20')).toThrow('结束日期不能早于开始日期');
+        expect(() => customSalesWindow('2024-01-01', '2025-12-31')).toThrow('不能超过 366 天');
     });
 });

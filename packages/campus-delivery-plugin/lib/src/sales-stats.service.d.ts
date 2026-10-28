@@ -1,6 +1,6 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
-/** P4-1-1 销售侧经营 BI：今日/近 7 日/近 30 日三档窗口。 */
-export type SalesRange = 'today' | '7d' | '30d';
+/** P4-1-1 销售侧经营 BI：今日/近 7 日/近 30 日三档窗口；custom=按 from/to 自然日区间（含首尾）。 */
+export type SalesRange = 'today' | '7d' | '30d' | 'custom';
 export interface SalesOrderLineLike {
     quantity: number;
     linePriceWithTax?: number | null;
@@ -91,6 +91,14 @@ export interface SalesStatsPayload {
 export declare function normalizeSalesRange(v?: string | null): SalesRange;
 /** 本窗口起点：today=校园时区今日 0 点；7d/30d=「近 N 个自然日」的 0 点（与日趋势补零区间对齐）。 */
 export declare function salesWindowStart(range: SalesRange, now: number): number;
+/** 自定义自然日区间：from 当天 0 点 ~ to 次日 0 点（含首尾两天）；上一窗口=紧邻等长区间。
+ *  非法入参（缺参/格式错/结束早于开始/超上限）抛 UserInputError。 */
+export declare function customSalesWindow(fromInput: string, toInput: string): {
+    start: number;
+    end: number;
+    prevStart: number;
+    prevEnd: number;
+};
 /** 上一窗口：7d/30d=紧邻等长窗口；today=昨日同时长窗口（昨日 0 点 → 昨日同刻）。 */
 export declare function salesPrevWindow(range: SalesRange, windowStart: number, now: number): {
     prevStart: number;
@@ -109,11 +117,13 @@ export declare function aggregateSalesStats(args: {
     prevEnd: number;
     now: number;
     range: SalesRange;
+    /** 窗口上界（不含）；自定义区间用，缺省为「不设上界」（预设区间天然到当前时刻） */
+    windowEnd?: number;
 }): SalesStatsPayload;
 export declare class SalesStatsService {
     private connection;
     constructor(connection: TransactionalConnection);
-    stats(ctx: RequestContext, rangeInput?: string | null): Promise<SalesStatsPayload>;
+    stats(ctx: RequestContext, rangeInput?: string | null, fromInput?: string | null, toInput?: string | null): Promise<SalesStatsPayload>;
     /** 客户全历史首单时间（分 → 用于新客判定）。空集合直接返回。 */
     private firstOrderAt;
 }

@@ -1310,7 +1310,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
                     """销售侧经营 BI（P4-1）：今日/7日/30日"""
-                    campusSalesStats(range: String): CampusSalesStats!
+                    campusSalesStats(range: String, from: String, to: String): CampusSalesStats!
                     campusAddressChanges(status: String, orderId: ID, skip: Int, take: Int): [CampusAddressChangeRow!]!
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!

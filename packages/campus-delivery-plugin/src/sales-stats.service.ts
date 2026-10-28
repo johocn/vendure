@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { Logger, Order, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Logger, Order, Permission, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { campusDayKey, campusHour, startOfCampusDay } from './campus-time';
 
-/** P4-1-1 销售侧经营 BI：今日/近 7 日/近 30 日三档窗口。 */
-export type SalesRange = 'today' | '7d' | '30d';
+/** P4-1-1 销售侧经营 BI：今日/近 7 日/近 30 日三档窗口；custom=按 from/to 自然日区间（含首尾）。 */
+export type SalesRange = 'today' | '7d' | '30d' | 'custom';
 
-const RANGE_MS: Record<Exclude<SalesRange, 'today'>, number> = {
-    '7d': 7 * 24 * 3600_000,
-    '30d': 30 * 24 * 3600_000,
-};
+const DAY_MS = 24 * 3600_000;
+/** 自定义区间上限（天），防止一次导出/查询拉全量历史。 */
+const MAX_CUSTOM_DAYS = 366;
 
 /** 不计入销售的订单状态：草稿/未支付/已取消（只有已付款且未取消的单才算销售）。 */
 const NON_SALES_STATES = ['Draft', 'AddingItems', 'ArrangingPayment', 'Cancelled'];
@@ -109,20 +108,44 @@ export function normalizeSalesRange(v?: string | null): SalesRange {
 
 /** 本窗口起点：today=校园时区今日 0 点；7d/30d=「近 N 个自然日」的 0 点（与日趋势补零区间对齐）。 */
 export function salesWindowStart(range: SalesRange, now: number): number {
-    if (range === 'today') {
+    if (range === 'today' || range === 'custom') {
         return startOfCampusDay(now);
     }
     const days = range === '7d' ? 7 : 30;
-    return startOfCampusDay(now - (days - 1) * 24 * 3600_000);
+    return startOfCampusDay(now - (days - 1) * DAY_MS);
+}
+
+/** 自定义自然日区间：from 当天 0 点 ~ to 次日 0 点（含首尾两天）；上一窗口=紧邻等长区间。
+ *  非法入参（缺参/格式错/结束早于开始/超上限）抛 UserInputError。 */
+export function customSalesWindow(
+    fromInput: string,
+    toInput: string,
+): { start: number; end: number; prevStart: number; prevEnd: number } {
+    const fromMs = new Date(fromInput).getTime();
+    const toMs = new Date(toInput).getTime();
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+        throw new UserInputError('日期格式不合法（YYYY-MM-DD）');
+    }
+    const start = startOfCampusDay(fromMs);
+    const end = startOfCampusDay(toMs) + DAY_MS;
+    const days = Math.round((end - start) / DAY_MS);
+    if (days <= 0) {
+        throw new UserInputError('结束日期不能早于开始日期');
+    }
+    if (days > MAX_CUSTOM_DAYS) {
+        throw new UserInputError(`自定义区间不能超过 ${MAX_CUSTOM_DAYS} 天`);
+    }
+    return { start, end, prevStart: start - (end - start), prevEnd: start };
 }
 
 /** 上一窗口：7d/30d=紧邻等长窗口；today=昨日同时长窗口（昨日 0 点 → 昨日同刻）。 */
 export function salesPrevWindow(range: SalesRange, windowStart: number, now: number): { prevStart: number; prevEnd: number } {
     if (range === 'today') {
-        const prevStart = windowStart - 24 * 3600_000;
+        const prevStart = windowStart - DAY_MS;
         return { prevStart, prevEnd: prevStart + (now - windowStart) };
     }
-    return { prevStart: windowStart - RANGE_MS[range], prevEnd: windowStart };
+    const span = range === 'custom' ? now - windowStart : range === '7d' ? 7 * DAY_MS : 30 * DAY_MS;
+    return { prevStart: windowStart - span, prevEnd: windowStart };
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -194,10 +217,16 @@ export function aggregateSalesStats(args: {
     prevEnd: number;
     now: number;
     range: SalesRange;
+    /** 窗口上界（不含）；自定义区间用，缺省为「不设上界」（预设区间天然到当前时刻） */
+    windowEnd?: number;
 }): SalesStatsPayload {
     const { orders: raw, firstOrderAt, windowStart, prevStart, prevEnd, now, range } = args;
+    const windowEnd = args.windowEnd ?? Number.MAX_SAFE_INTEGER;
 
-    const curOrders = raw.filter(o => isSalesOrder(o) && new Date(o.createdAt).getTime() >= windowStart);
+    const curOrders = raw.filter(o => {
+        const t = new Date(o.createdAt).getTime();
+        return isSalesOrder(o) && t >= windowStart && t < windowEnd;
+    });
     const prevOrders = raw.filter(o => {
         const t = new Date(o.createdAt).getTime();
         return isSalesOrder(o) && t >= prevStart && t < prevEnd;
@@ -214,10 +243,9 @@ export function aggregateSalesStats(args: {
         hours[h].gmvFen += o.totalWithTax ?? 0;
     }
 
-    // 日趋势：7d/30d 按自然日；today 用时段热力即可，返回空数组
+    // 日趋势：按自然日逐日补零；today 用时段热力即可，返回空数组
     const dailyTrend: SalesDayPoint[] = [];
     if (range !== 'today') {
-        const dayCount = range === '7d' ? 7 : 30;
         const map = new Map<string, { orders: number; gmvFen: number }>();
         for (const o of curOrders) {
             const key = campusDayKey(new Date(o.createdAt).getTime());
@@ -226,9 +254,11 @@ export function aggregateSalesStats(args: {
             b.gmvFen += o.totalWithTax ?? 0;
             map.set(key, b);
         }
-        const today0 = startOfCampusDay(now);
-        for (let i = dayCount - 1; i >= 0; i--) {
-            const key = campusDayKey(today0 - i * 24 * 3600_000);
+        const firstDay = startOfCampusDay(windowStart);
+        const lastDay = startOfCampusDay(Math.min(windowEnd, now + 1) - 1);
+        const dayCount = Math.min(MAX_CUSTOM_DAYS, Math.round((lastDay - firstDay) / DAY_MS) + 1);
+        for (let i = 0; i < dayCount; i++) {
+            const key = campusDayKey(firstDay + i * DAY_MS);
             const b = map.get(key);
             dailyTrend.push({ date: key.slice(5), orders: b?.orders ?? 0, gmvFen: b?.gmvFen ?? 0 });
         }
@@ -298,12 +328,32 @@ export function aggregateSalesStats(args: {
 export class SalesStatsService {
     constructor(private connection: TransactionalConnection) {}
 
-    async stats(ctx: RequestContext, rangeInput?: string | null): Promise<SalesStatsPayload> {
-        const range = normalizeSalesRange(rangeInput);
+    async stats(ctx: RequestContext, rangeInput?: string | null, fromInput?: string | null, toInput?: string | null): Promise<SalesStatsPayload> {
         const now = Date.now();
-        const windowStart = salesWindowStart(range, now);
-        const { prevStart, prevEnd } = salesPrevWindow(range, windowStart, now);
-        const from = Math.min(prevStart, windowStart);
+        let range: SalesRange;
+        let windowStart: number;
+        let windowEnd = Number.MAX_SAFE_INTEGER;
+        let prevStart: number;
+        let prevEnd: number;
+        let customEnd: number | null = null;
+
+        if (fromInput || toInput) {
+            if (!fromInput || !toInput) {
+                throw new UserInputError('自定义区间需同时传 from 与 to');
+            }
+            const w = customSalesWindow(fromInput, toInput);
+            range = 'custom';
+            windowStart = w.start;
+            windowEnd = w.end;
+            customEnd = w.end;
+            prevStart = w.prevStart;
+            prevEnd = w.prevEnd;
+        } else {
+            range = normalizeSalesRange(rangeInput);
+            windowStart = salesWindowStart(range, now);
+            ({ prevStart, prevEnd } = salesPrevWindow(range, windowStart, now));
+        }
+        const queryFrom = Math.min(prevStart, windowStart);
 
         // 租户隔离：平台超管看全部；店铺级只看本渠道（与 campusDeliveryStats 一致）
         const qb = this.connection
@@ -315,9 +365,12 @@ export class SalesStatsService {
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
             .leftJoinAndSelect('product.translations', 'productTrans')
-            .where('order.createdAt >= :from', { from: new Date(from) })
+            .where('order.createdAt >= :from', { from: new Date(queryFrom) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
             .andWhere('(order.customFields.errandKind IS NULL)');
+        if (customEnd != null) {
+            qb.andWhere('order.createdAt < :to', { to: new Date(customEnd) });
+        }
         if (!ctx.userHasPermissions([Permission.SuperAdmin])) {
             qb.andWhere('channel.id = :ch', { ch: ctx.channelId as any });
         }
@@ -338,7 +391,7 @@ export class SalesStatsService {
             `campusSalesStats ${range}: ${orders.length} orders, ${curCustomerIds.length} customers (channel ${ctx.channelId})`,
         );
 
-        return aggregateSalesStats({ orders, firstOrderAt, windowStart, prevStart, prevEnd, now, range });
+        return aggregateSalesStats({ orders, firstOrderAt, windowStart, prevStart, prevEnd, now, range, windowEnd });
     }
 
     /** 客户全历史首单时间（分 → 用于新客判定）。空集合直接返回。 */

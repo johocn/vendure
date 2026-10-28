@@ -12,16 +12,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SalesStatsService = void 0;
 exports.normalizeSalesRange = normalizeSalesRange;
 exports.salesWindowStart = salesWindowStart;
+exports.customSalesWindow = customSalesWindow;
 exports.salesPrevWindow = salesPrevWindow;
 exports.medianOf = medianOf;
 exports.aggregateSalesStats = aggregateSalesStats;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_time_1 = require("./campus-time");
-const RANGE_MS = {
-    '7d': 7 * 24 * 3600000,
-    '30d': 30 * 24 * 3600000,
-};
+const DAY_MS = 24 * 3600000;
+/** 自定义区间上限（天），防止一次导出/查询拉全量历史。 */
+const MAX_CUSTOM_DAYS = 366;
 /** 不计入销售的订单状态：草稿/未支付/已取消（只有已付款且未取消的单才算销售）。 */
 const NON_SALES_STATES = ['Draft', 'AddingItems', 'ArrangingPayment', 'Cancelled'];
 function normalizeSalesRange(v) {
@@ -29,19 +29,39 @@ function normalizeSalesRange(v) {
 }
 /** 本窗口起点：today=校园时区今日 0 点；7d/30d=「近 N 个自然日」的 0 点（与日趋势补零区间对齐）。 */
 function salesWindowStart(range, now) {
-    if (range === 'today') {
+    if (range === 'today' || range === 'custom') {
         return (0, campus_time_1.startOfCampusDay)(now);
     }
     const days = range === '7d' ? 7 : 30;
-    return (0, campus_time_1.startOfCampusDay)(now - (days - 1) * 24 * 3600000);
+    return (0, campus_time_1.startOfCampusDay)(now - (days - 1) * DAY_MS);
+}
+/** 自定义自然日区间：from 当天 0 点 ~ to 次日 0 点（含首尾两天）；上一窗口=紧邻等长区间。
+ *  非法入参（缺参/格式错/结束早于开始/超上限）抛 UserInputError。 */
+function customSalesWindow(fromInput, toInput) {
+    const fromMs = new Date(fromInput).getTime();
+    const toMs = new Date(toInput).getTime();
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+        throw new core_1.UserInputError('日期格式不合法（YYYY-MM-DD）');
+    }
+    const start = (0, campus_time_1.startOfCampusDay)(fromMs);
+    const end = (0, campus_time_1.startOfCampusDay)(toMs) + DAY_MS;
+    const days = Math.round((end - start) / DAY_MS);
+    if (days <= 0) {
+        throw new core_1.UserInputError('结束日期不能早于开始日期');
+    }
+    if (days > MAX_CUSTOM_DAYS) {
+        throw new core_1.UserInputError(`自定义区间不能超过 ${MAX_CUSTOM_DAYS} 天`);
+    }
+    return { start, end, prevStart: start - (end - start), prevEnd: start };
 }
 /** 上一窗口：7d/30d=紧邻等长窗口；today=昨日同时长窗口（昨日 0 点 → 昨日同刻）。 */
 function salesPrevWindow(range, windowStart, now) {
     if (range === 'today') {
-        const prevStart = windowStart - 24 * 3600000;
+        const prevStart = windowStart - DAY_MS;
         return { prevStart, prevEnd: prevStart + (now - windowStart) };
     }
-    return { prevStart: windowStart - RANGE_MS[range], prevEnd: windowStart };
+    const span = range === 'custom' ? now - windowStart : range === '7d' ? 7 * DAY_MS : 30 * DAY_MS;
+    return { prevStart: windowStart - span, prevEnd: windowStart };
 }
 const round1 = (n) => Math.round(n * 10) / 10;
 /** 中位数（偶数取中间两数均值）；空集合返回 0。 */
@@ -111,9 +131,13 @@ function kpisOf(orders, firstOrderAt, windowStart) {
  * 口径：销售单=已付款未取消且非跑腿；GMV=订单 totalWithTax 汇总；
  * 四象限按「销量中位数 × 销售额中位数」分档（>= 中位为高）；新客=本窗口内首单。 */
 function aggregateSalesStats(args) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
     const { orders: raw, firstOrderAt, windowStart, prevStart, prevEnd, now, range } = args;
-    const curOrders = raw.filter(o => isSalesOrder(o) && new Date(o.createdAt).getTime() >= windowStart);
+    const windowEnd = (_a = args.windowEnd) !== null && _a !== void 0 ? _a : Number.MAX_SAFE_INTEGER;
+    const curOrders = raw.filter(o => {
+        const t = new Date(o.createdAt).getTime();
+        return isSalesOrder(o) && t >= windowStart && t < windowEnd;
+    });
     const prevOrders = raw.filter(o => {
         const t = new Date(o.createdAt).getTime();
         return isSalesOrder(o) && t >= prevStart && t < prevEnd;
@@ -125,38 +149,39 @@ function aggregateSalesStats(args) {
     for (const o of curOrders) {
         const h = (0, campus_time_1.campusHour)(new Date(o.createdAt).getTime());
         hours[h].orders++;
-        hours[h].gmvFen += (_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0;
+        hours[h].gmvFen += (_b = o.totalWithTax) !== null && _b !== void 0 ? _b : 0;
     }
-    // 日趋势：7d/30d 按自然日；today 用时段热力即可，返回空数组
+    // 日趋势：按自然日逐日补零；today 用时段热力即可，返回空数组
     const dailyTrend = [];
     if (range !== 'today') {
-        const dayCount = range === '7d' ? 7 : 30;
         const map = new Map();
         for (const o of curOrders) {
             const key = (0, campus_time_1.campusDayKey)(new Date(o.createdAt).getTime());
-            const b = (_b = map.get(key)) !== null && _b !== void 0 ? _b : { orders: 0, gmvFen: 0 };
+            const b = (_c = map.get(key)) !== null && _c !== void 0 ? _c : { orders: 0, gmvFen: 0 };
             b.orders++;
-            b.gmvFen += (_c = o.totalWithTax) !== null && _c !== void 0 ? _c : 0;
+            b.gmvFen += (_d = o.totalWithTax) !== null && _d !== void 0 ? _d : 0;
             map.set(key, b);
         }
-        const today0 = (0, campus_time_1.startOfCampusDay)(now);
-        for (let i = dayCount - 1; i >= 0; i--) {
-            const key = (0, campus_time_1.campusDayKey)(today0 - i * 24 * 3600000);
+        const firstDay = (0, campus_time_1.startOfCampusDay)(windowStart);
+        const lastDay = (0, campus_time_1.startOfCampusDay)(Math.min(windowEnd, now + 1) - 1);
+        const dayCount = Math.min(MAX_CUSTOM_DAYS, Math.round((lastDay - firstDay) / DAY_MS) + 1);
+        for (let i = 0; i < dayCount; i++) {
+            const key = (0, campus_time_1.campusDayKey)(firstDay + i * DAY_MS);
             const b = map.get(key);
-            dailyTrend.push({ date: key.slice(5), orders: (_d = b === null || b === void 0 ? void 0 : b.orders) !== null && _d !== void 0 ? _d : 0, gmvFen: (_e = b === null || b === void 0 ? void 0 : b.gmvFen) !== null && _e !== void 0 ? _e : 0 });
+            dailyTrend.push({ date: key.slice(5), orders: (_e = b === null || b === void 0 ? void 0 : b.orders) !== null && _e !== void 0 ? _e : 0, gmvFen: (_f = b === null || b === void 0 ? void 0 : b.gmvFen) !== null && _f !== void 0 ? _f : 0 });
         }
     }
     // 菜品聚合（按商品，非规格）
     const byProduct = new Map();
     for (const o of curOrders) {
-        for (const line of (_f = o.lines) !== null && _f !== void 0 ? _f : []) {
-            const product = (_g = line.productVariant) === null || _g === void 0 ? void 0 : _g.product;
+        for (const line of (_g = o.lines) !== null && _g !== void 0 ? _g : []) {
+            const product = (_h = line.productVariant) === null || _h === void 0 ? void 0 : _h.product;
             if (!product)
                 continue;
             const pid = String(product.id);
-            const b = (_h = byProduct.get(pid)) !== null && _h !== void 0 ? _h : { name: productNameOf(product), quantity: 0, gmvFen: 0 };
-            b.quantity += (_j = line.quantity) !== null && _j !== void 0 ? _j : 0;
-            b.gmvFen += (_k = line.linePriceWithTax) !== null && _k !== void 0 ? _k : 0;
+            const b = (_j = byProduct.get(pid)) !== null && _j !== void 0 ? _j : { name: productNameOf(product), quantity: 0, gmvFen: 0 };
+            b.quantity += (_k = line.quantity) !== null && _k !== void 0 ? _k : 0;
+            b.gmvFen += (_l = line.linePriceWithTax) !== null && _l !== void 0 ? _l : 0;
             byProduct.set(pid, b);
         }
     }
@@ -172,10 +197,10 @@ function aggregateSalesStats(args) {
     // 复购分群：窗口内下单次数 1 / 2-4 / 5+
     const orderCount = new Map();
     for (const o of curOrders) {
-        const cid = ((_l = o.customer) === null || _l === void 0 ? void 0 : _l.id) != null ? Number(o.customer.id) : NaN;
+        const cid = ((_m = o.customer) === null || _m === void 0 ? void 0 : _m.id) != null ? Number(o.customer.id) : NaN;
         if (!Number.isFinite(cid))
             continue;
-        orderCount.set(cid, ((_m = orderCount.get(cid)) !== null && _m !== void 0 ? _m : 0) + 1);
+        orderCount.set(cid, ((_o = orderCount.get(cid)) !== null && _o !== void 0 ? _o : 0) + 1);
     }
     const cohorts = { once: 0, twiceToFour: 0, loyal: 0 };
     for (const n of orderCount.values()) {
@@ -209,12 +234,32 @@ let SalesStatsService = class SalesStatsService {
     constructor(connection) {
         this.connection = connection;
     }
-    async stats(ctx, rangeInput) {
-        const range = normalizeSalesRange(rangeInput);
+    async stats(ctx, rangeInput, fromInput, toInput) {
         const now = Date.now();
-        const windowStart = salesWindowStart(range, now);
-        const { prevStart, prevEnd } = salesPrevWindow(range, windowStart, now);
-        const from = Math.min(prevStart, windowStart);
+        let range;
+        let windowStart;
+        let windowEnd = Number.MAX_SAFE_INTEGER;
+        let prevStart;
+        let prevEnd;
+        let customEnd = null;
+        if (fromInput || toInput) {
+            if (!fromInput || !toInput) {
+                throw new core_1.UserInputError('自定义区间需同时传 from 与 to');
+            }
+            const w = customSalesWindow(fromInput, toInput);
+            range = 'custom';
+            windowStart = w.start;
+            windowEnd = w.end;
+            customEnd = w.end;
+            prevStart = w.prevStart;
+            prevEnd = w.prevEnd;
+        }
+        else {
+            range = normalizeSalesRange(rangeInput);
+            windowStart = salesWindowStart(range, now);
+            ({ prevStart, prevEnd } = salesPrevWindow(range, windowStart, now));
+        }
+        const queryFrom = Math.min(prevStart, windowStart);
         // 租户隔离：平台超管看全部；店铺级只看本渠道（与 campusDeliveryStats 一致）
         const qb = this.connection
             .getRepository(ctx, core_1.Order)
@@ -225,9 +270,12 @@ let SalesStatsService = class SalesStatsService {
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
             .leftJoinAndSelect('product.translations', 'productTrans')
-            .where('order.createdAt >= :from', { from: new Date(from) })
+            .where('order.createdAt >= :from', { from: new Date(queryFrom) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })
             .andWhere('(order.customFields.errandKind IS NULL)');
+        if (customEnd != null) {
+            qb.andWhere('order.createdAt < :to', { to: new Date(customEnd) });
+        }
         if (!ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
             qb.andWhere('channel.id = :ch', { ch: ctx.channelId });
         }
@@ -241,7 +289,7 @@ let SalesStatsService = class SalesStatsService {
         ];
         const firstOrderAt = await this.firstOrderAt(ctx, curCustomerIds);
         core_1.Logger.debug(`campusSalesStats ${range}: ${orders.length} orders, ${curCustomerIds.length} customers (channel ${ctx.channelId})`);
-        return aggregateSalesStats({ orders, firstOrderAt, windowStart, prevStart, prevEnd, now, range });
+        return aggregateSalesStats({ orders, firstOrderAt, windowStart, prevStart, prevEnd, now, range, windowEnd });
     }
     /** 客户全历史首单时间（分 → 用于新客判定）。空集合直接返回。 */
     async firstOrderAt(ctx, customerIds) {

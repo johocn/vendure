@@ -7,10 +7,15 @@ import { CampusPermissions } from './permissions';
 export class SalesStatsResolver {
     constructor(private stats: SalesStatsService) {}
 
-    /** 销售侧经营 BI（P4-1）：今日/7日/30日，KPI+环比+时段热力+菜品四象限+复购分群 */
+    /** 销售侧经营 BI（P4-1）：今日/7日/30日或自定义 from/to 区间（按自然日，含首尾两天） */
     @Query()
     @Allow(CampusPermissions.CampusViewDispatch as any)
-    async campusSalesStats(@Ctx() ctx: RequestContext, @Args({ name: 'range', nullable: true }) range?: string) {
-        return this.stats.stats(ctx, range);
+    async campusSalesStats(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'range', nullable: true }) range?: string,
+        @Args({ name: 'from', nullable: true }) from?: string,
+        @Args({ name: 'to', nullable: true }) to?: string,
+    ) {
+        return this.stats.stats(ctx, range, from, to);
     }
 }

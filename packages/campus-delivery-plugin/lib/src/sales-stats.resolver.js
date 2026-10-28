@@ -21,9 +21,9 @@ let SalesStatsResolver = class SalesStatsResolver {
     constructor(stats) {
         this.stats = stats;
     }
-    /** 销售侧经营 BI（P4-1）：今日/7日/30日，KPI+环比+时段热力+菜品四象限+复购分群 */
-    async campusSalesStats(ctx, range) {
-        return this.stats.stats(ctx, range);
+    /** 销售侧经营 BI（P4-1）：今日/7日/30日或自定义 from/to 区间（按自然日，含首尾两天） */
+    async campusSalesStats(ctx, range, from, to) {
+        return this.stats.stats(ctx, range, from, to);
     }
 };
 exports.SalesStatsResolver = SalesStatsResolver;
@@ -32,8 +32,10 @@ __decorate([
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'range', nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'from', nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'to', nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, String]),
     __metadata("design:returntype", Promise)
 ], SalesStatsResolver.prototype, "campusSalesStats", null);
 exports.SalesStatsResolver = SalesStatsResolver = __decorate([
