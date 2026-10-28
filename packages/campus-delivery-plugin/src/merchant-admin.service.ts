@@ -724,18 +724,23 @@ export class MerchantAdminService {
         );
     }
 
-    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用） */
+    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用）；开关列由 §66 迁移补，不在 customFields 声明（避免 schema sync 并发加列失败） */
     async getSoldOutAutoRestore(ctx: RequestContext) {
-        const channel = await this.connection.getRepository(ctx, Channel).findOne({ where: { id: ctx.channelId as any } });
-        const enabled = (channel?.customFields as any)?.waimaiSoldOutAutoRestore !== false;
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT "customFieldsWaimaisoldoutautorestore" AS enabled FROM channel WHERE id = $1',
+            [ctx.channelId],
+        );
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const enabled = Array.isArray(list) && list.length ? list[0]?.enabled !== false : true;
         const pending = await this.countSoldOutBatch(ctx.channelId);
         return { enabled, pending };
     }
 
     async setSoldOutAutoRestore(ctx: RequestContext, enabled: boolean) {
-        await this.connection.getRepository(ctx, Channel).update(ctx.channelId as any, {
-            customFields: { waimaiSoldOutAutoRestore: Boolean(enabled) },
-        } as any);
+        await this.connection.rawConnection.query(
+            'UPDATE channel SET "customFieldsWaimaisoldoutautorestore" = $2 WHERE id = $1',
+            [ctx.channelId, Boolean(enabled)],
+        );
         const pending = await this.countSoldOutBatch(ctx.channelId);
         return { enabled: Boolean(enabled), pending };
     }

@@ -231,7 +231,7 @@ export declare class MerchantAdminService {
     clearSoldOutBatch(ctx: RequestContext, opts: {
         productId?: number;
     }): Promise<void>;
-    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用） */
+    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用）；开关列由 §66 迁移补，不在 customFields 声明（避免 schema sync 并发加列失败） */
     getSoldOutAutoRestore(ctx: RequestContext): Promise<{
         enabled: boolean;
         pending: number;

@@ -76,8 +76,6 @@ exports.campusCustomFields = {
         { name: 'waimaiLogo', type: 'string', nullable: true },
         { name: 'waimaiPromoText', type: 'string', nullable: true }, // 满减 tag 文案，如 '满20减4'（spec §12.2 增补）
         { name: 'waimaiBusinessHours', type: 'string', nullable: true }, // 店铺营业时间文案，如 10:00-22:00；C 端店铺页展示
-        // §66 沽清次日自动恢复：开启后每日 04:00 把「全店沽清」批次恢复在售（单品手动沽清不受影响）
-        { name: 'waimaiSoldOutAutoRestore', type: 'boolean', nullable: true, defaultValue: true },
     ],
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0

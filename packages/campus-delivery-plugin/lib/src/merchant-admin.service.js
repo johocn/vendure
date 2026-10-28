@@ -582,18 +582,17 @@ let MerchantAdminService = class MerchantAdminService {
         }
         await this.connection.rawConnection.query('DELETE FROM campus_soldout_batch WHERE "channelId" = $1', [ctx.channelId]);
     }
-    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用） */
+    /** 沽清自动恢复开关 + 待恢复件数（后台开关与文案用）；开关列由 §66 迁移补，不在 customFields 声明（避免 schema sync 并发加列失败） */
     async getSoldOutAutoRestore(ctx) {
         var _a;
-        const channel = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: ctx.channelId } });
-        const enabled = ((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.waimaiSoldOutAutoRestore) !== false;
+        const rows = await this.connection.rawConnection.query('SELECT "customFieldsWaimaisoldoutautorestore" AS enabled FROM channel WHERE id = $1', [ctx.channelId]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const enabled = Array.isArray(list) && list.length ? ((_a = list[0]) === null || _a === void 0 ? void 0 : _a.enabled) !== false : true;
         const pending = await this.countSoldOutBatch(ctx.channelId);
         return { enabled, pending };
     }
     async setSoldOutAutoRestore(ctx, enabled) {
-        await this.connection.getRepository(ctx, core_1.Channel).update(ctx.channelId, {
-            customFields: { waimaiSoldOutAutoRestore: Boolean(enabled) },
-        });
+        await this.connection.rawConnection.query('UPDATE channel SET "customFieldsWaimaisoldoutautorestore" = $2 WHERE id = $1', [ctx.channelId, Boolean(enabled)]);
         const pending = await this.countSoldOutBatch(ctx.channelId);
         return { enabled: Boolean(enabled), pending };
     }

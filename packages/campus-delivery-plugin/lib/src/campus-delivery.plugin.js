@@ -53,7 +53,6 @@ const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tier
 const p10_review_alert_1 = require("./migrations/p10-review-alert");
 const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restore");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
-const campus_soldout_batch_entity_1 = require("./campus-soldout-batch.entity");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
@@ -284,7 +283,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport, campus_soldout_batch_entity_1.CampusSoldOutBatch],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,

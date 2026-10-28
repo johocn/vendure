@@ -54,7 +54,6 @@ import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-t
 import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
 import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-restore';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
-import { CampusSoldOutBatch } from './campus-soldout-batch.entity';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -149,7 +148,7 @@ import { TelemetryService } from './telemetry.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport, CampusSoldOutBatch],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
