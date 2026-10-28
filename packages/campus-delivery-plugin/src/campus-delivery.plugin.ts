@@ -136,6 +136,7 @@ import { SearchAssistService } from './search-assist.service';
 import { P11TelemetryMigration } from './migrations/p11-telemetry';
 import { CampusErrorReport, CampusTrackEvent } from './telemetry.entities';
 import { TelemetryAdminResolver, TelemetryShopResolver } from './telemetry.resolver';
+import { ResumePaymentShopResolver } from './resume-payment-shop.resolver';
 import { TelemetryService } from './telemetry.service';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -2170,6 +2171,8 @@ import { TelemetryService } from './telemetry.service';
                     campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
                     """P4-4 前端错误上报（匿名可用）"""
                     campusReportError(input: CampusErrorReportInput!): Boolean!
+                    """待付款订单续付：校验归属后把该订单设为活跃订单，前端随后调用 addPaymentToOrder"""
+                    campusResumePaymentOrder(orderId: ID!): Order!
                 }
 
                 input CampusTrackEventInput {
@@ -2197,7 +2200,7 @@ import { TelemetryService } from './telemetry.service';
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver, TelemetryShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver, TelemetryShopResolver, ResumePaymentShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

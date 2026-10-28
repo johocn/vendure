@@ -135,6 +135,7 @@ const search_assist_service_1 = require("./search-assist.service");
 const p11_telemetry_1 = require("./migrations/p11-telemetry");
 const telemetry_entities_1 = require("./telemetry.entities");
 const telemetry_resolver_1 = require("./telemetry.resolver");
+const resume_payment_shop_resolver_1 = require("./resume-payment-shop.resolver");
 const telemetry_service_1 = require("./telemetry.service");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -2303,6 +2304,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
                     """P4-4 前端错误上报（匿名可用）"""
                     campusReportError(input: CampusErrorReportInput!): Boolean!
+                    """待付款订单续付：校验归属后把该订单设为活跃订单，前端随后调用 addPaymentToOrder"""
+                    campusResumePaymentOrder(orderId: ID!): Order!
                 }
 
                 input CampusTrackEventInput {
@@ -2330,7 +2333,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver, taste_profile_shop_resolver_1.TasteProfileShopResolver, telemetry_resolver_1.TelemetryShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver, address_change_resolver_1.AddressChangeShopResolver, support_shop_resolver_1.SupportShopResolver, chat_shop_resolver_1.ChatShopResolver, campus_ad_resolver_1.CampusAdShopResolver, campus_locker_resolver_1.CampusLockerShopResolver, taste_profile_shop_resolver_1.TasteProfileShopResolver, telemetry_resolver_1.TelemetryShopResolver, resume_payment_shop_resolver_1.ResumePaymentShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
