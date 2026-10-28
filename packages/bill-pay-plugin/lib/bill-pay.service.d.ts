@@ -46,7 +46,7 @@ export declare class BillPayService {
     settleBillPayOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
     /** 账单支付单所属渠道的 admin ctx（回调 ctx 的渠道可能与之不同） */
     private orderChannelCtx;
-    /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
+    /** 余额支付（同步结算）：原子认领 QUOTED → PAID，再扣余额；扣款失败回退单据状态，避免已付/未扣的脏单 */
     payBillPayOrderWithBalance(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
     /**
      * 支付成功 → 核销券（幂等：仅 UNUSED/RETURNED 可置 USED），并补写券核销流水。
@@ -63,8 +63,10 @@ export declare class BillPayService {
      */
     private recordCouponRedemption;
     /**
-     * 取消 → 释放券：只回退本单预占（reservedOrderId）或本单已核销（usedOrderId）的券，
-     * 防止误释放已被其它委托单使用的券。
+     * 取消/报价过期 → 释放本单预占的券。
+     * 只回退「仍是 UNUSED/RETURNED 且 reservedOrderId=本单」的券：已核销（含门店扫码）、
+     * 已过期/作废的券一律不动，避免把已消耗的券复活成 UNUSED 造成二次核销；
+     * 回退前的 RETURNED（退款回退）保持 RETURNED，不降级成 UNUSED（统计口径一致）。
      */
     private releaseCoupon;
     /** 人工改价：PENDING_QUOTE → QUOTED，note 必填 */

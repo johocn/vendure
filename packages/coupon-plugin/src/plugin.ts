@@ -1000,6 +1000,20 @@ export class CouponPlugin implements OnApplicationBootstrap {
         setCouponConnection(this.injector.get(TransactionalConnection));
         setBindingService(this.injector.get(CouponBindingService));
 
+        // 门店能力端口（可选依赖 merchant-plugin）：扫码核销/门店快照/绑定门店都依赖 MerchantStoreService。
+        // coupon 模块只 import PluginCommonModule，构造注入不可达，故经 Injector 全局查找后 set 进服务。
+        try {
+            const { MerchantStoreService } = await import('@vendure/merchant-plugin');
+            const storeService = this.injector.get(MerchantStoreService);
+            this.injector.get(CouponStoreService).setStoreService(storeService);
+            Logger.info('Coupon store service registered (merchant-plugin)', loggerCtx);
+        } catch (e: any) {
+            Logger.warn(
+                `Merchant store service unavailable, in-store coupon redemption disabled: ${String(e?.message ?? '')}`,
+                loggerCtx,
+            );
+        }
+
         // 余额能力端口（可选依赖 recharge-card-plugin）：未装载时余额支付入口一律不可用
         try {
             const { RechargeCardService } = await import('@vendure/recharge-card-plugin');

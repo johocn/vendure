@@ -19,11 +19,11 @@ describe('applyCouponToQuote', () => {
         ]);
     });
 
-    it('券额大于应付：应付截断为 0，明细金额同步截断（保证明细合计仍可对账）', () => {
+    it('券额大于应付：至少保留 1 分应付（0 元单无法支付），明细金额同步截断', () => {
         const quote: QuoteResult = { payable: 3000, discountDetail: [] };
         const r = applyCouponToQuote(quote, 5000, '无条件直减');
-        expect(r.payable).toBe(0);
-        expect(r.discountDetail).toEqual([{ rule: 'coupon', label: '无条件直减', amount: 3000 }]);
+        expect(r.payable).toBe(1);
+        expect(r.discountDetail).toEqual([{ rule: 'coupon', label: '无条件直减', amount: 2999 }]);
     });
 
     it('券额非正/非法：不追加明细，应付保持原样', () => {
@@ -32,11 +32,11 @@ describe('applyCouponToQuote', () => {
         expect(applyCouponToQuote(quote, NaN, 'x')).toEqual(quote);
     });
 
-    it('券额等于应付：应付归零，明细金额等于原应付', () => {
+    it('券额恰好等于应付：保留 1 分应付，明细金额为应付减 1 分', () => {
         const quote: QuoteResult = { payable: 3000, discountDetail: [] };
         const r = applyCouponToQuote(quote, 3000, '刚好抵完');
-        expect(r.payable).toBe(0);
-        expect(r.discountDetail).toEqual([{ rule: 'coupon', label: '刚好抵完', amount: 3000 }]);
+        expect(r.payable).toBe(1);
+        expect(r.discountDetail).toEqual([{ rule: 'coupon', label: '刚好抵完', amount: 2999 }]);
     });
 
     it('应付已为 0：不追加负向抵扣明细（避免明细合计大于原价）', () => {

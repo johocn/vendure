@@ -35,6 +35,10 @@ let CouponStoreService = class CouponStoreService {
         this.couponService = couponService;
         this.merchantStoreService = merchantStoreService;
     }
+    /** 启动时由 CouponPlugin 经 Injector 注入：coupon 模块未 import merchant 模块，构造注入拿不到实例 */
+    setStoreService(svc) {
+        this.merchantStoreService = svc;
+    }
     /** 当前渠道下模板的门店绑定 */
     findBindings(ctx, templateId) {
         return this.connection.getRepository(ctx, coupon_store_binding_entity_1.CouponStoreBinding).find({
@@ -118,6 +122,11 @@ let CouponStoreService = class CouponStoreService {
         }
         if (coupon.status !== 'UNUSED') {
             throw new core_1.UserInputError(`Coupon is ${coupon.status}`);
+        }
+        // 已被代买单预占的券状态仍是 UNUSED，扫码核销会与线上委托单双花，预占期间一律拒绝
+        // （与 in-store-bill 的 locate 校验口径一致）
+        if (coupon.reservedOrderId) {
+            throw new core_1.UserInputError('Coupon is reserved by another order');
         }
         if (coupon.expiredAt && new Date(coupon.expiredAt).getTime() <= Date.now()) {
             throw new core_1.UserInputError('Coupon has expired');

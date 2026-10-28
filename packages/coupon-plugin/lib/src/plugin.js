@@ -146,11 +146,22 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         return CouponPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         this.injector = new core_2.Injector(this.moduleRef);
         this.couponService.init(this.injector);
         (0, coupon_runtime_1.setCouponConnection)(this.injector.get(core_2.TransactionalConnection));
         (0, coupon_settlement_1.setBindingService)(this.injector.get(coupon_binding_service_1.CouponBindingService));
+        // 门店能力端口（可选依赖 merchant-plugin）：扫码核销/门店快照/绑定门店都依赖 MerchantStoreService。
+        // coupon 模块只 import PluginCommonModule，构造注入不可达，故经 Injector 全局查找后 set 进服务。
+        try {
+            const { MerchantStoreService } = await import('@vendure/merchant-plugin');
+            const storeService = this.injector.get(MerchantStoreService);
+            this.injector.get(coupon_store_service_1.CouponStoreService).setStoreService(storeService);
+            core_2.Logger.info('Coupon store service registered (merchant-plugin)', constants_1.loggerCtx);
+        }
+        catch (e) {
+            core_2.Logger.warn(`Merchant store service unavailable, in-store coupon redemption disabled: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : '')}`, constants_1.loggerCtx);
+        }
         // 余额能力端口（可选依赖 recharge-card-plugin）：未装载时余额支付入口一律不可用
         try {
             const { RechargeCardService } = await import('@vendure/recharge-card-plugin');
@@ -185,7 +196,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         }
         // 可选定时清扫：收敛无人访问的存量过期券（惰性 on-read 已覆盖用户路径，此为长线兜底）。
         // 显式 set COUPON_EXPIRE_SWEEP_MS 才启动；默认关闭避免生产意外全量 UPDATE。
-        const sweepMs = Number((_a = process.env.COUPON_EXPIRE_SWEEP_MS) !== null && _a !== void 0 ? _a : 0);
+        const sweepMs = Number((_b = process.env.COUPON_EXPIRE_SWEEP_MS) !== null && _b !== void 0 ? _b : 0);
         if (sweepMs > 0) {
             const sweep = () => {
                 this.couponService
@@ -203,7 +214,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         // T+1 结算汇总 job（买单券资金流 T2）：补登 → 提交分账（stub，风险铁律①）→ 回执推进。
         // 显式 set COUPON_SETTLE_JOB_MS 才启动（默认关闭，与过期清扫同先例）；
         // 生产建议 600000（10 分钟）——job 内部有 T+1 界线与幂等，高频空转无副作用。
-        const settleMs = Number((_b = process.env.COUPON_SETTLE_JOB_MS) !== null && _b !== void 0 ? _b : 0);
+        const settleMs = Number((_c = process.env.COUPON_SETTLE_JOB_MS) !== null && _c !== void 0 ? _c : 0);
         if (settleMs > 0) {
             const settle = () => {
                 this.injector
@@ -220,7 +231,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         // 公众号增强，R4 同用户同券同阶段 7 天去重在订阅侧统一做，重复扫描幂等）。
         // 默认开启（间隔 6h，扫描只读+事件发布无全量 UPDATE 风险）；COUPON_EXPIRE_REMIND_MS=0 显式关闭。
         // 延迟 30s 首跑：避开 pm2 restart 启动窗口，保证 notification-plugin 事件订阅已就绪。
-        const remindMs = Number((_c = process.env.COUPON_EXPIRE_REMIND_MS) !== null && _c !== void 0 ? _c : 21600000);
+        const remindMs = Number((_d = process.env.COUPON_EXPIRE_REMIND_MS) !== null && _d !== void 0 ? _d : 21600000);
         if (remindMs > 0) {
             const remind = () => {
                 this.injector
@@ -229,7 +240,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
                     .catch((e) => core_2.Logger.error(`Coupon expire reminder failed: ${e.message}`, constants_1.loggerCtx));
             };
             const firstRun = setTimeout(remind, 30000);
-            (_d = firstRun.unref) === null || _d === void 0 ? void 0 : _d.call(firstRun);
+            (_e = firstRun.unref) === null || _e === void 0 ? void 0 : _e.call(firstRun);
             setInterval(remind, remindMs);
             core_2.Logger.info(`Coupon expire reminder enabled (every ${remindMs}ms)`, constants_1.loggerCtx);
         }

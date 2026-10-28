@@ -284,7 +284,12 @@ export class BillPayService {
                 throw new UserInputError(IN_STORE_REASON_MESSAGES[computed.reason]);
             }
             const quote = applyCouponToQuote(couponOutcome, computed.discountAmount, tpl.name);
-            const discount = Math.min(computed.discountAmount, couponOutcome.payable);
+            // 以实际入明细的券额为准（打开保留 1 分应付后可能小于券面额），避免「券码有值、抵扣为 0」的白用券
+            const discount =
+                (quote.discountDetail.filter((d) => d.rule === 'coupon').pop() as any)?.amount ?? 0;
+            if (discount <= 0) {
+                throw new UserInputError('Coupon has no applicable amount for this order');
+            }
             couponPlan = { cc, quote, discount };
         }
 
@@ -513,7 +518,7 @@ export class BillPayService {
         });
     }
 
-    /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
+    /** 余额支付（同步结算）：原子认领 QUOTED → PAID，再扣余额；扣款失败回退单据状态，避免已付/未扣的脏单 */
     async payBillPayOrderWithBalance(ctx: RequestContext, id: ID): Promise<BillPayOrder> {
         const port = getBillPayBalancePort();
         if (!port) {
@@ -523,12 +528,36 @@ export class BillPayService {
         if (order.status !== 'QUOTED' || order.quoteAmount == null) {
             throw new UserInputError(`Bill pay order is ${order.status}, not payable`);
         }
-        order.paymentMethod = 'balance';
-        order.payRef = order.code;
-        order.status = 'PAID';
-        order.paidAt = order.paidAt ?? new Date();
-        await this.orderRepo(ctx).save(order);
-        await port.deductBalance(ctx, order.customerId, order.quoteAmount);
+        const repo = this.orderRepo(ctx);
+        // 原子认领：并发/双击只有一次成功，防止重复扣款
+        const claim = await repo
+            .createQueryBuilder()
+            .update(BillPayOrder)
+            .set({ status: 'PAID', paidAt: new Date(), paymentMethod: 'balance', payRef: order.code })
+            .where('id = :id AND status = :status AND customerId = :customerId', {
+                id: order.id,
+                status: 'QUOTED',
+                customerId: order.customerId,
+            })
+            .execute();
+        if ((claim.affected ?? 0) === 0) {
+            throw new UserInputError(`Bill pay order is ${order.status}, not payable`);
+        }
+        try {
+            // 0 元单（历史数据）无需扣款；新单已由报价侧保证至少 1 分应付
+            if (order.quoteAmount > 0) {
+                await port.deductBalance(ctx, order.customerId, order.quoteAmount);
+            }
+        } catch (e) {
+            // 扣款失败即回到未支付，避免「显示已付但未扣款/未核销」；券仍由本单预占，可取消或重新支付
+            await repo
+                .createQueryBuilder()
+                .update(BillPayOrder)
+                .set({ status: 'QUOTED', paidAt: null as any, paymentMethod: null as any, payRef: null as any })
+                .where('id = :id AND status = :status', { id: order.id, status: 'PAID' })
+                .execute();
+            throw e;
+        }
         try {
             await this.redeemCoupon(ctx, order);
         } catch (e: any) {
@@ -538,7 +567,7 @@ export class BillPayService {
                 loggerCtx,
             );
         }
-        const fresh = await this.orderRepo(ctx).findOne({ where: { id: order.id } });
+        const fresh = await repo.findOne({ where: { id: order.id } });
         return fresh as BillPayOrder;
     }
 
@@ -623,8 +652,10 @@ export class BillPayService {
     }
 
     /**
-     * 取消 → 释放券：只回退本单预占（reservedOrderId）或本单已核销（usedOrderId）的券，
-     * 防止误释放已被其它委托单使用的券。
+     * 取消/报价过期 → 释放本单预占的券。
+     * 只回退「仍是 UNUSED/RETURNED 且 reservedOrderId=本单」的券：已核销（含门店扫码）、
+     * 已过期/作废的券一律不动，避免把已消耗的券复活成 UNUSED 造成二次核销；
+     * 回退前的 RETURNED（退款回退）保持 RETURNED，不降级成 UNUSED（统计口径一致）。
      */
     private async releaseCoupon(ctx: RequestContext, order: BillPayOrder): Promise<void> {
         if (!order.couponCode) return;
@@ -634,15 +665,14 @@ export class BillPayService {
             .createQueryBuilder()
             .update(CustomerCoupon)
             .set({
-                status: 'UNUSED',
+                status: () => "CASE WHEN status = 'RETURNED' THEN 'RETURNED' ELSE 'UNUSED' END",
                 reservedOrderId: null as any,
                 usedOrderId: null as any,
                 usedAt: null as any,
             })
-            .where('code = :code AND (reservedOrderId = :ref OR (status = :used AND usedOrderId = :ref))', {
+            .where("code = :code AND reservedOrderId = :ref AND status IN ('UNUSED', 'RETURNED')", {
                 code: order.couponCode,
                 ref,
-                used: 'USED',
             })
             .execute();
     }

@@ -38,6 +38,8 @@ export declare class CouponStoreService {
     private couponService;
     private merchantStoreService?;
     constructor(connection: TransactionalConnection, couponService: CouponService, merchantStoreService?: MerchantStoreService | undefined);
+    /** 启动时由 CouponPlugin 经 Injector 注入：coupon 模块未 import merchant 模块，构造注入拿不到实例 */
+    setStoreService(svc: MerchantStoreService): void;
     /** 当前渠道下模板的门店绑定 */
     private findBindings;
     /** 模板可用门店列表：无绑定 → 附近全部门店；有绑定 → 绑定门店（坐标场景保持距离排序） */
