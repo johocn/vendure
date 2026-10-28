@@ -12,20 +12,23 @@ const MAX_CUSTOM_DAYS = 366;
 /** 不计入销售的订单状态：草稿/未支付/已取消（只有已付款且未取消的单才算销售）。 */
 const NON_SALES_STATES = ['Draft', 'AddingItems', 'ArrangingPayment', 'Cancelled'];
 
+export interface SalesCollectionLike {
+    id: unknown;
+    translations?: Array<{ languageCode: string; name: string }> | null;
+}
+
 export interface SalesOrderLineLike {
     quantity: number;
     linePriceWithTax?: number | null;
     productVariant?: {
         id: unknown;
         name?: string | null;
+        /** Vendure 3 的分类归属在 ProductVariant 上（Collection ManyToMany） */
+        collections?: SalesCollectionLike[] | null;
         product?: {
             id: unknown;
             name?: string | null;
             translations?: Array<{ languageCode: string; name: string }> | null;
-            collections?: Array<{
-                id: unknown;
-                translations?: Array<{ languageCode: string; name: string }> | null;
-            }> | null;
         } | null;
     } | null;
 }
@@ -178,11 +181,9 @@ function productNameOf(product: NonNullable<NonNullable<SalesOrderLineLike['prod
     return hit?.name || `#${product.id}`;
 }
 
-/** 商品所属分类（Collection），名称优先中文，其次第一条翻译。 */
-function categoriesOf(
-    product: NonNullable<NonNullable<SalesOrderLineLike['productVariant']>['product']>,
-): Array<{ id: string; name: string }> {
-    return (product.collections ?? []).map(c => {
+/** 规格所属分类（Collection），名称优先中文，其次第一条翻译。 */
+function categoriesOf(collections?: SalesCollectionLike[] | null): Array<{ id: string; name: string }> {
+    return (collections ?? []).map(c => {
         const translations = c.translations ?? [];
         const hit = translations.find(t => t.languageCode === 'zh-Hans' || t.languageCode === 'zh') ?? translations[0];
         return { id: String(c.id), name: hit?.name || `#${c.id}` };
@@ -288,7 +289,10 @@ export function aggregateSalesStats(args: {
             const product = line.productVariant?.product;
             if (!product) continue;
             const pid = String(product.id);
-            const b = byProduct.get(pid) ?? { name: productNameOf(product), quantity: 0, gmvFen: 0, categories: categoriesOf(product) };
+            const b = byProduct.get(pid) ?? { name: productNameOf(product), quantity: 0, gmvFen: 0, categories: [] as Array<{ id: string; name: string }> };
+            for (const c of categoriesOf(line.productVariant?.collections)) {
+                if (!b.categories.some(x => x.id === c.id)) b.categories.push(c);
+            }
             b.quantity += line.quantity ?? 0;
             b.gmvFen += line.linePriceWithTax ?? 0;
             byProduct.set(pid, b);
@@ -382,7 +386,7 @@ export class SalesStatsService {
             .leftJoinAndSelect('line.productVariant', 'variant')
             .leftJoinAndSelect('variant.product', 'product')
             .leftJoinAndSelect('product.translations', 'productTrans')
-            .leftJoinAndSelect('product.collections', 'collection')
+            .leftJoinAndSelect('variant.collections', 'collection')
             .leftJoinAndSelect('collection.translations', 'collectionTrans')
             .where('order.createdAt >= :from', { from: new Date(queryFrom) })
             .andWhere('order.state NOT IN (:...states)', { states: NON_SALES_STATES })

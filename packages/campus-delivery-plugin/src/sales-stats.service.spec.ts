@@ -312,15 +312,15 @@ describe('商品所属分类（商品结构导出按分类筛选）', () => {
         productVariant: {
             id: productId * 10,
             name: `${productName}-默认`,
+            collections: cats.map(c => ({
+                id: c.id,
+                translations: c.zh
+                    ? [{ languageCode: 'en', name: 'x' }, { languageCode: 'zh-Hans', name: c.zh }]
+                    : [],
+            })),
             product: {
                 id: productId,
                 translations: [{ languageCode: 'zh-Hans', name: productName }],
-                collections: cats.map(c => ({
-                    id: c.id,
-                    translations: c.zh
-                        ? [{ languageCode: 'en', name: 'x' }, { languageCode: 'zh-Hans', name: c.zh }]
-                        : [],
-                })),
             },
         },
     });

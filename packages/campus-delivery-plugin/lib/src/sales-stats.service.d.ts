@@ -1,25 +1,27 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 /** P4-1-1 销售侧经营 BI：今日/近 7 日/近 30 日三档窗口；custom=按 from/to 自然日区间（含首尾）。 */
 export type SalesRange = 'today' | '7d' | '30d' | 'custom';
+export interface SalesCollectionLike {
+    id: unknown;
+    translations?: Array<{
+        languageCode: string;
+        name: string;
+    }> | null;
+}
 export interface SalesOrderLineLike {
     quantity: number;
     linePriceWithTax?: number | null;
     productVariant?: {
         id: unknown;
         name?: string | null;
+        /** Vendure 3 的分类归属在 ProductVariant 上（Collection ManyToMany） */
+        collections?: SalesCollectionLike[] | null;
         product?: {
             id: unknown;
             name?: string | null;
             translations?: Array<{
                 languageCode: string;
                 name: string;
-            }> | null;
-            collections?: Array<{
-                id: unknown;
-                translations?: Array<{
-                    languageCode: string;
-                    name: string;
-                }> | null;
             }> | null;
         } | null;
     } | null;
