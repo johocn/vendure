@@ -149,8 +149,12 @@ export class CouponStoreService {
         if (!coupon) {
             throw new UserInputError('Coupon not found');
         }
-        if (coupon.status !== 'UNUSED') {
+        if (coupon.status !== 'UNUSED' && coupon.status !== 'RETURNED') {
             throw new UserInputError(`Coupon is ${coupon.status}`);
+        }
+        // 模板停用后不再允许核销（与到店收银列表 listInStoreCoupons 的口径一致）
+        if (coupon.template && !coupon.template.enabled) {
+            throw new UserInputError('Coupon template is disabled');
         }
         // 已被代买单预占的券状态仍是 UNUSED，扫码核销会与线上委托单双花，预占期间一律拒绝
         // （与 in-store-bill 的 locate 校验口径一致）
@@ -165,13 +169,13 @@ export class CouponStoreService {
         const pub = svc.toPublic(store);
         const now = new Date();
 
-        // 原子置 USED：并发扫码只有一笔成功
+        // 原子置 USED：并发扫码（含退款回退的 RETURNED 券）只有一笔成功
         const couponRepo = this.connection.getRepository(ctx, CustomerCoupon);
         const claim = await couponRepo
             .createQueryBuilder()
             .update(CustomerCoupon)
-            .set({ status: 'USED', usedAt: now, redeemedStoreId: Number(storeId) } as any)
-            .where('id = :id AND status = :status', { id: Number(coupon.id), status: 'UNUSED' })
+            .set({ status: 'USED', usedAt: now, redeemedStoreId: Number(storeId), usedOrderId: null as any } as any)
+            .where("id = :id AND status IN ('UNUSED', 'RETURNED')", { id: Number(coupon.id) })
             .execute();
         if ((claim.affected ?? 0) === 0) {
             throw new UserInputError('Coupon is not redeemable now');
