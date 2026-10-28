@@ -24,6 +24,10 @@ const CTX = { channelId: 113, channel: { id: 113 } };
     (0, vitest_1.it)('英文关键词同样命中', () => {
         (0, vitest_1.expect)((0, review_alert_1.detectReviewAlertTags)('hair in the food')).toEqual(['异物']);
     });
+    (0, vitest_1.it)('变凉类口语表述命中（凉了/凉的/凉透）', () => {
+        (0, vitest_1.expect)((0, review_alert_1.detectReviewAlertTags)('米饭也是凉的')).toEqual(['变凉']);
+        (0, vitest_1.expect)((0, review_alert_1.detectReviewAlertTags)('汤都凉透了')).toEqual(['变凉']);
+    });
 });
 (0, vitest_1.describe)('evaluateReviewAlert 预警判定', () => {
     (0, vitest_1.it)('星级触阈 → low_rating', () => {

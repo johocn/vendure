@@ -54,7 +54,7 @@ const DICT: Array<{ tag: ReviewAlertTag; words: string[] }> = [
     },
     {
         tag: '变凉',
-        words: ['凉了', '冷了', '不热', '冰凉', '温的', 'cold food'],
+        words: ['凉了', '凉的', '凉透', '冷了', '不热', '冰凉', '温的', 'cold food'],
     },
     {
         tag: '配送慢',

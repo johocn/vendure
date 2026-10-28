@@ -29,6 +29,11 @@ describe('review-alert 归因词典', () => {
     it('英文关键词同样命中', () => {
         expect(detectReviewAlertTags('hair in the food')).toEqual(['异物']);
     });
+
+    it('变凉类口语表述命中（凉了/凉的/凉透）', () => {
+        expect(detectReviewAlertTags('米饭也是凉的')).toEqual(['变凉']);
+        expect(detectReviewAlertTags('汤都凉透了')).toEqual(['变凉']);
+    });
 });
 
 describe('evaluateReviewAlert 预警判定', () => {
