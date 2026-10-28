@@ -115,7 +115,7 @@ const adminSchema = () => gql `
     }
 
     """P4-2 差评预警（reviewId 唯一）"""
-    type ReviewAlert {
+    type ReviewAlert implements Node {
         id: ID!
         reviewId: ID!
         channelId: ID!
