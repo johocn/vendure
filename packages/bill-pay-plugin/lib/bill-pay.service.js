@@ -771,17 +771,17 @@ let BillPayService = class BillPayService {
     }
     /**
      * 退款退券：本单已核销的券 USED → RETURNED，清 usedOrderId/usedAt（券恢复可用直至过期）。
-     * 与 coupon-plugin returnCoupon 一致：核销流水保留、不写 revokedAt；
-     * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等。
+     * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等；
+     * 同时对本单写入的 BILLPAY 核销流水做冲销（revokedAt/revokeReason），到店 QR 流水不受影响。
      * 另释放「支付时核销失败」残留的本单预占：这类券仍是 UNUSED/RETURNED + reservedOrderId=本单，
      * 若不清理会被永久锁死（扫码与再下单都被拒）。
      */
     async returnCouponOnRefund(ctx, order) {
-        var _a;
+        var _a, _b;
         if (!order.couponCode)
             return;
         const ref = (_a = order.code) !== null && _a !== void 0 ? _a : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
-        await this.connection
+        const returned = await this.connection
             .getRepository(ctx, coupon_plugin_1.CustomerCoupon)
             .createQueryBuilder()
             .update(coupon_plugin_1.CustomerCoupon)
@@ -792,6 +792,16 @@ let BillPayService = class BillPayService {
             ref,
         })
             .execute();
+        if (((_b = returned.affected) !== null && _b !== void 0 ? _b : 0) > 0) {
+            // 台账冲销：券已被本单核销时，冲销其最近一条未撤销的 BILLPAY 流水（即本单这次核销）
+            await this.connection
+                .getRepository(ctx, coupon_plugin_1.CouponRedemption)
+                .createQueryBuilder()
+                .update(coupon_plugin_1.CouponRedemption)
+                .set({ revokedAt: new Date(), revokeReason: `订单退款 ${ref}` })
+                .where(`id = (SELECT id FROM coupon_redemption WHERE "couponCode" = :code AND "redeemMode" = 'BILLPAY' AND "revokedAt" IS NULL ORDER BY "redeemedAt" DESC LIMIT 1)`, { code: order.couponCode })
+                .execute();
+        }
         // 残留预占清理（UNUSED 保持 UNUSED、RETURNED 保持 RETURNED，只清本单预占）
         await this.releaseCoupon(ctx, order);
         core_1.Logger.info(`BillPayOrder ${ref} refunded, coupon ${order.couponCode} returned`, constants_1.loggerCtx);

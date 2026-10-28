@@ -1142,7 +1142,12 @@ export class CouponService {
         }
         // 属店隔离：revoke 针对券实例，按其所关联券模板的发行店校验归属。
         await this.assertManagedByShop(ctx, cc.template?.shopId);
-        if (cc.status === 'UNUSED') {
+        // INVALID = admin 撤销作废（未用券）：USED 券已参与核销/结算，不能静默忽略，直接明确拒绝；
+        // UNUSED/RETURNED/EXPIRED 可作废（与出售单退款回收券的 invalidateCoupons 口径一致）。
+        if (cc.status === 'USED') {
+            throw new UserInputError('Coupon has been used and cannot be revoked');
+        }
+        if (cc.status !== 'INVALID') {
             cc.status = 'INVALID';
             await repo.save(cc);
         }
