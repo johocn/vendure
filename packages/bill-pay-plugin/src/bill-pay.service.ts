@@ -816,7 +816,39 @@ export class BillPayService {
                 throw new UserInputError('Bill pay order is not refundable now');
             }
         }
+        // 退款退券（口径对齐 coupon-plugin 订单退款）：退款已完成即不可逆，券回退失败只记 error
+        try {
+            await this.returnCouponOnRefund(ctx, order);
+        } catch (e: any) {
+            Logger.error(
+                `BillPayOrder ${order.code ?? order.id} refunded but coupon ${order.couponCode ?? '-'} return failed: ` +
+                    String(e?.message ?? ''),
+                loggerCtx,
+            );
+        }
         return (await repo.findOne({ where: { id: order.id } })) as BillPayOrder;
+    }
+
+    /**
+     * 退款退券：本单已核销的券 USED → RETURNED，清 usedOrderId/usedAt（券恢复可用直至过期）。
+     * 与 coupon-plugin returnCoupon 一致：核销流水保留、不写 revokedAt；
+     * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等。
+     */
+    private async returnCouponOnRefund(ctx: RequestContext, order: BillPayOrder): Promise<void> {
+        if (!order.couponCode) return;
+        const ref = order.code ?? `${BILLPAY_CODE_PREFIX}${order.id}`;
+        await this.connection
+            .getRepository(ctx, CustomerCoupon)
+            .createQueryBuilder()
+            .update(CustomerCoupon)
+            .set({ status: 'RETURNED', usedOrderId: null as any, usedAt: null as any })
+            .where('code = :code AND status = :status AND usedOrderId = :ref', {
+                code: order.couponCode,
+                status: 'USED',
+                ref,
+            })
+            .execute();
+        Logger.info(`BillPayOrder ${ref} refunded, coupon ${order.couponCode} returned`, loggerCtx);
     }
 
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */

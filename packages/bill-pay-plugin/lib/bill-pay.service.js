@@ -672,7 +672,7 @@ let BillPayService = class BillPayService {
     }
     /** 人工退款：仅 PAID 未接单；微信原路退 / 余额退回（IN_SERVICE 后仅走对账人工处理） */
     async refundBillPayOrder(ctx, id, reason) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g;
         const order = await this.loadChannelOrder(ctx, id);
         if (order.status !== 'PAID') {
             throw new core_1.UserInputError(`Bill pay order is ${order.status}, refund not allowed`);
@@ -720,7 +720,38 @@ let BillPayService = class BillPayService {
                 throw new core_1.UserInputError('Bill pay order is not refundable now');
             }
         }
+        // 退款退券（口径对齐 coupon-plugin 订单退款）：退款已完成即不可逆，券回退失败只记 error
+        try {
+            await this.returnCouponOnRefund(ctx, order);
+        }
+        catch (e) {
+            core_1.Logger.error(`BillPayOrder ${(_e = order.code) !== null && _e !== void 0 ? _e : order.id} refunded but coupon ${(_f = order.couponCode) !== null && _f !== void 0 ? _f : '-'} return failed: ` +
+                String((_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : ''), constants_1.loggerCtx);
+        }
         return (await repo.findOne({ where: { id: order.id } }));
+    }
+    /**
+     * 退款退券：本单已核销的券 USED → RETURNED，清 usedOrderId/usedAt（券恢复可用直至过期）。
+     * 与 coupon-plugin returnCoupon 一致：核销流水保留、不写 revokedAt；
+     * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等。
+     */
+    async returnCouponOnRefund(ctx, order) {
+        var _a;
+        if (!order.couponCode)
+            return;
+        const ref = (_a = order.code) !== null && _a !== void 0 ? _a : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`;
+        await this.connection
+            .getRepository(ctx, coupon_plugin_1.CustomerCoupon)
+            .createQueryBuilder()
+            .update(coupon_plugin_1.CustomerCoupon)
+            .set({ status: 'RETURNED', usedOrderId: null, usedAt: null })
+            .where('code = :code AND status = :status AND usedOrderId = :ref', {
+            code: order.couponCode,
+            status: 'USED',
+            ref,
+        })
+            .execute();
+        core_1.Logger.info(`BillPayOrder ${ref} refunded, coupon ${order.couponCode} returned`, constants_1.loggerCtx);
     }
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */
     async adminList(ctx, opts) {

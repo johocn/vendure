@@ -76,6 +76,12 @@ export declare class BillPayService {
     settleBillPayOrder(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
     /** 人工退款：仅 PAID 未接单；微信原路退 / 余额退回（IN_SERVICE 后仅走对账人工处理） */
     refundBillPayOrder(ctx: RequestContext, id: ID, reason?: string): Promise<BillPayOrder>;
+    /**
+     * 退款退券：本单已核销的券 USED → RETURNED，清 usedOrderId/usedAt（券恢复可用直至过期）。
+     * 与 coupon-plugin returnCoupon 一致：核销流水保留、不写 revokedAt；
+     * 条件带 usedOrderId=本单，防止误退已被其它单核销的券，且天然幂等。
+     */
+    private returnCouponOnRefund;
     /** 工作台列表：状态 tab；渠道隔离（超管渠道 1 看全量，对齐 merchantSettlementAdminResolver 口径） */
     adminList(ctx: RequestContext, opts: {
         skip?: number;
