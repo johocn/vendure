@@ -20,6 +20,11 @@ export class MerchantAgreement extends VendureEntity {
     @Column({ type: 'varchar' })
     merchantName: string;
 
+    /** 关联商户 id（merchant 表；为空表示历史仅按名称维护的协议） */
+    @Index()
+    @Column({ type: 'int', nullable: true })
+    merchantId: number | null;
+
     /** 协议结算费率（百分数整数，85 = 8.5 折）：t3 向商家支付的成本口径 */
     @Column({ type: 'int' })
     settleRate: number;

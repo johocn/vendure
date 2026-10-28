@@ -11,7 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var MerchantStoreFieldResolver_1;
+var MerchantFieldResolver_1, MerchantStoreFieldResolver_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MerchantStoreFieldResolver = exports.MerchantFieldResolver = exports.MerchantAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
@@ -22,7 +22,8 @@ const merchant_store_entity_1 = require("./merchant-store.entity");
 const merchant_store_service_1 = require("./merchant-store.service");
 /**
  * 商户/门店后台 API：读写商户主数据、门店、租户认领关系与门店员工。
- * 权限沿用订单更新权限（Permission.UpdateOrder），与既有运营插件保持一致。
+ * 商户与门店是平台级主数据（非 ChannelAware），后台读写一律仅平台超管，
+ * 避免租户枚举全平台商户/门店；C 端只走 shop-api 的公开投影。
  */
 let MerchantAdminResolver = class MerchantAdminResolver {
     constructor(merchantStoreService) {
@@ -52,11 +53,19 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async updateMerchant(ctx, input) {
         return this.merchantStoreService.updateMerchant(ctx, input);
     }
+    /** 删除商户（软删）：仍存在未删除门店时拒绝 */
+    async deleteMerchant(ctx, id) {
+        return this.merchantStoreService.deleteMerchant(ctx, id);
+    }
     async createMerchantStore(ctx, input) {
         return this.merchantStoreService.createStore(ctx, input);
     }
     async updateMerchantStore(ctx, input) {
         return this.merchantStoreService.updateStore(ctx, input);
+    }
+    /** 删除门店（软删），并撤销其 ACTIVE 租户认领 */
+    async deleteMerchantStore(ctx, id) {
+        return this.merchantStoreService.deleteStore(ctx, id);
     }
     async claimMerchantStore(ctx, storeId, channelId, role, contractNo) {
         return this.merchantStoreService.claimStore(ctx, { storeId, channelId, role, contractNo });
@@ -70,11 +79,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
         }
         return this.merchantStoreService.upsertStaff(ctx, input);
     }
+    async removeMerchantStoreStaff(ctx, storeId, userId) {
+        return this.merchantStoreService.removeStaff(ctx, storeId, userId);
+    }
 };
 exports.MerchantAdminResolver = MerchantAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -83,7 +95,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "merchants", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -92,7 +104,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "merchant", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -101,7 +113,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "merchantStores", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -110,7 +122,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "merchantStore", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('storeId')),
     __metadata("design:type", Function),
@@ -119,7 +131,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "merchantStoreClaims", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('storeId')),
     __metadata("design:type", Function),
@@ -128,7 +140,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "merchantStoreStaff", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -137,7 +149,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "createMerchant", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -146,7 +158,16 @@ __decorate([
 ], MerchantAdminResolver.prototype, "updateMerchant", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "deleteMerchant", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -155,7 +176,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "createMerchantStore", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -164,7 +185,16 @@ __decorate([
 ], MerchantAdminResolver.prototype, "updateMerchantStore", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "deleteMerchantStore", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('storeId')),
     __param(2, (0, graphql_1.Args)('channelId')),
@@ -176,7 +206,7 @@ __decorate([
 ], MerchantAdminResolver.prototype, "claimMerchantStore", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('storeId')),
     __param(2, (0, graphql_1.Args)('channelId')),
@@ -186,19 +216,29 @@ __decorate([
 ], MerchantAdminResolver.prototype, "revokeMerchantStoreClaim", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "upsertMerchantStoreStaff", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('storeId')),
+    __param(2, (0, graphql_1.Args)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "removeMerchantStoreStaff", null);
 exports.MerchantAdminResolver = MerchantAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [merchant_store_service_1.MerchantStoreService])
 ], MerchantAdminResolver);
 /** Merchant.name / intro 的本地化输出解析 */
-let MerchantFieldResolver = class MerchantFieldResolver {
+let MerchantFieldResolver = MerchantFieldResolver_1 = class MerchantFieldResolver {
     name(merchant, ctx) {
         return (0, localize_1.localizeText)(merchant.name, ctx.languageCode, '');
     }
@@ -207,6 +247,37 @@ let MerchantFieldResolver = class MerchantFieldResolver {
             return null;
         }
         return (0, localize_1.localizeText)(merchant.intro, ctx.languageCode, '') || null;
+    }
+    // 以下为结算/证照敏感字段：仅超管可见，租户读请求返回 null
+    legalName(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.legalName);
+    }
+    licenseNo(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.licenseNo);
+    }
+    licenseImage(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.licenseImage);
+    }
+    bankName(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.bankName);
+    }
+    bankAccountName(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.bankAccountName);
+    }
+    bankAccountNo(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.bankAccountNo);
+    }
+    taxNo(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.taxNo);
+    }
+    invoiceTitle(merchant, ctx) {
+        return MerchantFieldResolver_1.mask(ctx, merchant.invoiceTitle);
+    }
+    static mask(ctx, value) {
+        if (!ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            return null;
+        }
+        return value !== null && value !== void 0 ? value : null;
     }
 };
 exports.MerchantFieldResolver = MerchantFieldResolver;
@@ -226,7 +297,71 @@ __decorate([
     __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
     __metadata("design:returntype", Object)
 ], MerchantFieldResolver.prototype, "intro", null);
-exports.MerchantFieldResolver = MerchantFieldResolver = __decorate([
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "legalName", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "licenseNo", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "licenseImage", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "bankName", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "bankAccountName", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "bankAccountNo", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "taxNo", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [merchant_entity_1.Merchant, core_1.RequestContext]),
+    __metadata("design:returntype", Object)
+], MerchantFieldResolver.prototype, "invoiceTitle", null);
+exports.MerchantFieldResolver = MerchantFieldResolver = MerchantFieldResolver_1 = __decorate([
     (0, graphql_1.Resolver)('Merchant')
 ], MerchantFieldResolver);
 /** MerchantStore.name / notice 的本地化输出解析，simple-json 字段统一序列化为 JSON 字符串 */

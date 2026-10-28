@@ -3,6 +3,7 @@ export * from './src/types';
 export * from './src/constants';
 export * from './src/coupon-template.entity';
 export * from './src/customer-coupon.entity';
+export * from './src/coupon-redemption.entity';
 export * from './src/coupon.service';
 export * from './src/product-coupon-binding.entity';
 export * from './src/redeem-scope';

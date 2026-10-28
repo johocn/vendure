@@ -31,6 +31,10 @@ export class BillPaySettlement extends VendureEntity {
     @Column({ type: 'varchar' })
     merchantName: string;
 
+    /** 关联商户 id 快照（merchant 表；历史单可为空） */
+    @Column({ type: 'int', nullable: true })
+    merchantId: number | null;
+
     /** 平台报价（客户应付） */
     @Column({ type: 'int' })
     quoteAmount: number;

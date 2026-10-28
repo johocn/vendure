@@ -37,6 +37,11 @@ __decorate([
     __metadata("design:type", String)
 ], BillPayOrder.prototype, "merchantName", void 0);
 __decorate([
+    (0, typeorm_1.Index)(),
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], BillPayOrder.prototype, "merchantId", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], BillPayOrder.prototype, "expectedAmount", void 0);

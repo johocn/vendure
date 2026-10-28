@@ -13,6 +13,7 @@ import {
 } from './merchant-admin.resolver';
 import { MerchantShopResolver } from './merchant-shop.resolver';
 import { CreateMerchantTablesMigration } from './migrations/create-merchant-tables';
+import { AddMerchantDeletedAtMigration } from './migrations/add-merchant-deleted-at';
 
 const { gql } = require('graphql-tag');
 
@@ -428,11 +429,14 @@ const adminSchema = gql`
     extend type Mutation {
         createMerchant(input: CreateMerchantInput!): Merchant!
         updateMerchant(input: UpdateMerchantInput!): Merchant!
+        deleteMerchant(id: ID!): Boolean!
         createMerchantStore(input: CreateMerchantStoreInput!): MerchantStore!
         updateMerchantStore(input: UpdateMerchantStoreInput!): MerchantStore!
+        deleteMerchantStore(id: ID!): Boolean!
         claimMerchantStore(storeId: ID!, channelId: ID!, role: String, contractNo: String): MerchantStoreChannel!
         revokeMerchantStoreClaim(storeId: ID!, channelId: ID!): Boolean!
         upsertMerchantStoreStaff(input: UpsertMerchantStoreStaffInput!): MerchantStoreStaff!
+        removeMerchantStoreStaff(storeId: ID!, userId: ID!): Boolean!
     }
 `;
 
@@ -475,7 +479,7 @@ const shopSchema = gql`
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [Merchant, MerchantStore, MerchantStoreChannel, MerchantStoreStaff],
-    providers: [MerchantStoreService, CreateMerchantTablesMigration],
+    providers: [MerchantStoreService, CreateMerchantTablesMigration, AddMerchantDeletedAtMigration],
     exports: [MerchantStoreService],
     adminApiExtensions: {
         schema: adminSchema,

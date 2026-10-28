@@ -45,6 +45,10 @@ __decorate([
     __metadata("design:type", String)
 ], BillPaySettlement.prototype, "merchantName", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], BillPaySettlement.prototype, "merchantId", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], BillPaySettlement.prototype, "quoteAmount", void 0);

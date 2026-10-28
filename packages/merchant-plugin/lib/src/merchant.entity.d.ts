@@ -74,4 +74,6 @@ export declare class Merchant extends VendureEntity {
     status: string;
     statusReason: string | null;
     closedAt: Date | null;
+    /** 软删除时间；列表/详情查询默认过滤已删除（生产库 DB_SYNC=0，列由迁移补齐） */
+    deletedAt: Date | null;
 }

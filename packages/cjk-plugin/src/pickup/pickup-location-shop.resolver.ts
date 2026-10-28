@@ -21,7 +21,7 @@ export class PickupLocationShopResolver {
     ): Promise<PickupLocation[]> {
         const locations = type
             ? await this.pickupLocationService.findByType(ctx, type)
-            : (await this.pickupLocationService.findAll(ctx)).items;
+            : await this.pickupLocationService.findEnabled(ctx);
         if (lat != null && lng != null) {
             return this.pickupLocationService.sortByDistance(locations, lat, lng);
         }

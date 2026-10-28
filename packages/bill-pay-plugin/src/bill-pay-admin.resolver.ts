@@ -106,6 +106,7 @@ export class BillPayAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('input') input: {
             merchantName: string;
+            merchantId?: string | number | null;
             settleRate: number;
             settleMode?: string;
             contact?: string;

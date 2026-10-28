@@ -53,6 +53,7 @@ let PickupLocationAdminResolver = class PickupLocationAdminResolver {
 exports.PickupLocationAdminResolver = PickupLocationAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.ReadPickupLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -61,6 +62,7 @@ __decorate([
 ], PickupLocationAdminResolver.prototype, "pickupLocations", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.ReadPickupLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -70,6 +72,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.CreatePickupLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -79,6 +82,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.UpdatePickupLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -88,6 +92,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.DeletePickupLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),

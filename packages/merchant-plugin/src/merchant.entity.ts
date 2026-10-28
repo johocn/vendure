@@ -46,7 +46,7 @@ export class Merchant extends VendureEntity {
     @Column({ type: 'text', nullable: true }) licenseImage: string | null;
 
     /** 执照有效期至 */
-    @Column({ type: 'datetime', nullable: true }) licenseExpiry: Date | null;
+    @Column({ type: Date, nullable: true }) licenseExpiry: Date | null;
 
     /** 主体类型 ENTERPRISE | INDIVIDUAL | ... */
     @Column({ type: 'varchar', default: 'ENTERPRISE' }) merchantType: string;
@@ -92,10 +92,10 @@ export class Merchant extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) contractNo: string | null;
 
     /** 合作开始时间 */
-    @Column({ type: 'datetime', nullable: true }) cooperationStart: Date | null;
+    @Column({ type: Date, nullable: true }) cooperationStart: Date | null;
 
     /** 合作结束时间 */
-    @Column({ type: 'datetime', nullable: true }) cooperationEnd: Date | null;
+    @Column({ type: Date, nullable: true }) cooperationEnd: Date | null;
 
     /** 佣金比例（万分比，如 500 = 5%） */
     @Column({ type: 'int', nullable: true }) commissionRate: number | null;
@@ -120,5 +120,8 @@ export class Merchant extends VendureEntity {
 
     @Column({ type: 'varchar', nullable: true }) statusReason: string | null;
 
-    @Column({ type: 'datetime', nullable: true }) closedAt: Date | null;
+    @Column({ type: Date, nullable: true }) closedAt: Date | null;
+
+    /** 软删除时间；列表/详情查询默认过滤已删除（生产库 DB_SYNC=0，列由迁移补齐） */
+    @Column({ type: Date, nullable: true }) deletedAt: Date | null;
 }

@@ -12,7 +12,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TenantMemberService = exports.DEFAULT_ADMIN_PASSWORD = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
+exports.TenantMemberService = exports.DEFAULT_ADMIN_PASSWORD = exports.BUSINESS_TENANT_CAPACITY = exports.OFFICIAL_TENANT_SLOTS = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
 exports.normalizeGlobalRoleCode = normalizeGlobalRoleCode;
 exports.randomStrongPassword = randomStrongPassword;
 exports.canGrantRole = canGrantRole;
@@ -116,6 +116,16 @@ exports.PERMISSION_CATALOG = [
         ],
     },
     {
+        key: 'pickup',
+        label: '自提点',
+        items: [
+            { code: 'PickupLocationRead', label: '自提点·读' },
+            { code: 'PickupLocationCreate', label: '自提点·增' },
+            { code: 'PickupLocationUpdate', label: '自提点·改' },
+            { code: 'PickupLocationDelete', label: '自提点·删' },
+        ],
+    },
+    {
         key: 'dashboard',
         label: '数据看板',
         items: [
@@ -152,6 +162,10 @@ exports.PERMISSION_CATALOG = [
 exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.code));
 /** 全局角色 code 前缀：超管建的全局角色统一加此前缀，用于池查询与全局/本地判定（Vendure Role 无 customFields，用前缀区分） */
 exports.GLOBAL_ROLE_PREFIX = 'g-';
+/** 官方租户位数量：tenantNo 1..20 预留给官方自营租户（见 seedOfficialTenants） */
+exports.OFFICIAL_TENANT_SLOTS = 20;
+/** 业务租户总数上限（不含官方自营租户）；创建时超限拒绝 */
+exports.BUSINESS_TENANT_CAPACITY = 100;
 /** 全局角色 code 规范化：输入 code 自动统一为 `g-{code}`，避免手动误输入前缀产生重复 */
 function normalizeGlobalRoleCode(code) {
     const c = code.trim();
@@ -280,6 +294,11 @@ let TenantMemberService = class TenantMemberService {
     /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
     async createChannel(ctx, input) {
         var _a, _b, _c;
+        // 业务租户容量：官方位 1-20（isOfficial=true）不计入；超限直接拒绝，避免无限扩张
+        const businessCount = await this.countBusinessTenants(ctx);
+        if (businessCount >= exports.BUSINESS_TENANT_CAPACITY) {
+            throw new Error(`TENANT_CAPACITY_EXCEEDED: 业务租户数量已达上限 ${exports.BUSINESS_TENANT_CAPACITY}，无法继续创建`);
+        }
         const tenantNo = await this.nextTenantNo(ctx);
         const code = `t${tenantNo}`;
         const defaultDomain = (_b = (_a = this.pluginOptions) === null || _a === void 0 ? void 0 : _a.tenant) === null || _b === void 0 ? void 0 : _b.defaultPublicDomain;
@@ -337,6 +356,18 @@ let TenantMemberService = class TenantMemberService {
             }
         })();
     }
+    /** 统计业务租户数（不含官方自营）：isOfficial !== true 且 tenantNo 在官方位之后。
+     *  与 nextTenantNo 一样用 repo.find() 绕开 channelService.findAll 的 take≤1000 限制。 */
+    async countBusinessTenants(ctx) {
+        const channels = (await this.connection.getRepository(ctx, core_1.Channel).find());
+        return channels.filter((c) => {
+            var _a, _b;
+            const no = Number((_a = c === null || c === void 0 ? void 0 : c.customFields) === null || _a === void 0 ? void 0 : _a.tenantNo);
+            if (!Number.isFinite(no) || no <= exports.OFFICIAL_TENANT_SLOTS)
+                return false;
+            return ((_b = c === null || c === void 0 ? void 0 : c.customFields) === null || _b === void 0 ? void 0 : _b.isOfficial) !== true;
+        }).length;
+    }
     /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
      *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
     async nextTenantNo(ctx) {
@@ -347,12 +378,60 @@ let TenantMemberService = class TenantMemberService {
             .filter((n) => Number.isFinite(n));
         return (nos.length ? Math.max(...nos) : 0) + 1;
     }
-    /** 租户启停（仅超管） */
+    /** 租户启停（仅超管）；停用时同步释放该渠道的门店认领并重算商户认领状态 */
     async setChannelEnabled(ctx, channelId, enabled) {
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: { enabled },
         });
+        if (!enabled) {
+            await this.revokeChannelClaims(channelId);
+        }
+    }
+    /**
+     * 租户停用后释放其门店认领：merchant_store_channel → REVOKED，并重算受影响商户的 claimStatus。
+     * 用原生 SQL 避免 cjk-plugin 反向依赖 merchant-plugin；相关表不存在时（未装载 merchant-plugin）直接跳过。
+     */
+    async revokeChannelClaims(channelId) {
+        var _a;
+        const qr = this.connection.rawConnection.createQueryRunner();
+        const isPostgres = this.connection.rawConnection.options.type === 'postgres';
+        const ph = (n) => (isPostgres ? `$${n}` : '?');
+        try {
+            if (!(await qr.hasTable('merchant_store_channel'))) {
+                return;
+            }
+            const rows = await qr.query(`SELECT DISTINCT s."merchantId" AS merchant_id
+                 FROM merchant_store_channel c
+                 JOIN merchant_store s ON s.id = c."storeId"
+                 WHERE c."channelId" = ${ph(1)}`, [Number(channelId)]);
+            await qr.query(`UPDATE merchant_store_channel
+                 SET status = 'REVOKED', "updatedAt" = CURRENT_TIMESTAMP
+                 WHERE "channelId" = ${ph(1)} AND status = 'ACTIVE'`, [Number(channelId)]);
+            if (!(await qr.hasTable('merchant'))) {
+                return;
+            }
+            for (const row of Array.isArray(rows) ? rows : []) {
+                const merchantId = Number(row === null || row === void 0 ? void 0 : row.merchant_id);
+                if (!Number.isFinite(merchantId))
+                    continue;
+                await qr.query(`UPDATE merchant
+                     SET "claimStatus" = CASE WHEN EXISTS (
+                            SELECT 1 FROM merchant_store_channel c
+                            JOIN merchant_store s ON s.id = c."storeId"
+                            WHERE s."merchantId" = ${ph(1)} AND s."deletedAt" IS NULL AND c.status = 'ACTIVE'
+                         ) THEN 'CLAIMED' ELSE 'UNCLAIMED' END,
+                         "updatedAt" = CURRENT_TIMESTAMP
+                     WHERE id = ${ph(1)}`, [merchantId]);
+            }
+            core_1.Logger.info(`租户 ${channelId} 停用：门店认领已释放`, constants_1.loggerCtx);
+        }
+        catch (e) {
+            core_1.Logger.warn(`租户 ${channelId} 停用释放认领失败：${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, constants_1.loggerCtx);
+        }
+        finally {
+            await qr.release();
+        }
     }
     /** 更新租户基础信息（仅超管）：name → shopName；domain → 默认外网域名。合并既有 customFields，仅覆盖传入字段。 */
     async updateChannel(ctx, channelId, input) {

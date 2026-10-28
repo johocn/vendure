@@ -27,5 +27,5 @@ export class MerchantStoreStaff extends VendureEntity {
     /** 状态 ACTIVE | DISABLED */
     @Column({ type: 'varchar', default: 'ACTIVE' }) status: string;
 
-    @Column({ type: 'datetime', nullable: true }) lastLoginAt: Date | null;
+    @Column({ type: Date, nullable: true }) lastLoginAt: Date | null;
 }

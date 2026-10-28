@@ -21,6 +21,10 @@ export declare const PERMISSION_CATALOG: PermissionCatalogGroup[];
 export declare const BUSINESS_PERMISSIONS: string[];
 /** 全局角色 code 前缀：超管建的全局角色统一加此前缀，用于池查询与全局/本地判定（Vendure Role 无 customFields，用前缀区分） */
 export declare const GLOBAL_ROLE_PREFIX = "g-";
+/** 官方租户位数量：tenantNo 1..20 预留给官方自营租户（见 seedOfficialTenants） */
+export declare const OFFICIAL_TENANT_SLOTS = 20;
+/** 业务租户总数上限（不含官方自营租户）；创建时超限拒绝 */
+export declare const BUSINESS_TENANT_CAPACITY = 100;
 /** 全局角色 code 规范化：输入 code 自动统一为 `g-{code}`，避免手动误输入前缀产生重复 */
 export declare function normalizeGlobalRoleCode(code: string): string;
 export interface CreateTenantAdminInput {
@@ -77,11 +81,19 @@ export declare class TenantMemberService {
      *  保证渠道报表/点击追踪不因渠道缺失而丢数据。需配置 SSO_CHANNEL_SYNC_URL 与
      *  SSO_CHANNEL_SYNC_TOKEN 环境变量（shared secret），未配置则跳过。 */
     private syncChannelToSso;
+    /** 统计业务租户数（不含官方自营）：isOfficial !== true 且 tenantNo 在官方位之后。
+     *  与 nextTenantNo 一样用 repo.find() 绕开 channelService.findAll 的 take≤1000 限制。 */
+    private countBusinessTenants;
     /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
      *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
     private nextTenantNo;
-    /** 租户启停（仅超管） */
+    /** 租户启停（仅超管）；停用时同步释放该渠道的门店认领并重算商户认领状态 */
     setChannelEnabled(ctx: RequestContext, channelId: ID, enabled: boolean): Promise<void>;
+    /**
+     * 租户停用后释放其门店认领：merchant_store_channel → REVOKED，并重算受影响商户的 claimStatus。
+     * 用原生 SQL 避免 cjk-plugin 反向依赖 merchant-plugin；相关表不存在时（未装载 merchant-plugin）直接跳过。
+     */
+    private revokeChannelClaims;
     /** 更新租户基础信息（仅超管）：name → shopName；domain → 默认外网域名。合并既有 customFields，仅覆盖传入字段。 */
     updateChannel(ctx: RequestContext, channelId: ID, input: {
         name?: string;

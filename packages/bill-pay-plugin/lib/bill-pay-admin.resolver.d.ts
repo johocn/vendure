@@ -26,6 +26,7 @@ export declare class BillPayAdminResolver {
     refundBillPayOrder(ctx: RequestContext, id: ID, reason?: string): Promise<any>;
     saveMerchantAgreement(ctx: RequestContext, input: {
         merchantName: string;
+        merchantId?: string | number | null;
         settleRate: number;
         settleMode?: string;
         contact?: string;

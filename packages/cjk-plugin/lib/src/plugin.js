@@ -509,6 +509,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.HotelBookingCancelColumnsMigration,
             migrations_1.HotelBookingRescheduleColumnsMigration,
             migrations_1.PaymentProfileMethodTableMigration,
+            migrations_1.PickupStoreLinkSoftDeleteMigration,
+            migrations_1.PickupPermissionsRoleGrantMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -566,6 +568,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
 
                 type PickupLocation implements Node {
                     id: ID!
+                    createdAt: DateTime!
+                    updatedAt: DateTime!
                     name: String!
                     type: PickupLocationType!
                     address: String!
@@ -580,6 +584,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     enabled: Boolean!
                     isPublic: Boolean!
                     ownerChannelId: ID
+                    merchantStoreId: ID
                     province: String
                     city: String
                     district: String
@@ -605,6 +610,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     sortOrder: Int
                     enabled: Boolean
                     isPublic: Boolean
+                    merchantStoreId: ID
                     province: String
                     city: String
                     district: String
@@ -626,6 +632,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     sortOrder: Int
                     enabled: Boolean
                     isPublic: Boolean
+                    merchantStoreId: ID
                     province: String
                     city: String
                     district: String

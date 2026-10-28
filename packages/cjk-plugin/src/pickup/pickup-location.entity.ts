@@ -1,9 +1,10 @@
-import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
+import { Column, DeleteDateColumn, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
 import { ChannelAware, Channel, DeepPartial, EntityId, HasCustomFields, ID, VendureEntity } from '@vendure/core';
 
 class CustomPickupLocationFields {}
 
 @Entity()
+@Index(['merchantStoreId'])
 export class PickupLocation extends VendureEntity implements ChannelAware, HasCustomFields {
     constructor(input?: DeepPartial<PickupLocation>) {
         super(input);
@@ -49,6 +50,18 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
 
     @EntityId({ nullable: true })
     ownerChannelId: ID | null;
+
+    /**
+     * 关联门店 ID（merchant-plugin 的 merchant_store）。
+     * 不建外键、不引入 MerchantStore 实体，避免两个插件互相依赖；存在性由服务层校验。
+     * 历史数据由 create-merchant-tables 迁移按 type=store 回填。
+     */
+    @EntityId({ nullable: true })
+    merchantStoreId: ID | null;
+
+    /** 软删时间：删除仅置该字段，历史订单/配送档案对自提点的引用仍可解析 */
+    @DeleteDateColumn({ nullable: true })
+    deletedAt: Date | null;
 
     @ManyToMany(() => Channel)
     @JoinTable()

@@ -15,6 +15,8 @@ export declare class BillPaySettlement extends VendureEntity {
     channelId: number;
     /** 商家名称快照 */
     merchantName: string;
+    /** 关联商户 id 快照（merchant 表；历史单可为空） */
+    merchantId: number | null;
     /** 平台报价（客户应付） */
     quoteAmount: number;
     /** 实际账单原价 */

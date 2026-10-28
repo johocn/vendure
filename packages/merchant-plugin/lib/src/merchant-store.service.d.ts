@@ -104,6 +104,11 @@ export declare class MerchantStoreService {
     getMerchant(ctx: RequestContext, id: ID): Promise<Merchant | undefined>;
     createMerchant(ctx: RequestContext, input: any): Promise<Merchant>;
     updateMerchant(ctx: RequestContext, input: any): Promise<Merchant>;
+    /**
+     * 删除商户（软删）：仅置 deletedAt，保留关联数据用于历史追溯。
+     * 商户下仍有未删除的门店时拒绝，避免出现悬挂引用。
+     */
+    deleteMerchant(ctx: RequestContext, id: ID): Promise<boolean>;
     listStores(ctx: RequestContext, options?: MerchantStoreListOptions): Promise<{
         items: MerchantStore[];
         totalItems: number;
@@ -111,12 +116,19 @@ export declare class MerchantStoreService {
     getStore(ctx: RequestContext, id: ID): Promise<MerchantStore | undefined>;
     createStore(ctx: RequestContext, input: any): Promise<MerchantStore>;
     updateStore(ctx: RequestContext, input: any): Promise<MerchantStore>;
+    /**
+     * 删除门店（软删）：置 deletedAt，保留历史订单/配送档案例引用。
+     * 同步撤销该门店的 ACTIVE 租户认领，避免已删除门店仍被计入商户认领状态。
+     */
+    deleteStore(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 后台手工绑定门店：upsert 关系行并直接置为 ACTIVE（立即生效） */
     claimStore(ctx: RequestContext, input: ClaimStoreInput): Promise<MerchantStoreChannel>;
     /** 撤销认领：只置状态 REVOKED，保留审计信息 */
     revokeClaim(ctx: RequestContext, storeId: ID, channelId: ID): Promise<boolean>;
     listClaims(ctx: RequestContext, storeId: ID): Promise<MerchantStoreChannel[]>;
     upsertStaff(ctx: RequestContext, input: UpsertStoreStaffInput): Promise<MerchantStoreStaff>;
+    /** 移除门店员工关系（关系表硬删，不影响后台用户本体） */
+    removeStaff(ctx: RequestContext, storeId: ID, userId: ID): Promise<boolean>;
     listStoreStaff(ctx: RequestContext, storeId: ID): Promise<MerchantStoreStaff[]>;
     private syncMerchantClaimStatus;
     private normalizeIds;

@@ -29,6 +29,8 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadPaymentMethod, Permission.CreatePaymentMethod, Permission.UpdatePaymentMethod, Permission.DeletePaymentMethod,
             // 租户物理网点管理（方案3）：仓库/网点增删改
             Permission.CreateStockLocation, Permission.UpdateStockLocation, Permission.DeleteStockLocation,
+            // 自提点管理（pickup admin resolver 需专用权限）
+            'PickupLocationRead', 'PickupLocationCreate', 'PickupLocationUpdate', 'PickupLocationDelete',
             // 收银/POS：租户管理员可操作到店自提核销收款，且可向下授权「收银员」角色
             'ManageOwnShop',
             'TenantRoleManage', 'TenantMemberManage',

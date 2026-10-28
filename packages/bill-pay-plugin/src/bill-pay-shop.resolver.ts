@@ -41,7 +41,13 @@ export class BillPayShopResolver {
     async createBillPayOrder(
         @Ctx() ctx: RequestContext,
         @Args('input')
-        input: { merchantName: string; expectedAmount: number; remark?: string; couponCode?: string | null },
+        input: {
+            merchantName: string;
+            merchantId?: string | number | null;
+            expectedAmount: number;
+            remark?: string;
+            couponCode?: string | null;
+        },
     ) {
         return this.billPayService.toGraph(await this.billPayService.createBillPayOrder(ctx, input));
     }

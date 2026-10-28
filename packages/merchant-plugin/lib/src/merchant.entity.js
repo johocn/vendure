@@ -66,7 +66,7 @@ __decorate([
     __metadata("design:type", Object)
 ], Merchant.prototype, "licenseImage", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], Merchant.prototype, "licenseExpiry", void 0);
 __decorate([
@@ -138,11 +138,11 @@ __decorate([
     __metadata("design:type", Object)
 ], Merchant.prototype, "contractNo", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], Merchant.prototype, "cooperationStart", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], Merchant.prototype, "cooperationEnd", void 0);
 __decorate([
@@ -186,9 +186,13 @@ __decorate([
     __metadata("design:type", Object)
 ], Merchant.prototype, "statusReason", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], Merchant.prototype, "closedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
+    __metadata("design:type", Object)
+], Merchant.prototype, "deletedAt", void 0);
 exports.Merchant = Merchant = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

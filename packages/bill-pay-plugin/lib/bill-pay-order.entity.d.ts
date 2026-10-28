@@ -12,6 +12,8 @@ export declare class BillPayOrder extends VendureEntity {
     customerId: number;
     /** 商家名称（P0 文本 + 历史联想） */
     merchantName: string;
+    /** 关联商户 id（merchant-plugin 的 merchant；两插件无外键，下单时应用层校验） */
+    merchantId: number | null;
     /** 预计账单金额 */
     expectedAmount: number;
     /** 平台报价 = 客户应付 */

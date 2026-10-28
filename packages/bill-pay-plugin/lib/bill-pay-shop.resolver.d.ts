@@ -20,6 +20,7 @@ export declare class BillPayShopResolver {
     billPayConfig(ctx: RequestContext): Promise<import("./types").BillPayChannelConfig>;
     createBillPayOrder(ctx: RequestContext, input: {
         merchantName: string;
+        merchantId?: string | number | null;
         expectedAmount: number;
         remark?: string;
         couponCode?: string | null;

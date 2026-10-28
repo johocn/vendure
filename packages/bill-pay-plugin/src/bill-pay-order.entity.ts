@@ -27,6 +27,11 @@ export class BillPayOrder extends VendureEntity {
     @Column({ type: 'varchar' })
     merchantName: string;
 
+    /** 关联商户 id（merchant-plugin 的 merchant；两插件无外键，下单时应用层校验） */
+    @Index()
+    @Column({ type: 'int', nullable: true })
+    merchantId: number | null;
+
     /** 预计账单金额 */
     @Column({ type: 'int' })
     expectedAmount: number;

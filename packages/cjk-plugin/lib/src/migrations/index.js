@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PaymentProfileMethodTableMigration = exports.HotelBookingRescheduleColumnsMigration = exports.HotelBookingCancelColumnsMigration = exports.HotelOrderLineColumnMigration = exports.StocktakePostedDocIndexMigration = exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.AddTenantMemberRedeemProfiles = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
+exports.PickupPermissionsRoleGrantMigration = exports.PickupStoreLinkSoftDeleteMigration = exports.PaymentProfileMethodTableMigration = exports.HotelBookingRescheduleColumnsMigration = exports.HotelBookingCancelColumnsMigration = exports.HotelOrderLineColumnMigration = exports.StocktakePostedDocIndexMigration = exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.AddTenantMemberRedeemProfiles = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
 // packages/cjk-plugin/src/migrations/index.ts
 var migrate_mapconfig_encryption_1 = require("./migrate-mapconfig-encryption");
 Object.defineProperty(exports, "MapConfigEncryptionMigration", { enumerable: true, get: function () { return migrate_mapconfig_encryption_1.MapConfigEncryptionMigration; } });
@@ -37,4 +37,8 @@ var migrate_hotel_booking_reschedule_columns_1 = require("./migrate-hotel-bookin
 Object.defineProperty(exports, "HotelBookingRescheduleColumnsMigration", { enumerable: true, get: function () { return migrate_hotel_booking_reschedule_columns_1.HotelBookingRescheduleColumnsMigration; } });
 var create_payment_profile_method_table_1 = require("./create-payment-profile-method-table");
 Object.defineProperty(exports, "PaymentProfileMethodTableMigration", { enumerable: true, get: function () { return create_payment_profile_method_table_1.PaymentProfileMethodTableMigration; } });
+var migrate_pickup_store_link_soft_delete_1 = require("./migrate-pickup-store-link-soft-delete");
+Object.defineProperty(exports, "PickupStoreLinkSoftDeleteMigration", { enumerable: true, get: function () { return migrate_pickup_store_link_soft_delete_1.PickupStoreLinkSoftDeleteMigration; } });
+var migrate_pickup_permissions_role_grant_1 = require("./migrate-pickup-permissions-role-grant");
+Object.defineProperty(exports, "PickupPermissionsRoleGrantMigration", { enumerable: true, get: function () { return migrate_pickup_permissions_role_grant_1.PickupPermissionsRoleGrantMigration; } });
 //# sourceMappingURL=index.js.map

@@ -114,7 +114,7 @@ export class MerchantStore extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) statusNote: string | null;
 
     /** 重新营业时间（如暂停营业时预告） */
-    @Column({ type: 'datetime', nullable: true }) reopenAt: Date | null;
+    @Column({ type: Date, nullable: true }) reopenAt: Date | null;
 
     /** 是否接单 */
     @Column({ type: 'boolean', default: true }) acceptingOrders: boolean;
@@ -168,7 +168,7 @@ export class MerchantStore extends VendureEntity {
     /** 数据来源 MANUAL | MIGRATION | SYNC */
     @Column({ type: 'varchar', default: 'MANUAL' }) source: string;
 
-    @Column({ type: 'datetime', nullable: true }) lastSyncAt: Date | null;
+    @Column({ type: Date, nullable: true }) lastSyncAt: Date | null;
 
     /** 是否对 C 端公开 */
     @Column({ type: 'boolean', default: true }) isPublic: boolean;
@@ -180,5 +180,5 @@ export class MerchantStore extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) updatedBy: string | null;
 
     /** 软删除时间；查询默认过滤 deletedAt is null */
-    @Column({ type: 'datetime', nullable: true }) deletedAt: Date | null;
+    @Column({ type: Date, nullable: true }) deletedAt: Date | null;
 }

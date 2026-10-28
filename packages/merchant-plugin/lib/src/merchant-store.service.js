@@ -69,6 +69,9 @@ function coerceJsonFields(input, keys) {
 function round1(value) {
     return Math.round(value * 10) / 10;
 }
+/** 门店员工角色/状态枚举（与后台 UI 的选项保持一致，写入前校验） */
+const STAFF_ROLES = ['OWNER', 'MANAGER', 'CLERK'];
+const STAFF_STATUSES = ['ACTIVE', 'DISABLED'];
 let MerchantStoreService = class MerchantStoreService {
     constructor(connection) {
         this.connection = connection;
@@ -168,8 +171,9 @@ let MerchantStoreService = class MerchantStoreService {
         });
     }
     async getOrThrow(ctx, id) {
+        // 已软删门店视同不存在：认领 / 员工 / 门店详情等写入入口不得再挂靠
         const store = await this.connection.getRepository(ctx, merchant_store_entity_1.MerchantStore).findOne({
-            where: { id: id },
+            where: { id: id, deletedAt: (0, typeorm_1.IsNull)() },
             relations: { merchant: true },
         });
         if (!store) {
@@ -262,6 +266,7 @@ let MerchantStoreService = class MerchantStoreService {
     async listMerchants(ctx, options = {}) {
         var _a, _b;
         const qb = this.connection.getRepository(ctx, merchant_entity_1.Merchant).createQueryBuilder('m');
+        qb.andWhere('m.deletedAt IS NULL');
         if (options.keyword) {
             qb.andWhere('(m.code LIKE :kw OR m.name LIKE :kw OR m.legalName LIKE :kw OR m.contactName LIKE :kw)', { kw: `%${options.keyword}%` });
         }
@@ -280,7 +285,7 @@ let MerchantStoreService = class MerchantStoreService {
     }
     async getMerchant(ctx, id) {
         const merchant = await this.connection.getRepository(ctx, merchant_entity_1.Merchant).findOne({
-            where: { id: id },
+            where: { id: id, deletedAt: (0, typeorm_1.IsNull)() },
         });
         return merchant !== null && merchant !== void 0 ? merchant : undefined;
     }
@@ -296,20 +301,54 @@ let MerchantStoreService = class MerchantStoreService {
             throw new core_1.UserInputError('商户编码已存在');
         }
         const payload = coerceJsonFields(Object.assign(Object.assign({}, input), { code }), ['tags']);
+        delete payload.claimStatus;
         if (payload.name == null || payload.name === '') {
             payload.name = code;
         }
         return repo.save(repo.create(payload));
     }
     async updateMerchant(ctx, input) {
+        var _a;
         const repo = this.connection.getRepository(ctx, merchant_entity_1.Merchant);
         const merchant = await repo.findOne({ where: { id: input === null || input === void 0 ? void 0 : input.id } });
         if (!merchant) {
             throw new core_1.UserInputError('商户不存在');
         }
-        const _a = input !== null && input !== void 0 ? input : {}, { id } = _a, rest = __rest(_a, ["id"]);
+        const _b = input !== null && input !== void 0 ? input : {}, { id, claimStatus } = _b, rest = __rest(_b, ["id", "claimStatus"]);
+        // claimStatus 由门店认领关系派生，不接受客户端直接改写
+        if (rest.code !== undefined) {
+            const code = String((_a = rest.code) !== null && _a !== void 0 ? _a : '').trim();
+            if (!code) {
+                throw new core_1.UserInputError('商户编码不能为空');
+            }
+            const dup = await repo.findOne({ where: { code } });
+            if (dup && Number(dup.id) !== Number(merchant.id)) {
+                throw new core_1.UserInputError('商户编码已存在');
+            }
+            rest.code = code;
+        }
         Object.assign(merchant, coerceJsonFields(rest, ['tags']));
         return repo.save(merchant);
+    }
+    /**
+     * 删除商户（软删）：仅置 deletedAt，保留关联数据用于历史追溯。
+     * 商户下仍有未删除的门店时拒绝，避免出现悬挂引用。
+     */
+    async deleteMerchant(ctx, id) {
+        const repo = this.connection.getRepository(ctx, merchant_entity_1.Merchant);
+        const merchant = await repo.findOne({ where: { id: id, deletedAt: (0, typeorm_1.IsNull)() } });
+        if (!merchant) {
+            throw new core_1.UserInputError('商户不存在');
+        }
+        const activeStores = await this.connection.getRepository(ctx, merchant_store_entity_1.MerchantStore).count({
+            where: { merchantId: Number(merchant.id), deletedAt: (0, typeorm_1.IsNull)() },
+        });
+        if (activeStores > 0) {
+            throw new core_1.UserInputError('该商户下仍有门店，请先删除门店');
+        }
+        merchant.deletedAt = new Date();
+        await repo.save(merchant);
+        return true;
     }
     // ------------------------------------------------------------------
     // 门店 CRUD
@@ -319,7 +358,8 @@ let MerchantStoreService = class MerchantStoreService {
         const qb = this.connection
             .getRepository(ctx, merchant_store_entity_1.MerchantStore)
             .createQueryBuilder('s')
-            .leftJoinAndSelect('s.merchant', 'merchant');
+            .leftJoinAndSelect('s.merchant', 'merchant')
+            .where('s.deletedAt IS NULL');
         if (options.merchantId != null) {
             qb.andWhere('s.merchantId = :merchantId', { merchantId: Number(options.merchantId) });
         }
@@ -345,7 +385,7 @@ let MerchantStoreService = class MerchantStoreService {
     }
     async getStore(ctx, id) {
         const store = await this.connection.getRepository(ctx, merchant_store_entity_1.MerchantStore).findOne({
-            where: { id: id },
+            where: { id: id, deletedAt: (0, typeorm_1.IsNull)() },
             relations: { merchant: true },
         });
         return store !== null && store !== void 0 ? store : undefined;
@@ -362,7 +402,7 @@ let MerchantStoreService = class MerchantStoreService {
             throw new core_1.UserInputError('门店必须归属商户');
         }
         const merchant = await this.connection.getRepository(ctx, merchant_entity_1.Merchant).findOne({
-            where: { id: merchantId },
+            where: { id: merchantId, deletedAt: (0, typeorm_1.IsNull)() },
         });
         if (!merchant) {
             throw new core_1.UserInputError('商户不存在');
@@ -378,18 +418,70 @@ let MerchantStoreService = class MerchantStoreService {
         return repo.save(repo.create(payload));
     }
     async updateStore(ctx, input) {
+        var _a;
         const repo = this.connection.getRepository(ctx, merchant_store_entity_1.MerchantStore);
         const store = await repo.findOne({ where: { id: input === null || input === void 0 ? void 0 : input.id } });
         if (!store) {
             throw new core_1.UserInputError('门店不存在');
         }
-        const _a = input !== null && input !== void 0 ? input : {}, { id } = _a, rest = __rest(_a, ["id"]);
+        if (store.deletedAt != null) {
+            throw new core_1.UserInputError('门店已删除');
+        }
+        // deletedAt 仅供删除接口写入，客户端不允许通过更新接口改写（防止「反向恢复」）
+        const _b = input !== null && input !== void 0 ? input : {}, { id, deletedAt } = _b, rest = __rest(_b, ["id", "deletedAt"]);
         if (rest.merchantId != null) {
-            rest.merchantId = Number(rest.merchantId);
+            const merchantId = Number(rest.merchantId);
+            // 改挂商户必须指向存在且未删除的商户，避免门店挂到已删商户
+            const merchant = await this.connection.getRepository(ctx, merchant_entity_1.Merchant).findOne({
+                where: { id: merchantId, deletedAt: (0, typeorm_1.IsNull)() },
+            });
+            if (!merchant) {
+                throw new core_1.UserInputError('商户不存在');
+            }
+            rest.merchantId = merchantId;
+        }
+        if (rest.code !== undefined) {
+            const code = String((_a = rest.code) !== null && _a !== void 0 ? _a : '').trim();
+            if (!code) {
+                throw new core_1.UserInputError('门店编码不能为空');
+            }
+            const dup = await repo.findOne({ where: { code } });
+            if (dup && Number(dup.id) !== Number(store.id)) {
+                throw new core_1.UserInputError('门店编码已存在');
+            }
+            rest.code = code;
         }
         Object.assign(store, coerceJsonFields(rest, STORE_JSON_FIELDS));
         /** 保存后重新读取以带上 merchant 关系，方便返回 MerchantStore 类型字段 */
         return repo.save(store);
+    }
+    /**
+     * 删除门店（软删）：置 deletedAt，保留历史订单/配送档案例引用。
+     * 同步撤销该门店的 ACTIVE 租户认领，避免已删除门店仍被计入商户认领状态。
+     */
+    async deleteStore(ctx, id) {
+        const repo = this.connection.getRepository(ctx, merchant_store_entity_1.MerchantStore);
+        const store = await repo.findOne({ where: { id: id } });
+        if (!store) {
+            throw new core_1.UserInputError('门店不存在');
+        }
+        if (store.deletedAt != null) {
+            throw new core_1.UserInputError('门店已删除');
+        }
+        store.deletedAt = new Date();
+        await repo.save(store);
+        const claimRepo = this.connection.getRepository(ctx, merchant_store_channel_entity_1.MerchantStoreChannel);
+        const claims = await claimRepo.find({
+            where: { storeId: Number(store.id), status: 'ACTIVE' },
+        });
+        if (claims.length > 0) {
+            for (const claim of claims) {
+                claim.status = 'REVOKED';
+            }
+            await claimRepo.save(claims);
+            await this.syncMerchantClaimStatus(ctx, store.merchantId);
+        }
+        return true;
     }
     // ------------------------------------------------------------------
     // 认领关系 / 员工
@@ -453,13 +545,34 @@ let MerchantStoreService = class MerchantStoreService {
             staff.name = input.name;
         if (input.phone !== undefined)
             staff.phone = input.phone;
-        if (input.role !== undefined)
+        if (input.role !== undefined) {
+            if (!STAFF_ROLES.includes(input.role)) {
+                throw new core_1.UserInputError(`无效的员工角色：${input.role}`);
+            }
             staff.role = input.role;
-        if (input.status !== undefined)
+        }
+        if (input.status !== undefined) {
+            if (!STAFF_STATUSES.includes(input.status)) {
+                throw new core_1.UserInputError(`无效的员工状态：${input.status}`);
+            }
             staff.status = input.status;
+        }
         if (input.lastLoginAt !== undefined)
             staff.lastLoginAt = input.lastLoginAt;
         return repo.save(staff);
+    }
+    /** 移除门店员工关系（关系表硬删，不影响后台用户本体） */
+    async removeStaff(ctx, storeId, userId) {
+        await this.getOrThrow(ctx, storeId);
+        const repo = this.connection.getRepository(ctx, merchant_store_staff_entity_1.MerchantStoreStaff);
+        const staff = await repo.findOne({
+            where: { storeId: Number(storeId), userId: Number(userId) },
+        });
+        if (!staff) {
+            return false;
+        }
+        await repo.remove(staff);
+        return true;
     }
     async listStoreStaff(ctx, storeId) {
         return this.connection.getRepository(ctx, merchant_store_staff_entity_1.MerchantStoreStaff).find({
@@ -476,17 +589,18 @@ let MerchantStoreService = class MerchantStoreService {
         if (!merchant) {
             return;
         }
-        // 统计口径按门店维度：仅需判断该商户名下是否存在 ACTIVE 认领
-        const storeIds = (await this.connection.getRepository(ctx, merchant_store_entity_1.MerchantStore).find({ where: { merchantId } })).map(store => Number(store.id));
-        if (storeIds.length === 0) {
-            return;
-        }
-        const claimedCount = await this.connection
-            .getRepository(ctx, merchant_store_channel_entity_1.MerchantStoreChannel)
-            .createQueryBuilder('c')
-            .where('c.status = :status', { status: 'ACTIVE' })
-            .andWhere('c.storeId IN (:...storeIds)', { storeIds })
-            .getCount();
+        // 统计口径按「未删除门店」维度：已删门店的认领不再计入商户认领状态
+        const storeIds = (await this.connection
+            .getRepository(ctx, merchant_store_entity_1.MerchantStore)
+            .find({ where: { merchantId, deletedAt: (0, typeorm_1.IsNull)() } })).map(store => Number(store.id));
+        const claimedCount = storeIds.length === 0
+            ? 0
+            : await this.connection
+                .getRepository(ctx, merchant_store_channel_entity_1.MerchantStoreChannel)
+                .createQueryBuilder('c')
+                .where('c.status = :status', { status: 'ACTIVE' })
+                .andWhere('c.storeId IN (:...storeIds)', { storeIds })
+                .getCount();
         const next = claimedCount > 0 ? 'CLAIMED' : 'UNCLAIMED';
         if (merchant.claimStatus !== next) {
             merchant.claimStatus = next;

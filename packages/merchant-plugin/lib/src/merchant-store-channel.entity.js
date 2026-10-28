@@ -45,11 +45,11 @@ __decorate([
     __metadata("design:type", Object)
 ], MerchantStoreChannel.prototype, "claimedByUserId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], MerchantStoreChannel.prototype, "claimedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], MerchantStoreChannel.prototype, "verifiedAt", void 0);
 __decorate([

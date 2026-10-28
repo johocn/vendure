@@ -11,6 +11,7 @@ import {
 
 import {
     computeInStoreBill,
+    CouponRedemption,
     CouponTemplate,
     CustomerCoupon,
     IN_STORE_REASON_MESSAGES,
@@ -171,11 +172,15 @@ export class BillPayService {
 
     // ===== 客户侧 =====
 
-    /** 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED */
+    /**
+     * 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED
+     * 商户关联：优先 merchantId，缺省按名称/编码解析；merchant-plugin 未装载时退回纯名称模式。
+     */
     async createBillPayOrder(
         ctx: RequestContext,
         input: {
             merchantName: string;
+            merchantId?: ID | null;
             expectedAmount: number;
             remark?: string | null;
             couponCode?: string | null;
@@ -183,9 +188,11 @@ export class BillPayService {
     ): Promise<BillPayOrder> {
         const customerId = await this.currentCustomerId(ctx);
         const merchantName = String(input.merchantName ?? '').trim();
-        if (!merchantName) {
+        const merchant = await this.resolveMerchant(ctx, input.merchantId, merchantName);
+        if (!merchantName && !merchant) {
             throw new UserInputError('merchantName is required');
         }
+        const orderMerchantName = merchant?.name || merchantName;
         const expectedAmount = Math.round(Number(input.expectedAmount));
         const config = await this.getChannelConfig(ctx);
         if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
@@ -260,6 +267,10 @@ export class BillPayService {
             if (!tpl || !tpl.enabled || !inChannel || (scene !== 'IN_STORE' && scene !== 'ALL')) {
                 throw new UserInputError('Coupon is not applicable to bill pay');
             }
+            // 券限门店/商户使用时不能用于买单（买单场景没有门店维度，无法校验覆盖范围）
+            if ((tpl.storeCoverage ?? 'ALL') !== 'ALL') {
+                throw new UserInputError('该券限指定门店使用，不适用于买单');
+            }
             // 门槛按商家账单原价判定，与到店核销口径一致；券只抵「报价后应付」，不叠加到原价上
             const computed = computeInStoreBill(tpl, expectedAmount);
             if (!computed.ok) {
@@ -275,7 +286,8 @@ export class BillPayService {
             new BillPayOrder({
                 code: null,
                 customerId,
-                merchantName,
+                merchantName: orderMerchantName,
+                merchantId: merchant?.id ?? null,
                 expectedAmount,
                 quoteAmount: null,
                 actualAmount: null,
@@ -525,7 +537,7 @@ export class BillPayService {
     }
 
     /**
-     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED）。
+     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED），并补写券核销流水。
      * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
      */
     private async redeemCoupon(orderCtx: RequestContext, order: BillPayOrder): Promise<void> {
@@ -537,12 +549,13 @@ export class BillPayService {
             Logger.error(`BillPayOrder ${ref} paid but coupon ${order.couponCode} not found`, loggerCtx);
             return;
         }
+        const now = new Date();
         const claim = await repo
             .createQueryBuilder()
             .update(CustomerCoupon)
             .set({
                 status: 'USED',
-                usedAt: new Date(),
+                usedAt: now,
                 usedOrderId: ref,
                 reservedOrderId: null as any,
             })
@@ -555,7 +568,53 @@ export class BillPayService {
             );
             return;
         }
+        await this.recordCouponRedemption(order, cc, now);
         Logger.info(`BillPayOrder ${ref} paid, coupon ${order.couponCode} marked as USED`, loggerCtx);
+    }
+
+    /**
+     * 写券核销流水（coupon_redemption），供门店/平台对账口径统一。
+     * - 买单无门店维度：storeId 记 0（0 即「非门店核销」，可按 0 区分统计）；
+     * - merchantId 取订单商户快照，核销金额取本单券抵扣额（分）；
+     * - 用 rawConnection 的独立仓库写入，避免流水写失败把已到账的支付事务拖入回滚；
+     * - 一张券终身只核销一次，已有流水则跳过（重试幂等）。
+     */
+    private async recordCouponRedemption(
+        order: BillPayOrder,
+        cc: CustomerCoupon,
+        redeemedAt: Date,
+    ): Promise<void> {
+        try {
+            const repo = this.connection.rawConnection.getRepository(CouponRedemption);
+            const exists = await repo.findOne({ where: { customerCouponId: Number(cc.id) } });
+            if (exists) return;
+            await repo.save(
+                new CouponRedemption({
+                    customerCouponId: Number(cc.id),
+                    couponCode: cc.code,
+                    templateId: Number(cc.templateId),
+                    saleOrderId: cc.saleOrderId != null ? Number(cc.saleOrderId) : null,
+                    merchantId: order.merchantId != null ? Number(order.merchantId) : null,
+                    storeId: 0,
+                    channelId: Number(order.channelId),
+                    redeemMode: 'BILLPAY',
+                    operatorId: null,
+                    operatorName: null,
+                    redeemedAt,
+                    revokedAt: null,
+                    revokeReason: null,
+                    amount: order.couponDiscount != null ? Number(order.couponDiscount) : null,
+                    storeSnapshot: null,
+                    deviceInfo: null,
+                }),
+            );
+        } catch (e: any) {
+            Logger.error(
+                `BillPayOrder ${order.code ?? order.id} coupon ${order.couponCode} redemption record failed: ` +
+                    String(e?.message ?? ''),
+                loggerCtx,
+            );
+        }
     }
 
     /**
@@ -663,9 +722,17 @@ export class BillPayService {
             throw new UserInputError('actualAmount missing');
         }
         const agreementRepo = this.connection.getRepository(ctx, MerchantAgreement);
-        const agreement = await agreementRepo.findOne({
-            where: { channelId: ctx.channelId as any, merchantName: order.merchantName },
-        });
+        // 优先按商户 id 命中协议（改名的商户仍可正确结算），无关联时回退按名称
+        let agreement = order.merchantId != null
+            ? await agreementRepo.findOne({
+                  where: { channelId: ctx.channelId as any, merchantId: order.merchantId as any },
+              })
+            : null;
+        if (!agreement) {
+            agreement = await agreementRepo.findOne({
+                where: { channelId: ctx.channelId as any, merchantName: order.merchantName },
+            });
+        }
         const settleRate = agreement?.settleRate ?? 100;
         const costAmount = Math.round((order.actualAmount * settleRate) / 100);
         const settlementRepo = this.connection.getRepository(ctx, BillPaySettlement);
@@ -680,6 +747,7 @@ export class BillPayService {
                 code: order.code ?? `${BILLPAY_CODE_PREFIX}${order.id}`,
                 channelId: ctx.channelId as number,
                 merchantName: order.merchantName,
+                merchantId: order.merchantId ?? agreement?.merchantId ?? null,
                 quoteAmount: order.quoteAmount ?? 0,
                 actualAmount: order.actualAmount,
                 settleRate,
@@ -780,10 +848,17 @@ export class BillPayService {
         return qb.orderBy('a.id', 'DESC').getMany();
     }
 
-    /** 商家协议 upsert：渠道内按商家名唯一 */
+    /** 商家协议 upsert：渠道内按商家名唯一；能解析到商户时同时落 merchantId */
     async saveAgreement(
         ctx: RequestContext,
-        input: { merchantName: string; settleRate: number; settleMode?: string; contact?: string | null; note?: string | null },
+        input: {
+            merchantName: string;
+            merchantId?: ID | null;
+            settleRate: number;
+            settleMode?: string;
+            contact?: string | null;
+            note?: string | null;
+        },
         id?: ID,
     ): Promise<MerchantAgreement> {
         const repo = this.connection.getRepository(ctx, MerchantAgreement);
@@ -795,6 +870,9 @@ export class BillPayService {
         if (!Number.isFinite(settleRate) || settleRate <= 0 || settleRate > 100) {
             throw new UserInputError('settleRate must be 1-100');
         }
+        // 协议允许先于商户主数据维护（历史按名称建协议），解析失败不阻断
+        const merchant = await this.resolveMerchant(ctx, input.merchantId, merchantName, false);
+        const merchantId = merchant?.id ?? null;
         const settleMode = input.settleMode === 'MONTHLY' ? 'MONTHLY' : 'PER_ORDER';
         if (id) {
             const existing = await repo.findOne({ where: { id: id as any } });
@@ -802,6 +880,7 @@ export class BillPayService {
                 throw new UserInputError('Merchant agreement not found');
             }
             existing.merchantName = merchantName;
+            existing.merchantId = merchantId;
             existing.settleRate = settleRate;
             existing.settleMode = settleMode as any;
             existing.contact = input.contact ?? null;
@@ -818,12 +897,67 @@ export class BillPayService {
             new MerchantAgreement({
                 channelId: ctx.channelId as number,
                 merchantName,
+                merchantId,
                 settleRate,
                 settleMode: settleMode as any,
                 contact: input.contact ?? null,
                 note: input.note ?? null,
             }),
         );
+    }
+
+    /**
+     * 解析商户关联：优先 merchantId，缺省按名称/编码精确匹配未删除商户。
+     * - merchant 表不存在（未装载 merchant-plugin）→ 返回 null，调用方退回纯名称模式；
+     * - merchantId 显式传入但不存在/已删除 → 直接报错；
+     * - required=false 时名称解析不到返回 null（协议允许先建后补主数据）。
+     */
+    private async resolveMerchant(
+        ctx: RequestContext,
+        merchantId?: ID | null,
+        merchantName?: string | null,
+        required = true,
+    ): Promise<{ id: number; name: string } | null> {
+        const qr = this.connection.rawConnection.createQueryRunner();
+        const isPostgres = (this.connection.rawConnection.options as any).type === 'postgres';
+        const ph = isPostgres ? '$1' : '?';
+        try {
+            if (!(await qr.hasTable('merchant'))) {
+                return null;
+            }
+            if (merchantId != null) {
+                const rows: any[] = await qr.query(
+                    `SELECT id, name, "deletedAt" FROM merchant WHERE id = ${ph} LIMIT 1`,
+                    [Number(merchantId)],
+                );
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    throw new UserInputError('商家不存在');
+                }
+                if (rows[0].deletedAt != null) {
+                    throw new UserInputError('商家已删除');
+                }
+                return { id: Number(rows[0].id), name: displayName(rows[0].name) };
+            }
+            const key = String(merchantName ?? '').trim();
+            if (!key) {
+                return null;
+            }
+            const rows: any[] = await qr.query(
+                `SELECT id, name, "deletedAt" FROM merchant
+                 WHERE "deletedAt" IS NULL AND (code = ${ph} OR name = ${ph})
+                 ORDER BY id LIMIT 1`,
+                [key],
+            );
+            if (Array.isArray(rows) && rows.length > 0) {
+                return { id: Number(rows[0].id), name: displayName(rows[0].name) };
+            }
+            if (required) {
+                throw new UserInputError('商家不存在，请从商家列表选择');
+            }
+            return null;
+        } finally {
+            await qr.release();
+        }
     }
 
     // ===== 渠道配置（admin）=====
@@ -849,4 +983,26 @@ export class BillPayService {
         }
         return parsed;
     }
+}
+
+/** 商户名可能以 LocalizedText（JSON）落库，取中文/首个可用值作为订单快照名 */
+function displayName(raw: any): string {
+    if (typeof raw !== 'string') {
+        return raw == null ? '' : String(raw);
+    }
+    const text = raw.trim();
+    if (!text.startsWith('{')) {
+        return text;
+    }
+    try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object') {
+            return String(
+                parsed['zh-Hans'] ?? parsed['zh'] ?? parsed[Object.keys(parsed)[0]] ?? '',
+            );
+        }
+    } catch {
+        // 非合法 JSON：按原文返回
+    }
+    return text;
 }

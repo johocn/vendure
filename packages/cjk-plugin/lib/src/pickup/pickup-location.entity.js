@@ -97,6 +97,14 @@ __decorate([
     __metadata("design:type", Object)
 ], PickupLocation.prototype, "ownerChannelId", void 0);
 __decorate([
+    (0, core_1.EntityId)({ nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "merchantStoreId", void 0);
+__decorate([
+    (0, typeorm_1.DeleteDateColumn)({ nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "deletedAt", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
@@ -107,6 +115,7 @@ __decorate([
 ], PickupLocation.prototype, "customFields", void 0);
 exports.PickupLocation = PickupLocation = __decorate([
     (0, typeorm_1.Entity)(),
+    (0, typeorm_1.Index)(['merchantStoreId']),
     __metadata("design:paramtypes", [Object])
 ], PickupLocation);
 //# sourceMappingURL=pickup-location.entity.js.map

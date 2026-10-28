@@ -17,6 +17,7 @@ const merchant_store_service_1 = require("./merchant-store.service");
 const merchant_admin_resolver_1 = require("./merchant-admin.resolver");
 const merchant_shop_resolver_1 = require("./merchant-shop.resolver");
 const create_merchant_tables_1 = require("./migrations/create-merchant-tables");
+const add_merchant_deleted_at_1 = require("./migrations/add-merchant-deleted-at");
 const { gql } = require('graphql-tag');
 const adminSchema = gql `
     type Merchant implements Node {
@@ -430,11 +431,14 @@ const adminSchema = gql `
     extend type Mutation {
         createMerchant(input: CreateMerchantInput!): Merchant!
         updateMerchant(input: UpdateMerchantInput!): Merchant!
+        deleteMerchant(id: ID!): Boolean!
         createMerchantStore(input: CreateMerchantStoreInput!): MerchantStore!
         updateMerchantStore(input: UpdateMerchantStoreInput!): MerchantStore!
+        deleteMerchantStore(id: ID!): Boolean!
         claimMerchantStore(storeId: ID!, channelId: ID!, role: String, contractNo: String): MerchantStoreChannel!
         revokeMerchantStoreClaim(storeId: ID!, channelId: ID!): Boolean!
         upsertMerchantStoreStaff(input: UpsertMerchantStoreStaffInput!): MerchantStoreStaff!
+        removeMerchantStoreStaff(storeId: ID!, userId: ID!): Boolean!
     }
 `;
 const shopSchema = gql `
@@ -482,7 +486,7 @@ exports.MerchantPlugin = MerchantPlugin = MerchantPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         entities: [merchant_entity_1.Merchant, merchant_store_entity_1.MerchantStore, merchant_store_channel_entity_1.MerchantStoreChannel, merchant_store_staff_entity_1.MerchantStoreStaff],
-        providers: [merchant_store_service_1.MerchantStoreService, create_merchant_tables_1.CreateMerchantTablesMigration],
+        providers: [merchant_store_service_1.MerchantStoreService, create_merchant_tables_1.CreateMerchantTablesMigration, add_merchant_deleted_at_1.AddMerchantDeletedAtMigration],
         exports: [merchant_store_service_1.MerchantStoreService],
         adminApiExtensions: {
             schema: adminSchema,

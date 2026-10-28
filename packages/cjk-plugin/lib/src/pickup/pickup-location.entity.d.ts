@@ -26,6 +26,14 @@ export declare class PickupLocation extends VendureEntity implements ChannelAwar
     street: string | null;
     isPublic: boolean;
     ownerChannelId: ID | null;
+    /**
+     * 关联门店 ID（merchant-plugin 的 merchant_store）。
+     * 不建外键、不引入 MerchantStore 实体，避免两个插件互相依赖；存在性由服务层校验。
+     * 历史数据由 create-merchant-tables 迁移按 type=store 回填。
+     */
+    merchantStoreId: ID | null;
+    /** 软删时间：删除仅置该字段，历史订单/配送档案对自提点的引用仍可解析 */
+    deletedAt: Date | null;
     channels: Channel[];
     customFields: CustomPickupLocationFields;
 }

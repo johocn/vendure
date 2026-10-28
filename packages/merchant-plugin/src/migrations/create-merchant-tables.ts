@@ -42,6 +42,21 @@ function parseJson(value: unknown): any {
 export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
     constructor(@InjectConnection() private connection: Connection) {}
 
+    /** PG 没有 datetime 类型，sqlite 没有 timestamp，按当前连接选择 */
+    private get dateColumnType(): 'timestamp' | 'datetime' {
+        return this.connection.options.type === 'postgres' ? 'timestamp' : 'datetime';
+    }
+
+    /** 原生 SQL 参数占位符：PG 用 $n，sqlite 用 ? */
+    private ph(index: number): string {
+        return this.connection.options.type === 'postgres' ? `$${index}` : '?';
+    }
+
+    /** Table 列的 default 是原样拼接的 SQL，字符串字面量必须自带引号，否则 PG 会当作列引用 */
+    private lit(value: string): string {
+        return `'${value.replace(/'/g, "''")}'`;
+    }
+
     async onApplicationBootstrap() {
         const queryRunner = this.connection.createQueryRunner();
         try {
@@ -80,20 +95,20 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
             name: 'merchant',
             columns: [
                 { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
-                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
-                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'createdAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'updatedAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
                 { name: 'code', type: 'varchar', isNullable: false },
                 { name: 'name', type: 'text', isNullable: false },
                 { name: 'shortName', type: 'varchar', isNullable: true },
                 { name: 'logo', type: 'text', isNullable: true },
                 { name: 'brand', type: 'varchar', isNullable: true },
                 { name: 'intro', type: 'text', isNullable: true },
-                { name: 'tags', type: 'simple-json', isNullable: true },
+                { name: 'tags', type: 'text', isNullable: true },
                 { name: 'legalName', type: 'varchar', isNullable: true },
                 { name: 'licenseNo', type: 'varchar', isNullable: true },
                 { name: 'licenseImage', type: 'text', isNullable: true },
-                { name: 'licenseExpiry', type: 'datetime', isNullable: true },
-                { name: 'merchantType', type: 'varchar', isNullable: false, default: 'ENTERPRISE' },
+                { name: 'licenseExpiry', type: this.dateColumnType, isNullable: true },
+                { name: 'merchantType', type: 'varchar', isNullable: false, default: this.lit('ENTERPRISE') },
                 { name: 'industry', type: 'varchar', isNullable: true },
                 { name: 'category', type: 'varchar', isNullable: true },
                 { name: 'contactName', type: 'varchar', isNullable: true },
@@ -108,21 +123,21 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
                 { name: 'street', type: 'varchar', isNullable: true },
                 { name: 'address', type: 'varchar', isNullable: true },
                 { name: 'ownerChannelId', type: 'int', isNullable: true },
-                { name: 'claimStatus', type: 'varchar', isNullable: false, default: 'UNCLAIMED' },
+                { name: 'claimStatus', type: 'varchar', isNullable: false, default: this.lit('UNCLAIMED') },
                 { name: 'contractNo', type: 'varchar', isNullable: true },
-                { name: 'cooperationStart', type: 'datetime', isNullable: true },
-                { name: 'cooperationEnd', type: 'datetime', isNullable: true },
+                { name: 'cooperationStart', type: this.dateColumnType, isNullable: true },
+                { name: 'cooperationEnd', type: this.dateColumnType, isNullable: true },
                 { name: 'commissionRate', type: 'int', isNullable: true },
-                { name: 'source', type: 'varchar', isNullable: false, default: 'MANUAL' },
+                { name: 'source', type: 'varchar', isNullable: false, default: this.lit('MANUAL') },
                 { name: 'settlementType', type: 'varchar', isNullable: true },
                 { name: 'bankName', type: 'varchar', isNullable: true },
                 { name: 'bankAccountName', type: 'varchar', isNullable: true },
                 { name: 'bankAccountNo', type: 'varchar', isNullable: true },
                 { name: 'taxNo', type: 'varchar', isNullable: true },
                 { name: 'invoiceTitle', type: 'varchar', isNullable: true },
-                { name: 'status', type: 'varchar', isNullable: false, default: 'ACTIVE' },
+                { name: 'status', type: 'varchar', isNullable: false, default: this.lit('ACTIVE') },
                 { name: 'statusReason', type: 'varchar', isNullable: true },
-                { name: 'closedAt', type: 'datetime', isNullable: true },
+                { name: 'closedAt', type: this.dateColumnType, isNullable: true },
             ],
             indices: [
                 new TableIndex({ name: 'IDX_merchant_code', columnNames: ['code'], isUnique: true }),
@@ -133,15 +148,15 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
             name: 'merchant_store',
             columns: [
                 { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
-                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
-                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'createdAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'updatedAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
                 { name: 'merchantId', type: 'int', isNullable: false },
                 { name: 'code', type: 'varchar', isNullable: false },
                 { name: 'name', type: 'text', isNullable: false },
-                { name: 'storeType', type: 'varchar', isNullable: false, default: 'DIRECT' },
+                { name: 'storeType', type: 'varchar', isNullable: false, default: this.lit('DIRECT') },
                 { name: 'sortOrder', type: 'int', isNullable: false, default: 0 },
                 { name: 'weight', type: 'int', isNullable: false, default: 0 },
-                { name: 'country', type: 'varchar', isNullable: false, default: 'CN' },
+                { name: 'country', type: 'varchar', isNullable: false, default: this.lit('CN') },
                 { name: 'province', type: 'varchar', isNullable: true },
                 { name: 'city', type: 'varchar', isNullable: true },
                 { name: 'cityCode', type: 'varchar', isNullable: true },
@@ -152,7 +167,7 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
                 { name: 'postalCode', type: 'varchar', isNullable: true },
                 { name: 'lat', type: 'float', isNullable: true },
                 { name: 'lng', type: 'float', isNullable: true },
-                { name: 'coordinateSystem', type: 'varchar', isNullable: false, default: 'GCJ02' },
+                { name: 'coordinateSystem', type: 'varchar', isNullable: false, default: this.lit('GCJ02') },
                 { name: 'geohash', type: 'varchar', isNullable: true },
                 { name: 'mapPoiId', type: 'varchar', isNullable: true },
                 { name: 'mapProvider', type: 'varchar', isNullable: true },
@@ -163,22 +178,22 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
                 { name: 'managerPhone', type: 'varchar', isNullable: true },
                 { name: 'wechat', type: 'varchar', isNullable: true },
                 { name: 'servicePhone', type: 'varchar', isNullable: true },
-                { name: 'businessHours', type: 'simple-json', isNullable: true },
+                { name: 'businessHours', type: 'text', isNullable: true },
                 { name: 'businessHoursText', type: 'varchar', isNullable: true },
-                { name: 'timezone', type: 'varchar', isNullable: false, default: 'Asia/Shanghai' },
-                { name: 'specialDates', type: 'simple-json', isNullable: true },
-                { name: 'holidayPlan', type: 'simple-json', isNullable: true },
-                { name: 'status', type: 'varchar', isNullable: false, default: 'OPEN' },
+                { name: 'timezone', type: 'varchar', isNullable: false, default: this.lit('Asia/Shanghai') },
+                { name: 'specialDates', type: 'text', isNullable: true },
+                { name: 'holidayPlan', type: 'text', isNullable: true },
+                { name: 'status', type: 'varchar', isNullable: false, default: this.lit('OPEN') },
                 { name: 'statusNote', type: 'varchar', isNullable: true },
-                { name: 'reopenAt', type: 'datetime', isNullable: true },
+                { name: 'reopenAt', type: this.dateColumnType, isNullable: true },
                 { name: 'acceptingOrders', type: 'boolean', isNullable: false, default: true },
                 { name: 'coverImage', type: 'text', isNullable: true },
-                { name: 'photos', type: 'simple-json', isNullable: true },
-                { name: 'videos', type: 'simple-json', isNullable: true },
+                { name: 'photos', type: 'text', isNullable: true },
+                { name: 'videos', type: 'text', isNullable: true },
                 { name: 'panoramaUrl', type: 'text', isNullable: true },
                 { name: 'notice', type: 'text', isNullable: true },
-                { name: 'tags', type: 'simple-json', isNullable: true },
-                { name: 'facilities', type: 'simple-json', isNullable: true },
+                { name: 'tags', type: 'text', isNullable: true },
+                { name: 'facilities', type: 'text', isNullable: true },
                 { name: 'supportsRedemption', type: 'boolean', isNullable: false, default: true },
                 { name: 'redemptionHours', type: 'varchar', isNullable: true },
                 { name: 'dailyRedeemLimit', type: 'int', isNullable: true },
@@ -189,14 +204,14 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
                 { name: 'deliveryFee', type: 'int', isNullable: true },
                 { name: 'minOrderAmount', type: 'int', isNullable: true },
                 { name: 'deliveryMinutes', type: 'int', isNullable: true },
-                { name: 'externalIds', type: 'simple-json', isNullable: true },
-                { name: 'source', type: 'varchar', isNullable: false, default: 'MANUAL' },
-                { name: 'lastSyncAt', type: 'datetime', isNullable: true },
+                { name: 'externalIds', type: 'text', isNullable: true },
+                { name: 'source', type: 'varchar', isNullable: false, default: this.lit('MANUAL') },
+                { name: 'lastSyncAt', type: this.dateColumnType, isNullable: true },
                 { name: 'isPublic', type: 'boolean', isNullable: false, default: true },
                 { name: 'enabled', type: 'boolean', isNullable: false, default: true },
                 { name: 'createdBy', type: 'varchar', isNullable: true },
                 { name: 'updatedBy', type: 'varchar', isNullable: true },
-                { name: 'deletedAt', type: 'datetime', isNullable: true },
+                { name: 'deletedAt', type: this.dateColumnType, isNullable: true },
             ],
             indices: [
                 new TableIndex({ name: 'IDX_merchant_store_code', columnNames: ['code'], isUnique: true }),
@@ -208,15 +223,15 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
             name: 'merchant_store_channel',
             columns: [
                 { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
-                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
-                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'createdAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'updatedAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
                 { name: 'storeId', type: 'int', isNullable: false },
                 { name: 'channelId', type: 'int', isNullable: false },
-                { name: 'role', type: 'varchar', isNullable: false, default: 'OWNER' },
-                { name: 'status', type: 'varchar', isNullable: false, default: 'PENDING' },
+                { name: 'role', type: 'varchar', isNullable: false, default: this.lit('OWNER') },
+                { name: 'status', type: 'varchar', isNullable: false, default: this.lit('PENDING') },
                 { name: 'claimedByUserId', type: 'int', isNullable: true },
-                { name: 'claimedAt', type: 'datetime', isNullable: true },
-                { name: 'verifiedAt', type: 'datetime', isNullable: true },
+                { name: 'claimedAt', type: this.dateColumnType, isNullable: true },
+                { name: 'verifiedAt', type: this.dateColumnType, isNullable: true },
                 { name: 'contractNo', type: 'varchar', isNullable: true },
                 { name: 'note', type: 'text', isNullable: true },
             ],
@@ -233,15 +248,15 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
             name: 'merchant_store_staff',
             columns: [
                 { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
-                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
-                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'createdAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                { name: 'updatedAt', type: this.dateColumnType, isNullable: false, default: 'CURRENT_TIMESTAMP' },
                 { name: 'storeId', type: 'int', isNullable: false },
                 { name: 'userId', type: 'int', isNullable: false },
                 { name: 'name', type: 'varchar', isNullable: true },
                 { name: 'phone', type: 'varchar', isNullable: true },
-                { name: 'role', type: 'varchar', isNullable: false, default: 'CLERK' },
-                { name: 'status', type: 'varchar', isNullable: false, default: 'ACTIVE' },
-                { name: 'lastLoginAt', type: 'datetime', isNullable: true },
+                { name: 'role', type: 'varchar', isNullable: false, default: this.lit('CLERK') },
+                { name: 'status', type: 'varchar', isNullable: false, default: this.lit('ACTIVE') },
+                { name: 'lastLoginAt', type: this.dateColumnType, isNullable: true },
             ],
             indices: [
                 new TableIndex({ name: 'IDX_merchant_store_staff_storeId', columnNames: ['storeId'] }),
@@ -315,7 +330,7 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
             return;
         }
         const rows: any[] = await queryRunner.query(
-            `SELECT * FROM ${this.quote('pickup_location')} WHERE ${this.quote('type')} = ?`,
+            `SELECT * FROM ${this.quote('pickup_location')} WHERE ${this.quote('type')} = ${this.ph(1)}`,
             ['store'],
         );
         if (!Array.isArray(rows) || rows.length === 0) {
@@ -377,7 +392,7 @@ export class CreateMerchantTablesMigration implements OnApplicationBootstrap {
 
             // 3) 回填关联系 id
             await queryRunner.query(
-                `UPDATE ${this.quote('pickup_location')} SET ${this.quote('merchantStoreId')} = ? WHERE ${this.quote('id')} = ?`,
+                `UPDATE ${this.quote('pickup_location')} SET ${this.quote('merchantStoreId')} = ${this.ph(1)} WHERE ${this.quote('id')} = ${this.ph(2)}`,
                 [Number(store.id), legacyId],
             );
         }

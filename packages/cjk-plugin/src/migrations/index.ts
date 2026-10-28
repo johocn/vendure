@@ -15,3 +15,5 @@ export { HotelOrderLineColumnMigration } from './migrate-hotel-order-line-column
 export { HotelBookingCancelColumnsMigration } from './migrate-hotel-booking-cancel-columns';
 export { HotelBookingRescheduleColumnsMigration } from './migrate-hotel-booking-reschedule-columns';
 export { PaymentProfileMethodTableMigration } from './create-payment-profile-method-table';
+export { PickupStoreLinkSoftDeleteMigration } from './migrate-pickup-store-link-soft-delete';
+export { PickupPermissionsRoleGrantMigration } from './migrate-pickup-permissions-role-grant';

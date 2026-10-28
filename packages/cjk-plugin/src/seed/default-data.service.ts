@@ -352,7 +352,10 @@ export class DefaultDataService {
 
         for (let i = 1; i <= 20; i++) {
             const code = `official-${String(i).padStart(2, '0')}`;
-            const exists = await channelRepo.findOne({ where: { code } } as any);
+            const token = `official-${i}`;
+            // 按 code 或 token 任一命中即视为已存在：历史数据中存在 code 被改过
+            // （如 official-20 改名 limin）但 token 仍占用的情况，只按 code 判重会撞 token 唯一键
+            const exists = await channelRepo.findOne({ where: [{ code }, { token }] } as any);
             if (exists) {
                 Logger.info(`官方自营租户 ${code} 已存在，跳过`, loggerCtx);
                 continue;
@@ -361,7 +364,7 @@ export class DefaultDataService {
             const channel = await channelRepo.save(
                 new Channel({
                     code,
-                    token: `official-${i}`,
+                    token,
                     defaultLanguageCode: LanguageCode.zh_Hans,
                     defaultCurrencyCode: 'CNY' as any,
                     pricesIncludeTax: true,

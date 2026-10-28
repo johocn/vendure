@@ -140,14 +140,19 @@ let BillPayService = class BillPayService {
         order.quoteExpireAt = new Date(Date.now() + expireMinutes * 60000);
     }
     // ===== 客户侧 =====
-    /** 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED */
+    /**
+     * 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED
+     * 商户关联：优先 merchantId，缺省按名称/编码解析；merchant-plugin 未装载时退回纯名称模式。
+     */
     async createBillPayOrder(ctx, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _o;
         const customerId = await this.currentCustomerId(ctx);
         const merchantName = String((_a = input.merchantName) !== null && _a !== void 0 ? _a : '').trim();
-        if (!merchantName) {
+        const merchant = await this.resolveMerchant(ctx, input.merchantId, merchantName);
+        if (!merchantName && !merchant) {
             throw new core_1.UserInputError('merchantName is required');
         }
+        const orderMerchantName = (merchant === null || merchant === void 0 ? void 0 : merchant.name) || merchantName;
         const expectedAmount = Math.round(Number(input.expectedAmount));
         const config = await this.getChannelConfig(ctx);
         if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
@@ -212,6 +217,10 @@ let BillPayService = class BillPayService {
             if (!tpl || !tpl.enabled || !inChannel || (scene !== 'IN_STORE' && scene !== 'ALL')) {
                 throw new core_1.UserInputError('Coupon is not applicable to bill pay');
             }
+            // 券限门店/商户使用时不能用于买单（买单场景没有门店维度，无法校验覆盖范围）
+            if (((_f = tpl.storeCoverage) !== null && _f !== void 0 ? _f : 'ALL') !== 'ALL') {
+                throw new core_1.UserInputError('该券限指定门店使用，不适用于买单');
+            }
             // 门槛按商家账单原价判定，与到店核销口径一致；券只抵「报价后应付」，不叠加到原价上
             const computed = (0, coupon_plugin_1.computeInStoreBill)(tpl, expectedAmount);
             if (!computed.ok) {
@@ -225,7 +234,8 @@ let BillPayService = class BillPayService {
         let order = await repo.save(new bill_pay_order_entity_1.BillPayOrder({
             code: null,
             customerId,
-            merchantName,
+            merchantName: orderMerchantName,
+            merchantId: (_g = merchant === null || merchant === void 0 ? void 0 : merchant.id) !== null && _g !== void 0 ? _g : null,
             expectedAmount,
             quoteAmount: null,
             actualAmount: null,
@@ -233,7 +243,7 @@ let BillPayService = class BillPayService {
             couponCode,
             couponDiscount: couponPlan ? couponPlan.discount : null,
             status: 'PENDING_QUOTE',
-            remark: (_f = input.remark) !== null && _f !== void 0 ? _f : null,
+            remark: (_h = input.remark) !== null && _h !== void 0 ? _h : null,
             quoteNote: null,
             quoteExpireAt: null,
             proofUrl: null,
@@ -253,13 +263,13 @@ let BillPayService = class BillPayService {
                 .getRepository(ctx, coupon_plugin_1.CustomerCoupon)
                 .createQueryBuilder()
                 .update(coupon_plugin_1.CustomerCoupon)
-                .set({ reservedOrderId: (_g = order.code) !== null && _g !== void 0 ? _g : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}` })
+                .set({ reservedOrderId: (_j = order.code) !== null && _j !== void 0 ? _j : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}` })
                 .where('id = :id AND status = :status AND reservedOrderId IS NULL', {
                 id: couponPlan.cc.id,
                 status: 'UNUSED',
             })
                 .execute();
-            if (((_h = reserve.affected) !== null && _h !== void 0 ? _h : 0) === 0) {
+            if (((_k = reserve.affected) !== null && _k !== void 0 ? _k : 0) === 0) {
                 order.status = 'CANCELLED';
                 await repo.save(order);
                 throw new core_1.UserInputError('Coupon is already in use');
@@ -267,7 +277,7 @@ let BillPayService = class BillPayService {
             this.applyQuoteFields(order, couponPlan.quote.payable, couponPlan.quote.discountDetail, config.quoteExpireMinutes);
             order.status = 'QUOTED';
             order = await repo.save(order);
-            core_1.Logger.info(`BillPayOrder ${(_j = order.code) !== null && _j !== void 0 ? _j : order.id} created with coupon ` +
+            core_1.Logger.info(`BillPayOrder ${(_l = order.code) !== null && _l !== void 0 ? _l : order.id} created with coupon ` +
                 `${couponPlan.cc.code} (quote=${couponPlan.quote.payable}, couponDiscount=${couponPlan.discount})`, constants_1.loggerCtx);
             return order;
         }
@@ -281,7 +291,7 @@ let BillPayService = class BillPayService {
         else if ((0, types_1.isQuoteRejected)(outcome) && outcome.reason === 'INVALID_AMOUNT') {
             throw new core_1.UserInputError('Invalid expectedAmount');
         }
-        core_1.Logger.info(`BillPayOrder ${order.code} created (status=${order.status}, quote=${(_k = order.quoteAmount) !== null && _k !== void 0 ? _k : '-'})`, constants_1.loggerCtx);
+        core_1.Logger.info(`BillPayOrder ${order.code} created (status=${order.status}, quote=${(_o = order.quoteAmount) !== null && _o !== void 0 ? _o : '-'})`, constants_1.loggerCtx);
         return order;
     }
     /** 客户自助取消：仅 PENDING_QUOTE / QUOTED */
@@ -449,7 +459,7 @@ let BillPayService = class BillPayService {
         return fresh;
     }
     /**
-     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED）。
+     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED），并补写券核销流水。
      * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
      */
     async redeemCoupon(orderCtx, order) {
@@ -463,12 +473,13 @@ let BillPayService = class BillPayService {
             core_1.Logger.error(`BillPayOrder ${ref} paid but coupon ${order.couponCode} not found`, constants_1.loggerCtx);
             return;
         }
+        const now = new Date();
         const claim = await repo
             .createQueryBuilder()
             .update(coupon_plugin_1.CustomerCoupon)
             .set({
             status: 'USED',
-            usedAt: new Date(),
+            usedAt: now,
             usedOrderId: ref,
             reservedOrderId: null,
         })
@@ -478,7 +489,46 @@ let BillPayService = class BillPayService {
             core_1.Logger.error(`BillPayOrder ${ref} paid but coupon ${order.couponCode} is ${cc.status}, not redeemed`, constants_1.loggerCtx);
             return;
         }
+        await this.recordCouponRedemption(order, cc, now);
         core_1.Logger.info(`BillPayOrder ${ref} paid, coupon ${order.couponCode} marked as USED`, constants_1.loggerCtx);
+    }
+    /**
+     * 写券核销流水（coupon_redemption），供门店/平台对账口径统一。
+     * - 买单无门店维度：storeId 记 0（0 即「非门店核销」，可按 0 区分统计）；
+     * - merchantId 取订单商户快照，核销金额取本单券抵扣额（分）；
+     * - 用 rawConnection 的独立仓库写入，避免流水写失败把已到账的支付事务拖入回滚；
+     * - 一张券终身只核销一次，已有流水则跳过（重试幂等）。
+     */
+    async recordCouponRedemption(order, cc, redeemedAt) {
+        var _a, _b;
+        try {
+            const repo = this.connection.rawConnection.getRepository(coupon_plugin_1.CouponRedemption);
+            const exists = await repo.findOne({ where: { customerCouponId: Number(cc.id) } });
+            if (exists)
+                return;
+            await repo.save(new coupon_plugin_1.CouponRedemption({
+                customerCouponId: Number(cc.id),
+                couponCode: cc.code,
+                templateId: Number(cc.templateId),
+                saleOrderId: cc.saleOrderId != null ? Number(cc.saleOrderId) : null,
+                merchantId: order.merchantId != null ? Number(order.merchantId) : null,
+                storeId: 0,
+                channelId: Number(order.channelId),
+                redeemMode: 'BILLPAY',
+                operatorId: null,
+                operatorName: null,
+                redeemedAt,
+                revokedAt: null,
+                revokeReason: null,
+                amount: order.couponDiscount != null ? Number(order.couponDiscount) : null,
+                storeSnapshot: null,
+                deviceInfo: null,
+            }));
+        }
+        catch (e) {
+            core_1.Logger.error(`BillPayOrder ${(_a = order.code) !== null && _a !== void 0 ? _a : order.id} coupon ${order.couponCode} redemption record failed: ` +
+                String((_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : ''), constants_1.loggerCtx);
+        }
     }
     /**
      * 取消 → 释放券：只回退本单预占（reservedOrderId）或本单已核销（usedOrderId）的券，
@@ -568,7 +618,7 @@ let BillPayService = class BillPayService {
     }
     /** 结算：COMPLETED → SETTLED，写 bill_pay_settlement 台账（差价模型毛利） */
     async settleBillPayOrder(ctx, id) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f;
         const order = await this.loadChannelOrder(ctx, id);
         if (order.status !== 'COMPLETED') {
             throw new core_1.UserInputError(`Bill pay order is ${order.status}, settle not allowed`);
@@ -577,9 +627,17 @@ let BillPayService = class BillPayService {
             throw new core_1.UserInputError('actualAmount missing');
         }
         const agreementRepo = this.connection.getRepository(ctx, merchant_agreement_entity_1.MerchantAgreement);
-        const agreement = await agreementRepo.findOne({
-            where: { channelId: ctx.channelId, merchantName: order.merchantName },
-        });
+        // 优先按商户 id 命中协议（改名的商户仍可正确结算），无关联时回退按名称
+        let agreement = order.merchantId != null
+            ? await agreementRepo.findOne({
+                where: { channelId: ctx.channelId, merchantId: order.merchantId },
+            })
+            : null;
+        if (!agreement) {
+            agreement = await agreementRepo.findOne({
+                where: { channelId: ctx.channelId, merchantName: order.merchantName },
+            });
+        }
         const settleRate = (_a = agreement === null || agreement === void 0 ? void 0 : agreement.settleRate) !== null && _a !== void 0 ? _a : 100;
         const costAmount = Math.round((order.actualAmount * settleRate) / 100);
         const settlementRepo = this.connection.getRepository(ctx, bill_pay_settlement_entity_1.BillPaySettlement);
@@ -593,11 +651,12 @@ let BillPayService = class BillPayService {
             code: (_b = order.code) !== null && _b !== void 0 ? _b : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`,
             channelId: ctx.channelId,
             merchantName: order.merchantName,
-            quoteAmount: (_c = order.quoteAmount) !== null && _c !== void 0 ? _c : 0,
+            merchantId: (_d = (_c = order.merchantId) !== null && _c !== void 0 ? _c : agreement === null || agreement === void 0 ? void 0 : agreement.merchantId) !== null && _d !== void 0 ? _d : null,
+            quoteAmount: (_e = order.quoteAmount) !== null && _e !== void 0 ? _e : 0,
             actualAmount: order.actualAmount,
             settleRate,
             costAmount,
-            grossAmount: ((_d = order.quoteAmount) !== null && _d !== void 0 ? _d : 0) - costAmount,
+            grossAmount: ((_f = order.quoteAmount) !== null && _f !== void 0 ? _f : 0) - costAmount,
             occurredAt: new Date(),
         }));
         order.status = 'SETTLED';
@@ -686,9 +745,9 @@ let BillPayService = class BillPayService {
         }
         return qb.orderBy('a.id', 'DESC').getMany();
     }
-    /** 商家协议 upsert：渠道内按商家名唯一 */
+    /** 商家协议 upsert：渠道内按商家名唯一；能解析到商户时同时落 merchantId */
     async saveAgreement(ctx, input, id) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         const repo = this.connection.getRepository(ctx, merchant_agreement_entity_1.MerchantAgreement);
         const merchantName = String((_a = input.merchantName) !== null && _a !== void 0 ? _a : '').trim();
         const settleRate = Math.round(Number(input.settleRate));
@@ -698,6 +757,9 @@ let BillPayService = class BillPayService {
         if (!Number.isFinite(settleRate) || settleRate <= 0 || settleRate > 100) {
             throw new core_1.UserInputError('settleRate must be 1-100');
         }
+        // 协议允许先于商户主数据维护（历史按名称建协议），解析失败不阻断
+        const merchant = await this.resolveMerchant(ctx, input.merchantId, merchantName, false);
+        const merchantId = (_b = merchant === null || merchant === void 0 ? void 0 : merchant.id) !== null && _b !== void 0 ? _b : null;
         const settleMode = input.settleMode === 'MONTHLY' ? 'MONTHLY' : 'PER_ORDER';
         if (id) {
             const existing = await repo.findOne({ where: { id: id } });
@@ -705,10 +767,11 @@ let BillPayService = class BillPayService {
                 throw new core_1.UserInputError('Merchant agreement not found');
             }
             existing.merchantName = merchantName;
+            existing.merchantId = merchantId;
             existing.settleRate = settleRate;
             existing.settleMode = settleMode;
-            existing.contact = (_b = input.contact) !== null && _b !== void 0 ? _b : null;
-            existing.note = (_c = input.note) !== null && _c !== void 0 ? _c : null;
+            existing.contact = (_c = input.contact) !== null && _c !== void 0 ? _c : null;
+            existing.note = (_d = input.note) !== null && _d !== void 0 ? _d : null;
             return repo.save(existing);
         }
         const dup = await repo.findOne({
@@ -720,11 +783,55 @@ let BillPayService = class BillPayService {
         return repo.save(new merchant_agreement_entity_1.MerchantAgreement({
             channelId: ctx.channelId,
             merchantName,
+            merchantId,
             settleRate,
             settleMode: settleMode,
-            contact: (_d = input.contact) !== null && _d !== void 0 ? _d : null,
-            note: (_e = input.note) !== null && _e !== void 0 ? _e : null,
+            contact: (_e = input.contact) !== null && _e !== void 0 ? _e : null,
+            note: (_f = input.note) !== null && _f !== void 0 ? _f : null,
         }));
+    }
+    /**
+     * 解析商户关联：优先 merchantId，缺省按名称/编码精确匹配未删除商户。
+     * - merchant 表不存在（未装载 merchant-plugin）→ 返回 null，调用方退回纯名称模式；
+     * - merchantId 显式传入但不存在/已删除 → 直接报错；
+     * - required=false 时名称解析不到返回 null（协议允许先建后补主数据）。
+     */
+    async resolveMerchant(ctx, merchantId, merchantName, required = true) {
+        const qr = this.connection.rawConnection.createQueryRunner();
+        const isPostgres = this.connection.rawConnection.options.type === 'postgres';
+        const ph = isPostgres ? '$1' : '?';
+        try {
+            if (!(await qr.hasTable('merchant'))) {
+                return null;
+            }
+            if (merchantId != null) {
+                const rows = await qr.query(`SELECT id, name, "deletedAt" FROM merchant WHERE id = ${ph} LIMIT 1`, [Number(merchantId)]);
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    throw new core_1.UserInputError('商家不存在');
+                }
+                if (rows[0].deletedAt != null) {
+                    throw new core_1.UserInputError('商家已删除');
+                }
+                return { id: Number(rows[0].id), name: displayName(rows[0].name) };
+            }
+            const key = String(merchantName !== null && merchantName !== void 0 ? merchantName : '').trim();
+            if (!key) {
+                return null;
+            }
+            const rows = await qr.query(`SELECT id, name, "deletedAt" FROM merchant
+                 WHERE "deletedAt" IS NULL AND (code = ${ph} OR name = ${ph})
+                 ORDER BY id LIMIT 1`, [key]);
+            if (Array.isArray(rows) && rows.length > 0) {
+                return { id: Number(rows[0].id), name: displayName(rows[0].name) };
+            }
+            if (required) {
+                throw new core_1.UserInputError('商家不存在，请从商家列表选择');
+            }
+            return null;
+        }
+        finally {
+            await qr.release();
+        }
     }
     // ===== 渠道配置（admin）=====
     async getRawChannelConfig(ctx) {
@@ -754,4 +861,25 @@ exports.BillPayService = BillPayService = __decorate([
         core_1.CustomerService,
         core_1.ChannelService])
 ], BillPayService);
+/** 商户名可能以 LocalizedText（JSON）落库，取中文/首个可用值作为订单快照名 */
+function displayName(raw) {
+    var _a, _b, _c;
+    if (typeof raw !== 'string') {
+        return raw == null ? '' : String(raw);
+    }
+    const text = raw.trim();
+    if (!text.startsWith('{')) {
+        return text;
+    }
+    try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object') {
+            return String((_c = (_b = (_a = parsed['zh-Hans']) !== null && _a !== void 0 ? _a : parsed['zh']) !== null && _b !== void 0 ? _b : parsed[Object.keys(parsed)[0]]) !== null && _c !== void 0 ? _c : '');
+        }
+    }
+    catch (_d) {
+        // 非合法 JSON：按原文返回
+    }
+    return text;
+}
 //# sourceMappingURL=bill-pay.service.js.map

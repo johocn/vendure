@@ -10,6 +10,7 @@ export class PickupLocationAdminResolver {
     constructor(private pickupLocationService: PickupLocationService) {}
 
     @Query()
+    @Allow(PickupPermissions.ReadPickupLocation as Permission)
     async pickupLocations(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: ListQueryOptions<PickupLocation>,
@@ -18,6 +19,7 @@ export class PickupLocationAdminResolver {
     }
 
     @Query()
+    @Allow(PickupPermissions.ReadPickupLocation as Permission)
     async pickupLocation(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -27,6 +29,7 @@ export class PickupLocationAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(PickupPermissions.CreatePickupLocation as Permission)
     async createPickupLocation(
         @Ctx() ctx: RequestContext,
         @Args('input') input: any,
@@ -36,6 +39,7 @@ export class PickupLocationAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(PickupPermissions.UpdatePickupLocation as Permission)
     async updatePickupLocation(
         @Ctx() ctx: RequestContext,
         @Args('input') input: any,
@@ -45,6 +49,7 @@ export class PickupLocationAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(PickupPermissions.DeletePickupLocation as Permission)
     async deletePickupLocation(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,

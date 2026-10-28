@@ -172,7 +172,7 @@ __decorate([
     __metadata("design:type", Object)
 ], MerchantStore.prototype, "statusNote", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], MerchantStore.prototype, "reopenAt", void 0);
 __decorate([
@@ -256,7 +256,7 @@ __decorate([
     __metadata("design:type", String)
 ], MerchantStore.prototype, "source", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], MerchantStore.prototype, "lastSyncAt", void 0);
 __decorate([
@@ -276,7 +276,7 @@ __decorate([
     __metadata("design:type", Object)
 ], MerchantStore.prototype, "updatedBy", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], MerchantStore.prototype, "deletedAt", void 0);
 exports.MerchantStore = MerchantStore = __decorate([

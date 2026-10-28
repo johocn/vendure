@@ -18,7 +18,7 @@ import { BillPaySettlement } from './bill-pay-settlement.entity';
 import { BillPayShopResolver } from './bill-pay-shop.resolver';
 import { BillPayPermissions, loggerCtx } from './constants';
 import { MerchantAgreement } from './merchant-agreement.entity';
-import { AddBillPayCouponColumnsMigration, CreateBillPayTablesMigration } from './migrations';
+import { AddBillPayCouponColumnsMigration, AddBillPayMerchantColumnsMigration, CreateBillPayTablesMigration } from './migrations';
 
 const billPayOrderType = `
 type BillPayOrder implements Node {
@@ -28,6 +28,7 @@ type BillPayOrder implements Node {
     code: String
     customerId: ID!
     merchantName: String!
+    merchantId: ID
     expectedAmount: Int!
     quoteAmount: Int
     actualAmount: Int
@@ -63,6 +64,7 @@ type BillPayOrderList implements PaginatedList {
 
 input CreateBillPayOrderInput {
     merchantName: String!
+    merchantId: ID
     expectedAmount: Int!
     remark: String
     couponCode: String
@@ -80,6 +82,7 @@ type MerchantAgreement implements Node {
     updatedAt: DateTime!
     channelId: ID!
     merchantName: String!
+    merchantId: ID
     settleRate: Int!
     settleMode: String!
     contact: String
@@ -88,6 +91,7 @@ type MerchantAgreement implements Node {
 
 input MerchantAgreementInput {
     merchantName: String!
+    merchantId: ID
     settleRate: Int!
     settleMode: String
     contact: String
@@ -143,7 +147,7 @@ type BillPayConfig {
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [BillPayOrder, MerchantAgreement, BillPaySettlement, BillPayChannelConfigEntity],
-    providers: [BillPayService, CreateBillPayTablesMigration, AddBillPayCouponColumnsMigration],
+    providers: [BillPayService, CreateBillPayTablesMigration, AddBillPayCouponColumnsMigration, AddBillPayMerchantColumnsMigration],
     exports: [BillPayService],
     adminApiExtensions: {
         schema: () => gql`

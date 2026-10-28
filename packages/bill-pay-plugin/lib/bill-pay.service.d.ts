@@ -24,9 +24,13 @@ export declare class BillPayService {
     private loadChannelOrder;
     private loadOwnedOrder;
     private applyQuoteFields;
-    /** 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED */
+    /**
+     * 客户提交委托：限额校验（单笔 min + 单日累计）→ PENDING_QUOTE，autoQuote 命中即同步报价转 QUOTED
+     * 商户关联：优先 merchantId，缺省按名称/编码解析；merchant-plugin 未装载时退回纯名称模式。
+     */
     createBillPayOrder(ctx: RequestContext, input: {
         merchantName: string;
+        merchantId?: ID | null;
         expectedAmount: number;
         remark?: string | null;
         couponCode?: string | null;
@@ -45,10 +49,18 @@ export declare class BillPayService {
     /** 余额支付（同步结算）：先置 PAID 再扣余额（扣款内部提交事务，顺序对齐 coupon-sale L152-170） */
     payBillPayOrderWithBalance(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
     /**
-     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED）。
+     * 支付成功 → 核销券（幂等：仅 UNUSED 可置 USED），并补写券核销流水。
      * 券已被他单使用/查不到属数据异常，支付已不可逆，故只记 error 不抛错。
      */
     private redeemCoupon;
+    /**
+     * 写券核销流水（coupon_redemption），供门店/平台对账口径统一。
+     * - 买单无门店维度：storeId 记 0（0 即「非门店核销」，可按 0 区分统计）；
+     * - merchantId 取订单商户快照，核销金额取本单券抵扣额（分）；
+     * - 用 rawConnection 的独立仓库写入，避免流水写失败把已到账的支付事务拖入回滚；
+     * - 一张券终身只核销一次，已有流水则跳过（重试幂等）。
+     */
+    private recordCouponRedemption;
     /**
      * 取消 → 释放券：只回退本单预占（reservedOrderId）或本单已核销（usedOrderId）的券，
      * 防止误释放已被其它委托单使用的券。
@@ -75,14 +87,22 @@ export declare class BillPayService {
     }>;
     adminFind(ctx: RequestContext, id: ID): Promise<BillPayOrder>;
     listAgreements(ctx: RequestContext): Promise<MerchantAgreement[]>;
-    /** 商家协议 upsert：渠道内按商家名唯一 */
+    /** 商家协议 upsert：渠道内按商家名唯一；能解析到商户时同时落 merchantId */
     saveAgreement(ctx: RequestContext, input: {
         merchantName: string;
+        merchantId?: ID | null;
         settleRate: number;
         settleMode?: string;
         contact?: string | null;
         note?: string | null;
     }, id?: ID): Promise<MerchantAgreement>;
+    /**
+     * 解析商户关联：优先 merchantId，缺省按名称/编码精确匹配未删除商户。
+     * - merchant 表不存在（未装载 merchant-plugin）→ 返回 null，调用方退回纯名称模式；
+     * - merchantId 显式传入但不存在/已删除 → 直接报错；
+     * - required=false 时名称解析不到返回 null（协议允许先建后补主数据）。
+     */
+    private resolveMerchant;
     getRawChannelConfig(ctx: RequestContext): Promise<BillPayChannelConfig>;
     saveChannelConfig(ctx: RequestContext, config: unknown): Promise<BillPayChannelConfig>;
 }

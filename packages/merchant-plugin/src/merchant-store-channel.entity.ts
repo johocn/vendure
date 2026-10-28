@@ -27,9 +27,9 @@ export class MerchantStoreChannel extends VendureEntity {
     /** 发起认领的后台用户 id */
     @Column({ type: 'int', nullable: true }) claimedByUserId: number | null;
 
-    @Column({ type: 'datetime', nullable: true }) claimedAt: Date | null;
+    @Column({ type: Date, nullable: true }) claimedAt: Date | null;
 
-    @Column({ type: 'datetime', nullable: true }) verifiedAt: Date | null;
+    @Column({ type: Date, nullable: true }) verifiedAt: Date | null;
 
     @Column({ type: 'varchar', nullable: true }) contractNo: string | null;
 

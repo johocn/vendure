@@ -47,7 +47,7 @@ __decorate([
     __metadata("design:type", String)
 ], MerchantStoreStaff.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], MerchantStoreStaff.prototype, "lastLoginAt", void 0);
 exports.MerchantStoreStaff = MerchantStoreStaff = __decorate([

@@ -73,7 +73,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration, HotelBookingCancelColumnsMigration, HotelBookingRescheduleColumnsMigration, PaymentProfileMethodTableMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration, HotelBookingCancelColumnsMigration, HotelBookingRescheduleColumnsMigration, PaymentProfileMethodTableMigration, PickupStoreLinkSoftDeleteMigration, PickupPermissionsRoleGrantMigration } from './migrations';
 import { setRedeemScopeResolver } from '@vendure/coupon-plugin';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
@@ -243,6 +243,8 @@ function mergeCustomFields<T extends { name: string }>(
         HotelBookingCancelColumnsMigration,
         HotelBookingRescheduleColumnsMigration,
         PaymentProfileMethodTableMigration,
+        PickupStoreLinkSoftDeleteMigration,
+        PickupPermissionsRoleGrantMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,
@@ -300,6 +302,8 @@ function mergeCustomFields<T extends { name: string }>(
 
                 type PickupLocation implements Node {
                     id: ID!
+                    createdAt: DateTime!
+                    updatedAt: DateTime!
                     name: String!
                     type: PickupLocationType!
                     address: String!
@@ -314,6 +318,7 @@ function mergeCustomFields<T extends { name: string }>(
                     enabled: Boolean!
                     isPublic: Boolean!
                     ownerChannelId: ID
+                    merchantStoreId: ID
                     province: String
                     city: String
                     district: String
@@ -339,6 +344,7 @@ function mergeCustomFields<T extends { name: string }>(
                     sortOrder: Int
                     enabled: Boolean
                     isPublic: Boolean
+                    merchantStoreId: ID
                     province: String
                     city: String
                     district: String
@@ -360,6 +366,7 @@ function mergeCustomFields<T extends { name: string }>(
                     sortOrder: Int
                     enabled: Boolean
                     isPublic: Boolean
+                    merchantStoreId: ID
                     province: String
                     city: String
                     district: String
