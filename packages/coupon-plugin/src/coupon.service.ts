@@ -61,6 +61,8 @@ const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
     'memberLevel',
     'newCustomerOnly',
     'storeCoverage',
+    'costBearer',
+    'merchantCostRate',
 ];
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -229,6 +231,7 @@ export class CouponService {
         this.applyMultilingualInput(tpl, input);
         this.applyMarketingInput(tpl, input);
         this.applyStoreCoverageInput(tpl, input);
+        this.applyCostBearerInput(tpl, input);
         if (tpl.name == null) {
             throw new UserInputError('CouponTemplate name (or nameZh) is required');
         }
@@ -262,7 +265,37 @@ export class CouponService {
         this.applyMultilingualInput(tpl, input);
         this.applyMarketingInput(tpl, input);
         this.applyStoreCoverageInput(tpl, input);
+        this.applyCostBearerInput(tpl, input);
         return repo.save(tpl);
+    }
+
+    /**
+     * 券成本承担入参规范化（create/update 共用）：
+     * - costBearer 仅接受 PLATFORM|MERCHANT|SPLIT，非法值回退 PLATFORM（历史行为：平台承担）
+     * - merchantCostRate 仅在 SPLIT 下生效（0-100，缺省 50）；PLATFORM 归 0、MERCHANT 归 100，
+     *   保证结算侧只需按比例计算
+     */
+    private applyCostBearerInput(tpl: CouponTemplate, input: any): void {
+        const hasBearer = input?.costBearer !== undefined;
+        const hasRate = input?.merchantCostRate !== undefined;
+        if (!hasBearer && !hasRate && tpl.id != null) {
+            // update 时两者都未传：保持既有配置
+            return;
+        }
+        const bearer = String(input?.costBearer ?? (tpl as any).costBearer ?? 'PLATFORM')
+            .trim()
+            .toUpperCase();
+        const normalized = bearer === 'MERCHANT' || bearer === 'SPLIT' ? bearer : 'PLATFORM';
+        (tpl as any).costBearer = normalized;
+        if (normalized === 'PLATFORM') {
+            (tpl as any).merchantCostRate = 0;
+        } else if (normalized === 'MERCHANT') {
+            (tpl as any).merchantCostRate = 100;
+        } else {
+            const raw = input?.merchantCostRate ?? (tpl as any).merchantCostRate ?? 50;
+            const n = Math.round(Number(raw));
+            (tpl as any).merchantCostRate = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 50;
+        }
     }
 
     /**

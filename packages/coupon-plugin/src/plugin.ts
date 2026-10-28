@@ -69,6 +69,7 @@ import {
     CreateCouponReconcileMigration,
     CreateCouponFrFMigration,
     CreateCouponStoreMigration,
+    AddCouponCostBearerMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -127,6 +128,8 @@ type CouponTemplate implements Node {
     category: String
     activityImage: String
     storeCoverage: String!
+    costBearer: String!
+    merchantCostRate: Int!
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -184,6 +187,7 @@ type CustomerCoupon implements Node {
         CreateCouponReconcileMigration,
         CreateCouponFrFMigration,
         CreateCouponStoreMigration,
+        AddCouponCostBearerMigration,
     ],
     exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
@@ -421,6 +425,8 @@ type CustomerCoupon implements Node {
                 category: String
                 activityImage: String
                 storeCoverage: String
+                costBearer: String
+                merchantCostRate: Int
             }
 
             input UpdateCouponTemplateInput {
@@ -457,6 +463,8 @@ type CustomerCoupon implements Node {
                 category: String
                 activityImage: String
                 storeCoverage: String
+                costBearer: String
+                merchantCostRate: Int
             }
 
             input CouponTemplateListOptions

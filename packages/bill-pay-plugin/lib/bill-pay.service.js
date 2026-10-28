@@ -20,6 +20,7 @@ const bill_pay_config_entity_1 = require("./bill-pay-config.entity");
 const bill_pay_coupon_1 = require("./bill-pay-coupon");
 const bill_pay_order_entity_1 = require("./bill-pay-order.entity");
 const bill_pay_settlement_entity_1 = require("./bill-pay-settlement.entity");
+const bill_pay_settlement_calc_1 = require("./bill-pay-settlement-calc");
 const merchant_agreement_entity_1 = require("./merchant-agreement.entity");
 const constants_1 = require("./constants");
 const quote_engine_1 = require("./quote-engine");
@@ -652,7 +653,7 @@ let BillPayService = class BillPayService {
     }
     /** 结算：COMPLETED → SETTLED，写 bill_pay_settlement 台账（差价模型毛利） */
     async settleBillPayOrder(ctx, id) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const order = await this.loadChannelOrder(ctx, id);
         if (order.status !== 'COMPLETED') {
             throw new core_1.UserInputError(`Bill pay order is ${order.status}, settle not allowed`);
@@ -673,7 +674,27 @@ let BillPayService = class BillPayService {
             });
         }
         const settleRate = (_a = agreement === null || agreement === void 0 ? void 0 : agreement.settleRate) !== null && _a !== void 0 ? _a : 100;
-        const costAmount = Math.round((order.actualAmount * settleRate) / 100);
+        // 券成本承担：按订单券码回查模板配置（券码缺失/模板已删时回退平台承担，保持历史口径）
+        const couponAmount = order.couponCode
+            ? Math.max(0, Math.round(Number((_b = order.couponDiscount) !== null && _b !== void 0 ? _b : 0)))
+            : 0;
+        let couponBearer = 'PLATFORM';
+        let merchantCostRate = 0;
+        if (couponAmount > 0 && order.couponCode) {
+            const cc = await this.connection
+                .getRepository(ctx, coupon_plugin_1.CustomerCoupon)
+                .findOne({ where: { code: order.couponCode }, relations: { template: true } });
+            couponBearer = (_d = (_c = cc === null || cc === void 0 ? void 0 : cc.template) === null || _c === void 0 ? void 0 : _c.costBearer) !== null && _d !== void 0 ? _d : 'PLATFORM';
+            merchantCostRate = Number((_f = (_e = cc === null || cc === void 0 ? void 0 : cc.template) === null || _e === void 0 ? void 0 : _e.merchantCostRate) !== null && _f !== void 0 ? _f : 0);
+        }
+        const calc = (0, bill_pay_settlement_calc_1.computeSettlementCost)({
+            quoteAmount: (_g = order.quoteAmount) !== null && _g !== void 0 ? _g : 0,
+            actualAmount: order.actualAmount,
+            settleRate,
+            couponAmount,
+            couponBearer,
+            merchantCostRate,
+        });
         const settlementRepo = this.connection.getRepository(ctx, bill_pay_settlement_entity_1.BillPaySettlement);
         const existing = await settlementRepo.findOne({ where: { billPayOrderId: order.id } });
         if (existing) {
@@ -682,15 +703,20 @@ let BillPayService = class BillPayService {
         }
         const settlement = await settlementRepo.save(new bill_pay_settlement_entity_1.BillPaySettlement({
             billPayOrderId: order.id,
-            code: (_b = order.code) !== null && _b !== void 0 ? _b : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`,
+            code: (_h = order.code) !== null && _h !== void 0 ? _h : `${constants_1.BILLPAY_CODE_PREFIX}${order.id}`,
             channelId: ctx.channelId,
             merchantName: order.merchantName,
-            merchantId: (_d = (_c = order.merchantId) !== null && _c !== void 0 ? _c : agreement === null || agreement === void 0 ? void 0 : agreement.merchantId) !== null && _d !== void 0 ? _d : null,
-            quoteAmount: (_e = order.quoteAmount) !== null && _e !== void 0 ? _e : 0,
+            merchantId: (_k = (_j = order.merchantId) !== null && _j !== void 0 ? _j : agreement === null || agreement === void 0 ? void 0 : agreement.merchantId) !== null && _k !== void 0 ? _k : null,
+            quoteAmount: (_l = order.quoteAmount) !== null && _l !== void 0 ? _l : 0,
             actualAmount: order.actualAmount,
-            settleRate,
-            costAmount,
-            grossAmount: ((_f = order.quoteAmount) !== null && _f !== void 0 ? _f : 0) - costAmount,
+            settleRate: calc.settleRate,
+            costAmount: calc.costAmount,
+            grossAmount: calc.grossAmount,
+            couponAmount: calc.couponAmount,
+            couponBearer: calc.couponBearer,
+            couponCostRate: calc.couponCostRate,
+            merchantCouponCost: calc.merchantCouponCost,
+            platformCouponCost: calc.platformCouponCost,
             occurredAt: new Date(),
         }));
         order.status = 'SETTLED';

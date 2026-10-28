@@ -79,5 +79,12 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
      * 默认 ALL 且无 coupon_store_binding 记录时，券行为与改造前完全一致。
      */
     storeCoverage: string;
+    /**
+     * 券成本承担方：PLATFORM（平台承担，默认）| MERCHANT（商户承担）| SPLIT（按比例分摊）。
+     * 买单结算时据此计算商户应承担的券面额，进而扣减应付商户款。
+     */
+    costBearer: string;
+    /** SPLIT 模式下商户承担比例（0-100）；PLATFORM 恒为 0、MERCHANT 恒为 100（保存时规范化） */
+    merchantCostRate: number;
     channels: Channel[];
 }

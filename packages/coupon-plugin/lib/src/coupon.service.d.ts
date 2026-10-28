@@ -46,6 +46,13 @@ export declare class CouponService {
     createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     /**
+     * 券成本承担入参规范化（create/update 共用）：
+     * - costBearer 仅接受 PLATFORM|MERCHANT|SPLIT，非法值回退 PLATFORM（历史行为：平台承担）
+     * - merchantCostRate 仅在 SPLIT 下生效（0-100，缺省 50）；PLATFORM 归 0、MERCHANT 归 100，
+     *   保证结算侧只需按比例计算
+     */
+    private applyCostBearerInput;
+    /**
      * 门店覆盖范围入参规范化（create/update 共用）：仅接受 ALL|MERCHANT|STORE，
      * 非法值回退 ALL（不限门店，与历史券行为一致）。
      */

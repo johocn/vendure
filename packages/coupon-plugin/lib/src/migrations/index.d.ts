@@ -15,3 +15,4 @@ export { CreateCouponFissionMigration } from './create-coupon-fission';
 export { CreateCouponFrFMigration } from './create-coupon-frf';
 export { CreateCouponReconcileMigration } from './create-coupon-settlement-reconcile';
 export { CreateCouponStoreMigration } from './create-coupon-store';
+export { AddCouponCostBearerMigration } from './add-coupon-cost-bearer';

@@ -23,6 +23,7 @@ import { BillPayChannelConfigEntity } from './bill-pay-config.entity';
 import { applyCouponToQuote } from './bill-pay-coupon';
 import { BillPayOrder } from './bill-pay-order.entity';
 import { BillPaySettlement } from './bill-pay-settlement.entity';
+import { computeSettlementCost } from './bill-pay-settlement-calc';
 import { MerchantAgreement } from './merchant-agreement.entity';
 import { BILLPAY_CODE_PREFIX, loggerCtx } from './constants';
 import { parseBillPayConfig, quoteBill } from './quote-engine';
@@ -769,7 +770,27 @@ export class BillPayService {
             });
         }
         const settleRate = agreement?.settleRate ?? 100;
-        const costAmount = Math.round((order.actualAmount * settleRate) / 100);
+        // 券成本承担：按订单券码回查模板配置（券码缺失/模板已删时回退平台承担，保持历史口径）
+        const couponAmount = order.couponCode
+            ? Math.max(0, Math.round(Number(order.couponDiscount ?? 0)))
+            : 0;
+        let couponBearer = 'PLATFORM';
+        let merchantCostRate = 0;
+        if (couponAmount > 0 && order.couponCode) {
+            const cc = await this.connection
+                .getRepository(ctx, CustomerCoupon)
+                .findOne({ where: { code: order.couponCode }, relations: { template: true } });
+            couponBearer = cc?.template?.costBearer ?? 'PLATFORM';
+            merchantCostRate = Number(cc?.template?.merchantCostRate ?? 0);
+        }
+        const calc = computeSettlementCost({
+            quoteAmount: order.quoteAmount ?? 0,
+            actualAmount: order.actualAmount,
+            settleRate,
+            couponAmount,
+            couponBearer,
+            merchantCostRate,
+        });
         const settlementRepo = this.connection.getRepository(ctx, BillPaySettlement);
         const existing = await settlementRepo.findOne({ where: { billPayOrderId: order.id as any } });
         if (existing) {
@@ -785,9 +806,14 @@ export class BillPayService {
                 merchantId: order.merchantId ?? agreement?.merchantId ?? null,
                 quoteAmount: order.quoteAmount ?? 0,
                 actualAmount: order.actualAmount,
-                settleRate,
-                costAmount,
-                grossAmount: (order.quoteAmount ?? 0) - costAmount,
+                settleRate: calc.settleRate,
+                costAmount: calc.costAmount,
+                grossAmount: calc.grossAmount,
+                couponAmount: calc.couponAmount,
+                couponBearer: calc.couponBearer,
+                couponCostRate: calc.couponCostRate,
+                merchantCouponCost: calc.merchantCouponCost,
+                platformCouponCost: calc.platformCouponCost,
                 occurredAt: new Date(),
             }),
         );

@@ -112,6 +112,8 @@ type CouponTemplate implements Node {
     category: String
     activityImage: String
     storeCoverage: String!
+    costBearer: String!
+    merchantCostRate: Int!
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -362,6 +364,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.CreateCouponReconcileMigration,
             migrations_1.CreateCouponFrFMigration,
             migrations_1.CreateCouponStoreMigration,
+            migrations_1.AddCouponCostBearerMigration,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService, coupon_sale_service_1.CouponSaleService],
         adminApiExtensions: {
@@ -599,6 +602,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 category: String
                 activityImage: String
                 storeCoverage: String
+                costBearer: String
+                merchantCostRate: Int
             }
 
             input UpdateCouponTemplateInput {
@@ -635,6 +640,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 category: String
                 activityImage: String
                 storeCoverage: String
+                costBearer: String
+                merchantCostRate: Int
             }
 
             input CouponTemplateListOptions

@@ -69,6 +69,26 @@ __decorate([
     __metadata("design:type", Number)
 ], BillPaySettlement.prototype, "grossAmount", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], BillPaySettlement.prototype, "couponAmount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'PLATFORM' }),
+    __metadata("design:type", String)
+], BillPaySettlement.prototype, "couponBearer", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], BillPaySettlement.prototype, "couponCostRate", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], BillPaySettlement.prototype, "merchantCouponCost", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], BillPaySettlement.prototype, "platformCouponCost", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: Date }),
     __metadata("design:type", Date)
 ], BillPaySettlement.prototype, "occurredAt", void 0);

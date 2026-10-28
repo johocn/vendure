@@ -23,10 +23,20 @@ export declare class BillPaySettlement extends VendureEntity {
     actualAmount: number;
     /** 协议结算费率快照（百分数整数） */
     settleRate: number;
-    /** 成本 = round(actualAmount × settleRate / 100) */
+    /** 成本 = round(actualAmount × settleRate / 100)，再扣除商户承担的券成本 */
     costAmount: number;
     /** 毛利 = quoteAmount − costAmount */
     grossAmount: number;
+    /** 本单实际券抵扣额（分）；未用券为 0 */
+    couponAmount: number;
+    /** 券成本承担方快照：PLATFORM | MERCHANT | SPLIT */
+    couponBearer: string;
+    /** 券成本分摊比例快照（百分数整数，0-100） */
+    couponCostRate: number;
+    /** 商户承担的券成本（从应付商户款中扣减） */
+    merchantCouponCost: number;
+    /** 平台承担的券成本 */
+    platformCouponCost: number;
     /** 记账时点 */
     occurredAt: Date;
 }

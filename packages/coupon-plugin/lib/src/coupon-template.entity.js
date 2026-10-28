@@ -143,6 +143,14 @@ __decorate([
     __metadata("design:type", String)
 ], CouponTemplate.prototype, "storeCoverage", void 0);
 __decorate([
+    (0, typeorm_1.Column)('varchar', { default: 'PLATFORM' }),
+    __metadata("design:type", String)
+], CouponTemplate.prototype, "costBearer", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: 0 }),
+    __metadata("design:type", Number)
+], CouponTemplate.prototype, "merchantCostRate", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
