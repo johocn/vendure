@@ -87,7 +87,11 @@ export declare class TenantMemberService {
     /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
      *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
     private nextTenantNo;
-    /** 租户启停（仅超管）；停用时同步释放该渠道的门店认领并重算商户认领状态 */
+    /**
+     * 租户启停（仅超管）；停用时同步释放该渠道的门店认领并重算商户认领状态。
+     * 产品语义：停用可逆 —— 自提点与渠道的 channels 关联刻意保留，重新启用后原关联继续可用；
+     * 如需解除关联请走 pickup 管理接口（removePickupLocationsFromChannel 等）。
+     */
     setChannelEnabled(ctx: RequestContext, channelId: ID, enabled: boolean): Promise<void>;
     /**
      * 租户停用后释放其门店认领：merchant_store_channel → REVOKED，并重算受影响商户的 claimStatus。

@@ -97,6 +97,11 @@ export declare class BillPayService {
         note?: string | null;
     }, id?: ID): Promise<MerchantAgreement>;
     /**
+     * 商户租户归属校验：商户至少有一家未删除门店被当前渠道 ACTIVE 认领。
+     * merchant-plugin 未装载（无 merchant_store_channel 表）时跳过，退回纯名称模式。
+     */
+    private assertMerchantClaimed;
+    /**
      * 解析商户关联：优先 merchantId，缺省按名称/编码精确匹配未删除商户。
      * - merchant 表不存在（未装载 merchant-plugin）→ 返回 null，调用方退回纯名称模式；
      * - merchantId 显式传入但不存在/已删除 → 直接报错；

@@ -441,7 +441,7 @@ export class PickupLocationService {
                 return id;
             }
             const rows = await qr.query(
-                `SELECT id, "deletedAt" FROM merchant_store WHERE id = ${isPostgres ? '$1' : '?'}`,
+                `SELECT id, "deletedAt", enabled FROM merchant_store WHERE id = ${isPostgres ? '$1' : '?'}`,
                 [id],
             );
             if (!Array.isArray(rows) || rows.length === 0) {
@@ -451,6 +451,11 @@ export class PickupLocationService {
                 throw new UserInputError(`关联门店已删除：${id}`);
             }
             if (!this.canManageAll(ctx) && Number(allowExistingId) !== id) {
+                // 停用门店不再接新关联（已有历史关联沿用原值不阻断）；boolean 列在 PG 返回 false、SQLite 返回 0
+                const enabled = rows[0].enabled;
+                if (enabled === false || enabled === 0) {
+                    throw new UserInputError(`关联门店已停用：${id}`);
+                }
                 if (await qr.hasTable('merchant_store_channel')) {
                     const claims = await qr.query(
                         `SELECT id FROM merchant_store_channel

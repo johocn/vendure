@@ -378,7 +378,11 @@ let TenantMemberService = class TenantMemberService {
             .filter((n) => Number.isFinite(n));
         return (nos.length ? Math.max(...nos) : 0) + 1;
     }
-    /** 租户启停（仅超管）；停用时同步释放该渠道的门店认领并重算商户认领状态 */
+    /**
+     * 租户启停（仅超管）；停用时同步释放该渠道的门店认领并重算商户认领状态。
+     * 产品语义：停用可逆 —— 自提点与渠道的 channels 关联刻意保留，重新启用后原关联继续可用；
+     * 如需解除关联请走 pickup 管理接口（removePickupLocationsFromChannel 等）。
+     */
     async setChannelEnabled(ctx, channelId, enabled) {
         await this.channelService.update(ctx, {
             id: channelId,

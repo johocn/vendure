@@ -234,6 +234,12 @@ export class BillPayService {
             if (config.couponEnabled !== true) {
                 throw new UserInputError('Coupon not enabled for bill pay');
             }
+            // 用券单强制商户归属：券是租户资产，不能让本租户券在未认领商户的买单上抵扣。
+            // 普通买单保持原口径（仅校验存在/未删），避免未认领渠道整体不可用。
+            if (!merchant) {
+                throw new UserInputError('商家不存在，请从商家列表选择');
+            }
+            await this.assertMerchantClaimed(ctx, merchant.id);
             const couponOutcome = quoteBill(expectedAmount, config);
             if (isQuoteRejected(couponOutcome) || !config.autoQuote) {
                 if (isQuoteRejected(couponOutcome) && couponOutcome.reason === 'BELOW_MIN') {
@@ -904,6 +910,34 @@ export class BillPayService {
                 note: input.note ?? null,
             }),
         );
+    }
+
+    /**
+     * 商户租户归属校验：商户至少有一家未删除门店被当前渠道 ACTIVE 认领。
+     * merchant-plugin 未装载（无 merchant_store_channel 表）时跳过，退回纯名称模式。
+     */
+    private async assertMerchantClaimed(ctx: RequestContext, merchantId: number): Promise<void> {
+        const qr = this.connection.rawConnection.createQueryRunner();
+        const isPostgres = (this.connection.rawConnection.options as any).type === 'postgres';
+        try {
+            if (!(await qr.hasTable('merchant_store_channel'))) {
+                return;
+            }
+            const rows: any[] = await qr.query(
+                `SELECT 1 FROM merchant_store_channel c
+                 JOIN merchant_store s ON s.id = c."storeId"
+                 WHERE s."merchantId" = ${isPostgres ? '$1' : '?'}
+                   AND c."channelId" = ${isPostgres ? '$2' : '?'}
+                   AND c.status = 'ACTIVE' AND s."deletedAt" IS NULL
+                 LIMIT 1`,
+                [merchantId, Number(ctx.channelId)],
+            );
+            if (!Array.isArray(rows) || rows.length === 0) {
+                throw new UserInputError('商家不属于当前租户，无法使用买单券');
+            }
+        } finally {
+            await qr.release();
+        }
     }
 
     /**
