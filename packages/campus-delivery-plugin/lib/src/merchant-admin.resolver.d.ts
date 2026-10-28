@@ -49,6 +49,12 @@ export declare class MerchantAdminResolver {
         ok: boolean;
         soldOut: boolean;
     }>;
+    /** 全店批量沽清 / 批量恢复（打烊场景一步到位） */
+    campusMerchantSetAllProductsSoldOut(ctx: RequestContext, soldOut: boolean): Promise<{
+        ok: boolean;
+        soldOut: boolean;
+        count: number;
+    }>;
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     campusMerchantSetProductPackingFee(ctx: RequestContext, productId: ID, packingFee?: number | null): Promise<{
         ok: boolean;

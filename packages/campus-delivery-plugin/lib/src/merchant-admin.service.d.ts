@@ -221,6 +221,12 @@ export declare class MerchantAdminService {
         ok: boolean;
         soldOut: boolean;
     }>;
+    /** 全店批量沽清 / 批量恢复：仅本渠道商品，返回实际影响条数（打烊后一键恢复用） */
+    setAllProductsSoldOut(ctx: RequestContext, soldOut: boolean): Promise<{
+        ok: boolean;
+        soldOut: boolean;
+        count: number;
+    }>;
     /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
     setProductPackingFee(ctx: RequestContext, productId: ID, packingFee: number | null): Promise<{
         ok: boolean;

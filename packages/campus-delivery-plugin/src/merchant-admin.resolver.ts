@@ -152,6 +152,16 @@ export class MerchantAdminResolver {
         return this.merchant.setProductSoldOut(ctx, productId, soldOut);
     }
 
+    /** 全店批量沽清 / 批量恢复（打烊场景一步到位） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetAllProductsSoldOut(
+        @Ctx() ctx: RequestContext,
+        @Args('soldOut') soldOut: boolean,
+    ) {
+        return this.merchant.setAllProductsSoldOut(ctx, soldOut);
+    }
+
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

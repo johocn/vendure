@@ -96,6 +96,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantSetProductSoldOut(ctx, productId, soldOut) {
         return this.merchant.setProductSoldOut(ctx, productId, soldOut);
     }
+    /** 全店批量沽清 / 批量恢复（打烊场景一步到位） */
+    async campusMerchantSetAllProductsSoldOut(ctx, soldOut) {
+        return this.merchant.setAllProductsSoldOut(ctx, soldOut);
+    }
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     async campusMerchantSetProductPackingFee(ctx, productId, packingFee) {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee !== null && packingFee !== void 0 ? packingFee : null);
@@ -275,6 +279,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Boolean]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantSetProductSoldOut", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('soldOut')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Boolean]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetAllProductsSoldOut", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

@@ -552,6 +552,17 @@ let MerchantAdminService = class MerchantAdminService {
         });
         return { ok: true, soldOut: Boolean(soldOut) };
     }
+    /** 全店批量沽清 / 批量恢复：仅本渠道商品，返回实际影响条数（打烊后一键恢复用） */
+    async setAllProductsSoldOut(ctx, soldOut) {
+        const flag = Boolean(soldOut);
+        const rows = await this.connection.rawConnection.query('UPDATE product p SET "customFieldsWaimaisoldout" = $2 '
+            + 'FROM product_channels_channel pc '
+            + 'WHERE pc."productId" = p.id AND pc."channelId" = $1 '
+            + 'RETURNING p.id', [ctx.channelId, flag]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const count = Array.isArray(list) ? list.length : 0;
+        return { ok: true, soldOut: flag, count };
+    }
     /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
     async setProductPackingFee(ctx, productId, packingFee) {
         const inChannel = await this.connection.getRepository(ctx, core_1.Product).createQueryBuilder('product')

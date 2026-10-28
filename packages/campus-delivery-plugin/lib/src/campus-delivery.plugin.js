@@ -1114,6 +1114,13 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     soldOut: Boolean!
                 }
 
+                """全店批量沽清结果：count 为本次实际影响的本渠道商品数"""
+                type CampusMerchantSoldOutBatchResult {
+                    ok: Boolean!
+                    soldOut: Boolean!
+                    count: Int!
+                }
+
                 type CampusMerchantPackingFeeResult {
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
@@ -1630,6 +1637,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusSaveRiderShift(input: CampusRiderShiftInput!): CampusRiderShift!
                     campusDeleteRiderShift(id: ID!): CampusRemoveResult!
                     campusMerchantSetProductSoldOut(productId: ID!, soldOut: Boolean!): CampusMerchantSoldOutResult!
+                    campusMerchantSetAllProductsSoldOut(soldOut: Boolean!): CampusMerchantSoldOutBatchResult!
                 }
 
                 type CampusMerchantOpResult {
