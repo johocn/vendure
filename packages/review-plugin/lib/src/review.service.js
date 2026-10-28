@@ -20,6 +20,7 @@ const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
 const review_entity_1 = require("./review.entity");
+const review_alert_service_1 = require("./review-alert.service");
 const typeorm_1 = require("typeorm");
 const ALLOWED_ORDER_STATES = ['Delivered', 'Completed'];
 /** 对外可见且计入评分聚合的状态。 */
@@ -95,20 +96,21 @@ function computeStats(reviews) {
     return { totalCount, goodRate, averageRating, ratingDistribution, topTags };
 }
 let ReviewService = class ReviewService {
-    constructor(options = {}, connection, listQueryBuilder, customerService, productService, moduleRef) {
+    constructor(options = {}, connection, listQueryBuilder, customerService, productService, moduleRef, alertService) {
         this.options = options;
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.customerService = customerService;
         this.productService = productService;
         this.moduleRef = moduleRef;
+        this.alertService = alertService;
     }
     /** vendure Injector 由 ModuleRef 惰性构造（跨模块解析 Coupon/MemberLevel 服务，避免循环依赖） */
     get injector() {
         return new core_2.Injector(this.moduleRef);
     }
     async createReview(ctx, input) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f;
         const customer = await this.requireCustomer(ctx);
         if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
             throw new core_2.UserInputError('rating must be an integer between 1 and 5');
@@ -159,6 +161,13 @@ let ReviewService = class ReviewService {
         });
         review.channels = [ctx.channel];
         const saved = await reviewRepo.save(review);
+        // P4-2 品质闭环：差评落库即预警（不等审核），失败不影响评价主流程
+        try {
+            await ((_e = this.alertService) === null || _e === void 0 ? void 0 : _e.recordFromReview(ctx, saved));
+        }
+        catch (e) {
+            core_2.Logger.warn(`review alert failed for review ${saved.id}: ${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, constants_1.loggerCtx);
+        }
         if (status === VISIBLE_STATUS) {
             await this.recomputeProductRating(ctx, Number(input.productId));
         }
@@ -635,10 +644,12 @@ exports.ReviewService = ReviewService = __decorate([
     __param(0, (0, common_1.Optional)()),
     __param(0, (0, common_1.Inject)(constants_1.REVIEW_PLUGIN_OPTIONS)),
     __param(5, (0, common_1.Optional)()),
+    __param(6, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [Object, core_2.TransactionalConnection,
         core_2.ListQueryBuilder,
         core_2.CustomerService,
         core_2.ProductService,
-        core_1.ModuleRef])
+        core_1.ModuleRef,
+        review_alert_service_1.ReviewAlertService])
 ], ReviewService);
 //# sourceMappingURL=review.service.js.map

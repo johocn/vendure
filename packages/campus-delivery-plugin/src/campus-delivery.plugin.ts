@@ -51,6 +51,7 @@ import { P9P4LockerMigration } from './migrations/p9-p4-locker';
 import { P9P5RiderComplianceMigration } from './migrations/p9-p5-rider-compliance';
 import { P9P6TasteProfileMigration } from './migrations/p9-p6-taste-profile';
 import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-tiers';
+import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -163,6 +164,7 @@ import { SearchAssistService } from './search-assist.service';
         P9P5RiderComplianceMigration,
         P9P6TasteProfileMigration,
         P9P7DeliveryFeeTiersMigration,
+        P10ReviewAlertMigration,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,

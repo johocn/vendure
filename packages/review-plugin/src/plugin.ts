@@ -3,6 +3,9 @@ import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { REVIEW_PLUGIN_OPTIONS } from './constants';
 import { reviewChannelCustomFields } from './review-channel-custom-fields';
+import { ReviewAlert, ReviewAlertRule } from './review-alert.entity';
+import { ReviewAlertResolver } from './review-alert.resolver';
+import { ReviewAlertService } from './review-alert.service';
 import { Review } from './review.entity';
 import { ReviewAdminResolver } from './review-admin.resolver';
 import { reviewProductCustomFields } from './review-product-custom-fields';
@@ -95,12 +98,70 @@ const adminSchema = () => gql`
         reviewCount: Int!
     }
 
+    """P4-2 评价品质闭环：渠道预警规则（每渠道一条）"""
+    type ReviewAlertRule {
+        channelId: ID!
+        enabled: Boolean!
+        maxRating: Int!
+        couponTemplateId: ID
+    }
+
+    """P4-2 差评预警（reviewId 唯一）"""
+    type ReviewAlert {
+        id: ID!
+        reviewId: ID!
+        channelId: ID!
+        productId: ID!
+        customerId: ID!
+        productName: String
+        rating: Int!
+        content: String!
+        tags: [String!]!
+        """none 未发 / issued 已发 / failed 发放失败（可重试）"""
+        couponStatus: String!
+        couponCode: String
+        """new 待处理 / replied 已回评 / closed 已关闭"""
+        status: String!
+        note: String
+        handledAt: DateTime
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+
+    type ReviewAlertList implements PaginatedList {
+        items: [ReviewAlert!]!
+        totalItems: Int!
+    }
+
+    input ReviewAlertListOptions {
+        skip: Int
+        take: Int
+        status: String
+    }
+
+    input UpdateReviewAlertRuleInput {
+        enabled: Boolean
+        maxRating: Int
+        couponTemplateId: ID
+    }
+
+    type ReviewAlertStats {
+        newCount: Int!
+        totalCount: Int!
+        compensatedCount: Int!
+        last7dCount: Int!
+    }
+
     extend type Query {
         reviews(options: ReviewListOptions): ReviewList!
         reviewAppeals(options: ReviewAppealListOptions): ReviewList!
         review(id: ID!): Review
         reviewStats(productId: ID!): ReviewStats!
         productRating(productId: ID!): ProductRating!
+        reviewAlertRule: ReviewAlertRule!
+        reviewAlerts(options: ReviewAlertListOptions): ReviewAlertList!
+        reviewAlert(id: ID!): ReviewAlert
+        reviewAlertStats: ReviewAlertStats!
     }
 
     extend type Mutation {
@@ -111,6 +172,14 @@ const adminSchema = () => gql`
         approveReviewAppeal(id: ID!, note: String): Review!
         """差评申诉驳回：评价维持原状，仅留痕"""
         rejectReviewAppeal(id: ID!, note: String): Review!
+        """P4-2 预警规则保存（每渠道一条）"""
+        updateReviewAlertRule(input: UpdateReviewAlertRuleInput!): ReviewAlertRule!
+        """P4-2 一键回评（写回评价回复）"""
+        replyReviewAlert(id: ID!, reply: String!): ReviewAlert!
+        """P4-2 补发致歉券"""
+        resendReviewAlertCoupon(id: ID!): ReviewAlert!
+        """P4-2 关闭预警"""
+        closeReviewAlert(id: ID!, note: String): ReviewAlert!
     }
 `;
 
@@ -234,14 +303,15 @@ const shopSchema = () => gql`
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [Review],
+    entities: [Review, ReviewAlertRule, ReviewAlert],
     providers: [
         { provide: REVIEW_PLUGIN_OPTIONS, useFactory: () => ReviewPlugin.options },
         ReviewService,
+        ReviewAlertService,
     ],
     adminApiExtensions: {
         schema: adminSchema,
-        resolvers: [ReviewAdminResolver],
+        resolvers: [ReviewAdminResolver, ReviewAlertResolver],
     },
     shopApiExtensions: {
         schema: shopSchema,

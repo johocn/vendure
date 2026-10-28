@@ -50,6 +50,7 @@ const p9_p4_locker_1 = require("./migrations/p9-p4-locker");
 const p9_p5_rider_compliance_1 = require("./migrations/p9-p5-rider-compliance");
 const p9_p6_taste_profile_1 = require("./migrations/p9-p6-taste-profile");
 const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tiers");
+const p10_review_alert_1 = require("./migrations/p10-review-alert");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
@@ -296,6 +297,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p5_rider_compliance_1.P9P5RiderComplianceMigration,
             p9_p6_taste_profile_1.P9P6TasteProfileMigration,
             p9_p7_delivery_fee_tiers_1.P9P7DeliveryFeeTiersMigration,
+            p10_review_alert_1.P10ReviewAlertMigration,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,

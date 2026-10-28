@@ -1,6 +1,7 @@
 import { ModuleRef } from '@nestjs/core';
 import { CustomerService, ID, ListQueryBuilder, PaginatedList, ProductService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { Review } from './review.entity';
+import { ReviewAlertService } from './review-alert.service';
 import { ReviewPluginOptions } from './types';
 import { CreateReviewInput, FollowUpReviewInput, ProductRating, ReviewAppealListOptions, ReviewListOptions, ReviewStats, UpdateReviewInput } from './types';
 export declare class ReviewService {
@@ -10,7 +11,8 @@ export declare class ReviewService {
     private customerService;
     private productService;
     private moduleRef?;
-    constructor(options: ReviewPluginOptions | undefined, connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService, productService: ProductService, moduleRef?: ModuleRef | undefined);
+    private alertService?;
+    constructor(options: ReviewPluginOptions | undefined, connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService, productService: ProductService, moduleRef?: ModuleRef | undefined, alertService?: ReviewAlertService | undefined);
     /** vendure Injector 由 ModuleRef 惰性构造（跨模块解析 Coupon/MemberLevel 服务，避免循环依赖） */
     private get injector();
     createReview(ctx: RequestContext, input: CreateReviewInput): Promise<Review>;

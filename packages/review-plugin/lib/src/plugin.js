@@ -18,6 +18,9 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const review_channel_custom_fields_1 = require("./review-channel-custom-fields");
+const review_alert_entity_1 = require("./review-alert.entity");
+const review_alert_resolver_1 = require("./review-alert.resolver");
+const review_alert_service_1 = require("./review-alert.service");
 const review_entity_1 = require("./review.entity");
 const review_admin_resolver_1 = require("./review-admin.resolver");
 const review_product_custom_fields_1 = require("./review-product-custom-fields");
@@ -103,12 +106,70 @@ const adminSchema = () => gql `
         reviewCount: Int!
     }
 
+    """P4-2 评价品质闭环：渠道预警规则（每渠道一条）"""
+    type ReviewAlertRule {
+        channelId: ID!
+        enabled: Boolean!
+        maxRating: Int!
+        couponTemplateId: ID
+    }
+
+    """P4-2 差评预警（reviewId 唯一）"""
+    type ReviewAlert {
+        id: ID!
+        reviewId: ID!
+        channelId: ID!
+        productId: ID!
+        customerId: ID!
+        productName: String
+        rating: Int!
+        content: String!
+        tags: [String!]!
+        """none 未发 / issued 已发 / failed 发放失败（可重试）"""
+        couponStatus: String!
+        couponCode: String
+        """new 待处理 / replied 已回评 / closed 已关闭"""
+        status: String!
+        note: String
+        handledAt: DateTime
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+
+    type ReviewAlertList implements PaginatedList {
+        items: [ReviewAlert!]!
+        totalItems: Int!
+    }
+
+    input ReviewAlertListOptions {
+        skip: Int
+        take: Int
+        status: String
+    }
+
+    input UpdateReviewAlertRuleInput {
+        enabled: Boolean
+        maxRating: Int
+        couponTemplateId: ID
+    }
+
+    type ReviewAlertStats {
+        newCount: Int!
+        totalCount: Int!
+        compensatedCount: Int!
+        last7dCount: Int!
+    }
+
     extend type Query {
         reviews(options: ReviewListOptions): ReviewList!
         reviewAppeals(options: ReviewAppealListOptions): ReviewList!
         review(id: ID!): Review
         reviewStats(productId: ID!): ReviewStats!
         productRating(productId: ID!): ProductRating!
+        reviewAlertRule: ReviewAlertRule!
+        reviewAlerts(options: ReviewAlertListOptions): ReviewAlertList!
+        reviewAlert(id: ID!): ReviewAlert
+        reviewAlertStats: ReviewAlertStats!
     }
 
     extend type Mutation {
@@ -119,6 +180,14 @@ const adminSchema = () => gql `
         approveReviewAppeal(id: ID!, note: String): Review!
         """差评申诉驳回：评价维持原状，仅留痕"""
         rejectReviewAppeal(id: ID!, note: String): Review!
+        """P4-2 预警规则保存（每渠道一条）"""
+        updateReviewAlertRule(input: UpdateReviewAlertRuleInput!): ReviewAlertRule!
+        """P4-2 一键回评（写回评价回复）"""
+        replyReviewAlert(id: ID!, reply: String!): ReviewAlert!
+        """P4-2 补发致歉券"""
+        resendReviewAlertCoupon(id: ID!): ReviewAlert!
+        """P4-2 关闭预警"""
+        closeReviewAlert(id: ID!, note: String): ReviewAlert!
     }
 `;
 const shopSchema = () => gql `
@@ -252,14 +321,15 @@ ReviewPlugin.options = {};
 exports.ReviewPlugin = ReviewPlugin = ReviewPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [review_entity_1.Review],
+        entities: [review_entity_1.Review, review_alert_entity_1.ReviewAlertRule, review_alert_entity_1.ReviewAlert],
         providers: [
             { provide: constants_1.REVIEW_PLUGIN_OPTIONS, useFactory: () => ReviewPlugin.options },
             review_service_1.ReviewService,
+            review_alert_service_1.ReviewAlertService,
         ],
         adminApiExtensions: {
             schema: adminSchema,
-            resolvers: [review_admin_resolver_1.ReviewAdminResolver],
+            resolvers: [review_admin_resolver_1.ReviewAdminResolver, review_alert_resolver_1.ReviewAlertResolver],
         },
         shopApiExtensions: {
             schema: shopSchema,

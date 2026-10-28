@@ -18,6 +18,9 @@ __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/review.entity"), exports);
+__exportStar(require("./src/review-alert.entity"), exports);
+__exportStar(require("./src/review-alert"), exports);
+__exportStar(require("./src/review-alert.service"), exports);
 __exportStar(require("./src/review.service"), exports);
 __exportStar(require("./src/review-product-custom-fields"), exports);
 //# sourceMappingURL=index.js.map

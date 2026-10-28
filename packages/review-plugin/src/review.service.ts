@@ -22,6 +22,7 @@ import { MemberLevelService } from '@vendure/member-level-plugin';
 
 import { loggerCtx, REVIEW_PLUGIN_OPTIONS } from './constants';
 import { Review } from './review.entity';
+import { ReviewAlertService } from './review-alert.service';
 import { ReviewPluginOptions } from './types';
 import { Between, FindOperator, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, SelectQueryBuilder } from 'typeorm';
 import {
@@ -118,6 +119,7 @@ export class ReviewService {
         private customerService: CustomerService,
         private productService: ProductService,
         @Optional() private moduleRef?: ModuleRef,
+        @Optional() private alertService?: ReviewAlertService,
     ) {}
 
     /** vendure Injector 由 ModuleRef 惰性构造（跨模块解析 Coupon/MemberLevel 服务，避免循环依赖） */
@@ -179,6 +181,12 @@ export class ReviewService {
         } as any);
         review.channels = [ctx.channel];
         const saved = await reviewRepo.save(review);
+        // P4-2 品质闭环：差评落库即预警（不等审核），失败不影响评价主流程
+        try {
+            await this.alertService?.recordFromReview(ctx, saved);
+        } catch (e: any) {
+            Logger.warn(`review alert failed for review ${saved.id}: ${e?.message ?? e}`, loggerCtx);
+        }
         if (status === VISIBLE_STATUS) {
             await this.recomputeProductRating(ctx, Number(input.productId));
         }
