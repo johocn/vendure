@@ -53,6 +53,8 @@ import { P9P6TasteProfileMigration } from './migrations/p9-p6-taste-profile';
 import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-tiers';
 import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
 import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-restore';
+import { P13AutoAcceptMigration } from './migrations/p13-auto-accept';
+import { AutoAcceptJob } from './auto-accept.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
@@ -176,6 +178,8 @@ import { TelemetryService } from './telemetry.service';
         P11TelemetryMigration,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
+        P13AutoAcceptMigration,
+        AutoAcceptJob,
         SoldOutAutoRestoreJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
@@ -1026,6 +1030,23 @@ import { TelemetryService } from './telemetry.service';
                     pending: Int!
                 }
 
+                """商家自动接单（§69）：acceptedToday=本校园日已自动接单数，openNow=当前营业条件是否满足"""
+                type CampusMerchantAutoAccept {
+                    enabled: Boolean!
+                    """下单到自动接单的延迟秒数（0-600）"""
+                    delaySeconds: Int!
+                    """每日自动接单上限（0=不限）"""
+                    dailyLimit: Int!
+                    """适用范围路线（R1/R2/R3）"""
+                    routes: [String!]!
+                    """本校园日已自动接单数"""
+                    acceptedToday: Int!
+                    """营业时段内且未临时休息（false 时自动接单静默暂停）"""
+                    openNow: Boolean!
+                    """本店是否开启商家接单确认模式（关闭时订单不产生待接单态）"""
+                    merchantConfirmEnabled: Boolean!
+                }
+
                 type CampusMerchantPackingFeeResult {
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
@@ -1268,6 +1289,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
                     campusMerchantSoldOutAutoRestore: CampusSoldOutAutoRestore!
+                    """商家自动接单设置（§69）"""
+                    campusMerchantAutoAccept: CampusMerchantAutoAccept!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1569,6 +1592,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantSetAllProductsSoldOut(soldOut: Boolean!): CampusMerchantSoldOutBatchResult!
                     """沽清次日自动恢复（§66）：开关；开启后每日 04:00 把全店沽清批次恢复在售"""
                     campusMerchantSetSoldOutAutoRestore(enabled: Boolean!): CampusSoldOutAutoRestore!
+                    """商家自动接单（§69）：营业中按延迟秒数自动确认新单，超每日上限退回人工"""
+                    campusMerchantUpdateAutoAccept(enabled: Boolean!, delaySeconds: Int, dailyLimit: Int, routes: [String!]): CampusMerchantAutoAccept!
                 }
 
                 type CampusMerchantOpResult {
@@ -2360,6 +2385,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             .catch(e => Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         // 沽清次日自动恢复（§66）：自管定时器，每日 04:00 把「全店沽清」批次恢复在售
         this.injector.get(SoldOutAutoRestoreJob).start();
+        // 商家自动接单（§69）：15s 扫描待接单订单，营业中且未休息时按延迟秒数自动确认
+        this.injector.get(AutoAcceptJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));

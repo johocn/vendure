@@ -33,6 +33,7 @@ import {
     COMBO_MAX_ITEMS,
 } from './addon-fee';
 import { DAILY_LIMIT_MAX, normalizeLimit, queryDailySold, remainingOf } from './daily-limit';
+import { AUTO_ACCEPT_DEFAULT_DELAY_SECONDS, normalizeAutoAcceptRoutes } from './auto-accept';
 
 export interface MerchantBoardLine {
     name: string;
@@ -409,18 +410,26 @@ export class MerchantAdminService {
     /** 商家接单确认：pending_merchant → accepted */
     async acceptOrder(ctx: RequestContext, orderId: ID) {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
-        // 条件写：与用户取消/调度商家超时兜底并发时，已脱厅单不得被改回 accepted
-        const moved = await this.hall.transitionFrom(ctx, Number(order.id), ['pending_merchant'], {
-            hallStatus: 'accepted',
-        });
+        const moved = await this.transitionToAccepted(ctx, order.id as any, 'manual');
         if (!moved) throw new UserInputError('订单状态已变更，请刷新');
-        this.notify.user(ctx, order.id as any, 'orderAccepted');
+        return { ok: true };
+    }
+
+    /** 接单内核（手动/自动共用）：条件写防并发 + 用户通知 + 接单即出票；返回是否真正迁移成功 */
+    async transitionToAccepted(ctx: RequestContext, orderId: ID, trigger: 'manual' | 'auto'): Promise<boolean> {
+        const patch: Record<string, unknown> = { hallStatus: 'accepted' };
+        // 自动接单留痕：既做每日上限统计，也方便客服区分人工/自动接单
+        if (trigger === 'auto') patch.autoAcceptedAt = new Date();
+        // 条件写：与用户取消/调度商家超时兜底并发时，已脱厅单不得被改回 accepted
+        const moved = await this.hall.transitionFrom(ctx, Number(orderId), ['pending_merchant'], patch);
+        if (!moved) return false;
+        this.notify.user(ctx, orderId as any, 'orderAccepted');
         // 云打印（P1-4）：接单即出票（printMode=onAccepted 且走云通道）；失败只留任务记录，不阻塞接单
         const cfg = await this.config.getConfig(ctx);
         if (normalizePrintMode(cfg.printMode) === 'onAccepted' && String(cfg.printProvider ?? 'local') !== 'local') {
-            void this.cloud.printOrder(ctx, order.id as any, 'auto').catch(() => undefined);
+            void this.cloud.printOrder(ctx, orderId as any, 'auto').catch(() => undefined);
         }
-        return { ok: true };
+        return true;
     }
 
     /** 商家拒单/商品缺货：接单前（pending_merchant）或备餐中（accepted）可拒，
@@ -558,6 +567,53 @@ export class MerchantAdminService {
     async setPaused(ctx: RequestContext, paused: boolean) {
         await this.config.updateConfig(ctx, { paused });
         return { ok: true };
+    }
+
+    /** 自动接单设置（§69）：含今日已自动接单数与当前营业条件（休息中自动失效） */
+    async autoAcceptSettings(ctx: RequestContext) {
+        const cfg = await this.config.getConfig(ctx);
+        const hours = await this.channelBusinessHours(ctx);
+        return {
+            enabled: !!cfg.autoAcceptEnabled,
+            delaySeconds: Number(cfg.autoAcceptDelaySeconds ?? AUTO_ACCEPT_DEFAULT_DELAY_SECONDS),
+            dailyLimit: Number(cfg.autoAcceptDailyLimit ?? 0),
+            routes: normalizeAutoAcceptRoutes(cfg.autoAcceptRoutes),
+            acceptedToday: await this.countAutoAcceptedToday(ctx.channelId),
+            // 与手动接单/C 端营业态同口径：营业时段内且未临时休息才会自动接
+            openNow: isWithinBusinessHours(hours) && !cfg.paused,
+            merchantConfirmEnabled: !!cfg.merchantConfirmEnabled,
+        };
+    }
+
+    /** 自动接单设置保存：延迟/上限/路线走配置白名单校验（越界直接报错，不静默截断） */
+    async updateAutoAccept(
+        ctx: RequestContext,
+        input: { enabled: boolean; delaySeconds?: number | null; dailyLimit?: number | null; routes?: string[] | null },
+    ) {
+        const patch: Record<string, unknown> = { autoAcceptEnabled: !!input.enabled };
+        if (input.delaySeconds !== undefined && input.delaySeconds !== null) {
+            patch.autoAcceptDelaySeconds = Number(input.delaySeconds);
+        }
+        if (input.dailyLimit !== undefined && input.dailyLimit !== null) {
+            patch.autoAcceptDailyLimit = Number(input.dailyLimit);
+        }
+        if (input.routes !== undefined && input.routes !== null) {
+            patch.autoAcceptRoutes = normalizeAutoAcceptRoutes(input.routes);
+        }
+        await this.config.updateConfig(ctx, patch as any);
+        return this.autoAcceptSettings(ctx);
+    }
+
+    /** 本店本校园日自动接单数（按 autoAcceptedAt 统计，跨零点自动归零） */
+    async countAutoAcceptedToday(channelId: ID): Promise<number> {
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT COUNT(*)::int AS n FROM "order" o '
+            + 'JOIN order_channels_channel oc ON oc."orderId" = o.id AND oc."channelId" = $1 '
+            + 'WHERE o."customFieldsAutoacceptedat" >= $2',
+            [channelId, new Date(startOfCampusDay(Date.now()))],
+        );
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return Number(Array.isArray(list) ? list[0]?.n ?? 0 : 0) || 0;
     }
 
     /** 小票打印回执：工作台打印成功后回写 waimaiPrintedAt（防重打 + 补打依据），不限订单状态 */

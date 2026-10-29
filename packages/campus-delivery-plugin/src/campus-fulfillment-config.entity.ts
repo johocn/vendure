@@ -27,6 +27,16 @@ export class CampusFulfillmentConfig extends VendureEntity {
     deliveryFeeTiers: Array<{ minAmount: number; fee: number }> | null;
     @Column({ default: false }) merchantConfirmEnabled: boolean; // 商家接单确认模式：支付后先待商家接单，出餐完成才入大厅
     @Column({ type: 'int', default: 15 }) merchantAutoOpenMinutes: number; // 商家未处理（待接单/备餐中）超时自动入厅，防卡单
+    // 商家自动接单（§69）：营业中且未暂停时，新单延迟若干秒自动确认，超每日上限退回人工
+    /** 自动接单总开关（默认关） */
+    @Column({ default: false }) autoAcceptEnabled: boolean;
+    /** 下单到自动接单的延迟秒数（0-600），留出用户改址/商家拒单窗口 */
+    @Column({ type: 'int', default: 30 }) autoAcceptDelaySeconds: number;
+    /** 每日自动接单上限（0 = 不限）；打到上限后新单仍待人工接单 */
+    @Column({ type: 'int', default: 0 }) autoAcceptDailyLimit: number;
+    /** 适用范围（路线）：默认 R1/R2/R3，可在后台按配送方式勾选 */
+    @Column({ type: 'simple-json', default: '["R1","R2","R3"]' })
+    autoAcceptRoutes: string[];
     // 超时赔付（P0）：开关默认开，缺券模板时扫到会限频告警（等运营补配置）
     @Column({ default: true }) timeoutCompensationEnabled: boolean;
     @Column({ type: 'int', default: 10 }) timeoutGraceMinutes: number; // 超时宽限（分钟），超过才赔

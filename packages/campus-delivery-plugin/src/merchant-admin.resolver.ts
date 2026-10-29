@@ -179,6 +179,26 @@ export class MerchantAdminResolver {
         return this.merchant.setSoldOutAutoRestore(ctx, enabled);
     }
 
+    /** 商家自动接单设置（§69）：开关 / 延迟秒数 / 每日上限 / 适用范围路线 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAutoAccept(@Ctx() ctx: RequestContext) {
+        return this.merchant.autoAcceptSettings(ctx);
+    }
+
+    /** 保存自动接单设置；营业中且未暂停才会生效，超每日上限退回人工接单 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateAutoAccept(
+        @Ctx() ctx: RequestContext,
+        @Args('enabled') enabled: boolean,
+        @Args({ name: 'delaySeconds', type: () => Number, nullable: true }) delaySeconds?: number | null,
+        @Args({ name: 'dailyLimit', type: () => Number, nullable: true }) dailyLimit?: number | null,
+        @Args({ name: 'routes', type: () => [String], nullable: true }) routes?: string[] | null,
+    ) {
+        return this.merchant.updateAutoAccept(ctx, { enabled, delaySeconds, dailyLimit, routes });
+    }
+
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

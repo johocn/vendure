@@ -99,6 +99,22 @@ __decorate([
     __metadata("design:type", Number)
 ], CampusFulfillmentConfig.prototype, "merchantAutoOpenMinutes", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CampusFulfillmentConfig.prototype, "autoAcceptEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 30 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "autoAcceptDelaySeconds", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "autoAcceptDailyLimit", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', default: '["R1","R2","R3"]' }),
+    __metadata("design:type", Array)
+], CampusFulfillmentConfig.prototype, "autoAcceptRoutes", void 0);
+__decorate([
     (0, typeorm_1.Column)({ default: true }),
     __metadata("design:type", Boolean)
 ], CampusFulfillmentConfig.prototype, "timeoutCompensationEnabled", void 0);

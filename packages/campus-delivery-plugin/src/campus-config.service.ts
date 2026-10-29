@@ -175,6 +175,7 @@ export class CampusConfigService {
         'inProgressSlaMinutes', 'compensationCouponTemplateId', 'deliveryMinutes', 'minOrderAmount',
         'deliveryFee', 'storeAddress', 'storePhone', 'storeNotice', 'errandBaseFee', 'thirdPartyBaseFee',
         'freeShippingThreshold', 'deliveryFeeTiers', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
+        'autoAcceptEnabled', 'autoAcceptDelaySeconds', 'autoAcceptDailyLimit', 'autoAcceptRoutes',
         'timeoutCompensationEnabled', 'timeoutGraceMinutes', 'timeoutCompensationWindowHours',
         'timeoutCompensationCouponTemplateId',
         'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
@@ -194,6 +195,8 @@ export class CampusConfigService {
         autoRefundMinutes: [1, 240],
         inProgressSlaMinutes: [1, 240],
         merchantAutoOpenMinutes: [1, 240],
+        autoAcceptDelaySeconds: [0, 600],
+        autoAcceptDailyLimit: [0, 999],
         merchantAcceptMinutes: [0, 240],
         externalPushTimeoutMinutes: [1, 240],
         externalFallbackMinutes: [1, 240],
@@ -243,6 +246,17 @@ export class CampusConfigService {
                 throw new UserInputError('配送路线配置不合法');
             }
             patch.routesEnabled = Array.from(new Set(routes.map(r => String(r))));
+        }
+        // 自动接单适用范围（§69）：只接受 R1/R2/R3，空数组回落全部（不允许一条路线都不选）
+        if (patch.autoAcceptRoutes !== undefined && patch.autoAcceptRoutes !== null) {
+            const list = Array.isArray(patch.autoAcceptRoutes)
+                ? patch.autoAcceptRoutes
+                : String(patch.autoAcceptRoutes).split(',');
+            const picked = list.map(r => String(r ?? '').trim().toUpperCase()).filter(Boolean);
+            if (picked.some(r => !['R1', 'R2', 'R3'].includes(r))) {
+                throw new UserInputError('自动接单适用范围不合法（仅支持 R1/R2/R3）');
+            }
+            patch.autoAcceptRoutes = picked.length ? Array.from(new Set(picked)) : ['R1', 'R2', 'R3'];
         }
         if (patch.printMode !== undefined && patch.printMode !== null
             && !['off', 'onPaid', 'onAccepted'].includes(String(patch.printMode))) {

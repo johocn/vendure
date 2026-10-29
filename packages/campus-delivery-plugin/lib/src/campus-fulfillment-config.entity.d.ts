@@ -25,6 +25,14 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     }> | null;
     merchantConfirmEnabled: boolean;
     merchantAutoOpenMinutes: number;
+    /** 自动接单总开关（默认关） */
+    autoAcceptEnabled: boolean;
+    /** 下单到自动接单的延迟秒数（0-600），留出用户改址/商家拒单窗口 */
+    autoAcceptDelaySeconds: number;
+    /** 每日自动接单上限（0 = 不限）；打到上限后新单仍待人工接单 */
+    autoAcceptDailyLimit: number;
+    /** 适用范围（路线）：默认 R1/R2/R3，可在后台按配送方式勾选 */
+    autoAcceptRoutes: string[];
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
     /** 超时赔付回扫窗口（小时）：只回补近 N 小时送达单（默认 24，可放大以覆盖更长账期） */

@@ -52,6 +52,8 @@ const p9_p6_taste_profile_1 = require("./migrations/p9-p6-taste-profile");
 const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tiers");
 const p10_review_alert_1 = require("./migrations/p10-review-alert");
 const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restore");
+const p13_auto_accept_1 = require("./migrations/p13-auto-accept");
+const auto_accept_job_1 = require("./auto-accept.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
@@ -176,6 +178,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
             .catch(e => core_1.Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         // 沽清次日自动恢复（§66）：自管定时器，每日 04:00 把「全店沽清」批次恢复在售
         this.injector.get(soldout_auto_restore_job_1.SoldOutAutoRestoreJob).start();
+        // 商家自动接单（§69）：15s 扫描待接单订单，营业中且未休息时按延迟秒数自动确认
+        this.injector.get(auto_accept_job_1.AutoAcceptJob).start();
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
@@ -311,6 +315,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p11_telemetry_1.P11TelemetryMigration,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
+            p13_auto_accept_1.P13AutoAcceptMigration,
+            auto_accept_job_1.AutoAcceptJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
@@ -1161,6 +1167,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     pending: Int!
                 }
 
+                """商家自动接单（§69）：acceptedToday=本校园日已自动接单数，openNow=当前营业条件是否满足"""
+                type CampusMerchantAutoAccept {
+                    enabled: Boolean!
+                    """下单到自动接单的延迟秒数（0-600）"""
+                    delaySeconds: Int!
+                    """每日自动接单上限（0=不限）"""
+                    dailyLimit: Int!
+                    """适用范围路线（R1/R2/R3）"""
+                    routes: [String!]!
+                    """本校园日已自动接单数"""
+                    acceptedToday: Int!
+                    """营业时段内且未临时休息（false 时自动接单静默暂停）"""
+                    openNow: Boolean!
+                    """本店是否开启商家接单确认模式（关闭时订单不产生待接单态）"""
+                    merchantConfirmEnabled: Boolean!
+                }
+
                 type CampusMerchantPackingFeeResult {
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
@@ -1403,6 +1426,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
                     campusMerchantSoldOutAutoRestore: CampusSoldOutAutoRestore!
+                    """商家自动接单设置（§69）"""
+                    campusMerchantAutoAccept: CampusMerchantAutoAccept!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -1704,6 +1729,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantSetAllProductsSoldOut(soldOut: Boolean!): CampusMerchantSoldOutBatchResult!
                     """沽清次日自动恢复（§66）：开关；开启后每日 04:00 把全店沽清批次恢复在售"""
                     campusMerchantSetSoldOutAutoRestore(enabled: Boolean!): CampusSoldOutAutoRestore!
+                    """商家自动接单（§69）：营业中按延迟秒数自动确认新单，超每日上限退回人工"""
+                    campusMerchantUpdateAutoAccept(enabled: Boolean!, delaySeconds: Int, dailyLimit: Int, routes: [String!]): CampusMerchantAutoAccept!
                 }
 
                 type CampusMerchantOpResult {

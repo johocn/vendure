@@ -108,6 +108,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantSetSoldOutAutoRestore(ctx, enabled) {
         return this.merchant.setSoldOutAutoRestore(ctx, enabled);
     }
+    /** 商家自动接单设置（§69）：开关 / 延迟秒数 / 每日上限 / 适用范围路线 */
+    async campusMerchantAutoAccept(ctx) {
+        return this.merchant.autoAcceptSettings(ctx);
+    }
+    /** 保存自动接单设置；营业中且未暂停才会生效，超每日上限退回人工接单 */
+    async campusMerchantUpdateAutoAccept(ctx, enabled, delaySeconds, dailyLimit, routes) {
+        return this.merchant.updateAutoAccept(ctx, { enabled, delaySeconds, dailyLimit, routes });
+    }
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     async campusMerchantSetProductPackingFee(ctx, productId, packingFee) {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee !== null && packingFee !== void 0 ? packingFee : null);
@@ -317,6 +325,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Boolean]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantSetSoldOutAutoRestore", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAutoAccept", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('enabled')),
+    __param(2, (0, graphql_1.Args)({ name: 'delaySeconds', type: () => Number, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'dailyLimit', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'routes', type: () => [String], nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Boolean, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateAutoAccept", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

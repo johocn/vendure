@@ -160,6 +160,8 @@ export declare class MerchantAdminService {
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 接单内核（手动/自动共用）：条件写防并发 + 用户通知 + 接单即出票；返回是否真正迁移成功 */
+    transitionToAccepted(ctx: RequestContext, orderId: ID, trigger: 'manual' | 'auto'): Promise<boolean>;
     /** 商家拒单/商品缺货：接单前（pending_merchant）或备餐中（accepted）可拒，
      * 全额退款 + 取消订单（取消后由 Cancelled 转换自动脱厅/释放时段锁位）。
      * 退款幂等口径与 T4/异常处置一致：先查已退总额，仅退剩余部分。 */
@@ -210,6 +212,33 @@ export declare class MerchantAdminService {
     setPaused(ctx: RequestContext, paused: boolean): Promise<{
         ok: boolean;
     }>;
+    /** 自动接单设置（§69）：含今日已自动接单数与当前营业条件（休息中自动失效） */
+    autoAcceptSettings(ctx: RequestContext): Promise<{
+        enabled: boolean;
+        delaySeconds: number;
+        dailyLimit: number;
+        routes: string[];
+        acceptedToday: number;
+        openNow: boolean;
+        merchantConfirmEnabled: boolean;
+    }>;
+    /** 自动接单设置保存：延迟/上限/路线走配置白名单校验（越界直接报错，不静默截断） */
+    updateAutoAccept(ctx: RequestContext, input: {
+        enabled: boolean;
+        delaySeconds?: number | null;
+        dailyLimit?: number | null;
+        routes?: string[] | null;
+    }): Promise<{
+        enabled: boolean;
+        delaySeconds: number;
+        dailyLimit: number;
+        routes: string[];
+        acceptedToday: number;
+        openNow: boolean;
+        merchantConfirmEnabled: boolean;
+    }>;
+    /** 本店本校园日自动接单数（按 autoAcceptedAt 统计，跨零点自动归零） */
+    countAutoAcceptedToday(channelId: ID): Promise<number>;
     /** 小票打印回执：工作台打印成功后回写 waimaiPrintedAt（防重打 + 补打依据），不限订单状态 */
     markPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;

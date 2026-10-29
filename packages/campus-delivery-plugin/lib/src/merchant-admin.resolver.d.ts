@@ -65,6 +65,26 @@ export declare class MerchantAdminResolver {
         enabled: boolean;
         pending: number;
     }>;
+    /** 商家自动接单设置（§69）：开关 / 延迟秒数 / 每日上限 / 适用范围路线 */
+    campusMerchantAutoAccept(ctx: RequestContext): Promise<{
+        enabled: boolean;
+        delaySeconds: number;
+        dailyLimit: number;
+        routes: string[];
+        acceptedToday: number;
+        openNow: boolean;
+        merchantConfirmEnabled: boolean;
+    }>;
+    /** 保存自动接单设置；营业中且未暂停才会生效，超每日上限退回人工接单 */
+    campusMerchantUpdateAutoAccept(ctx: RequestContext, enabled: boolean, delaySeconds?: number | null, dailyLimit?: number | null, routes?: string[] | null): Promise<{
+        enabled: boolean;
+        delaySeconds: number;
+        dailyLimit: number;
+        routes: string[];
+        acceptedToday: number;
+        openNow: boolean;
+        merchantConfirmEnabled: boolean;
+    }>;
     /** 商品级打包费（分/件）：null 清除回落店铺配置 */
     campusMerchantSetProductPackingFee(ctx: RequestContext, productId: ID, packingFee?: number | null): Promise<{
         ok: boolean;

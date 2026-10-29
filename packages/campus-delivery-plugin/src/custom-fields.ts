@@ -41,6 +41,7 @@ export const campusCustomFields: CustomFields = {
         { name: 'invoiceApplied', type: 'boolean', nullable: true, defaultValue: false }, // 开票申请幂等闸（个人中心 spec §4）
         { name: 'invoiceInfo', type: 'string', nullable: true }, // 开票申请快照 JSON：{titleName,titleType,taxNo,email,appliedAt}
         { name: 'waimaiPrintedAt', type: 'datetime', nullable: true }, // 商家小票最近打印时间（防重打 + 补打依据）
+        { name: 'autoAcceptedAt', type: 'datetime', nullable: true }, // 自动接单时间（§69，每日上限统计与留痕）
         { name: 'note', type: 'string', nullable: true }, // 顾客整单备注（C 端下单填写，≤200 字，工作台展示 + 小票打印）
         { name: 'tablewareCount', type: 'int', nullable: true }, // 顾客餐具份数，0=无需餐具，null=未选择
         // 履约快照（下单固化，后台改配置不影响在途单）
