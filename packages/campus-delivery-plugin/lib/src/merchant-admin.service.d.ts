@@ -8,6 +8,7 @@ import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CloudPrintService } from './cloud-print.service';
 import { PrivacyNumberService } from './privacy-number.service';
 import { ClosureDate } from './closure-calendar';
+import { BatchOrderResult } from './batch-orders';
 export interface MerchantBoardLine {
     name: string;
     quantity: number;
@@ -192,6 +193,12 @@ export declare class MerchantAdminService {
     cookingDone(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 批量接单（§73）：逐单复用单笔接单（含通知/云打印），失败跳过并回报 */
+    batchAcceptOrders(ctx: RequestContext, orderIds: ID[]): Promise<BatchOrderResult>;
+    /** 批量出餐（§73）：逐单复用单笔出餐分流，失败跳过并回报 */
+    batchCookingDone(ctx: RequestContext, orderIds: ID[]): Promise<BatchOrderResult>;
+    /** 顺序执行批量动作：单笔失败（状态已变更/已脱厅/退款中等）只记明细，不中断后续单 */
+    private runBatch;
     /** 运营中心推送外部快递（选 dada / meituan） */
     dispatchExternal(ctx: RequestContext, orderId: ID, provider: ExternalProviderCode): Promise<{
         ok: boolean;

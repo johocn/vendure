@@ -68,6 +68,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantCookingDone(ctx, orderId) {
         return this.merchant.cookingDone(ctx, orderId);
     }
+    /** 工作台批量接单（§73）：多选订单一次接单，逐单走既有状态机，失败单跳过并回报 */
+    async campusMerchantBatchAcceptOrders(ctx, orderIds) {
+        return this.merchant.batchAcceptOrders(ctx, orderIds);
+    }
+    /** 工作台批量出餐（§73）：多选备餐中订单一次出餐，失败单跳过并回报 */
+    async campusMerchantBatchCookingDoneOrders(ctx, orderIds) {
+        return this.merchant.batchCookingDone(ctx, orderIds);
+    }
     /** 商家拒单/缺货：全额退款并取消订单（接单前或备餐中可用） */
     async campusMerchantRejectOrder(ctx, orderId, reason) {
         return this.merchant.rejectOrder(ctx, orderId, reason);
@@ -233,6 +241,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantCookingDone", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'orderIds', type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantBatchAcceptOrders", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'orderIds', type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantBatchCookingDoneOrders", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

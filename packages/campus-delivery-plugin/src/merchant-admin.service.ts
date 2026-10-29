@@ -35,6 +35,7 @@ import {
 import { DAILY_LIMIT_MAX, normalizeLimit, queryDailySold, remainingOf } from './daily-limit';
 import { AUTO_ACCEPT_DEFAULT_DELAY_SECONDS, normalizeAutoAcceptRoutes } from './auto-accept';
 import { ClosureDate, closedToday, safeClosureDates } from './closure-calendar';
+import { BatchOrderInputError, BatchOrderResult, normalizeBatchOrderIds } from './batch-orders';
 
 export interface MerchantBoardLine {
     name: string;
@@ -574,6 +575,38 @@ export class MerchantAdminService {
         if (!moved) throw new UserInputError('订单状态已变更，请刷新');
         this.notify.user(ctx, order.id as any, 'cookingDone');
         return { ok: true };
+    }
+
+    /** 批量接单（§73）：逐单复用单笔接单（含通知/云打印），失败跳过并回报 */
+    async batchAcceptOrders(ctx: RequestContext, orderIds: ID[]): Promise<BatchOrderResult> {
+        return this.runBatch(orderIds, id => this.acceptOrder(ctx, id));
+    }
+
+    /** 批量出餐（§73）：逐单复用单笔出餐分流，失败跳过并回报 */
+    async batchCookingDone(ctx: RequestContext, orderIds: ID[]): Promise<BatchOrderResult> {
+        return this.runBatch(orderIds, id => this.cookingDone(ctx, id));
+    }
+
+    /** 顺序执行批量动作：单笔失败（状态已变更/已脱厅/退款中等）只记明细，不中断后续单 */
+    private async runBatch(orderIds: ID[], run: (id: ID) => Promise<unknown>): Promise<BatchOrderResult> {
+        let ids: string[];
+        try {
+            ids = normalizeBatchOrderIds(orderIds);
+        } catch (err: any) {
+            // 入参问题（空集合 / 超上限）属于调用方错误，直接以 UserInputError 反馈
+            throw err instanceof BatchOrderInputError ? new UserInputError(err.message) : err;
+        }
+        let ok = 0;
+        const failed: BatchOrderResult['failed'] = [];
+        for (const id of ids) {
+            try {
+                await run(id as any);
+                ok++;
+            } catch (err: any) {
+                failed.push({ orderId: id, message: err?.message ?? '操作失败' });
+            }
+        }
+        return { ok, failed };
     }
 
     /** 运营中心推送外部快递（选 dada / meituan） */

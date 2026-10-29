@@ -86,6 +86,26 @@ export class MerchantAdminResolver {
         return this.merchant.cookingDone(ctx, orderId);
     }
 
+    /** 工作台批量接单（§73）：多选订单一次接单，逐单走既有状态机，失败单跳过并回报 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantBatchAcceptOrders(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'orderIds', type: () => [String] }) orderIds: string[],
+    ) {
+        return this.merchant.batchAcceptOrders(ctx, orderIds);
+    }
+
+    /** 工作台批量出餐（§73）：多选备餐中订单一次出餐，失败单跳过并回报 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantBatchCookingDoneOrders(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'orderIds', type: () => [String] }) orderIds: string[],
+    ) {
+        return this.merchant.batchCookingDone(ctx, orderIds);
+    }
+
     /** 商家拒单/缺货：全额退款并取消订单（接单前或备餐中可用） */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

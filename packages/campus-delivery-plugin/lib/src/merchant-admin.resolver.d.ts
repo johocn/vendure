@@ -22,6 +22,10 @@ export declare class MerchantAdminResolver {
     campusMerchantCookingDone(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 工作台批量接单（§73）：多选订单一次接单，逐单走既有状态机，失败单跳过并回报 */
+    campusMerchantBatchAcceptOrders(ctx: RequestContext, orderIds: string[]): Promise<import("./batch-orders").BatchOrderResult>;
+    /** 工作台批量出餐（§73）：多选备餐中订单一次出餐，失败单跳过并回报 */
+    campusMerchantBatchCookingDoneOrders(ctx: RequestContext, orderIds: string[]): Promise<import("./batch-orders").BatchOrderResult>;
     /** 商家拒单/缺货：全额退款并取消订单（接单前或备餐中可用） */
     campusMerchantRejectOrder(ctx: RequestContext, orderId: ID, reason: string): Promise<{
         ok: boolean;

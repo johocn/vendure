@@ -1579,6 +1579,10 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantSetProductCombo(productId: ID!, combo: String): CampusMerchantComboResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
+                    """批量接单（§73）：逐单走既有接单状态机，失败单跳过并在 failed 中回报"""
+                    campusMerchantBatchAcceptOrders(orderIds: [ID!]!): CampusMerchantBatchResult!
+                    """批量出餐（§73）：逐单走出餐分流，失败单跳过并在 failed 中回报"""
+                    campusMerchantBatchCookingDoneOrders(orderIds: [ID!]!): CampusMerchantBatchResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
@@ -1622,6 +1626,18 @@ import { TelemetryService } from './telemetry.service';
 
                 type CampusMerchantOpResult {
                     ok: Boolean!
+                }
+
+                """批量操作结果（§73）：ok=成功单数；failed=失败单明细（逐单跳过，不影响已成功单）"""
+                type CampusMerchantBatchResult {
+                    ok: Int!
+                    failed: [CampusMerchantBatchFailure!]!
+                }
+
+                type CampusMerchantBatchFailure {
+                    orderId: ID!
+                    """失败原因（如「订单状态已变更，请刷新」）"""
+                    message: String!
                 }
 
                 """外部快递推送结果；already=true 表示重复推送（幂等）"""
@@ -2205,6 +2221,8 @@ import { TelemetryService } from './telemetry.service';
                     campusOrderRider(orderId: ID!): CampusOrderRider
                     """骑手侧顾客联系方式（号码保护）：仅本单骑手可查"""
                     campusRiderCustomerContact(orderId: ID!): CampusPrivacyContact!
+                    """骑手交接码（R1/R2 第二段起送必填）：仅本单骑手、已抢单/配送中可读"""
+                    campusTaskHandoverCode(orderId: ID!): String
                     campusR2Relay(orderId: ID!): CampusR2Relay
                     campusErrandVariant: CampusErrandVariantResult!
                     myRiderWallet: RiderWallet!

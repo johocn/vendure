@@ -27,6 +27,7 @@ const addon_fee_1 = require("./addon-fee");
 const daily_limit_1 = require("./daily-limit");
 const auto_accept_1 = require("./auto-accept");
 const closure_calendar_1 = require("./closure-calendar");
+const batch_orders_1 = require("./batch-orders");
 /** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
 exports.KDS_WARN_MINUTES = 15;
 exports.KDS_LATE_MINUTES = 25;
@@ -427,6 +428,38 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_1.UserInputError('订单状态已变更，请刷新');
         this.notify.user(ctx, order.id, 'cookingDone');
         return { ok: true };
+    }
+    /** 批量接单（§73）：逐单复用单笔接单（含通知/云打印），失败跳过并回报 */
+    async batchAcceptOrders(ctx, orderIds) {
+        return this.runBatch(orderIds, id => this.acceptOrder(ctx, id));
+    }
+    /** 批量出餐（§73）：逐单复用单笔出餐分流，失败跳过并回报 */
+    async batchCookingDone(ctx, orderIds) {
+        return this.runBatch(orderIds, id => this.cookingDone(ctx, id));
+    }
+    /** 顺序执行批量动作：单笔失败（状态已变更/已脱厅/退款中等）只记明细，不中断后续单 */
+    async runBatch(orderIds, run) {
+        var _a;
+        let ids;
+        try {
+            ids = (0, batch_orders_1.normalizeBatchOrderIds)(orderIds);
+        }
+        catch (err) {
+            // 入参问题（空集合 / 超上限）属于调用方错误，直接以 UserInputError 反馈
+            throw err instanceof batch_orders_1.BatchOrderInputError ? new core_1.UserInputError(err.message) : err;
+        }
+        let ok = 0;
+        const failed = [];
+        for (const id of ids) {
+            try {
+                await run(id);
+                ok++;
+            }
+            catch (err) {
+                failed.push({ orderId: id, message: (_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : '操作失败' });
+            }
+        }
+        return { ok, failed };
     }
     /** 运营中心推送外部快递（选 dada / meituan） */
     async dispatchExternal(ctx, orderId, provider) {
