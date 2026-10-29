@@ -21,6 +21,7 @@ const business_hours_1 = require("./business-hours");
 const packing_fee_1 = require("./packing-fee");
 const delivery_fee_tiers_1 = require("./delivery-fee-tiers");
 const search_assist_1 = require("./search-assist");
+const daily_limit_1 = require("./daily-limit");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
 /** 小程序上架状态白名单（P2-1） */
 const MP_LISTING_STATUSES = ['draft', 'inReview', 'online', 'rejected', 'offline'];
@@ -80,6 +81,53 @@ const NOTIFY_TEMPLATE_FIELDS = [
 let WaimaiStoreService = class WaimaiStoreService {
     constructor(connection) {
         this.connection = connection;
+    }
+    /**
+     * 菜品每日限量/每人限购（§68）：当前渠道「有限量配置」的商品，返回当日已售与剩余。
+     * 公开只读：未登录的顾客 myToday/myRemaining 为 null。
+     */
+    async dailyStock(ctx) {
+        var _a;
+        const raw = this.connection.rawConnection;
+        const rows = await raw.query('SELECT p.id AS "productId", '
+            + 'COALESCE(p."customFieldsWaimaidailylimit", 0) AS "dailyLimit", '
+            + 'COALESCE(p."customFieldsWaimaiperuserlimit", 0) AS "perUserLimit" '
+            + 'FROM product p '
+            + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
+            + 'WHERE COALESCE(p."customFieldsWaimaidailylimit", 0) > 0 '
+            + 'OR COALESCE(p."customFieldsWaimaiperuserlimit", 0) > 0', [ctx.channelId]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        if (!Array.isArray(list) || !list.length)
+            return [];
+        const ids = list.map((r) => Number(r.productId));
+        const soldMap = await (0, daily_limit_1.queryDailySold)(raw, Number(ctx.channelId), ids);
+        let customerId = null;
+        if (ctx.activeUserId) {
+            const cRows = await raw.query('SELECT id FROM customer WHERE "userId" = $1 LIMIT 1', [ctx.activeUserId]);
+            const cList = Array.isArray(cRows) && Array.isArray(cRows[0]) ? cRows[0] : cRows;
+            if (((_a = cList === null || cList === void 0 ? void 0 : cList[0]) === null || _a === void 0 ? void 0 : _a.id) != null)
+                customerId = Number(cList[0].id);
+        }
+        const mineMap = customerId == null
+            ? new Map()
+            : await (0, daily_limit_1.queryDailySold)(raw, Number(ctx.channelId), ids, { customerId });
+        return list.map((r) => {
+            var _a, _b;
+            const pid = Number(r.productId);
+            const dailyLimit = (0, daily_limit_1.normalizeLimit)(r.dailyLimit);
+            const perUserLimit = (0, daily_limit_1.normalizeLimit)(r.perUserLimit);
+            const soldToday = (_a = soldMap.get(pid)) !== null && _a !== void 0 ? _a : 0;
+            const myToday = customerId == null ? null : ((_b = mineMap.get(pid)) !== null && _b !== void 0 ? _b : 0);
+            return {
+                productId: pid,
+                dailyLimit,
+                perUserLimit,
+                soldToday,
+                remaining: (0, daily_limit_1.remainingOf)(dailyLimit, soldToday),
+                myToday,
+                myRemaining: customerId == null ? null : (0, daily_limit_1.remainingOf)(perUserLimit, myToday),
+            };
+        });
     }
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */

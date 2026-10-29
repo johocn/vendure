@@ -1,11 +1,13 @@
 import { OrderProcess, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { isWithinBusinessHours } from './business-hours';
+import { findDailyLimitViolation } from './daily-limit';
 
 /**
  * 下单前置闸门（进入 ArrangingPayment 时校验）：
  * 1) 店铺营业时间：Channel.customFields.waimaiBusinessHours 解析，打烊拦截（跑腿单豁免）；
  * 2) 黑名单：用户 / 手机号命中 active 记录即拦截；
- * 3) 商品沽清：订单行含已售罄商品（Product.customFields.waimaiSoldOut）即拦截。
+ * 3) 商品沽清：订单行含已售罄商品（Product.customFields.waimaiSoldOut）即拦截；
+ * 4) 每日限量 / 每人限购：订单行数量超过商品当日剩余额度即拦截。
  *
  * connection 用模块级引用（与 min-order.process / shipping-calculator 同模式）。
  */
@@ -81,6 +83,11 @@ export const campusOrderGateProcess: OrderProcess<any> = {
         const soldOut = await findSoldOutProductName(conn, Number(order.id));
         if (soldOut) {
             throw new UserInputError(`商品「${soldOut}」今日已售完，请重新选择`);
+        }
+        // 4) 每日限量 / 每人限购（额度按 UTC+8 当日已支付订单统计，本单不计入）
+        const limitHit = await findDailyLimitViolation(conn, Number(ctx.channelId), Number(order.id));
+        if (limitHit) {
+            throw new UserInputError(limitHit);
         }
     },
 };

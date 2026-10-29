@@ -52,6 +52,7 @@ const p9_p6_taste_profile_1 = require("./migrations/p9-p6-taste-profile");
 const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tiers");
 const p10_review_alert_1 = require("./migrations/p10-review-alert");
 const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restore");
+const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
@@ -309,6 +310,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p10_review_alert_1.P10ReviewAlertMigration,
             p11_telemetry_1.P11TelemetryMigration,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
+            p12_daily_limit_1.P12DailyLimitMigration,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
@@ -1126,6 +1128,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     addonGroups: String
                     """套餐内容 JSON 字符串（ComboConfig）；null=非套餐商品"""
                     combo: String
+                    """每日限量（份）；null=不限"""
+                    dailyLimit: Int
+                    """每人限购（份）；null=不限"""
+                    perUserLimit: Int
+                    """今日已售份数（UTC+8 当日已支付订单）"""
+                    soldToday: Int!
+                    """今日剩余可售份数；null=不限"""
+                    remaining: Int
                 }
 
                 type CampusMerchantProductList {
@@ -1155,6 +1165,26 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
                     packingFee: Int
+                }
+
+                """每日限量/每人限购保存结果（§68）：remaining=null 表示不限"""
+                type CampusProductLimitResult {
+                    ok: Boolean!
+                    dailyLimit: Int
+                    perUserLimit: Int
+                    soldToday: Int!
+                    remaining: Int
+                }
+
+                """C 端商品当日额度（§68）：myToday/myRemaining 未登录时为 null"""
+                type CampusProductDailyStock {
+                    productId: ID!
+                    dailyLimit: Int
+                    perUserLimit: Int
+                    soldToday: Int!
+                    remaining: Int
+                    myToday: Int
+                    myRemaining: Int
                 }
 
                 """商品加料组保存结果：addonGroups 为清洗后的 JSON 字符串，null=已清除"""
@@ -1631,6 +1661,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
                     campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
+                    """每日限量 / 每人限购（§68）：传 null 或 0 = 不限"""
+                    campusMerchantSetProductLimit(productId: ID!, dailyLimit: Int, perUserLimit: Int): CampusProductLimitResult!
                     """设置商品加料组（P1-2）：groups 为 AddonGroupConfig 的 JSON 字符串数组，空数组清除"""
                     campusMerchantSetProductAddonGroups(productId: ID!, groups: [String!]!): CampusMerchantAddonResult!
                     """设置商品套餐内容（P1-2）：combo 为 ComboConfig 的 JSON 字符串，null 清除"""
@@ -2239,6 +2271,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
+                    """菜品每日限量/每人限购（§68）：当前渠道有限量配置商品的当日额度"""
+                    campusProductDailyStock: [CampusProductDailyStock!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
                     """骑手侧顾客联系方式（号码保护）：仅本单骑手可查"""
                     campusRiderCustomerContact(orderId: ID!): CampusPrivacyContact!

@@ -11,6 +11,7 @@ export * from './support.service';
 export * from './rider-ops.service';
 export * from './campus-sms.service';
 export * from './business-hours';
+export * from './daily-limit';
 export * from './order-gate.process';
 export * from './capacity-alert.job';
 export * from './custom-fields';

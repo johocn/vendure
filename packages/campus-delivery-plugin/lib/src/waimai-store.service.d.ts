@@ -149,6 +149,19 @@ export declare const PRIVACY_PROVIDERS: readonly ["mask", "mock", "aliyun", "ten
 export declare class WaimaiStoreService {
     private connection;
     constructor(connection: TransactionalConnection);
+    /**
+     * 菜品每日限量/每人限购（§68）：当前渠道「有限量配置」的商品，返回当日已售与剩余。
+     * 公开只读：未登录的顾客 myToday/myRemaining 为 null。
+     */
+    dailyStock(ctx: RequestContext): Promise<{
+        productId: number;
+        dailyLimit: number | null;
+        perUserLimit: number | null;
+        soldToday: number;
+        remaining: number | null;
+        myToday: number | null;
+        myRemaining: number | null;
+    }[]>;
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     listStores(ctx: RequestContext): Promise<WaimaiStore[]>;

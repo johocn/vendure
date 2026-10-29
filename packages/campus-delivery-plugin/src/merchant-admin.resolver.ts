@@ -190,6 +190,18 @@ export class MerchantAdminResolver {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee ?? null);
     }
 
+    /** 每日限量 / 每人限购（§68）：传 null 或 0 = 不限 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetProductLimit(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+        @Args({ name: 'dailyLimit', type: () => Number, nullable: true }) dailyLimit?: number | null,
+        @Args({ name: 'perUserLimit', type: () => Number, nullable: true }) perUserLimit?: number | null,
+    ) {
+        return this.merchant.setProductLimit(ctx, productId, dailyLimit ?? null, perUserLimit ?? null);
+    }
+
     /** 商品加料组（P1-2）：传空数组清除 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

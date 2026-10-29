@@ -32,6 +32,7 @@ import {
     ADDON_MAX_PRICE_FEN,
     COMBO_MAX_ITEMS,
 } from './addon-fee';
+import { DAILY_LIMIT_MAX, normalizeLimit, queryDailySold, remainingOf } from './daily-limit';
 
 export interface MerchantBoardLine {
     name: string;
@@ -657,6 +658,8 @@ export class MerchantAdminService {
             + 'p."customFieldsWaimaipackingfee" AS "packingFee", '
             + 'p."customFieldsWaimaiaddongroups" AS "addonGroups", '
             + 'p."customFieldsWaimaicombo" AS "combo", '
+            + 'p."customFieldsWaimaidailylimit" AS "dailyLimit", '
+            + 'p."customFieldsWaimaiperuserlimit" AS "perUserLimit", '
             + '(SELECT COUNT(*)::int FROM product_variant pv WHERE pv."productId" = p.id AND pv."deletedAt" IS NULL) AS "variantCount" '
             + 'FROM product p '
             + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
@@ -676,6 +679,9 @@ export class MerchantAdminService {
             [ctx.channelId, q],
         );
         const countList = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
+        // 当日已售（§68）：仅商品列表这一页涉及的商品，限量商品才展示剩余
+        const ids = (list ?? []).map((r: any) => Number(r.productId)).filter((n: number) => Number.isFinite(n));
+        const soldMap = await queryDailySold(this.connection.rawConnection, Number(ctx.channelId), ids);
         return {
             items: (list ?? []).map((r: any) => ({
                 productId: r.productId,
@@ -687,6 +693,10 @@ export class MerchantAdminService {
                 // 加料组/套餐以 JSON 字符串回传，后台编辑 sheet 直接反序列化回填
                 addonGroups: r.addonGroups == null ? null : String(r.addonGroups),
                 combo: r.combo == null ? null : String(r.combo),
+                dailyLimit: normalizeLimit(r.dailyLimit),
+                perUserLimit: normalizeLimit(r.perUserLimit),
+                soldToday: soldMap.get(Number(r.productId)) ?? 0,
+                remaining: remainingOf(normalizeLimit(r.dailyLimit), soldMap.get(Number(r.productId)) ?? 0),
             })),
             total: Number(countList?.[0]?.n ?? 0),
         };
@@ -798,6 +808,41 @@ export class MerchantAdminService {
             customFields: { waimaiPackingFee: value },
         } as any);
         return { ok: true, packingFee: value };
+    }
+
+    /** 每日限量 / 每人限购（§68）：null 或 0 = 不限；每人限购不得大于每日限量 */
+    async setProductLimit(
+        ctx: RequestContext,
+        productId: ID,
+        dailyLimit: number | null,
+        perUserLimit: number | null,
+    ) {
+        await this.assertProductInChannel(ctx, productId);
+        const daily = normalizeLimit(dailyLimit);
+        const perUser = normalizeLimit(perUserLimit);
+        for (const v of [dailyLimit, perUserLimit]) {
+            if (v != null && Number(v) > DAILY_LIMIT_MAX) {
+                throw new UserInputError(`限量最多 ${DAILY_LIMIT_MAX} 份`);
+            }
+            if (v != null && Number(v) < 0) {
+                throw new UserInputError('限量不能为负数');
+            }
+        }
+        if (daily != null && perUser != null && perUser > daily) {
+            throw new UserInputError('每人限购不能大于每日限量');
+        }
+        await this.connection.getRepository(ctx, Product).update(productId, {
+            customFields: { waimaiDailyLimit: daily, waimaiPerUserLimit: perUser },
+        } as any);
+        const soldMap = await queryDailySold(this.connection.rawConnection, Number(ctx.channelId), [Number(productId)]);
+        const soldToday = soldMap.get(Number(productId)) ?? 0;
+        return {
+            ok: true,
+            dailyLimit: daily,
+            perUserLimit: perUser,
+            soldToday,
+            remaining: remainingOf(daily, soldToday),
+        };
     }
 
     /** 商品加料组（P1-2）：空数组=清除；清洗后再序列化，脏数据不入库 */

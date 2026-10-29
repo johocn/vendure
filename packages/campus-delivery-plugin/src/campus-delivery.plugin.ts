@@ -53,6 +53,7 @@ import { P9P6TasteProfileMigration } from './migrations/p9-p6-taste-profile';
 import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-tiers';
 import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
 import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-restore';
+import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
@@ -174,6 +175,7 @@ import { TelemetryService } from './telemetry.service';
         P10ReviewAlertMigration,
         P11TelemetryMigration,
         P11SoldOutAutoRestoreMigration,
+        P12DailyLimitMigration,
         SoldOutAutoRestoreJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
@@ -991,6 +993,14 @@ import { TelemetryService } from './telemetry.service';
                     addonGroups: String
                     """套餐内容 JSON 字符串（ComboConfig）；null=非套餐商品"""
                     combo: String
+                    """每日限量（份）；null=不限"""
+                    dailyLimit: Int
+                    """每人限购（份）；null=不限"""
+                    perUserLimit: Int
+                    """今日已售份数（UTC+8 当日已支付订单）"""
+                    soldToday: Int!
+                    """今日剩余可售份数；null=不限"""
+                    remaining: Int
                 }
 
                 type CampusMerchantProductList {
@@ -1020,6 +1030,26 @@ import { TelemetryService } from './telemetry.service';
                     ok: Boolean!
                     """保存后的商品级打包费（分/件）；null=沿用店铺配置"""
                     packingFee: Int
+                }
+
+                """每日限量/每人限购保存结果（§68）：remaining=null 表示不限"""
+                type CampusProductLimitResult {
+                    ok: Boolean!
+                    dailyLimit: Int
+                    perUserLimit: Int
+                    soldToday: Int!
+                    remaining: Int
+                }
+
+                """C 端商品当日额度（§68）：myToday/myRemaining 未登录时为 null"""
+                type CampusProductDailyStock {
+                    productId: ID!
+                    dailyLimit: Int
+                    perUserLimit: Int
+                    soldToday: Int!
+                    remaining: Int
+                    myToday: Int
+                    myRemaining: Int
                 }
 
                 """商品加料组保存结果：addonGroups 为清洗后的 JSON 字符串，null=已清除"""
@@ -1496,6 +1526,8 @@ import { TelemetryService } from './telemetry.service';
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     """设置商品级打包费（分/件）；传 null 清除，回落到店铺配置金额"""
                     campusMerchantSetProductPackingFee(productId: ID!, packingFee: Int): CampusMerchantPackingFeeResult!
+                    """每日限量 / 每人限购（§68）：传 null 或 0 = 不限"""
+                    campusMerchantSetProductLimit(productId: ID!, dailyLimit: Int, perUserLimit: Int): CampusProductLimitResult!
                     """设置商品加料组（P1-2）：groups 为 AddonGroupConfig 的 JSON 字符串数组，空数组清除"""
                     campusMerchantSetProductAddonGroups(productId: ID!, groups: [String!]!): CampusMerchantAddonResult!
                     """设置商品套餐内容（P1-2）：combo 为 ComboConfig 的 JSON 字符串，null 清除"""
@@ -2104,6 +2136,8 @@ import { TelemetryService } from './telemetry.service';
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
+                    """菜品每日限量/每人限购（§68）：当前渠道有限量配置商品的当日额度"""
+                    campusProductDailyStock: [CampusProductDailyStock!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
                     """骑手侧顾客联系方式（号码保护）：仅本单骑手可查"""
                     campusRiderCustomerContact(orderId: ID!): CampusPrivacyContact!

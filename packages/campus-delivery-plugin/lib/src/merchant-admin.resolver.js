@@ -112,6 +112,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantSetProductPackingFee(ctx, productId, packingFee) {
         return this.merchant.setProductPackingFee(ctx, productId, packingFee !== null && packingFee !== void 0 ? packingFee : null);
     }
+    /** 每日限量 / 每人限购（§68）：传 null 或 0 = 不限 */
+    async campusMerchantSetProductLimit(ctx, productId, dailyLimit, perUserLimit) {
+        return this.merchant.setProductLimit(ctx, productId, dailyLimit !== null && dailyLimit !== void 0 ? dailyLimit : null, perUserLimit !== null && perUserLimit !== void 0 ? perUserLimit : null);
+    }
     /** 商品加料组（P1-2）：传空数组清除 */
     async campusMerchantSetProductAddonGroups(ctx, productId, groups) {
         return this.merchant.setProductAddonGroups(ctx, productId, parseJsonList(groups));
@@ -323,6 +327,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantSetProductPackingFee", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __param(2, (0, graphql_1.Args)({ name: 'dailyLimit', type: () => Number, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'perUserLimit', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetProductLimit", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

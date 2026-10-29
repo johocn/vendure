@@ -24,6 +24,7 @@ const waimai_store_service_1 = require("./waimai-store.service");
 const cloud_print_service_1 = require("./cloud-print.service");
 const privacy_number_service_1 = require("./privacy-number.service");
 const addon_fee_1 = require("./addon-fee");
+const daily_limit_1 = require("./daily-limit");
 /** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
 exports.KDS_WARN_MINUTES = 15;
 exports.KDS_LATE_MINUTES = 25;
@@ -520,6 +521,8 @@ let MerchantAdminService = class MerchantAdminService {
             + 'p."customFieldsWaimaipackingfee" AS "packingFee", '
             + 'p."customFieldsWaimaiaddongroups" AS "addonGroups", '
             + 'p."customFieldsWaimaicombo" AS "combo", '
+            + 'p."customFieldsWaimaidailylimit" AS "dailyLimit", '
+            + 'p."customFieldsWaimaiperuserlimit" AS "perUserLimit", '
             + '(SELECT COUNT(*)::int FROM product_variant pv WHERE pv."productId" = p.id AND pv."deletedAt" IS NULL) AS "variantCount" '
             + 'FROM product p '
             + 'JOIN product_channels_channel pc ON pc."productId" = p.id AND pc."channelId" = $1 '
@@ -534,9 +537,12 @@ let MerchantAdminService = class MerchantAdminService {
             + 'ORDER BY (pt."languageCode" = \'zh_Hans\') DESC LIMIT 1) pt ON true '
             + 'WHERE ($2 = \'\' OR pt.name ILIKE \'%\' || $2 || \'%\')', [ctx.channelId, q]);
         const countList = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
+        // 当日已售（§68）：仅商品列表这一页涉及的商品，限量商品才展示剩余
+        const ids = (list !== null && list !== void 0 ? list : []).map((r) => Number(r.productId)).filter((n) => Number.isFinite(n));
+        const soldMap = await (0, daily_limit_1.queryDailySold)(this.connection.rawConnection, Number(ctx.channelId), ids);
         return {
             items: (list !== null && list !== void 0 ? list : []).map((r) => {
-                var _a, _b;
+                var _a, _b, _c, _d;
                 return ({
                     productId: r.productId,
                     name: r.name,
@@ -547,6 +553,10 @@ let MerchantAdminService = class MerchantAdminService {
                     // 加料组/套餐以 JSON 字符串回传，后台编辑 sheet 直接反序列化回填
                     addonGroups: r.addonGroups == null ? null : String(r.addonGroups),
                     combo: r.combo == null ? null : String(r.combo),
+                    dailyLimit: (0, daily_limit_1.normalizeLimit)(r.dailyLimit),
+                    perUserLimit: (0, daily_limit_1.normalizeLimit)(r.perUserLimit),
+                    soldToday: (_c = soldMap.get(Number(r.productId))) !== null && _c !== void 0 ? _c : 0,
+                    remaining: (0, daily_limit_1.remainingOf)((0, daily_limit_1.normalizeLimit)(r.dailyLimit), (_d = soldMap.get(Number(r.productId))) !== null && _d !== void 0 ? _d : 0),
                 });
             }),
             total: Number((_b = (_a = countList === null || countList === void 0 ? void 0 : countList[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0),
@@ -638,6 +648,36 @@ let MerchantAdminService = class MerchantAdminService {
             customFields: { waimaiPackingFee: value },
         });
         return { ok: true, packingFee: value };
+    }
+    /** 每日限量 / 每人限购（§68）：null 或 0 = 不限；每人限购不得大于每日限量 */
+    async setProductLimit(ctx, productId, dailyLimit, perUserLimit) {
+        var _a;
+        await this.assertProductInChannel(ctx, productId);
+        const daily = (0, daily_limit_1.normalizeLimit)(dailyLimit);
+        const perUser = (0, daily_limit_1.normalizeLimit)(perUserLimit);
+        for (const v of [dailyLimit, perUserLimit]) {
+            if (v != null && Number(v) > daily_limit_1.DAILY_LIMIT_MAX) {
+                throw new core_1.UserInputError(`限量最多 ${daily_limit_1.DAILY_LIMIT_MAX} 份`);
+            }
+            if (v != null && Number(v) < 0) {
+                throw new core_1.UserInputError('限量不能为负数');
+            }
+        }
+        if (daily != null && perUser != null && perUser > daily) {
+            throw new core_1.UserInputError('每人限购不能大于每日限量');
+        }
+        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+            customFields: { waimaiDailyLimit: daily, waimaiPerUserLimit: perUser },
+        });
+        const soldMap = await (0, daily_limit_1.queryDailySold)(this.connection.rawConnection, Number(ctx.channelId), [Number(productId)]);
+        const soldToday = (_a = soldMap.get(Number(productId))) !== null && _a !== void 0 ? _a : 0;
+        return {
+            ok: true,
+            dailyLimit: daily,
+            perUserLimit: perUser,
+            soldToday,
+            remaining: (0, daily_limit_1.remainingOf)(daily, soldToday),
+        };
     }
     /** 商品加料组（P1-2）：空数组=清除；清洗后再序列化，脏数据不入库 */
     async setProductAddonGroups(ctx, productId, rawGroups) {

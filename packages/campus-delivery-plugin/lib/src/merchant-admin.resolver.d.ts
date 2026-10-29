@@ -70,6 +70,14 @@ export declare class MerchantAdminResolver {
         ok: boolean;
         packingFee: number | null;
     }>;
+    /** 每日限量 / 每人限购（§68）：传 null 或 0 = 不限 */
+    campusMerchantSetProductLimit(ctx: RequestContext, productId: ID, dailyLimit?: number | null, perUserLimit?: number | null): Promise<{
+        ok: boolean;
+        dailyLimit: number | null;
+        perUserLimit: number | null;
+        soldToday: number;
+        remaining: number | null;
+    }>;
     /** 商品加料组（P1-2）：传空数组清除 */
     campusMerchantSetProductAddonGroups(ctx: RequestContext, productId: ID, groups: string[]): Promise<{
         ok: boolean;

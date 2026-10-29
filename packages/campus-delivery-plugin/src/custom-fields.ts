@@ -84,6 +84,9 @@ export const campusCustomFields: CustomFields = {
         { name: 'waimaiAddonGroups', type: 'text', nullable: true },
         // 套餐/组合内容（P1-2）：JSON 字符串 ComboConfig，空/null=非套餐商品（纯展示，价格由商品自身定价）
         { name: 'waimaiCombo', type: 'text', nullable: true },
+        // 每日限量 / 每人限购（§68）：null 或 0 = 不限；额度按 UTC+8 当日已支付订单实时统计
+        { name: 'waimaiDailyLimit', type: 'int', nullable: true },
+        { name: 'waimaiPerUserLimit', type: 'int', nullable: true },
     ],
     OrderLine: [
         // 加料选择快照（P1-2）：JSON 字符串 AddonSelection[]，仅存 {g,n} 引用，金额结算时按商品配置服务端计价

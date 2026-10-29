@@ -8,6 +8,19 @@ export declare class WaimaiShopResolver {
     /** 公开只读：C 端首页店铺列表（跨渠道元数据聚合） */
     waimaiStoreList(ctx: RequestContext): Promise<import("./waimai-store.service").WaimaiStore[]>;
     /**
+     * 公开只读：菜品每日限量/每人限购（§68）。
+     * 未登录时 myToday/myRemaining 为 null；已登录返回本人当日已购与剩余。
+     */
+    campusProductDailyStock(ctx: RequestContext): Promise<{
+        productId: number;
+        dailyLimit: number | null;
+        perUserLimit: number | null;
+        soldToday: number;
+        remaining: number | null;
+        myToday: number | null;
+        myRemaining: number | null;
+    }[]>;
+    /**
      * 公开只读：语音/拍照搜索识别（P2-2）。
      * 按当前渠道配置选择服务商（mock / none），返回可直接用于站内搜索的关键词。
      */

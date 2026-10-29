@@ -27,6 +27,13 @@ let WaimaiShopResolver = class WaimaiShopResolver {
         return this.stores.listStores(ctx);
     }
     /**
+     * 公开只读：菜品每日限量/每人限购（§68）。
+     * 未登录时 myToday/myRemaining 为 null；已登录返回本人当日已购与剩余。
+     */
+    async campusProductDailyStock(ctx) {
+        return this.stores.dailyStock(ctx);
+    }
+    /**
      * 公开只读：语音/拍照搜索识别（P2-2）。
      * 按当前渠道配置选择服务商（mock / none），返回可直接用于站内搜索的关键词。
      */
@@ -43,6 +50,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], WaimaiShopResolver.prototype, "waimaiStoreList", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], WaimaiShopResolver.prototype, "campusProductDailyStock", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Public),

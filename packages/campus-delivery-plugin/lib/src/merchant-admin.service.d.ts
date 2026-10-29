@@ -257,6 +257,14 @@ export declare class MerchantAdminService {
         ok: boolean;
         packingFee: number | null;
     }>;
+    /** 每日限量 / 每人限购（§68）：null 或 0 = 不限；每人限购不得大于每日限量 */
+    setProductLimit(ctx: RequestContext, productId: ID, dailyLimit: number | null, perUserLimit: number | null): Promise<{
+        ok: boolean;
+        dailyLimit: number | null;
+        perUserLimit: number | null;
+        soldToday: number;
+        remaining: number | null;
+    }>;
     /** 商品加料组（P1-2）：空数组=清除；清洗后再序列化，脏数据不入库 */
     setProductAddonGroups(ctx: RequestContext, productId: ID, rawGroups: unknown): Promise<{
         ok: boolean;
