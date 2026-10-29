@@ -89,6 +89,12 @@ export interface MerchantBoard {
     scheduled: MerchantBoardOrder[]; // 预约单（plan 3.1）：已支付未放量，到点前 30min 自动进入待接单/大厅
     completedToday: number;
     completedTodayAmount: number;
+    /** 今日休业（§70 营业日历）：true 时 C 端「今日休业」且禁止下单 */
+    closedToday: boolean;
+    /** 今日休业备注（如「国庆假期」），null=无备注或未休业 */
+    closureNote: string | null;
+    /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
+    unfinishedOrders: number;
 }
 
 /** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
@@ -107,6 +113,8 @@ export interface MerchantStoreProfile {
     closureDates: ClosureDate[];
     /** 下一次自动开门/打烊（null=全天营业或未配置），供经营设置页倒计时与打烊前提醒 */
     nextTransition: BusinessTransition | null;
+    /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
+    unfinishedOrders: number;
 }
 
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
@@ -199,6 +207,13 @@ export class MerchantAdminService {
         const hours = ((channel.customFields ?? {}) as any).waimaiBusinessHours ?? null;
         const closureDates = safeClosureDates(cfg.closureDates);
         const closure = closedToday(closureDates);
+        // 未出餐订单（§71）：休业日提醒商家仍有待接单/备餐中订单需处理；轮询 10s 一次，轻量计数
+        const unfinishedOrders = await this.connection.getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere("order.customFields.hallStatus IN ('pending_merchant','accepted')")
+            .getCount();
         return {
             storeName: channel.code,
             businessHours: hours,
@@ -211,6 +226,7 @@ export class MerchantAdminService {
             closureNote: closure?.note ?? null,
             closureDates,
             nextTransition: nextBusinessTransition(hours),
+            unfinishedOrders,
         };
     }
 
@@ -427,6 +443,10 @@ export class MerchantAdminService {
             scheduled: scheduledDtos,
             completedToday: deliveredToday.length,
             completedTodayAmount,
+            closedToday: !!closure,
+            closureNote: closure?.note ?? null,
+            // 未出餐 = 待接单 + 备餐中（出餐完成即退出该计数）
+            unfinishedOrders: pending.length + cooking.length,
         };
     }
 

@@ -58,6 +58,13 @@ let MerchantAdminService = class MerchantAdminService {
         const hours = (_b = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {}).waimaiBusinessHours) !== null && _b !== void 0 ? _b : null;
         const closureDates = (0, closure_calendar_1.safeClosureDates)(cfg.closureDates);
         const closure = (0, closure_calendar_1.closedToday)(closureDates);
+        // 未出餐订单（§71）：休业日提醒商家仍有待接单/备餐中订单需处理；轮询 10s 一次，轻量计数
+        const unfinishedOrders = await this.connection.getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere("order.customFields.hallStatus IN ('pending_merchant','accepted')")
+            .getCount();
         return {
             storeName: channel.code,
             businessHours: hours,
@@ -70,6 +77,7 @@ let MerchantAdminService = class MerchantAdminService {
             closureNote: (_e = closure === null || closure === void 0 ? void 0 : closure.note) !== null && _e !== void 0 ? _e : null,
             closureDates,
             nextTransition: (0, business_hours_1.nextBusinessTransition)(hours),
+            unfinishedOrders,
         };
     }
     /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
@@ -204,7 +212,7 @@ let MerchantAdminService = class MerchantAdminService {
         return hours == null || hours === '' ? null : String(hours);
     }
     async board(ctx) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const cfg = await this.config.getConfig(ctx);
         const repo = this.connection.getRepository(ctx, core_1.Order);
         const orders = await repo
@@ -281,6 +289,10 @@ let MerchantAdminService = class MerchantAdminService {
             scheduled: scheduledDtos,
             completedToday: deliveredToday.length,
             completedTodayAmount,
+            closedToday: !!closure,
+            closureNote: (_e = closure === null || closure === void 0 ? void 0 : closure.note) !== null && _e !== void 0 ? _e : null,
+            // 未出餐 = 待接单 + 备餐中（出餐完成即退出该计数）
+            unfinishedOrders: pending.length + cooking.length,
         };
     }
     /** 商家接单确认：pending_merchant → accepted */

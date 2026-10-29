@@ -537,6 +537,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     scheduled: [MerchantBoardOrder!]!
                     completedToday: Int!
                     completedTodayAmount: Int!
+                    """今日休业（§70 营业日历），true 时 C 端「今日休业」且禁止下单"""
+                    closedToday: Boolean!
+                    """今日休业备注（空=无备注或未休业）"""
+                    closureNote: String
+                    """未出餐订单数（§71）：待接单 + 备餐中"""
+                    unfinishedOrders: Int!
                 }
 
                 """KDS 出餐屏单行（含加料快照）"""
@@ -613,6 +619,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     closureDates: [CampusClosureDate!]!
                     """下一次自动开门/打烊（null=全天营业）"""
                     nextTransition: CampusBusinessTransition
+                    """未出餐订单数（§71）：待接单 + 备餐中"""
+                    unfinishedOrders: Int!
                 }
 
                 """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""

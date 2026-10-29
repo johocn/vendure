@@ -9,6 +9,7 @@ const core_1 = require("@vendure/core");
 const business_hours_1 = require("./business-hours");
 const daily_limit_1 = require("./daily-limit");
 const closure_calendar_1 = require("./closure-calendar");
+const route_matrix_1 = require("./route-matrix");
 /**
  * 下单前置闸门（进入 ArrangingPayment 时校验）：
  * 1) 店铺营业状态：营业时间（Channel.customFields.waimaiBusinessHours）+ 营业日历休业（§70）+ 临时休息，
@@ -63,7 +64,7 @@ async function findTodayClosure(conn, channelId, now = Date.now()) {
 }
 exports.campusOrderGateProcess = {
     async onTransitionStart(fromState, toState, { ctx, order }) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e;
         if (toState !== 'ArrangingPayment')
             return;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
@@ -99,6 +100,22 @@ exports.campusOrderGateProcess = {
         const limitHit = await (0, daily_limit_1.findDailyLimitViolation)(conn, Number(ctx.channelId), Number(order.id));
         if (limitHit) {
             throw new core_1.UserInputError(limitHit);
+        }
+        // 5) 配送路线闸门（外卖单）：一旦选择了校园交付点（分区/楼栋/时段），必须带合法路线。
+        //    路线为空时支付后不会入厅（hallStatus 永远为空），进而脱离超时扫描、无人接单退款等全部兜底，
+        //    订单会停在"已支付但无人处理"。仅对存在校园交付意图的单生效，避免误伤 Marketplace/普通快递/
+        //    到店自取（R4 由 R4TagService 在过渡事件中打标）与跑腿/服务单。
+        if (!isErrand && String((_d = cf.orderKind) !== null && _d !== void 0 ? _d : '') !== 'assistant') {
+            const route = String((_e = cf.fulfillmentRoute) !== null && _e !== void 0 ? _e : '');
+            const hasCampusTarget = cf.campusZone != null || cf.buildingId != null || cf.deliverySlotId != null;
+            if (route || hasCampusTarget) {
+                if (!route_matrix_1.CAMPUS_ROUTES.includes(route)) {
+                    throw new core_1.UserInputError('配送路线缺失或无效，请重新选择配送方式');
+                }
+                if (['R1', 'R2', 'R3'].includes(route) && cf.buildingId == null) {
+                    throw new core_1.UserInputError('请先选择配送楼栋后再提交订单');
+                }
+            }
         }
     },
 };

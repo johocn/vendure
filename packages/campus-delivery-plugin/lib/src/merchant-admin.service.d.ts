@@ -59,6 +59,12 @@ export interface MerchantBoard {
     scheduled: MerchantBoardOrder[];
     completedToday: number;
     completedTodayAmount: number;
+    /** 今日休业（§70 营业日历）：true 时 C 端「今日休业」且禁止下单 */
+    closedToday: boolean;
+    /** 今日休业备注（如「国庆假期」），null=无备注或未休业 */
+    closureNote: string | null;
+    /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
+    unfinishedOrders: number;
 }
 /** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
 export interface MerchantStoreProfile {
@@ -76,6 +82,8 @@ export interface MerchantStoreProfile {
     closureDates: ClosureDate[];
     /** 下一次自动开门/打烊（null=全天营业或未配置），供经营设置页倒计时与打烊前提醒 */
     nextTransition: BusinessTransition | null;
+    /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
+    unfinishedOrders: number;
 }
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
 export interface KitchenTicketLine {
