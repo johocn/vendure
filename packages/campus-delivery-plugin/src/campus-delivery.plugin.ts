@@ -377,6 +377,8 @@ import { TelemetryService } from './telemetry.service';
                     total: Int!
                     """该单已退金额（排除 Failed 退款单）"""
                     refundAmount: Int!
+                    """剩余可退金额（§76）：已支付 − 已退；0 = 已全额退款或未支付"""
+                    refundable: Int!
                     """实收 = total - refundAmount"""
                     netAmount: Int!
                     building: String!
@@ -403,6 +405,17 @@ import { TelemetryService } from './telemetry.service';
                     """实际查询区间（回显）"""
                     start: DateTime!
                     end: DateTime!
+                }
+
+                """商家发起退款回执（§76）：金额单位分"""
+                type CampusMerchantRefundResult {
+                    ok: Boolean!
+                    """本次退款金额（分）"""
+                    amount: Int!
+                    """该单累计已退（分，排除 Failed 退款单）"""
+                    refundedTotal: Int!
+                    """处理后剩余可退（分）"""
+                    refundable: Int!
                 }
 
                 """营业时间自动切换（自动开门 / 自动打烊）：inMinutes=距切换分钟数，today=是否发生在今天"""
@@ -1638,6 +1651,8 @@ import { TelemetryService } from './telemetry.service';
                     """批量出餐（§73）：逐单走出餐分流，失败单跳过并在 failed 中回报"""
                     campusMerchantBatchCookingDoneOrders(orderIds: [ID!]!): CampusMerchantBatchResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
+                    """商家发起退款（§76）：已送达订单整单/部分退款，amount 为分"""
+                    campusMerchantRefundOrder(orderId: ID!, amount: Int!, reason: String!): CampusMerchantRefundResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

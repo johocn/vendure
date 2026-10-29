@@ -304,7 +304,7 @@ let MerchantAdminService = class MerchantAdminService {
      * 汇总按全区间统计（不受分页影响），退款取该单全部非 Failed 退款单之和。
      */
     async completedOrders(ctx, input) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const now = Date.now();
         const start = new Date(input.from ? String(input.from) : (0, campus_time_1.startOfCampusDay)(now));
         const end = new Date(input.to ? String(input.to) : now);
@@ -345,6 +345,8 @@ let MerchantAdminService = class MerchantAdminService {
             .getMany();
         // 退款金额：按订单聚合（payment 关联订单，Failed 退款不计入）
         const refunds = new Map();
+        // 已支付金额（§76 可退余额口径）：只认 Settled/Authorized，与 refundablePayments 一致
+        const paids = new Map();
         if (orders.length) {
             const ids = orders.map(o => Number(o.id));
             const rows = await this.connection.rawConnection.query(`SELECT p."orderId" AS "orderId", COALESCE(SUM(r.total), 0) AS "amount"
@@ -355,6 +357,13 @@ let MerchantAdminService = class MerchantAdminService {
                   GROUP BY p."orderId"`, ids);
             for (const row of rows !== null && rows !== void 0 ? rows : [])
                 refunds.set(String(row.orderId), Number((_e = row.amount) !== null && _e !== void 0 ? _e : 0));
+            const paidRows = await this.connection.rawConnection.query(`SELECT p."orderId" AS "orderId", COALESCE(SUM(p.amount), 0) AS "amount"
+                   FROM payment p
+                  WHERE p."orderId" IN (${ids.map((_, i) => '$' + (i + 1)).join(',')})
+                    AND p.state IN ('Settled', 'Authorized')
+                  GROUP BY p."orderId"`, ids);
+            for (const row of paidRows !== null && paidRows !== void 0 ? paidRows : [])
+                paids.set(String(row.orderId), Number((_f = row.amount) !== null && _f !== void 0 ? _f : 0));
         }
         const buildingIds = new Set();
         const riderIds = new Set();
@@ -374,10 +383,12 @@ let MerchantAdminService = class MerchantAdminService {
             : [];
         const riderNames = new Map(riders.map(c => { var _a, _b; return [String(c.id), (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.riderRealName) !== null && _b !== void 0 ? _b : '']; }));
         const items = orders.map(o => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
             const cf = o.customFields;
             const refundAmount = (_a = refunds.get(String(o.id))) !== null && _a !== void 0 ? _a : 0;
-            const lineText = ((_b = o.lines) !== null && _b !== void 0 ? _b : [])
+            // 可退余额 = 已支付 − 已退（§76）：未支付 / 已全额退款为 0，前端据此隐藏退款入口
+            const refundable = Math.max(((_b = paids.get(String(o.id))) !== null && _b !== void 0 ? _b : 0) - refundAmount, 0);
+            const lineText = ((_c = o.lines) !== null && _c !== void 0 ? _c : [])
                 .map(l => { var _a, _b; return `${(_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : ''}×${l.quantity}`; })
                 .filter(s => s.length > 0)
                 .join('、');
@@ -389,13 +400,14 @@ let MerchantAdminService = class MerchantAdminService {
                 total: o.totalWithTax,
                 refundAmount,
                 netAmount: (o.totalWithTax || 0) - refundAmount,
-                building: cf.buildingId ? (_c = buildingNames.get(String(cf.buildingId))) !== null && _c !== void 0 ? _c : '' : '',
-                zone: (_d = cf.campusZone) !== null && _d !== void 0 ? _d : '',
-                route: (_e = cf.fulfillmentRoute) !== null && _e !== void 0 ? _e : '',
-                riderName: cf.deliveryStaffId ? (_f = riderNames.get(String(cf.deliveryStaffId))) !== null && _f !== void 0 ? _f : null : null,
-                customerPhone: this.privacy.mask((_h = (_g = o.customer) === null || _g === void 0 ? void 0 : _g.phoneNumber) !== null && _h !== void 0 ? _h : null),
+                refundable,
+                building: cf.buildingId ? (_d = buildingNames.get(String(cf.buildingId))) !== null && _d !== void 0 ? _d : '' : '',
+                zone: (_e = cf.campusZone) !== null && _e !== void 0 ? _e : '',
+                route: (_f = cf.fulfillmentRoute) !== null && _f !== void 0 ? _f : '',
+                riderName: cf.deliveryStaffId ? (_g = riderNames.get(String(cf.deliveryStaffId))) !== null && _g !== void 0 ? _g : null : null,
+                customerPhone: this.privacy.mask((_j = (_h = o.customer) === null || _h === void 0 ? void 0 : _h.phoneNumber) !== null && _j !== void 0 ? _j : null),
                 lineText,
-                note: (_j = cf.note) !== null && _j !== void 0 ? _j : null,
+                note: (_k = cf.note) !== null && _k !== void 0 ? _k : null,
             };
         });
         // 区间退款总额：按订单聚合退款单（Failed 不计），不受分页影响
@@ -405,7 +417,7 @@ let MerchantAdminService = class MerchantAdminService {
             .select('COALESCE(SUM(refund.total), 0)', 'amount')
             .andWhere("refund.state <> 'Failed'")
             .getRawOne();
-        const refundAmount = Number((_f = refundSum === null || refundSum === void 0 ? void 0 : refundSum.amount) !== null && _f !== void 0 ? _f : 0);
+        const refundAmount = Number((_g = refundSum === null || refundSum === void 0 ? void 0 : refundSum.amount) !== null && _g !== void 0 ? _g : 0);
         return {
             items,
             total,
@@ -511,6 +523,87 @@ let MerchantAdminService = class MerchantAdminService {
                 await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
             }
             catch (_e) {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
+    }
+    /** 商家发起退款（§76）：已送达订单可整单/部分退款，复用既有 refund 通道。
+     * 与拒单/运营异常处置共用订单级咨询锁，避免并发双退。 */
+    async merchantRefund(ctx, orderId, amount, reason) {
+        var _a, _b, _c, _d, _e, _f;
+        const trimmed = (reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!trimmed)
+            throw new core_1.UserInputError('请填写退款原因');
+        if (trimmed.length > 200)
+            throw new core_1.UserInputError('退款原因不能超过 200 个字符');
+        const fen = Math.floor(Number(amount));
+        if (!Number.isFinite(fen) || fen <= 0)
+            throw new core_1.UserInputError('退款金额必须大于 0');
+        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            where: { id: orderId },
+            relations: ['channels'],
+        });
+        const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
+        if (!order || !inChannel)
+            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+        // 只对已送达单开放：在途单请走「拒单」（备餐中）或联系运营异常处置，避免配送与退款错位
+        if (String((_b = order.customFields.deliveryStatus) !== null && _b !== void 0 ? _b : '') !== 'delivered') {
+            throw new core_1.UserInputError('仅已送达订单可发起退款');
+        }
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:refund:${order.id}`;
+        try {
+            const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!((_c = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _c === void 0 ? void 0 : _c.ok))
+                throw new core_1.UserInputError('该订单正在退款处理中，请稍后重试');
+            // 锁内重新统计余额（与运营处置/拒单并发时以最新余额为准）
+            const payments = await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id));
+            const remaining = payments.reduce((s, p) => s + p.remaining, 0);
+            if (remaining <= 0)
+                throw new core_1.UserInputError('该订单已无可退余额');
+            if (fen > remaining) {
+                throw new core_1.UserInputError(`退款金额超过可退余额（最多可退 ¥${(remaining / 100).toFixed(2)}）`);
+            }
+            // 新→旧逐张退，凑够本次金额（多支付单订单按各张余额分摊）
+            let rest = fen;
+            for (const picked of payments) {
+                if (rest <= 0)
+                    break;
+                const part = Math.min(rest, picked.remaining);
+                const created = await this.orderService.refundOrder(ctx, {
+                    paymentId: picked.payment.id,
+                    amount: part,
+                    // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（同 T4/拒单）
+                    shipping: 0,
+                    adjustment: 0,
+                    reason: `merchant refund (${order.code}): ${trimmed}`,
+                });
+                if (!created || created.errorCode) {
+                    throw new core_1.UserInputError(`退款失败：${(_d = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _d !== void 0 ? _d : '未知原因'}`);
+                }
+                await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, this.orderService, ctx, created.id);
+                rest -= part;
+            }
+            // 售后触达顾客（未配置模板/短信网关时静默跳过）
+            this.notify.user(ctx, order.id, 'afterSales', `商家退款 ¥${(fen / 100).toFixed(2)} 已原路退回`);
+            // 回执口径与对账页一致：累计已退排除 Failed（结算失败单不改变实际余额）
+            const refundedRows = await this.connection.rawConnection.query(`SELECT COALESCE(SUM(r.total), 0) AS "amount"
+                   FROM refund r
+                   JOIN payment p ON p.id = r."paymentId"
+                  WHERE p."orderId" = $1 AND r.state <> 'Failed'`, [Number(order.id)]);
+            const refundedTotal = Number((_f = (_e = refundedRows === null || refundedRows === void 0 ? void 0 : refundedRows[0]) === null || _e === void 0 ? void 0 : _e.amount) !== null && _f !== void 0 ? _f : 0);
+            const after = await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id));
+            const refundable = after.reduce((s, p) => s + p.remaining, 0);
+            return { ok: true, amount: fen, refundedTotal, refundable };
+        }
+        finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            }
+            catch (_g) {
                 // 释放失败交给连接回收兜底
             }
             await runner.release();

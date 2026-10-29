@@ -130,6 +130,18 @@ export class MerchantAdminResolver {
         return this.merchant.rejectOrder(ctx, orderId, reason);
     }
 
+    /** 商家发起退款（§76）：已送达订单整单/部分退款，金额为分；返回本次退款与剩余可退 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantRefundOrder(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('amount') amount: number,
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.merchantRefund(ctx, orderId, amount, reason);
+    }
+
     /** 营业中开关（本渠道 paused） */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

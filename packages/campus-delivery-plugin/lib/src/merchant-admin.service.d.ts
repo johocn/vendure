@@ -47,6 +47,8 @@ export interface MerchantCompletedOrder {
     refundAmount: number;
     /** 实收 = total - refundAmount */
     netAmount: number;
+    /** 剩余可退金额（分，§76）：已支付 − 已退；0 = 已全额退款或未支付 */
+    refundable: number;
     building: string;
     zone: string;
     route: string;
@@ -73,6 +75,16 @@ export interface MerchantCompletedOrders {
     /** 实际查询区间（回显给前端） */
     start: Date;
     end: Date;
+}
+/** 商家发起退款回执（§76） */
+export interface MerchantRefundResult {
+    ok: boolean;
+    /** 本次退款金额（分） */
+    amount: number;
+    /** 该单累计已退（分，排除 Failed 退款单） */
+    refundedTotal: number;
+    /** 处理后剩余可退（分） */
+    refundable: number;
 }
 export interface MerchantBoard {
     paused: boolean;
@@ -242,6 +254,9 @@ export declare class MerchantAdminService {
     rejectOrder(ctx: RequestContext, orderId: ID, reason: string): Promise<{
         ok: boolean;
     }>;
+    /** 商家发起退款（§76）：已送达订单可整单/部分退款，复用既有 refund 通道。
+     * 与拒单/运营异常处置共用订单级咨询锁，避免并发双退。 */
+    merchantRefund(ctx: RequestContext, orderId: ID, amount: number, reason: string): Promise<MerchantRefundResult>;
     /** 出餐完成：按路线/承运分流（不再统一入抢单大厅） */
     cookingDone(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;

@@ -241,6 +241,13 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
             // dedupe 后缀用目标状态：同一售后单 Approved→Refunded 多条进度各推一条（固定键会把后续节点吞掉）
             void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url, e.toState));
         });
+        // 工单与售后打通：退款到账自动关闭关联工单（运营不再重复跟单）
+        this.eventBus.ofType(after_sales_plugin_1.AfterSalesStateTransitionEvent).subscribe(e => {
+            void this.injector
+                .get(support_service_1.SupportService)
+                .onAfterSalesStateChange(e.ctx, Number(e.requestId), e.toState)
+                .catch(err => core_1.Logger.warn(`售后联动关单失败: ${String(err)}`, 'CampusSupport'));
+        });
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
         // 运力预警：在线会话收口 + 待抢单量/在线骑手数告警（自管定时器，生产无 worker）
         this.injector.get(capacity_alert_job_1.CapacityAlertJob).start();
@@ -514,6 +521,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     total: Int!
                     """该单已退金额（排除 Failed 退款单）"""
                     refundAmount: Int!
+                    """剩余可退金额（§76）：已支付 − 已退；0 = 已全额退款或未支付"""
+                    refundable: Int!
                     """实收 = total - refundAmount"""
                     netAmount: Int!
                     building: String!
@@ -540,6 +549,17 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """实际查询区间（回显）"""
                     start: DateTime!
                     end: DateTime!
+                }
+
+                """商家发起退款回执（§76）：金额单位分"""
+                type CampusMerchantRefundResult {
+                    ok: Boolean!
+                    """本次退款金额（分）"""
+                    amount: Int!
+                    """该单累计已退（分，排除 Failed 退款单）"""
+                    refundedTotal: Int!
+                    """处理后剩余可退（分）"""
+                    refundable: Int!
                 }
 
                 """营业时间自动切换（自动开门 / 自动打烊）：inMinutes=距切换分钟数，today=是否发生在今天"""
@@ -1033,6 +1053,15 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     customerName: String
                     customerPhone: String
                     orderCode: String
+                    """关联订单主键（建单按订单号解析并校验归属；未匹配为 null）"""
+                    orderId: ID
+                    """关联售后单主键（工单与售后打通）"""
+                    afterSalesRequestId: ID
+                    """关联售后单当前状态：Pending/Approved/Rejected/Refunded/RefundFailed/Closed 等"""
+                    afterSalesState: String
+                    afterSalesType: String
+                    afterSalesRefundAmount: Int
+                    afterSalesActualRefundAmount: Int
                     category: String!
                     content: String!
                     images: [String!]
@@ -1766,6 +1795,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """批量出餐（§73）：逐单走出餐分流，失败单跳过并在 failed 中回报"""
                     campusMerchantBatchCookingDoneOrders(orderIds: [ID!]!): CampusMerchantBatchResult!
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
+                    """商家发起退款（§76）：已送达订单整单/部分退款，amount 为分"""
+                    campusMerchantRefundOrder(orderId: ID!, amount: Int!, reason: String!): CampusMerchantRefundResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
@@ -1790,6 +1821,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """打款失败回退：PAID → FAILED 并退回骑手余额"""
                     campusMarkWithdrawFailed(id: ID!, reason: String!): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
+                    """工单手工关联售后单（同一店铺且同一订单；建单自动关联未命中时使用）"""
+                    campusLinkSupportTicketAfterSales(id: ID!, afterSalesRequestId: ID!): CampusSupportTicket!
                     campusReplyChat(conversationId: ID!, content: String, images: [String!]): CampusChatMessage!
                     campusCloseChatConversation(conversationId: ID!): CampusChatConversation!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
@@ -2263,6 +2296,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 type CampusMySupportTicket {
                     id: ID!
                     orderCode: String
+                    orderId: ID
+                    """关联售后单主键（无关联为 null）"""
+                    afterSalesRequestId: ID
+                    """关联售后单当前状态，用于工单列表直接展示售后进度"""
+                    afterSalesState: String
                     category: String!
                     content: String!
                     images: [String!]

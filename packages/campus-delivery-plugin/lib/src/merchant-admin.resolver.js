@@ -84,6 +84,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantRejectOrder(ctx, orderId, reason) {
         return this.merchant.rejectOrder(ctx, orderId, reason);
     }
+    /** 商家发起退款（§76）：已送达订单整单/部分退款，金额为分；返回本次退款与剩余可退 */
+    async campusMerchantRefundOrder(ctx, orderId, amount, reason) {
+        return this.merchant.merchantRefund(ctx, orderId, amount, reason);
+    }
     /** 营业中开关（本渠道 paused） */
     async campusMerchantSetPaused(ctx, paused) {
         return this.merchant.setPaused(ctx, paused);
@@ -285,6 +289,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantRejectOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('amount')),
+    __param(3, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantRefundOrder", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

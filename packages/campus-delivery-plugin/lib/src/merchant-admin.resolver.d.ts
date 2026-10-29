@@ -32,6 +32,8 @@ export declare class MerchantAdminResolver {
     campusMerchantRejectOrder(ctx: RequestContext, orderId: ID, reason: string): Promise<{
         ok: boolean;
     }>;
+    /** 商家发起退款（§76）：已送达订单整单/部分退款，金额为分；返回本次退款与剩余可退 */
+    campusMerchantRefundOrder(ctx: RequestContext, orderId: ID, amount: number, reason: string): Promise<import("./merchant-admin.service").MerchantRefundResult>;
     /** 营业中开关（本渠道 paused） */
     campusMerchantSetPaused(ctx: RequestContext, paused: boolean): Promise<{
         ok: boolean;
