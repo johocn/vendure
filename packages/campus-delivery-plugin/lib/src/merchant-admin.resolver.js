@@ -46,6 +46,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantUpdateStore(ctx, businessHours, storeNotice, storePhone) {
         return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
     }
+    /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
+     * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
+    async campusMerchantSetClosureDates(ctx, dates) {
+        const parsed = dates ? parseJson(String(dates)) : [];
+        if (!Array.isArray(parsed))
+            throw new core_1.UserInputError('休业日历必须是日期数组');
+        return this.merchant.updateClosureDates(ctx, parsed);
+    }
     /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
     async campusMerchantRevenue(ctx) {
         return this.merchant.revenue(ctx);
@@ -181,6 +189,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantUpdateStore", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'dates', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetClosureDates", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

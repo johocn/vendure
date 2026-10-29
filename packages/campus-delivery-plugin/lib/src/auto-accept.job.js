@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
 const business_hours_1 = require("./business-hours");
+const closure_calendar_1 = require("./closure-calendar");
 const auto_accept_1 = require("./auto-accept");
 const merchant_admin_service_1 = require("./merchant-admin.service");
 const loggerCtx = 'CampusAutoAccept';
@@ -118,9 +119,9 @@ let AutoAcceptJob = class AutoAcceptJob {
         const cfg = await this.config.getConfig(ctx);
         if (!cfg.autoAcceptEnabled)
             return;
-        // 营业时段外 / 临时休息：不自动接单（无人出餐风险），订单保持待接单等人工处理
+        // 营业时段外 / 临时休息 / 今日休业（营业日历）：不自动接单（无人出餐风险），订单保持待接单等人工处理
         const hours = (_c = ((_b = channel.customFields) !== null && _b !== void 0 ? _b : {}).waimaiBusinessHours) !== null && _c !== void 0 ? _c : null;
-        const openNow = (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused;
+        const openNow = (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused && !(0, closure_calendar_1.closedToday)((0, closure_calendar_1.safeClosureDates)(cfg.closureDates));
         if (!openNow)
             return;
         const delaySeconds = Number((_d = cfg.autoAcceptDelaySeconds) !== null && _d !== void 0 ? _d : 0);

@@ -34,6 +34,7 @@ import {
 } from './addon-fee';
 import { DAILY_LIMIT_MAX, normalizeLimit, queryDailySold, remainingOf } from './daily-limit';
 import { AUTO_ACCEPT_DEFAULT_DELAY_SECONDS, normalizeAutoAcceptRoutes } from './auto-accept';
+import { ClosureDate, closedToday, safeClosureDates } from './closure-calendar';
 
 export interface MerchantBoardLine {
     name: string;
@@ -98,6 +99,12 @@ export interface MerchantStoreProfile {
     storePhone: string | null;
     paused: boolean;
     openNow: boolean;
+    /** 今日是否休业（§70 营业日历）：true 时 C 端展示「今日休业」并禁止下单 */
+    closedToday: boolean;
+    /** 今日休业备注（如「国庆假期」），null=无备注或未休业 */
+    closureNote: string | null;
+    /** 已登记的休业日期（校园时区自然日，升序；已过去的日期不再返回） */
+    closureDates: ClosureDate[];
     /** 下一次自动开门/打烊（null=全天营业或未配置），供经营设置页倒计时与打烊前提醒 */
     nextTransition: BusinessTransition | null;
 }
@@ -190,14 +197,19 @@ export class MerchantAdminService {
             .findOne({ where: { id: ctx.channelId as any } });
         if (!channel) throw new UserInputError('当前店铺渠道不存在');
         const hours = ((channel.customFields ?? {}) as any).waimaiBusinessHours ?? null;
+        const closureDates = safeClosureDates(cfg.closureDates);
+        const closure = closedToday(closureDates);
         return {
             storeName: channel.code,
             businessHours: hours,
             storeNotice: cfg.storeNotice ?? null,
             storePhone: cfg.storePhone ?? null,
             paused: cfg.paused,
-            // 与 C 端 openNow / 下单闸门同口径：营业时段内且未临时休息
-            openNow: isWithinBusinessHours(hours) && !cfg.paused,
+            // 与 C 端 openNow / 下单闸门同口径：营业时段内、未临时休息、且今日不在休业日历
+            openNow: isWithinBusinessHours(hours) && !cfg.paused && !closure,
+            closedToday: !!closure,
+            closureNote: closure?.note ?? null,
+            closureDates,
             nextTransition: nextBusinessTransition(hours),
         };
     }
@@ -226,6 +238,16 @@ export class MerchantAdminService {
         if (input.storeNotice !== undefined) patch.storeNotice = String(input.storeNotice ?? '').trim() || null;
         if (input.storePhone !== undefined) patch.storePhone = String(input.storePhone ?? '').trim() || null;
         if (Object.keys(patch).length) await this.config.updateConfig(ctx, patch);
+        return this.storeProfile(ctx);
+    }
+
+    /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
+    async updateClosureDates(
+        ctx: RequestContext,
+        dates: Array<{ date?: string | null; note?: string | null }> | null,
+    ): Promise<MerchantStoreProfile> {
+        const list = (dates ?? []).map(d => ({ date: String(d?.date ?? '').trim(), note: String(d?.note ?? '').trim() }));
+        await this.config.updateConfig(ctx, { closureDates: list as any });
         return this.storeProfile(ctx);
     }
 
@@ -380,9 +402,10 @@ export class MerchantAdminService {
         const printProvider = String(cfg.printProvider ?? 'local');
         // 营业时间（自动开关门）：轻量原生查询，避免工作台 10s 轮询时反复实例化 Channel 实体
         const hours = await this.channelBusinessHours(ctx);
+        const closure = closedToday(safeClosureDates(cfg.closureDates));
         return {
             paused: cfg.paused,
-            openNow: isWithinBusinessHours(hours) && !cfg.paused,
+            openNow: isWithinBusinessHours(hours) && !cfg.paused && !closure,
             businessHours: hours,
             nextTransition: nextBusinessTransition(hours),
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
@@ -579,8 +602,8 @@ export class MerchantAdminService {
             dailyLimit: Number(cfg.autoAcceptDailyLimit ?? 0),
             routes: normalizeAutoAcceptRoutes(cfg.autoAcceptRoutes),
             acceptedToday: await this.countAutoAcceptedToday(ctx.channelId),
-            // 与手动接单/C 端营业态同口径：营业时段内且未临时休息才会自动接
-            openNow: isWithinBusinessHours(hours) && !cfg.paused,
+            // 与手动接单/C 端营业态同口径：营业时段内、未临时休息、且今日不在休业日历才会自动接
+            openNow: isWithinBusinessHours(hours) && !cfg.paused && !closedToday(safeClosureDates(cfg.closureDates)),
             merchantConfirmEnabled: !!cfg.merchantConfirmEnabled,
         };
     }

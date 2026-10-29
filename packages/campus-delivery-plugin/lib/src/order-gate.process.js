@@ -4,12 +4,15 @@ exports.campusOrderGateProcess = exports.BLACKLIST_MESSAGE = void 0;
 exports.bindOrderGateConnection = bindOrderGateConnection;
 exports.isBlacklisted = isBlacklisted;
 exports.findSoldOutProductName = findSoldOutProductName;
+exports.findTodayClosure = findTodayClosure;
 const core_1 = require("@vendure/core");
 const business_hours_1 = require("./business-hours");
 const daily_limit_1 = require("./daily-limit");
+const closure_calendar_1 = require("./closure-calendar");
 /**
  * 下单前置闸门（进入 ArrangingPayment 时校验）：
- * 1) 店铺营业时间：Channel.customFields.waimaiBusinessHours 解析，打烊拦截（跑腿单豁免）；
+ * 1) 店铺营业状态：营业时间（Channel.customFields.waimaiBusinessHours）+ 营业日历休业（§70）+ 临时休息，
+ *    跑腿单豁免（跑腿是平台服务，不受商家营业状态约束）；
  * 2) 黑名单：用户 / 手机号命中 active 记录即拦截；
  * 3) 商品沽清：订单行含已售罄商品（Product.customFields.waimaiSoldOut）即拦截；
  * 4) 每日限量 / 每人限购：订单行数量超过商品当日剩余额度即拦截。
@@ -48,6 +51,16 @@ async function findSoldOutProductName(conn, orderId) {
     const name = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.name;
     return name == null ? null : String(name);
 }
+/** 营业日历（§70）：读取本渠道休业名单，命中今日返回该条目（null=今日正常营业） */
+async function findTodayClosure(conn, channelId, now = Date.now()) {
+    var _a;
+    const rows = await conn.rawConnection.query('SELECT "closureDates" FROM campus_fulfillment_config WHERE "channelId" = $1 LIMIT 1', [channelId]);
+    const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+    const raw = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.closureDates;
+    if (!raw)
+        return null;
+    return (0, closure_calendar_1.closedToday)((0, closure_calendar_1.safeClosureDates)(raw, now), now);
+}
 exports.campusOrderGateProcess = {
     async onTransitionStart(fromState, toState, { ctx, order }) {
         var _a, _b, _c;
@@ -55,7 +68,7 @@ exports.campusOrderGateProcess = {
             return;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         const isErrand = cf.orderKind === 'errand';
-        // 1) 营业时间（跑腿单是平台跑腿服务，不受商家堂食营业时间约束）
+        // 1) 营业状态（跑腿单是平台跑腿服务，不受商家堂食营业时间约束）
         if (!isErrand) {
             const hours = ((_c = (_b = ctx.channel) === null || _b === void 0 ? void 0 : _b.customFields) !== null && _c !== void 0 ? _c : {}).waimaiBusinessHours;
             if (hours && !(0, business_hours_1.isWithinBusinessHours)(hours)) {
@@ -65,6 +78,14 @@ exports.campusOrderGateProcess = {
         const conn = connRef;
         if (!conn)
             return;
+        // 1b) 营业日历（§70）：今日在休业名单中则整店休业（与营业时间/临时休息同层级）
+        if (!isErrand) {
+            const closure = await findTodayClosure(conn, Number(ctx.channelId));
+            if (closure) {
+                const note = closure.note ? `（${closure.note}）` : '';
+                throw new core_1.UserInputError(`本店今日休业${note}，暂不可下单，请明日再来`);
+            }
+        }
         // 2) 黑名单
         if (await isBlacklisted(conn, Number(ctx.channelId), Number(order.id))) {
             throw new core_1.UserInputError(exports.BLACKLIST_MESSAGE);

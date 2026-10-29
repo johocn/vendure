@@ -9,6 +9,9 @@ export declare class MerchantAdminResolver {
     campusMerchantStoreProfile(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
     campusMerchantUpdateStore(ctx: RequestContext, businessHours?: string | null, storeNotice?: string | null, storePhone?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
+    /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
+     * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
+    campusMerchantSetClosureDates(ctx: RequestContext, dates?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
     campusMerchantRevenue(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantRevenue>;
     campusMerchantAcceptOrder(ctx: RequestContext, orderId: ID): Promise<{

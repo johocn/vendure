@@ -6,6 +6,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { DeliverySlot } from './delivery-slot.entity';
 import { normalizeDeliveryFeeTiers } from './delivery-fee-tiers';
+import { normalizeClosureDates } from './closure-calendar';
 
 /** 本地日期 YYYY-MM-DD（slotDate 为本地日期字符串，勿用 UTC 的 toISOString） */
 function localDateStr(d: Date): string {
@@ -176,6 +177,7 @@ export class CampusConfigService {
         'deliveryFee', 'storeAddress', 'storePhone', 'storeNotice', 'errandBaseFee', 'thirdPartyBaseFee',
         'freeShippingThreshold', 'deliveryFeeTiers', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
         'autoAcceptEnabled', 'autoAcceptDelaySeconds', 'autoAcceptDailyLimit', 'autoAcceptRoutes',
+        'closureDates',
         'timeoutCompensationEnabled', 'timeoutGraceMinutes', 'timeoutCompensationWindowHours',
         'timeoutCompensationCouponTemplateId',
         'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
@@ -246,6 +248,14 @@ export class CampusConfigService {
                 throw new UserInputError('配送路线配置不合法');
             }
             patch.routesEnabled = Array.from(new Set(routes.map(r => String(r))));
+        }
+        // 休业日历（§70）：写入前严格校验（真实日期 / 不早于今天 / 最多提前 90 天 / 最多 30 条）
+        if (patch.closureDates !== undefined) {
+            try {
+                patch.closureDates = normalizeClosureDates(patch.closureDates);
+            } catch (e: any) {
+                throw new UserInputError(e?.message || '休业日历不合法');
+            }
         }
         // 自动接单适用范围（§69）：只接受 R1/R2/R3，空数组回落全部（不允许一条路线都不选）
         if (patch.autoAcceptRoutes !== undefined && patch.autoAcceptRoutes !== null) {

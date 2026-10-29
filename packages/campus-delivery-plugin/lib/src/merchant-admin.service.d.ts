@@ -7,6 +7,7 @@ import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CloudPrintService } from './cloud-print.service';
 import { PrivacyNumberService } from './privacy-number.service';
+import { ClosureDate } from './closure-calendar';
 export interface MerchantBoardLine {
     name: string;
     quantity: number;
@@ -67,6 +68,12 @@ export interface MerchantStoreProfile {
     storePhone: string | null;
     paused: boolean;
     openNow: boolean;
+    /** 今日是否休业（§70 营业日历）：true 时 C 端展示「今日休业」并禁止下单 */
+    closedToday: boolean;
+    /** 今日休业备注（如「国庆假期」），null=无备注或未休业 */
+    closureNote: string | null;
+    /** 已登记的休业日期（校园时区自然日，升序；已过去的日期不再返回） */
+    closureDates: ClosureDate[];
     /** 下一次自动开门/打烊（null=全天营业或未配置），供经营设置页倒计时与打烊前提醒 */
     nextTransition: BusinessTransition | null;
 }
@@ -149,6 +156,11 @@ export declare class MerchantAdminService {
         storeNotice?: string | null;
         storePhone?: string | null;
     }): Promise<MerchantStoreProfile>;
+    /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
+    updateClosureDates(ctx: RequestContext, dates: Array<{
+        date?: string | null;
+        note?: string | null;
+    }> | null): Promise<MerchantStoreProfile>;
     /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款；另附近 30 日逐日明细供导出 */
     revenue(ctx: RequestContext): Promise<MerchantRevenue>;
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */

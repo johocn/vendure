@@ -54,6 +54,7 @@ import { P9P7DeliveryFeeTiersMigration } from './migrations/p9-p7-delivery-fee-t
 import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
 import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-restore';
 import { P13AutoAcceptMigration } from './migrations/p13-auto-accept';
+import { P14ClosureCalendarMigration } from './migrations/p14-closure-calendar';
 import { AutoAcceptJob } from './auto-accept.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
@@ -179,6 +180,7 @@ import { TelemetryService } from './telemetry.service';
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
+        P14ClosureCalendarMigration,
         AutoAcceptJob,
         SoldOutAutoRestoreJob,
         AddWithdrawPayoutMigration,
@@ -466,8 +468,20 @@ import { TelemetryService } from './telemetry.service';
                     storePhone: String
                     paused: Boolean!
                     openNow: Boolean!
+                    """今日是否休业（§70 营业日历），true 时 C 端「今日休业」且禁止下单"""
+                    closedToday: Boolean!
+                    """今日休业备注（空=无备注或未休业）"""
+                    closureNote: String
+                    """已登记的休业日期（升序，已过期的不返回）"""
+                    closureDates: [CampusClosureDate!]!
                     """下一次自动开门/打烊（null=全天营业）"""
                     nextTransition: CampusBusinessTransition
+                }
+
+                """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
+                type CampusClosureDate {
+                    date: String!
+                    note: String
                 }
 
                 """经营数据分桶（分）：营业额=窗口内已送达订单实付；取消=窗口内取消单（全额退款口径）"""
@@ -1561,6 +1575,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
+                    """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
+                    campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     """云打印一张小票（P1-4）：后端签名直连服务商，成功回写打印时间"""
                     campusMerchantCloudPrint(orderId: ID!): CampusPrintResult!
@@ -1879,8 +1895,12 @@ import { TelemetryService } from './telemetry.service';
                     storePhone: String
                     storeNotice: String
                     businessHours: String
-                    """当前是否可下单（营业时段内且未暂停营业，服务端按 UTC+8 判定）"""
+                    """当前是否可下单（营业时段内、未暂停营业且今日不在休业日历，服务端按 UTC+8 判定）"""
                     openNow: Boolean!
+                    """今日休业（§70 营业日历）：true 时 C 端展示「今日休业」并禁止下单"""
+                    closedToday: Boolean!
+                    """今日休业备注（如「国庆假期」），空=无备注或未休业"""
+                    closureNote: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
                     """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""

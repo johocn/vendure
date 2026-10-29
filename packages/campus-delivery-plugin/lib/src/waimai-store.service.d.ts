@@ -17,8 +17,12 @@ export interface WaimaiStore {
     storePhone: string | null;
     storeNotice: string | null;
     businessHours: string | null;
-    /** 当前是否可下单（营业时段内 且 未暂停营业） */
+    /** 当前是否可下单（营业时段内 且 未暂停营业 且 今日不在休业日历） */
     openNow: boolean;
+    /** 今日是否处于休业日历（§70）：true 时 C 端展示「今日休业」并禁止下单 */
+    closedToday: boolean;
+    /** 今日休业备注（如「国庆假期」），null=无备注或未休业 */
+    closureNote: string | null;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
     /** 配送费阶梯（P3-4）JSON 字符串：[{minAmount:分, fee:分}]，null=不启用 */

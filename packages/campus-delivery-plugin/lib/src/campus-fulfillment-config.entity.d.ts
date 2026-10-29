@@ -33,6 +33,11 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     autoAcceptDailyLimit: number;
     /** 适用范围（路线）：默认 R1/R2/R3，可在后台按配送方式勾选 */
     autoAcceptRoutes: string[];
+    /** 休业日期列表：[{date:'YYYY-MM-DD', note?}]，校园时区自然日；null/空=不启用 */
+    closureDates: Array<{
+        date: string;
+        note?: string | null;
+    }> | null;
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
     /** 超时赔付回扫窗口（小时）：只回补近 N 小时送达单（默认 24，可放大以覆盖更长账期） */

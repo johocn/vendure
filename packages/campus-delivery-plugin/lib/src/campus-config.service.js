@@ -19,6 +19,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
 const delivery_fee_tiers_1 = require("./delivery-fee-tiers");
+const closure_calendar_1 = require("./closure-calendar");
 /** 本地日期 YYYY-MM-DD（slotDate 为本地日期字符串，勿用 UTC 的 toISOString） */
 function localDateStr(d) {
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -214,6 +215,15 @@ let CampusConfigService = CampusConfigService_1 = class CampusConfigService {
                 throw new core_1.UserInputError('配送路线配置不合法');
             }
             patch.routesEnabled = Array.from(new Set(routes.map(r => String(r))));
+        }
+        // 休业日历（§70）：写入前严格校验（真实日期 / 不早于今天 / 最多提前 90 天 / 最多 30 条）
+        if (patch.closureDates !== undefined) {
+            try {
+                patch.closureDates = (0, closure_calendar_1.normalizeClosureDates)(patch.closureDates);
+            }
+            catch (e) {
+                throw new core_1.UserInputError((e === null || e === void 0 ? void 0 : e.message) || '休业日历不合法');
+            }
         }
         // 自动接单适用范围（§69）：只接受 R1/R2/R3，空数组回落全部（不允许一条路线都不选）
         if (patch.autoAcceptRoutes !== undefined && patch.autoAcceptRoutes !== null) {
@@ -467,6 +477,7 @@ CampusConfigService.WRITABLE_FIELDS = new Set([
     'deliveryFee', 'storeAddress', 'storePhone', 'storeNotice', 'errandBaseFee', 'thirdPartyBaseFee',
     'freeShippingThreshold', 'deliveryFeeTiers', 'merchantConfirmEnabled', 'merchantAutoOpenMinutes',
     'autoAcceptEnabled', 'autoAcceptDelaySeconds', 'autoAcceptDailyLimit', 'autoAcceptRoutes',
+    'closureDates',
     'timeoutCompensationEnabled', 'timeoutGraceMinutes', 'timeoutCompensationWindowHours',
     'timeoutCompensationCouponTemplateId',
     'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',

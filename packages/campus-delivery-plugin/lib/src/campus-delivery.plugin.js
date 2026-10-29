@@ -53,6 +53,7 @@ const p9_p7_delivery_fee_tiers_1 = require("./migrations/p9-p7-delivery-fee-tier
 const p10_review_alert_1 = require("./migrations/p10-review-alert");
 const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restore");
 const p13_auto_accept_1 = require("./migrations/p13-auto-accept");
+const p14_closure_calendar_1 = require("./migrations/p14-closure-calendar");
 const auto_accept_job_1 = require("./auto-accept.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
@@ -316,6 +317,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
             p13_auto_accept_1.P13AutoAcceptMigration,
+            p14_closure_calendar_1.P14ClosureCalendarMigration,
             auto_accept_job_1.AutoAcceptJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
@@ -603,8 +605,20 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     paused: Boolean!
                     openNow: Boolean!
+                    """今日是否休业（§70 营业日历），true 时 C 端「今日休业」且禁止下单"""
+                    closedToday: Boolean!
+                    """今日休业备注（空=无备注或未休业）"""
+                    closureNote: String
+                    """已登记的休业日期（升序，已过期的不返回）"""
+                    closureDates: [CampusClosureDate!]!
                     """下一次自动开门/打烊（null=全天营业）"""
                     nextTransition: CampusBusinessTransition
+                }
+
+                """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
+                type CampusClosureDate {
+                    date: String!
+                    note: String
                 }
 
                 """经营数据分桶（分）：营业额=窗口内已送达订单实付；取消=窗口内取消单（全额退款口径）"""
@@ -1698,6 +1712,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
+                    """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
+                    campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     """云打印一张小票（P1-4）：后端签名直连服务商，成功回写打印时间"""
                     campusMerchantCloudPrint(orderId: ID!): CampusPrintResult!
@@ -2016,8 +2032,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     storeNotice: String
                     businessHours: String
-                    """当前是否可下单（营业时段内且未暂停营业，服务端按 UTC+8 判定）"""
+                    """当前是否可下单（营业时段内、未暂停营业且今日不在休业日历，服务端按 UTC+8 判定）"""
                     openNow: Boolean!
+                    """今日休业（§70 营业日历）：true 时 C 端展示「今日休业」并禁止下单"""
+                    closedToday: Boolean!
+                    """今日休业备注（如「国庆假期」），空=无备注或未休业"""
+                    closureNote: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
                     """配送费阶梯（P3-4）JSON：[{minAmount:分, fee:分}]，null=不启用"""

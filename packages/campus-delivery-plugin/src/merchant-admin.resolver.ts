@@ -47,6 +47,19 @@ export class MerchantAdminResolver {
         return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
     }
 
+    /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
+     * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetClosureDates(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'dates', type: () => String, nullable: true }) dates?: string | null,
+    ) {
+        const parsed = dates ? parseJson(String(dates)) : [];
+        if (!Array.isArray(parsed)) throw new UserInputError('休业日历必须是日期数组');
+        return this.merchant.updateClosureDates(ctx, parsed);
+    }
+
     /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)

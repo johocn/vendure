@@ -37,6 +37,10 @@ export class CampusFulfillmentConfig extends VendureEntity {
     /** 适用范围（路线）：默认 R1/R2/R3，可在后台按配送方式勾选 */
     @Column({ type: 'simple-json', default: '["R1","R2","R3"]' })
     autoAcceptRoutes: string[];
+    // 营业日历（§70）：指定日期休业（节假日/临时休业），当天 C 端「今日休业」并禁止下单
+    /** 休业日期列表：[{date:'YYYY-MM-DD', note?}]，校园时区自然日；null/空=不启用 */
+    @Column({ type: 'simple-json', nullable: true })
+    closureDates: Array<{ date: string; note?: string | null }> | null;
     // 超时赔付（P0）：开关默认开，缺券模板时扫到会限频告警（等运营补配置）
     @Column({ default: true }) timeoutCompensationEnabled: boolean;
     @Column({ type: 'int', default: 10 }) timeoutGraceMinutes: number; // 超时宽限（分钟），超过才赔

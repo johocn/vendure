@@ -7,6 +7,7 @@ import { normalizePackingFeeMode, PACKING_FEE_MODES } from './packing-fee';
 import { normalizeDeliveryFeeTiers } from './delivery-fee-tiers';
 import { SEARCH_ASSIST_PROVIDER_NAMES } from './search-assist';
 import { normalizeLimit, queryDailySold, remainingOf } from './daily-limit';
+import { closedToday, safeClosureDates } from './closure-calendar';
 
 export interface WaimaiStore {
     channelId: number;
@@ -25,8 +26,12 @@ export interface WaimaiStore {
     storePhone: string | null;
     storeNotice: string | null;
     businessHours: string | null;
-    /** 当前是否可下单（营业时段内 且 未暂停营业） */
+    /** 当前是否可下单（营业时段内 且 未暂停营业 且 今日不在休业日历） */
     openNow: boolean;
+    /** 今日是否处于休业日历（§70）：true 时 C 端展示「今日休业」并禁止下单 */
+    closedToday: boolean;
+    /** 今日休业备注（如「国庆假期」），null=无备注或未休业 */
+    closureNote: string | null;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
     /** 配送费阶梯（P3-4）JSON 字符串：[{minAmount:分, fee:分}]，null=不启用 */
@@ -256,6 +261,7 @@ export class WaimaiStoreService {
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, Channel).find();
         const stores: WaimaiStore[] = [];
+        const now = Date.now();
         for (const ch of channels) {
             const cfg = byChannel.get(Number(ch.id));
             if (!cfg) continue;
@@ -264,6 +270,8 @@ export class WaimaiStoreService {
             // 外卖准入：仅餐饮行业租户展示（设计文档 2026-10-09 §4.2；存量由 BackfillWaimaiIndustryMigration 刷数）。
             // 仅过滤 C 端列表；listStoreConfigs（admin 配置视图）不过滤，避免管理员看不到已配履约的非餐饮渠道。
             if (cf.industryType !== 'catering') continue;
+            // 营业日历（§70）：今日在休业名单中则整店休业（优先于营业时间判断）
+            const closure = closedToday(safeClosureDates(cfg.closureDates, now), now);
             stores.push({
                 channelId: Number(ch.id),
                 channelToken: ch.token,
@@ -284,7 +292,9 @@ export class WaimaiStoreService {
                 storeNotice: cfg.storeNotice ?? null,
                 businessHours: cf.waimaiBusinessHours ?? null,
                 // 营业状态（服务端按校园时区判定，与 C 端展示/下单闸门同口径）
-                openNow: isWithinBusinessHours(cf.waimaiBusinessHours ?? null) && !cfg.paused,
+                openNow: isWithinBusinessHours(cf.waimaiBusinessHours ?? null) && !cfg.paused && !closure,
+                closedToday: !!closure,
+                closureNote: closure?.note ?? null,
                 errandBaseFee: cfg.errandBaseFee ?? null,
                 freeShippingThreshold: cfg.freeShippingThreshold ?? null,
                 deliveryFeeTiers: cfg.deliveryFeeTiers ? JSON.stringify(cfg.deliveryFeeTiers) : null,

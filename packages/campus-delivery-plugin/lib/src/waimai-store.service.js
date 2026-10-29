@@ -22,6 +22,7 @@ const packing_fee_1 = require("./packing-fee");
 const delivery_fee_tiers_1 = require("./delivery-fee-tiers");
 const search_assist_1 = require("./search-assist");
 const daily_limit_1 = require("./daily-limit");
+const closure_calendar_1 = require("./closure-calendar");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
 /** 小程序上架状态白名单（P2-1） */
 const MP_LISTING_STATUSES = ['draft', 'inReview', 'online', 'rejected', 'offline'];
@@ -132,11 +133,12 @@ let WaimaiStoreService = class WaimaiStoreService {
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     async listStores(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
         const stores = [];
+        const now = Date.now();
         for (const ch of channels) {
             const cfg = byChannel.get(Number(ch.id));
             if (!cfg)
@@ -148,6 +150,8 @@ let WaimaiStoreService = class WaimaiStoreService {
             // 仅过滤 C 端列表；listStoreConfigs（admin 配置视图）不过滤，避免管理员看不到已配履约的非餐饮渠道。
             if (cf.industryType !== 'catering')
                 continue;
+            // 营业日历（§70）：今日在休业名单中则整店休业（优先于营业时间判断）
+            const closure = (0, closure_calendar_1.closedToday)((0, closure_calendar_1.safeClosureDates)(cfg.closureDates, now), now);
             stores.push({
                 channelId: Number(ch.id),
                 channelToken: ch.token,
@@ -168,22 +172,24 @@ let WaimaiStoreService = class WaimaiStoreService {
                 storeNotice: (_l = cfg.storeNotice) !== null && _l !== void 0 ? _l : null,
                 businessHours: (_m = cf.waimaiBusinessHours) !== null && _m !== void 0 ? _m : null,
                 // 营业状态（服务端按校园时区判定，与 C 端展示/下单闸门同口径）
-                openNow: (0, business_hours_1.isWithinBusinessHours)((_o = cf.waimaiBusinessHours) !== null && _o !== void 0 ? _o : null) && !cfg.paused,
-                errandBaseFee: (_p = cfg.errandBaseFee) !== null && _p !== void 0 ? _p : null,
-                freeShippingThreshold: (_q = cfg.freeShippingThreshold) !== null && _q !== void 0 ? _q : null,
+                openNow: (0, business_hours_1.isWithinBusinessHours)((_o = cf.waimaiBusinessHours) !== null && _o !== void 0 ? _o : null) && !cfg.paused && !closure,
+                closedToday: !!closure,
+                closureNote: (_p = closure === null || closure === void 0 ? void 0 : closure.note) !== null && _p !== void 0 ? _p : null,
+                errandBaseFee: (_q = cfg.errandBaseFee) !== null && _q !== void 0 ? _q : null,
+                freeShippingThreshold: (_r = cfg.freeShippingThreshold) !== null && _r !== void 0 ? _r : null,
                 deliveryFeeTiers: cfg.deliveryFeeTiers ? JSON.stringify(cfg.deliveryFeeTiers) : null,
-                foodLicenseNo: (_r = cfg.foodLicenseNo) !== null && _r !== void 0 ? _r : null,
-                foodLicenseImage: (_s = cfg.foodLicenseImage) !== null && _s !== void 0 ? _s : null,
-                foodLicenseExpiry: (_t = cfg.foodLicenseExpiry) !== null && _t !== void 0 ? _t : null,
-                foodSafetyGrade: (_u = cfg.foodSafetyGrade) !== null && _u !== void 0 ? _u : null,
-                foodSafetyCommitmentImage: (_v = cfg.foodSafetyCommitmentImage) !== null && _v !== void 0 ? _v : null,
-                kitchenLiveUrl: cfg.kitchenLiveEnabled ? (_w = cfg.kitchenLiveUrl) !== null && _w !== void 0 ? _w : null : null,
+                foodLicenseNo: (_s = cfg.foodLicenseNo) !== null && _s !== void 0 ? _s : null,
+                foodLicenseImage: (_t = cfg.foodLicenseImage) !== null && _t !== void 0 ? _t : null,
+                foodLicenseExpiry: (_u = cfg.foodLicenseExpiry) !== null && _u !== void 0 ? _u : null,
+                foodSafetyGrade: (_v = cfg.foodSafetyGrade) !== null && _v !== void 0 ? _v : null,
+                foodSafetyCommitmentImage: (_w = cfg.foodSafetyCommitmentImage) !== null && _w !== void 0 ? _w : null,
+                kitchenLiveUrl: cfg.kitchenLiveEnabled ? (_x = cfg.kitchenLiveUrl) !== null && _x !== void 0 ? _x : null : null,
                 kitchenLiveEnabled: cfg.kitchenLiveEnabled,
-                packingFeeEnabled: (_x = cfg.packingFeeEnabled) !== null && _x !== void 0 ? _x : false,
+                packingFeeEnabled: (_y = cfg.packingFeeEnabled) !== null && _y !== void 0 ? _y : false,
                 packingFeeMode: (0, packing_fee_1.normalizePackingFeeMode)(cfg.packingFeeMode),
-                packingFeeAmount: (_y = cfg.packingFeeAmount) !== null && _y !== void 0 ? _y : 0,
-                packingFeeCap: (_z = cfg.packingFeeCap) !== null && _z !== void 0 ? _z : null,
-                packingFeeLabel: (_0 = cfg.packingFeeLabel) !== null && _0 !== void 0 ? _0 : null,
+                packingFeeAmount: (_z = cfg.packingFeeAmount) !== null && _z !== void 0 ? _z : 0,
+                packingFeeCap: (_0 = cfg.packingFeeCap) !== null && _0 !== void 0 ? _0 : null,
+                packingFeeLabel: (_1 = cfg.packingFeeLabel) !== null && _1 !== void 0 ? _1 : null,
             });
         }
         return stores;

@@ -57,6 +57,7 @@ describe('campusOrderGateProcess', () => {
 
     it('黑名单命中拦截', async () => {
         query
+            .mockResolvedValueOnce([])                              // 营业日历：无配置行（未休业）
             .mockResolvedValueOnce([{ customerId: 9, phone: '13800000000' }])
             .mockResolvedValueOnce([{ exists: 1 }]);
         await expect(
@@ -64,8 +65,16 @@ describe('campusOrderGateProcess', () => {
         ).rejects.toThrow('暂不可下单');
     });
 
+    it('营业日历今日休业拦截（文案带备注）', async () => {
+        query.mockResolvedValueOnce([{ closureDates: '[{"date":"2026-10-25","note":"国庆假期"}]' }]);
+        await expect(
+            campusOrderGateProcess.onTransitionStart!('AddingItems', 'ArrangingPayment', data()),
+        ).rejects.toThrow('本店今日休业（国庆假期）');
+    });
+
     it('商品沽清拦截（文案带商品名）', async () => {
         query
+            .mockResolvedValueOnce([])                              // 营业日历
             .mockResolvedValueOnce([{ customerId: 9, phone: null }]) // 顾客查询
             .mockResolvedValueOnce([])                             // 黑名单未命中
             .mockResolvedValueOnce([{ name: '香辣鸡腿堡' }]);        // 沽清命中
@@ -76,12 +85,68 @@ describe('campusOrderGateProcess', () => {
 
     it('无黑名单/无沽清时放行', async () => {
         query
+            .mockResolvedValueOnce([])
             .mockResolvedValueOnce([{ customerId: 9, phone: null }])
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([]);
         await expect(
             campusOrderGateProcess.onTransitionStart!('AddingItems', 'ArrangingPayment', data()),
         ).resolves.toBeUndefined();
+    });
+
+    describe('配送路线闸门（防支付后永不进厅）', () => {
+        beforeEach(() => query.mockResolvedValue([]));
+
+        it('已选校园交付点但路线为空 → 拦截', async () => {
+            await expect(
+                campusOrderGateProcess.onTransitionStart!(
+                    'AddingItems', 'ArrangingPayment',
+                    data({ cf: { campusZone: '东区', buildingId: '7' } }),
+                ),
+            ).rejects.toThrow('配送路线缺失或无效');
+        });
+
+        it('路线非法（R9）→ 拦截', async () => {
+            await expect(
+                campusOrderGateProcess.onTransitionStart!(
+                    'AddingItems', 'ArrangingPayment',
+                    data({ cf: { fulfillmentRoute: 'R9', campusZone: '东区', buildingId: '7' } }),
+                ),
+            ).rejects.toThrow('配送路线缺失或无效');
+        });
+
+        it('R1/R2/R3 缺楼栋 → 拦截', async () => {
+            await expect(
+                campusOrderGateProcess.onTransitionStart!(
+                    'AddingItems', 'ArrangingPayment',
+                    data({ cf: { fulfillmentRoute: 'R1', campusZone: '东区' } }),
+                ),
+            ).rejects.toThrow('配送楼栋');
+        });
+
+        it('R1 + 楼栋齐全 → 放行', async () => {
+            await expect(
+                campusOrderGateProcess.onTransitionStart!(
+                    'AddingItems', 'ArrangingPayment',
+                    data({ cf: { fulfillmentRoute: 'R1', campusZone: '东区', buildingId: '7' } }),
+                ),
+            ).resolves.toBeUndefined();
+        });
+
+        it('无校园交付意图（普通快递/到店自取）→ 不校验路线', async () => {
+            await expect(
+                campusOrderGateProcess.onTransitionStart!('AddingItems', 'ArrangingPayment', data()),
+            ).resolves.toBeUndefined();
+        });
+
+        it('跑腿单无路线 → 豁免', async () => {
+            await expect(
+                campusOrderGateProcess.onTransitionStart!(
+                    'AddingItems', 'ArrangingPayment',
+                    data({ cf: { orderKind: 'errand' } }),
+                ),
+            ).resolves.toBeUndefined();
+        });
     });
 });
 

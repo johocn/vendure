@@ -26,6 +26,7 @@ const privacy_number_service_1 = require("./privacy-number.service");
 const addon_fee_1 = require("./addon-fee");
 const daily_limit_1 = require("./daily-limit");
 const auto_accept_1 = require("./auto-accept");
+const closure_calendar_1 = require("./closure-calendar");
 /** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
 exports.KDS_WARN_MINUTES = 15;
 exports.KDS_LATE_MINUTES = 25;
@@ -48,21 +49,26 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     async storeProfile(ctx) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const cfg = await this.config.getConfig(ctx);
         const channel = await this.connection.getRepository(ctx, core_1.Channel)
             .findOne({ where: { id: ctx.channelId } });
         if (!channel)
             throw new core_1.UserInputError('当前店铺渠道不存在');
         const hours = (_b = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {}).waimaiBusinessHours) !== null && _b !== void 0 ? _b : null;
+        const closureDates = (0, closure_calendar_1.safeClosureDates)(cfg.closureDates);
+        const closure = (0, closure_calendar_1.closedToday)(closureDates);
         return {
             storeName: channel.code,
             businessHours: hours,
             storeNotice: (_c = cfg.storeNotice) !== null && _c !== void 0 ? _c : null,
             storePhone: (_d = cfg.storePhone) !== null && _d !== void 0 ? _d : null,
             paused: cfg.paused,
-            // 与 C 端 openNow / 下单闸门同口径：营业时段内且未临时休息
-            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused,
+            // 与 C 端 openNow / 下单闸门同口径：营业时段内、未临时休息、且今日不在休业日历
+            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused && !closure,
+            closedToday: !!closure,
+            closureNote: (_e = closure === null || closure === void 0 ? void 0 : closure.note) !== null && _e !== void 0 ? _e : null,
+            closureDates,
             nextTransition: (0, business_hours_1.nextBusinessTransition)(hours),
         };
     }
@@ -93,6 +99,12 @@ let MerchantAdminService = class MerchantAdminService {
             patch.storePhone = String((_c = input.storePhone) !== null && _c !== void 0 ? _c : '').trim() || null;
         if (Object.keys(patch).length)
             await this.config.updateConfig(ctx, patch);
+        return this.storeProfile(ctx);
+    }
+    /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
+    async updateClosureDates(ctx, dates) {
+        const list = (dates !== null && dates !== void 0 ? dates : []).map(d => { var _a, _b; return ({ date: String((_a = d === null || d === void 0 ? void 0 : d.date) !== null && _a !== void 0 ? _a : '').trim(), note: String((_b = d === null || d === void 0 ? void 0 : d.note) !== null && _b !== void 0 ? _b : '').trim() }); });
+        await this.config.updateConfig(ctx, { closureDates: list });
         return this.storeProfile(ctx);
     }
     /** 商家自助经营数据：今日/近 7 日（含今日）单量、营业额、客单价、取消退款；另附近 30 日逐日明细供导出 */
@@ -245,9 +257,10 @@ let MerchantAdminService = class MerchantAdminService {
         const printProvider = String((_a = cfg.printProvider) !== null && _a !== void 0 ? _a : 'local');
         // 营业时间（自动开关门）：轻量原生查询，避免工作台 10s 轮询时反复实例化 Channel 实体
         const hours = await this.channelBusinessHours(ctx);
+        const closure = (0, closure_calendar_1.closedToday)((0, closure_calendar_1.safeClosureDates)(cfg.closureDates));
         return {
             paused: cfg.paused,
-            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused,
+            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused && !closure,
             businessHours: hours,
             nextTransition: (0, business_hours_1.nextBusinessTransition)(hours),
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
@@ -444,8 +457,8 @@ let MerchantAdminService = class MerchantAdminService {
             dailyLimit: Number((_b = cfg.autoAcceptDailyLimit) !== null && _b !== void 0 ? _b : 0),
             routes: (0, auto_accept_1.normalizeAutoAcceptRoutes)(cfg.autoAcceptRoutes),
             acceptedToday: await this.countAutoAcceptedToday(ctx.channelId),
-            // 与手动接单/C 端营业态同口径：营业时段内且未临时休息才会自动接
-            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused,
+            // 与手动接单/C 端营业态同口径：营业时段内、未临时休息、且今日不在休业日历才会自动接
+            openNow: (0, business_hours_1.isWithinBusinessHours)(hours) && !cfg.paused && !(0, closure_calendar_1.closedToday)((0, closure_calendar_1.safeClosureDates)(cfg.closureDates)),
             merchantConfirmEnabled: !!cfg.merchantConfirmEnabled,
         };
     }

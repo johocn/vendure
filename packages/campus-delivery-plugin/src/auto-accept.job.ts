@@ -2,6 +2,7 @@ import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Channel, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { isWithinBusinessHours } from './business-hours';
+import { closedToday, safeClosureDates } from './closure-calendar';
 import { isAutoAcceptDue, normalizeAutoAcceptRoutes } from './auto-accept';
 import { MerchantAdminService } from './merchant-admin.service';
 
@@ -115,9 +116,9 @@ export class AutoAcceptJob implements OnApplicationShutdown {
         });
         const cfg = await this.config.getConfig(ctx);
         if (!cfg.autoAcceptEnabled) return;
-        // 营业时段外 / 临时休息：不自动接单（无人出餐风险），订单保持待接单等人工处理
+        // 营业时段外 / 临时休息 / 今日休业（营业日历）：不自动接单（无人出餐风险），订单保持待接单等人工处理
         const hours = ((channel.customFields ?? {}) as any).waimaiBusinessHours ?? null;
-        const openNow = isWithinBusinessHours(hours) && !cfg.paused;
+        const openNow = isWithinBusinessHours(hours) && !cfg.paused && !closedToday(safeClosureDates(cfg.closureDates));
         if (!openNow) return;
 
         const delaySeconds = Number(cfg.autoAcceptDelaySeconds ?? 0);
