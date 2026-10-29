@@ -328,9 +328,10 @@ let MerchantAdminService = class MerchantAdminService {
             .andWhere('order.customFields.deliveredAt >= :start', { start })
             .andWhere('order.customFields.deliveredAt < :end', { end });
         // 汇总：单量 + 总额（全区间，不被分页截断）
+        // 注意：Order.total 是实体 getter（无对应数据库列），聚合须用 totalWithTax 列，否则 SQL 会报语法错误
         const sums = await base()
-            .select('COALESCE(SUM(order.total), 0)', 'amount')
-            .addSelect('COUNT(order.id)', 'count')
+            .select('COALESCE(SUM("order"."totalWithTax"), 0)', 'amount')
+            .addSelect('COUNT("order"."id")', 'count')
             .getRawOne();
         const total = Number((_c = sums === null || sums === void 0 ? void 0 : sums.count) !== null && _c !== void 0 ? _c : 0);
         const totalAmount = Number((_d = sums === null || sums === void 0 ? void 0 : sums.amount) !== null && _d !== void 0 ? _d : 0);
@@ -385,9 +386,9 @@ let MerchantAdminService = class MerchantAdminService {
                 code: o.code,
                 deliveredAt: cf.deliveredAt ? new Date(cf.deliveredAt) : null,
                 createdAt: o.createdAt,
-                total: o.total,
+                total: o.totalWithTax,
                 refundAmount,
-                netAmount: (o.total || 0) - refundAmount,
+                netAmount: (o.totalWithTax || 0) - refundAmount,
                 building: cf.buildingId ? (_c = buildingNames.get(String(cf.buildingId))) !== null && _c !== void 0 ? _c : '' : '',
                 zone: (_d = cf.campusZone) !== null && _d !== void 0 ? _d : '',
                 route: (_e = cf.fulfillmentRoute) !== null && _e !== void 0 ? _e : '',

@@ -531,9 +531,10 @@ export class MerchantAdminService {
                 .andWhere('order.customFields.deliveredAt < :end', { end });
 
         // 汇总：单量 + 总额（全区间，不被分页截断）
+        // 注意：Order.total 是实体 getter（无对应数据库列），聚合须用 totalWithTax 列，否则 SQL 会报语法错误
         const sums: any = await base()
-            .select('COALESCE(SUM(order.total), 0)', 'amount')
-            .addSelect('COUNT(order.id)', 'count')
+            .select('COALESCE(SUM("order"."totalWithTax"), 0)', 'amount')
+            .addSelect('COUNT("order"."id")', 'count')
             .getRawOne();
         const total = Number(sums?.count ?? 0);
         const totalAmount = Number(sums?.amount ?? 0);
@@ -591,9 +592,9 @@ export class MerchantAdminService {
                 code: o.code,
                 deliveredAt: cf.deliveredAt ? new Date(cf.deliveredAt) : null,
                 createdAt: o.createdAt,
-                total: o.total,
+                total: o.totalWithTax,
                 refundAmount,
-                netAmount: (o.total || 0) - refundAmount,
+                netAmount: (o.totalWithTax || 0) - refundAmount,
                 building: cf.buildingId ? buildingNames.get(String(cf.buildingId)) ?? '' : '',
                 zone: cf.campusZone ?? '',
                 route: cf.fulfillmentRoute ?? '',
