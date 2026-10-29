@@ -2260,6 +2260,17 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     error: String
                 }
 
+                """C 端商品当日额度（§68）：myToday/myRemaining 未登录时为 null"""
+                type CampusProductDailyStock {
+                    productId: ID!
+                    dailyLimit: Int
+                    perUserLimit: Int
+                    soldToday: Int!
+                    remaining: Int
+                    myToday: Int
+                    myRemaining: Int
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
