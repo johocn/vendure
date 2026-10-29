@@ -64,6 +64,48 @@ export interface MerchantBoardOrder {
     lines: MerchantBoardLine[];
 }
 
+/** 今日已完成订单明细（§75）：商家对账用，含退款与实收 */
+export interface MerchantCompletedOrder {
+    id: string;
+    code: string;
+    /** 送达时间（对账归时点；历史脏数据可能为 null） */
+    deliveredAt: Date | null;
+    createdAt: Date;
+    /** 订单总额（与工作台「今日完成金额」同口径） */
+    total: number;
+    /** 该单已退金额（排除 Failed 退款单） */
+    refundAmount: number;
+    /** 实收 = total - refundAmount */
+    netAmount: number;
+    building: string;
+    zone: string;
+    route: string;
+    riderName: string | null;
+    /** 顾客手机号（脱敏，号码保护同口径） */
+    customerPhone: string | null;
+    /** 商品摘要：宫保鸡丁×1、米饭×2 */
+    lineText: string;
+    note: string | null;
+}
+
+/** 已完成订单列表 + 区间汇总（§75 对账） */
+export interface MerchantCompletedOrders {
+    items: MerchantCompletedOrder[];
+    /** 区间内已完成单量（不受分页影响） */
+    total: number;
+    /** 区间内订单总额 */
+    totalAmount: number;
+    /** 区间内退款总额 */
+    refundAmount: number;
+    /** 区间内实收总额 */
+    netAmount: number;
+    /** 客单价 = 实收 / 单量（取整） */
+    avgTicket: number;
+    /** 实际查询区间（回显给前端） */
+    start: Date;
+    end: Date;
+}
+
 export interface MerchantBoard {
     paused: boolean;
     /** 营业时段内且未临时休息（与 C 端 openNow 同口径，自动开关门生效依据） */
@@ -452,6 +494,133 @@ export class MerchantAdminService {
             closureNote: closure?.note ?? null,
             // 未出餐 = 待接单 + 备餐中（出餐完成即退出该计数）
             unfinishedOrders: pending.length + cooking.length,
+        };
+    }
+
+    /**
+     * 今日/区间已完成订单明细（§75 对账）：送达口径与工作台「今日完成」一致
+     * （customFields.deliveryStatus = 'delivered' + deliveredAt 落区间），
+     * 汇总按全区间统计（不受分页影响），退款取该单全部非 Failed 退款单之和。
+     */
+    async completedOrders(
+        ctx: RequestContext,
+        input: { from?: string | null; to?: string | null; take?: number | null; skip?: number | null },
+    ): Promise<MerchantCompletedOrders> {
+        const now = Date.now();
+        const start = new Date(input.from ? String(input.from) : startOfCampusDay(now));
+        const end = new Date(input.to ? String(input.to) : now);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            throw new UserInputError('时间区间格式不合法');
+        }
+        if (start.getTime() >= end.getTime()) throw new UserInputError('结束时间必须晚于开始时间');
+        // 明细按区间累计，防止误传超长区间把工作台拖慢（92 天足够覆盖季度对账前查看）
+        if (end.getTime() - start.getTime() > 92 * 24 * 3600_000) {
+            throw new UserInputError('查询区间不能超过 92 天');
+        }
+        const take = Math.min(Math.max(Number(input.take ?? 100) || 100, 1), 300);
+        const skip = Math.max(Number(input.skip ?? 0) || 0, 0);
+
+        const repo = this.connection.getRepository(ctx, Order);
+        const base = () =>
+            repo
+                .createQueryBuilder('order')
+                .leftJoin('order.channels', 'channel')
+                .where('channel.id = :ch', { ch: ctx.channelId as any })
+                .andWhere("order.customFields.deliveryStatus = 'delivered'")
+                .andWhere('order.customFields.deliveredAt >= :start', { start })
+                .andWhere('order.customFields.deliveredAt < :end', { end });
+
+        // 汇总：单量 + 总额（全区间，不被分页截断）
+        const sums: any = await base()
+            .select('COALESCE(SUM(order.total), 0)', 'amount')
+            .addSelect('COUNT(order.id)', 'count')
+            .getRawOne();
+        const total = Number(sums?.count ?? 0);
+        const totalAmount = Number(sums?.amount ?? 0);
+
+        const orders = await base()
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .orderBy('order.customFields.deliveredAt', 'DESC', 'NULLS LAST')
+            .skip(skip)
+            .take(take)
+            .getMany();
+
+        // 退款金额：按订单聚合（payment 关联订单，Failed 退款不计入）
+        const refunds = new Map<string, number>();
+        if (orders.length) {
+            const ids = orders.map(o => Number(o.id));
+            const rows: any[] = await this.connection.rawConnection.query(
+                `SELECT p."orderId" AS "orderId", COALESCE(SUM(r.total), 0) AS "amount"
+                   FROM refund r
+                   JOIN payment p ON p.id = r."paymentId"
+                  WHERE p."orderId" IN (${ids.map((_, i) => '$' + (i + 1)).join(',')})
+                    AND r.state <> 'Failed'
+                  GROUP BY p."orderId"`,
+                ids,
+            );
+            for (const row of rows ?? []) refunds.set(String(row.orderId), Number(row.amount ?? 0));
+        }
+
+        const buildingIds = new Set<string>();
+        const riderIds = new Set<number>();
+        for (const o of orders) {
+            const cf = o.customFields as any;
+            if (cf.buildingId) buildingIds.add(String(cf.buildingId));
+            if (cf.deliveryStaffId) riderIds.add(Number(cf.deliveryStaffId));
+        }
+        const buildings = buildingIds.size
+            ? await this.connection.getRepository(ctx, CampusBuilding).findByIds([...buildingIds])
+            : [];
+        const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
+        const riders = riderIds.size
+            ? await this.connection.rawConnection.getRepository('Customer').findByIds([...riderIds])
+            : [];
+        const riderNames = new Map((riders as any[]).map(c => [String(c.id), c.customFields?.riderRealName ?? '']));
+
+        const items: MerchantCompletedOrder[] = orders.map(o => {
+            const cf = o.customFields as any;
+            const refundAmount = refunds.get(String(o.id)) ?? 0;
+            const lineText = (o.lines ?? [])
+                .map(l => `${l.productVariant?.name ?? ''}×${l.quantity}`)
+                .filter(s => s.length > 0)
+                .join('、');
+            return {
+                id: String(o.id),
+                code: o.code,
+                deliveredAt: cf.deliveredAt ? new Date(cf.deliveredAt) : null,
+                createdAt: o.createdAt,
+                total: o.total,
+                refundAmount,
+                netAmount: (o.total || 0) - refundAmount,
+                building: cf.buildingId ? buildingNames.get(String(cf.buildingId)) ?? '' : '',
+                zone: cf.campusZone ?? '',
+                route: cf.fulfillmentRoute ?? '',
+                riderName: cf.deliveryStaffId ? riderNames.get(String(cf.deliveryStaffId)) ?? null : null,
+                customerPhone: this.privacy.mask(o.customer?.phoneNumber ?? null),
+                lineText,
+                note: cf.note ?? null,
+            };
+        });
+
+        // 区间退款总额：按订单聚合退款单（Failed 不计），不受分页影响
+        const refundSum: any = await base()
+            .leftJoin('order.payments', 'payment')
+            .leftJoin('payment.refunds', 'refund')
+            .select('COALESCE(SUM(refund.total), 0)', 'amount')
+            .andWhere("refund.state <> 'Failed'")
+            .getRawOne();
+        const refundAmount = Number(refundSum?.amount ?? 0);
+        return {
+            items,
+            total,
+            totalAmount,
+            refundAmount,
+            netAmount: totalAmount - refundAmount,
+            avgTicket: total > 0 ? Math.round((totalAmount - refundAmount) / total) : 0,
+            start,
+            end,
         };
     }
 

@@ -298,6 +298,124 @@ let MerchantAdminService = class MerchantAdminService {
             unfinishedOrders: pending.length + cooking.length,
         };
     }
+    /**
+     * 今日/区间已完成订单明细（§75 对账）：送达口径与工作台「今日完成」一致
+     * （customFields.deliveryStatus = 'delivered' + deliveredAt 落区间），
+     * 汇总按全区间统计（不受分页影响），退款取该单全部非 Failed 退款单之和。
+     */
+    async completedOrders(ctx, input) {
+        var _a, _b, _c, _d, _e, _f;
+        const now = Date.now();
+        const start = new Date(input.from ? String(input.from) : (0, campus_time_1.startOfCampusDay)(now));
+        const end = new Date(input.to ? String(input.to) : now);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            throw new core_1.UserInputError('时间区间格式不合法');
+        }
+        if (start.getTime() >= end.getTime())
+            throw new core_1.UserInputError('结束时间必须晚于开始时间');
+        // 明细按区间累计，防止误传超长区间把工作台拖慢（92 天足够覆盖季度对账前查看）
+        if (end.getTime() - start.getTime() > 92 * 24 * 3600000) {
+            throw new core_1.UserInputError('查询区间不能超过 92 天');
+        }
+        const take = Math.min(Math.max(Number((_a = input.take) !== null && _a !== void 0 ? _a : 100) || 100, 1), 300);
+        const skip = Math.max(Number((_b = input.skip) !== null && _b !== void 0 ? _b : 0) || 0, 0);
+        const repo = this.connection.getRepository(ctx, core_1.Order);
+        const base = () => repo
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere("order.customFields.deliveryStatus = 'delivered'")
+            .andWhere('order.customFields.deliveredAt >= :start', { start })
+            .andWhere('order.customFields.deliveredAt < :end', { end });
+        // 汇总：单量 + 总额（全区间，不被分页截断）
+        const sums = await base()
+            .select('COALESCE(SUM(order.total), 0)', 'amount')
+            .addSelect('COUNT(order.id)', 'count')
+            .getRawOne();
+        const total = Number((_c = sums === null || sums === void 0 ? void 0 : sums.count) !== null && _c !== void 0 ? _c : 0);
+        const totalAmount = Number((_d = sums === null || sums === void 0 ? void 0 : sums.amount) !== null && _d !== void 0 ? _d : 0);
+        const orders = await base()
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .orderBy('order.customFields.deliveredAt', 'DESC', 'NULLS LAST')
+            .skip(skip)
+            .take(take)
+            .getMany();
+        // 退款金额：按订单聚合（payment 关联订单，Failed 退款不计入）
+        const refunds = new Map();
+        if (orders.length) {
+            const ids = orders.map(o => Number(o.id));
+            const rows = await this.connection.rawConnection.query(`SELECT p."orderId" AS "orderId", COALESCE(SUM(r.total), 0) AS "amount"
+                   FROM refund r
+                   JOIN payment p ON p.id = r."paymentId"
+                  WHERE p."orderId" IN (${ids.map((_, i) => '$' + (i + 1)).join(',')})
+                    AND r.state <> 'Failed'
+                  GROUP BY p."orderId"`, ids);
+            for (const row of rows !== null && rows !== void 0 ? rows : [])
+                refunds.set(String(row.orderId), Number((_e = row.amount) !== null && _e !== void 0 ? _e : 0));
+        }
+        const buildingIds = new Set();
+        const riderIds = new Set();
+        for (const o of orders) {
+            const cf = o.customFields;
+            if (cf.buildingId)
+                buildingIds.add(String(cf.buildingId));
+            if (cf.deliveryStaffId)
+                riderIds.add(Number(cf.deliveryStaffId));
+        }
+        const buildings = buildingIds.size
+            ? await this.connection.getRepository(ctx, campus_building_entity_1.CampusBuilding).findByIds([...buildingIds])
+            : [];
+        const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
+        const riders = riderIds.size
+            ? await this.connection.rawConnection.getRepository('Customer').findByIds([...riderIds])
+            : [];
+        const riderNames = new Map(riders.map(c => { var _a, _b; return [String(c.id), (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.riderRealName) !== null && _b !== void 0 ? _b : '']; }));
+        const items = orders.map(o => {
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+            const cf = o.customFields;
+            const refundAmount = (_a = refunds.get(String(o.id))) !== null && _a !== void 0 ? _a : 0;
+            const lineText = ((_b = o.lines) !== null && _b !== void 0 ? _b : [])
+                .map(l => { var _a, _b; return `${(_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : ''}×${l.quantity}`; })
+                .filter(s => s.length > 0)
+                .join('、');
+            return {
+                id: String(o.id),
+                code: o.code,
+                deliveredAt: cf.deliveredAt ? new Date(cf.deliveredAt) : null,
+                createdAt: o.createdAt,
+                total: o.total,
+                refundAmount,
+                netAmount: (o.total || 0) - refundAmount,
+                building: cf.buildingId ? (_c = buildingNames.get(String(cf.buildingId))) !== null && _c !== void 0 ? _c : '' : '',
+                zone: (_d = cf.campusZone) !== null && _d !== void 0 ? _d : '',
+                route: (_e = cf.fulfillmentRoute) !== null && _e !== void 0 ? _e : '',
+                riderName: cf.deliveryStaffId ? (_f = riderNames.get(String(cf.deliveryStaffId))) !== null && _f !== void 0 ? _f : null : null,
+                customerPhone: this.privacy.mask((_h = (_g = o.customer) === null || _g === void 0 ? void 0 : _g.phoneNumber) !== null && _h !== void 0 ? _h : null),
+                lineText,
+                note: (_j = cf.note) !== null && _j !== void 0 ? _j : null,
+            };
+        });
+        // 区间退款总额：按订单聚合退款单（Failed 不计），不受分页影响
+        const refundSum = await base()
+            .leftJoin('order.payments', 'payment')
+            .leftJoin('payment.refunds', 'refund')
+            .select('COALESCE(SUM(refund.total), 0)', 'amount')
+            .andWhere("refund.state <> 'Failed'")
+            .getRawOne();
+        const refundAmount = Number((_f = refundSum === null || refundSum === void 0 ? void 0 : refundSum.amount) !== null && _f !== void 0 ? _f : 0);
+        return {
+            items,
+            total,
+            totalAmount,
+            refundAmount,
+            netAmount: totalAmount - refundAmount,
+            avgTicket: total > 0 ? Math.round((totalAmount - refundAmount) / total) : 0,
+            start,
+            end,
+        };
+    }
     /** 商家接单确认：pending_merchant → accepted */
     async acceptOrder(ctx, orderId) {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');

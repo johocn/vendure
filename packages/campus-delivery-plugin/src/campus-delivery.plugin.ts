@@ -55,6 +55,7 @@ import { P10ReviewAlertMigration } from './migrations/p10-review-alert';
 import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-restore';
 import { P13AutoAcceptMigration } from './migrations/p13-auto-accept';
 import { P14ClosureCalendarMigration } from './migrations/p14-closure-calendar';
+import { P15SupportTicketAfterSalesMigration } from './migrations/p15-support-ticket-after-sales';
 import { AutoAcceptJob } from './auto-accept.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
@@ -181,6 +182,7 @@ import { TelemetryService } from './telemetry.service';
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
         P14ClosureCalendarMigration,
+        P15SupportTicketAfterSalesMigration,
         AutoAcceptJob,
         SoldOutAutoRestoreJob,
         AddWithdrawPayoutMigration,
@@ -362,6 +364,45 @@ import { TelemetryService } from './telemetry.service';
                     """顾客手机号（脱敏，号码保护同口径）；工作台检索/联系用"""
                     customerPhone: String
                     lines: [MerchantBoardLine!]!
+                }
+
+                """已完成订单明细（§75 对账）：含退款与实收"""
+                type CampusMerchantCompletedOrder {
+                    id: ID!
+                    code: String!
+                    """送达时间（对账归时点；历史脏数据可能为 null）"""
+                    deliveredAt: DateTime
+                    createdAt: DateTime!
+                    """订单总额（与工作台「今日完成金额」同口径）"""
+                    total: Int!
+                    """该单已退金额（排除 Failed 退款单）"""
+                    refundAmount: Int!
+                    """实收 = total - refundAmount"""
+                    netAmount: Int!
+                    building: String!
+                    zone: String!
+                    route: String!
+                    riderName: String
+                    """顾客手机号（脱敏，号码保护同口径）"""
+                    customerPhone: String
+                    """商品摘要：宫保鸡丁×1、米饭×2"""
+                    lineText: String!
+                    note: String
+                }
+
+                """已完成订单列表 + 区间汇总（§75 对账）"""
+                type CampusMerchantCompletedOrders {
+                    items: [CampusMerchantCompletedOrder!]!
+                    """区间内已完成单量（不受分页影响）"""
+                    total: Int!
+                    totalAmount: Int!
+                    refundAmount: Int!
+                    netAmount: Int!
+                    """客单价 = 实收 / 单量"""
+                    avgTicket: Int!
+                    """实际查询区间（回显）"""
+                    start: DateTime!
+                    end: DateTime!
                 }
 
                 """营业时间自动切换（自动开门 / 自动打烊）：inMinutes=距切换分钟数，today=是否发生在今天"""
@@ -855,6 +896,15 @@ import { TelemetryService } from './telemetry.service';
                     customerName: String
                     customerPhone: String
                     orderCode: String
+                    """关联订单主键（建单按订单号解析并校验归属；未匹配为 null）"""
+                    orderId: ID
+                    """关联售后单主键（工单与售后打通）"""
+                    afterSalesRequestId: ID
+                    """关联售后单当前状态：Pending/Approved/Rejected/Refunded/RefundFailed/Closed 等"""
+                    afterSalesState: String
+                    afterSalesType: String
+                    afterSalesRefundAmount: Int
+                    afterSalesActualRefundAmount: Int
                     category: String!
                     content: String!
                     images: [String!]
@@ -1283,6 +1333,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantStoreProfile: MerchantStoreProfile!
                     """商家自助经营数据：今日/近 7 日单量、营业额、客单价、取消退款"""
                     campusMerchantRevenue: CampusMerchantRevenue!
+                    """今日/区间已完成订单明细（§75 对账）：from/to 为空=今日 0 点至当前"""
+                    campusMerchantCompletedOrders(from: String, to: String, take: Int, skip: Int): CampusMerchantCompletedOrders!
                     """商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号"""
                     campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
@@ -1610,6 +1662,8 @@ import { TelemetryService } from './telemetry.service';
                     """打款失败回退：PAID → FAILED 并退回骑手余额"""
                     campusMarkWithdrawFailed(id: ID!, reason: String!): RiderWithdrawalRequest!
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
+                    """工单手工关联售后单（同一店铺且同一订单；建单自动关联未命中时使用）"""
+                    campusLinkSupportTicketAfterSales(id: ID!, afterSalesRequestId: ID!): CampusSupportTicket!
                     campusReplyChat(conversationId: ID!, content: String, images: [String!]): CampusChatMessage!
                     campusCloseChatConversation(conversationId: ID!): CampusChatConversation!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
@@ -2083,6 +2137,11 @@ import { TelemetryService } from './telemetry.service';
                 type CampusMySupportTicket {
                     id: ID!
                     orderCode: String
+                    orderId: ID
+                    """关联售后单主键（无关联为 null）"""
+                    afterSalesRequestId: ID
+                    """关联售后单当前状态，用于工单列表直接展示售后进度"""
+                    afterSalesState: String
                     category: String!
                     content: String!
                     images: [String!]
@@ -2496,6 +2555,13 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             void this.h5BaseUrl(e.ctx).then(url =>
                 this.notify.user(e.ctx, e.orderId, 'afterSales', text, url, e.toState),
             );
+        });
+        // 工单与售后打通：退款到账自动关闭关联工单（运营不再重复跟单）
+        this.eventBus.ofType(AfterSalesStateTransitionEvent).subscribe(e => {
+            void this.injector
+                .get(SupportService)
+                .onAfterSalesStateChange(e.ctx, Number(e.requestId), e.toState)
+                .catch(err => Logger.warn(`售后联动关单失败: ${String(err)}`, 'CampusSupport'));
         });
         this.injector.get(DispatchJobService).start();
         // 运力预警：在线会话收口 + 待抢单量/在线骑手数告警（自管定时器，生产无 worker）

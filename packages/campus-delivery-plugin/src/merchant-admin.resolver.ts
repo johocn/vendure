@@ -35,6 +35,19 @@ export class MerchantAdminResolver {
         return this.merchant.storeProfile(ctx);
     }
 
+    /** 今日/区间已完成订单明细（§75 对账）：送达口径与工作台「今日完成」一致 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantCompletedOrders(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
+        @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
+    ) {
+        return this.merchant.completedOrders(ctx, { from, to, take, skip });
+    }
+
     /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

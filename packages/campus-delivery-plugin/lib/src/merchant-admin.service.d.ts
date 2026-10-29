@@ -34,6 +34,46 @@ export interface MerchantBoardOrder {
     customerPhone: string | null;
     lines: MerchantBoardLine[];
 }
+/** 今日已完成订单明细（§75）：商家对账用，含退款与实收 */
+export interface MerchantCompletedOrder {
+    id: string;
+    code: string;
+    /** 送达时间（对账归时点；历史脏数据可能为 null） */
+    deliveredAt: Date | null;
+    createdAt: Date;
+    /** 订单总额（与工作台「今日完成金额」同口径） */
+    total: number;
+    /** 该单已退金额（排除 Failed 退款单） */
+    refundAmount: number;
+    /** 实收 = total - refundAmount */
+    netAmount: number;
+    building: string;
+    zone: string;
+    route: string;
+    riderName: string | null;
+    /** 顾客手机号（脱敏，号码保护同口径） */
+    customerPhone: string | null;
+    /** 商品摘要：宫保鸡丁×1、米饭×2 */
+    lineText: string;
+    note: string | null;
+}
+/** 已完成订单列表 + 区间汇总（§75 对账） */
+export interface MerchantCompletedOrders {
+    items: MerchantCompletedOrder[];
+    /** 区间内已完成单量（不受分页影响） */
+    total: number;
+    /** 区间内订单总额 */
+    totalAmount: number;
+    /** 区间内退款总额 */
+    refundAmount: number;
+    /** 区间内实收总额 */
+    netAmount: number;
+    /** 客单价 = 实收 / 单量（取整） */
+    avgTicket: number;
+    /** 实际查询区间（回显给前端） */
+    start: Date;
+    end: Date;
+}
 export interface MerchantBoard {
     paused: boolean;
     /** 营业时段内且未临时休息（与 C 端 openNow 同口径，自动开关门生效依据） */
@@ -179,6 +219,17 @@ export declare class MerchantAdminService {
     /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
     private channelBusinessHours;
     board(ctx: RequestContext): Promise<MerchantBoard>;
+    /**
+     * 今日/区间已完成订单明细（§75 对账）：送达口径与工作台「今日完成」一致
+     * （customFields.deliveryStatus = 'delivered' + deliveredAt 落区间），
+     * 汇总按全区间统计（不受分页影响），退款取该单全部非 Failed 退款单之和。
+     */
+    completedOrders(ctx: RequestContext, input: {
+        from?: string | null;
+        to?: string | null;
+        take?: number | null;
+        skip?: number | null;
+    }): Promise<MerchantCompletedOrders>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;

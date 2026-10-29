@@ -54,6 +54,7 @@ const p10_review_alert_1 = require("./migrations/p10-review-alert");
 const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restore");
 const p13_auto_accept_1 = require("./migrations/p13-auto-accept");
 const p14_closure_calendar_1 = require("./migrations/p14-closure-calendar");
+const p15_support_ticket_after_sales_1 = require("./migrations/p15-support-ticket-after-sales");
 const auto_accept_job_1 = require("./auto-accept.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
@@ -318,6 +319,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p12_daily_limit_1.P12DailyLimitMigration,
             p13_auto_accept_1.P13AutoAcceptMigration,
             p14_closure_calendar_1.P14ClosureCalendarMigration,
+            p15_support_ticket_after_sales_1.P15SupportTicketAfterSalesMigration,
             auto_accept_job_1.AutoAcceptJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
@@ -499,6 +501,45 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """顾客手机号（脱敏，号码保护同口径）；工作台检索/联系用"""
                     customerPhone: String
                     lines: [MerchantBoardLine!]!
+                }
+
+                """已完成订单明细（§75 对账）：含退款与实收"""
+                type CampusMerchantCompletedOrder {
+                    id: ID!
+                    code: String!
+                    """送达时间（对账归时点；历史脏数据可能为 null）"""
+                    deliveredAt: DateTime
+                    createdAt: DateTime!
+                    """订单总额（与工作台「今日完成金额」同口径）"""
+                    total: Int!
+                    """该单已退金额（排除 Failed 退款单）"""
+                    refundAmount: Int!
+                    """实收 = total - refundAmount"""
+                    netAmount: Int!
+                    building: String!
+                    zone: String!
+                    route: String!
+                    riderName: String
+                    """顾客手机号（脱敏，号码保护同口径）"""
+                    customerPhone: String
+                    """商品摘要：宫保鸡丁×1、米饭×2"""
+                    lineText: String!
+                    note: String
+                }
+
+                """已完成订单列表 + 区间汇总（§75 对账）"""
+                type CampusMerchantCompletedOrders {
+                    items: [CampusMerchantCompletedOrder!]!
+                    """区间内已完成单量（不受分页影响）"""
+                    total: Int!
+                    totalAmount: Int!
+                    refundAmount: Int!
+                    netAmount: Int!
+                    """客单价 = 实收 / 单量"""
+                    avgTicket: Int!
+                    """实际查询区间（回显）"""
+                    start: DateTime!
+                    end: DateTime!
                 }
 
                 """营业时间自动切换（自动开门 / 自动打烊）：inMinutes=距切换分钟数，today=是否发生在今天"""
@@ -1420,6 +1461,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantStoreProfile: MerchantStoreProfile!
                     """商家自助经营数据：今日/近 7 日单量、营业额、客单价、取消退款"""
                     campusMerchantRevenue: CampusMerchantRevenue!
+                    """今日/区间已完成订单明细（§75 对账）：from/to 为空=今日 0 点至当前"""
+                    campusMerchantCompletedOrders(from: String, to: String, take: Int, skip: Int): CampusMerchantCompletedOrders!
                     """商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号"""
                     campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
