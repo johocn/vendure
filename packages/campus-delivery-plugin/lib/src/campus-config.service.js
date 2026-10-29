@@ -246,12 +246,18 @@ let CampusConfigService = CampusConfigService_1 = class CampusConfigService {
             }
             patch.timeoutCompensationWindowHours = hours;
         }
-        const nextEnabled = patch.timeoutCompensationEnabled !== undefined ? !!patch.timeoutCompensationEnabled : cfg.timeoutCompensationEnabled;
-        const nextTemplate = patch.timeoutCompensationCouponTemplateId !== undefined
-            ? patch.timeoutCompensationCouponTemplateId
-            : cfg.timeoutCompensationCouponTemplateId;
-        if (nextEnabled && !nextTemplate) {
-            throw new core_1.UserInputError('开启超时赔付前必须选择赔付券模板');
+        // 超时赔付（P2）：仅在本次修改触碰赔付字段时校验「开启必须有券模板」，
+        // 否则存量「开启但缺模板」的渠道任何无关配置（营业开关/公告/自动接单）都会被连带拒绝
+        const touchesCompensation = patch.timeoutCompensationEnabled !== undefined
+            || patch.timeoutCompensationCouponTemplateId !== undefined;
+        if (touchesCompensation) {
+            const nextEnabled = patch.timeoutCompensationEnabled !== undefined ? !!patch.timeoutCompensationEnabled : cfg.timeoutCompensationEnabled;
+            const nextTemplate = patch.timeoutCompensationCouponTemplateId !== undefined
+                ? patch.timeoutCompensationCouponTemplateId
+                : cfg.timeoutCompensationCouponTemplateId;
+            if (nextEnabled && !nextTemplate) {
+                throw new core_1.UserInputError('开启超时赔付前必须选择赔付券模板');
+            }
         }
         // 坐标（P2）：非法经纬度会让导航/取货点失效且前端无感，直接拒绝
         for (const [field, limit] of [['storeLat', 90], ['storeLng', 180]]) {
