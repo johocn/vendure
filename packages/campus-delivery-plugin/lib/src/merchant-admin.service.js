@@ -328,9 +328,9 @@ let MerchantAdminService = class MerchantAdminService {
             .andWhere('order.customFields.deliveredAt >= :start', { start })
             .andWhere('order.customFields.deliveredAt < :end', { end });
         // 汇总：单量 + 总额（全区间，不被分页截断）
-        // 注意：Order.total 是实体 getter（无对应数据库列），聚合须用 totalWithTax 列，否则 SQL 会报语法错误
+        // 注意：Order.total / totalWithTax 都是实体 getter（无对应数据库列），聚合须落到真实列 subTotalWithTax + shippingWithTax
         const sums = await base()
-            .select('COALESCE(SUM("order"."totalWithTax"), 0)', 'amount')
+            .select('COALESCE(SUM(COALESCE("order"."subTotalWithTax", 0) + COALESCE("order"."shippingWithTax", 0)), 0)', 'amount')
             .addSelect('COUNT("order"."id")', 'count')
             .getRawOne();
         const total = Number((_c = sums === null || sums === void 0 ? void 0 : sums.count) !== null && _c !== void 0 ? _c : 0);
