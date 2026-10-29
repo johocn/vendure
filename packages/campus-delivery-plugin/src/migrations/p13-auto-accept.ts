@@ -6,10 +6,10 @@ import { Connection } from 'typeorm';
 
 /** 履约配置 4 个自动接单字段（simple-json 路线列存 text）+ Order.autoAcceptedAt 留痕列 */
 export const p13AutoAcceptSql = `
-ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoacceptenabled" boolean NOT NULL DEFAULT false;
-ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoacceptdelayseconds" int NOT NULL DEFAULT 30;
-ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoacceptdailylimit" int NOT NULL DEFAULT 0;
-ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoacceptroutes" text NOT NULL DEFAULT '["R1","R2","R3"]';
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoAcceptEnabled" boolean NOT NULL DEFAULT false;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoAcceptDelaySeconds" int NOT NULL DEFAULT 30;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoAcceptDailyLimit" int NOT NULL DEFAULT 0;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoAcceptRoutes" text NOT NULL DEFAULT '["R1","R2","R3"]';
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsAutoacceptedat" timestamp;
 `;
 

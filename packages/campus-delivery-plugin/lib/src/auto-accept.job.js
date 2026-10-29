@@ -67,7 +67,7 @@ let AutoAcceptJob = class AutoAcceptJob {
     }
     /** 扫描全部渠道（仅启用了自动接单的渠道有额外开销） */
     async run() {
-        const rows = await this.connection.rawConnection.query('SELECT "channelId" FROM campus_fulfillment_config WHERE "autoacceptenabled" = true');
+        const rows = await this.connection.rawConnection.query('SELECT "channelId" FROM campus_fulfillment_config WHERE "autoAcceptEnabled" = true');
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         for (const r of Array.isArray(list) ? list : []) {
             const channelId = Number(r.channelId);

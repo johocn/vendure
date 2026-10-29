@@ -68,7 +68,7 @@ export class AutoAcceptJob implements OnApplicationShutdown {
     /** 扫描全部渠道（仅启用了自动接单的渠道有额外开销） */
     async run(): Promise<void> {
         const rows: any = await this.connection.rawConnection.query(
-            'SELECT "channelId" FROM campus_fulfillment_config WHERE "autoacceptenabled" = true',
+            'SELECT "channelId" FROM campus_fulfillment_config WHERE "autoAcceptEnabled" = true',
         );
         const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         for (const r of Array.isArray(list) ? list : []) {
