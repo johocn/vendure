@@ -26,6 +26,10 @@ export declare class BillPayOrder extends VendureEntity {
     couponCode: string | null;
     /** 券实际抵扣额（分）；明细仍在 discountDetail，单独成列便于统计 */
     couponDiscount: number | null;
+    /** 券成本承担方快照（下单时模板配置；null = 历史单，结算时回查模板） */
+    couponBearer: string | null;
+    /** 券成本分摊比例快照（0-100；null = 历史单，结算时回查模板） */
+    couponCostRate: number | null;
     status: BillPayStatus;
     /** 客户备注（留言卡/包间等） */
     remark: string | null;

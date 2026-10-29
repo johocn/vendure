@@ -56,6 +56,14 @@ export class BillPayOrder extends VendureEntity {
     @Column({ type: 'int', nullable: true })
     couponDiscount: number | null;
 
+    /** 券成本承担方快照（下单时模板配置；null = 历史单，结算时回查模板） */
+    @Column({ type: 'varchar', nullable: true })
+    couponBearer: string | null;
+
+    /** 券成本分摊比例快照（0-100；null = 历史单，结算时回查模板） */
+    @Column({ type: 'int', nullable: true })
+    couponCostRate: number | null;
+
     @Column({ type: 'varchar' })
     status: BillPayStatus;
 

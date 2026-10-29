@@ -18,7 +18,7 @@ import { BillPaySettlement } from './bill-pay-settlement.entity';
 import { BillPayShopResolver } from './bill-pay-shop.resolver';
 import { BillPayPermissions, loggerCtx } from './constants';
 import { MerchantAgreement } from './merchant-agreement.entity';
-import { AddBillPayCouponColumnsMigration, AddBillPayMerchantColumnsMigration, AddSettlementCouponCostMigration, CreateBillPayTablesMigration } from './migrations';
+import { AddBillPayCouponBearerSnapshotMigration, AddBillPayCouponColumnsMigration, AddBillPayMerchantColumnsMigration, AddSettlementCouponCostMigration, CreateBillPayTablesMigration } from './migrations';
 
 const billPayOrderType = `
 type BillPayOrder implements Node {
@@ -147,7 +147,7 @@ type BillPayConfig {
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [BillPayOrder, MerchantAgreement, BillPaySettlement, BillPayChannelConfigEntity],
-    providers: [BillPayService, CreateBillPayTablesMigration, AddBillPayCouponColumnsMigration, AddBillPayMerchantColumnsMigration, AddSettlementCouponCostMigration],
+    providers: [BillPayService, CreateBillPayTablesMigration, AddBillPayCouponColumnsMigration, AddBillPayMerchantColumnsMigration, AddSettlementCouponCostMigration, AddBillPayCouponBearerSnapshotMigration],
     exports: [BillPayService],
     adminApiExtensions: {
         schema: () => gql`

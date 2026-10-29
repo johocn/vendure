@@ -125,9 +125,9 @@ function stubSettlementService() {
         (0, vitest_1.expect)(r).toMatchObject({ ok: false, reason: in_store_bill_1.IN_STORE_REASON.MIN_SPEND_NOT_MET, couponName: '到店 8 折' });
         (0, vitest_1.expect)(r.finalAmount).toBeNull();
     });
-    (0, vitest_1.it)('查询券时按 code 且带 template.channels 关系', async () => {
+    (0, vitest_1.it)('查询券时归一化 code（trim + 大写）且带 template.channels 关系', async () => {
         ccRepo.findOne.mockResolvedValueOnce(null);
-        await service.quote(ctx, 'C-ABCD-EFGH', 10000);
+        await service.quote(ctx, ' c-abcd-efgh ', 10000);
         (0, vitest_1.expect)(ccRepo.findOne).toHaveBeenCalledWith({
             where: { code: 'C-ABCD-EFGH' },
             relations: { template: { channels: true } },
@@ -174,9 +174,8 @@ function stubSettlementService() {
         ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
         const bill = await service.redeem(ctx, ' C-ABCD-EFGH ', 20000, '老客户');
         (0, vitest_1.expect)(updateQb.set).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: 'USED' }));
-        (0, vitest_1.expect)(updateQb.where).toHaveBeenCalledWith('id = :id AND status = :unused', {
+        (0, vitest_1.expect)(updateQb.where).toHaveBeenCalledWith("id = :id AND status IN ('UNUSED', 'RETURNED')", {
             id: 11,
-            unused: 'UNUSED',
         });
         (0, vitest_1.expect)(bill).toMatchObject({
             id: 21,
@@ -198,6 +197,11 @@ function stubSettlementService() {
             remark: '老客户',
         });
         (0, vitest_1.expect)(bill.billedAt).toBeInstanceOf(Date);
+    });
+    (0, vitest_1.it)('退款回退券（RETURNED）→ 可再次到店核销（与扫码/到店列表口径一致）', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ status: 'RETURNED', template: tplStub({ usageScene: 'IN_STORE' }) }));
+        const bill = await service.redeem(ctx, 'C-ABCD-EFGH', 20000);
+        (0, vitest_1.expect)(bill).toMatchObject({ customerCouponId: 11, discountAmount: 4000, finalAmount: 16000 });
     });
     (0, vitest_1.it)('券不存在 → 抛 UserInputError（优惠券不存在），不写流水', async () => {
         ccRepo.findOne.mockResolvedValueOnce(null);
@@ -320,7 +324,7 @@ function stubSettlementService() {
     (0, vitest_1.afterEach)(() => (0, redeem_scope_1.setRedeemScopeResolver)(null));
     (0, vitest_1.it)('默认：固定过滤条件 + 临期优先排序 + 候选集上限 500 + 默认分页 20', async () => {
         const r = await service.listPending(ctx, {});
-        (0, vitest_1.expect)(pendingQb.where).toHaveBeenCalledWith('cc.status = :status', { status: 'UNUSED' });
+        (0, vitest_1.expect)(pendingQb.where).toHaveBeenCalledWith("cc.status IN ('UNUSED', 'RETURNED')");
         (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('tpl.enabled = :enabled', { enabled: true });
         (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('(tpl.usageScene = :sceneStore OR tpl.usageScene = :sceneAll)', {
             sceneStore: 'IN_STORE', sceneAll: 'ALL',

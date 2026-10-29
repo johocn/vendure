@@ -66,6 +66,14 @@ __decorate([
     __metadata("design:type", Object)
 ], BillPayOrder.prototype, "couponDiscount", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], BillPayOrder.prototype, "couponBearer", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], BillPayOrder.prototype, "couponCostRate", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], BillPayOrder.prototype, "status", void 0);

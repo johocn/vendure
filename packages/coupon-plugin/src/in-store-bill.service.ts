@@ -89,7 +89,7 @@ export class InStoreBillService {
      * 失败不抛错，返回原因码（quote 用；redeem 再转为 UserInputError）。
      */
     private async locate(ctx: RequestContext, code: string): Promise<LocateResult> {
-        const trimmed = (code ?? '').trim();
+        const trimmed = (code ?? '').trim().toUpperCase();
         if (!trimmed) {
             return { ok: false, reason: IN_STORE_REASON.COUPON_NOT_FOUND };
         }
@@ -104,7 +104,8 @@ export class InStoreBillService {
         if (!tpl || !tpl.enabled) {
             return { ok: false, reason: IN_STORE_REASON.TEMPLATE_DISABLED };
         }
-        if (cc.status !== 'UNUSED') {
+        // 与到店收银列表 / 扫码核销口径一致：退款回退（RETURNED）的券仍可再次核销
+        if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') {
             return { ok: false, reason: IN_STORE_REASON.COUPON_NOT_UNUSED };
         }
         // 已被代买单预占的券状态仍是 UNUSED，但此时线下再核销会与线上委托单双花；
@@ -203,8 +204,8 @@ export class InStoreBillService {
             .getRepository(ctx, CustomerCoupon)
             .createQueryBuilder()
             .update()
-            .set({ status: 'USED', usedAt: new Date() })
-            .where('id = :id AND status = :unused', { id: cc.id, unused: 'UNUSED' })
+            .set({ status: 'USED', usedAt: new Date(), usedOrderId: null as any })
+            .where("id = :id AND status IN ('UNUSED', 'RETURNED')", { id: cc.id })
             .execute();
         if ((consume.affected ?? 0) === 0) {
             throw new UserInputError(IN_STORE_REASON_MESSAGES[IN_STORE_REASON.COUPON_NOT_UNUSED]);
@@ -313,7 +314,7 @@ export class InStoreBillService {
             .createQueryBuilder('cc')
             .leftJoinAndSelect('cc.template', 'tpl')
             .leftJoinAndSelect('tpl.channels', 'tch')
-            .where('cc.status = :status', { status: 'UNUSED' })
+            .where("cc.status IN ('UNUSED', 'RETURNED')")
             .andWhere('tpl.enabled = :enabled', { enabled: true })
             .andWhere('(tpl.usageScene = :sceneStore OR tpl.usageScene = :sceneAll)', {
                 sceneStore: 'IN_STORE',
@@ -388,7 +389,7 @@ export class InStoreBillService {
             qb.andWhere('b.operatorId = :operatorId', { operatorId: Number(ctx.activeUserId) });
         }
         if (options?.couponCode) {
-            qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim() });
+            qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim().toUpperCase() });
         }
         if (options?.from) {
             qb.andWhere('b.billedAt >= :from', { from: options.from });

@@ -229,7 +229,7 @@ export class BillPayService {
             throw new UserInputError('Daily bill pay limit exceeded');
         }
 
-        const couponCode = input.couponCode?.trim() || null;
+        const couponCode = input.couponCode?.trim().toUpperCase() || null;
         // 用券只能在自动报价路径完成：人工报价会重写 quoteAmount/discountDetail，
         // 已预占的券会落成「有券码无抵扣」的脏单，故券路径直接拒绝转人工场景。
         let couponPlan: {
@@ -313,6 +313,9 @@ export class BillPayService {
                 discountDetail: null,
                 couponCode,
                 couponDiscount: couponPlan ? couponPlan.discount : null,
+                // 券成本承担口径快照：结算按此计算，模板后续改配置不追溯历史单
+                couponBearer: couponPlan ? (couponPlan.cc.template?.costBearer ?? 'PLATFORM') : null,
+                couponCostRate: couponPlan ? Number(couponPlan.cc.template?.merchantCostRate ?? 0) : null,
                 status: 'PENDING_QUOTE',
                 remark: input.remark ?? null,
                 quoteNote: null,
@@ -342,8 +345,8 @@ export class BillPayService {
                 })
                 .execute();
             if ((reserve.affected ?? 0) === 0) {
-                order.status = 'CANCELLED';
-                await repo.save(order);
+                // 预占失败不保留废弃单据：直接删除（日限额聚合也不含 CANCELLED，保留只会产生噪音）
+                await repo.remove(order);
                 throw new UserInputError('Coupon is already in use');
             }
             this.applyQuoteFields(order, couponPlan.quote.payable, couponPlan.quote.discountDetail, config.quoteExpireMinutes);
@@ -700,12 +703,24 @@ export class BillPayService {
             throw new UserInputError('quote note is required for manual quote');
         }
         const config = await this.getChannelConfig(ctx);
-        order.quoteAmount = amount;
-        order.discountDetail = JSON.stringify([]);
-        order.quoteNote = note;
-        this.applyQuoteFields(order, amount, [], config.quoteExpireMinutes);
-        order.status = 'QUOTED';
-        return this.orderRepo(ctx).save(order);
+        const quoteExpireAt = new Date(Date.now() + config.quoteExpireMinutes * 60_000);
+        // 原子认领 PENDING_QUOTE→QUOTED：并发改价只有一笔成功
+        const claim = await this.orderRepo(ctx)
+            .createQueryBuilder()
+            .update(BillPayOrder)
+            .set({
+                quoteAmount: amount,
+                discountDetail: JSON.stringify([]),
+                quoteNote: note,
+                quoteExpireAt,
+                status: 'QUOTED',
+            })
+            .where('id = :id AND status = :status', { id: order.id, status: 'PENDING_QUOTE' })
+            .execute();
+        if ((claim.affected ?? 0) === 0) {
+            throw new UserInputError(`Bill pay order is ${order.status}, quote not allowed`);
+        }
+        return (await this.orderRepo(ctx).findOne({ where: { id: order.id } })) as BillPayOrder;
     }
 
     /** 接单：PAID → IN_SERVICE，记录操作人；此后取消/退款仅人工入口 */
@@ -714,9 +729,17 @@ export class BillPayService {
         if (order.status !== 'PAID') {
             throw new UserInputError(`Bill pay order is ${order.status}, accept not allowed`);
         }
-        order.status = 'IN_SERVICE';
-        order.operatorId = ctx.activeUserId as number;
-        return this.orderRepo(ctx).save(order);
+        // 原子认领 PAID→IN_SERVICE：并发接单只有一笔成功
+        const claim = await this.orderRepo(ctx)
+            .createQueryBuilder()
+            .update(BillPayOrder)
+            .set({ status: 'IN_SERVICE', operatorId: ctx.activeUserId as number })
+            .where('id = :id AND status = :status', { id: order.id, status: 'PAID' })
+            .execute();
+        if ((claim.affected ?? 0) === 0) {
+            throw new UserInputError('Bill pay order is not acceptable now');
+        }
+        return (await this.orderRepo(ctx).findOne({ where: { id: order.id } })) as BillPayOrder;
     }
 
     /** 凭证回传：IN_SERVICE → COMPLETED；超容忍阈值（|actual-quote|/quote > tolerancePercent）需备注 */
@@ -746,12 +769,23 @@ export class BillPayService {
                 throw new UserInputError('Deviation exceeds tolerance, note is required');
             }
         }
-        order.actualAmount = amount;
-        order.proofUrl = proofUrl;
-        order.completeNote = note ?? null;
-        order.status = 'COMPLETED';
-        order.completedAt = new Date();
-        return this.orderRepo(ctx).save(order);
+        // 原子认领 IN_SERVICE→COMPLETED：并发回传凭证只有一笔成功
+        const claim = await this.orderRepo(ctx)
+            .createQueryBuilder()
+            .update(BillPayOrder)
+            .set({
+                actualAmount: amount,
+                proofUrl,
+                completeNote: note ?? null,
+                status: 'COMPLETED',
+                completedAt: new Date(),
+            })
+            .where('id = :id AND status = :status', { id: order.id, status: 'IN_SERVICE' })
+            .execute();
+        if ((claim.affected ?? 0) === 0) {
+            throw new UserInputError('Bill pay order is not completable now');
+        }
+        return (await this.orderRepo(ctx).findOne({ where: { id: order.id } })) as BillPayOrder;
     }
 
     /** 结算：COMPLETED → SETTLED，写 bill_pay_settlement 台账（差价模型毛利） */
@@ -776,13 +810,13 @@ export class BillPayService {
             });
         }
         const settleRate = agreement?.settleRate ?? 100;
-        // 券成本承担：按订单券码回查模板配置（券码缺失/模板已删时回退平台承担，保持历史口径）
+        // 券成本承担：优先用下单时快照（模板改配置不追溯历史单）；历史单无快照时按券码回查模板
         const couponAmount = order.couponCode
             ? Math.max(0, Math.round(Number(order.couponDiscount ?? 0)))
             : 0;
-        let couponBearer = 'PLATFORM';
-        let merchantCostRate = 0;
-        if (couponAmount > 0 && order.couponCode) {
+        let couponBearer = order.couponBearer;
+        let merchantCostRate = order.couponCostRate;
+        if (couponAmount > 0 && order.couponCode && couponBearer == null) {
             const cc = await this.connection
                 .getRepository(ctx, CustomerCoupon)
                 .findOne({ where: { code: order.couponCode }, relations: { template: true } });
@@ -794,39 +828,66 @@ export class BillPayService {
             actualAmount: order.actualAmount,
             settleRate,
             couponAmount,
-            couponBearer,
-            merchantCostRate,
+            couponBearer: couponBearer ?? 'PLATFORM',
+            merchantCostRate: Number(merchantCostRate ?? 0),
         });
         const settlementRepo = this.connection.getRepository(ctx, BillPaySettlement);
-        const existing = await settlementRepo.findOne({ where: { billPayOrderId: order.id as any } });
-        if (existing) {
-            order.settleLedgerId = existing.id as number;
-            return this.orderRepo(ctx).save(order);
+        // 原子认领 COMPLETED→SETTLED：并发结算只有一笔成功，其余直接失败，避免重复台账
+        const claim = await this.orderRepo(ctx)
+            .createQueryBuilder()
+            .update(BillPayOrder)
+            .set({ status: 'SETTLED', settledAt: new Date() })
+            .where('id = :id AND status = :status', { id: order.id, status: 'COMPLETED' })
+            .execute();
+        if ((claim.affected ?? 0) === 0) {
+            throw new UserInputError('Bill pay order is not settleable now');
         }
-        const settlement = await settlementRepo.save(
-            new BillPaySettlement({
-                billPayOrderId: order.id as number,
-                code: order.code ?? `${BILLPAY_CODE_PREFIX}${order.id}`,
-                channelId: ctx.channelId as number,
-                merchantName: order.merchantName,
-                merchantId: order.merchantId ?? agreement?.merchantId ?? null,
-                quoteAmount: order.quoteAmount ?? 0,
-                actualAmount: order.actualAmount,
-                settleRate: calc.settleRate,
-                costAmount: calc.costAmount,
-                grossAmount: calc.grossAmount,
-                couponAmount: calc.couponAmount,
-                couponBearer: calc.couponBearer,
-                couponCostRate: calc.couponCostRate,
-                merchantCouponCost: calc.merchantCouponCost,
-                platformCouponCost: calc.platformCouponCost,
-                occurredAt: new Date(),
-            }),
-        );
-        order.status = 'SETTLED';
-        order.settledAt = new Date();
-        order.settleLedgerId = settlement.id as number;
-        return this.orderRepo(ctx).save(order);
+        try {
+            const existing = await settlementRepo.findOne({ where: { billPayOrderId: order.id as any } });
+            let settlementId: number;
+            if (existing) {
+                // 幂等重试：台账已存在则直接复用（唯一索引兜底并发）
+                settlementId = existing.id as number;
+            } else {
+                const settlement = await settlementRepo.save(
+                    new BillPaySettlement({
+                        billPayOrderId: order.id as number,
+                        code: order.code ?? `${BILLPAY_CODE_PREFIX}${order.id}`,
+                        channelId: ctx.channelId as number,
+                        merchantName: order.merchantName,
+                        merchantId: order.merchantId ?? agreement?.merchantId ?? null,
+                        quoteAmount: order.quoteAmount ?? 0,
+                        actualAmount: order.actualAmount,
+                        settleRate: calc.settleRate,
+                        costAmount: calc.costAmount,
+                        grossAmount: calc.grossAmount,
+                        couponAmount: calc.couponAmount,
+                        couponBearer: calc.couponBearer,
+                        couponCostRate: calc.couponCostRate,
+                        merchantCouponCost: calc.merchantCouponCost,
+                        platformCouponCost: calc.platformCouponCost,
+                        occurredAt: new Date(),
+                    }),
+                );
+                settlementId = settlement.id as number;
+            }
+            await this.orderRepo(ctx)
+                .createQueryBuilder()
+                .update(BillPayOrder)
+                .set({ settleLedgerId: settlementId })
+                .where('id = :id', { id: order.id })
+                .execute();
+            return (await this.orderRepo(ctx).findOne({ where: { id: order.id } })) as BillPayOrder;
+        } catch (e) {
+            // 台账写入失败：回退状态，避免出现「已结算但无台账」的单
+            await this.orderRepo(ctx)
+                .createQueryBuilder()
+                .update(BillPayOrder)
+                .set({ status: 'COMPLETED', settledAt: null as any })
+                .where('id = :id AND status = :status', { id: order.id, status: 'SETTLED' })
+                .execute();
+            throw e;
+        }
     }
 
     /** 人工退款：仅 PAID 未接单；微信原路退 / 余额退回（IN_SERVICE 后仅走对账人工处理） */

@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AddSettlementCouponCostMigration = exports.CreateBillPayTablesMigration = exports.AddBillPayMerchantColumnsMigration = exports.AddBillPayCouponColumnsMigration = void 0;
+exports.AddSettlementCouponCostMigration = exports.CreateBillPayTablesMigration = exports.AddBillPayMerchantColumnsMigration = exports.AddBillPayCouponColumnsMigration = exports.AddBillPayCouponBearerSnapshotMigration = void 0;
+var add_bill_pay_coupon_bearer_snapshot_1 = require("./add-bill-pay-coupon-bearer-snapshot");
+Object.defineProperty(exports, "AddBillPayCouponBearerSnapshotMigration", { enumerable: true, get: function () { return add_bill_pay_coupon_bearer_snapshot_1.AddBillPayCouponBearerSnapshotMigration; } });
 var add_bill_pay_coupon_columns_1 = require("./add-bill-pay-coupon-columns");
 Object.defineProperty(exports, "AddBillPayCouponColumnsMigration", { enumerable: true, get: function () { return add_bill_pay_coupon_columns_1.AddBillPayCouponColumnsMigration; } });
 var add_bill_pay_merchant_columns_1 = require("./add-bill-pay-merchant-columns");

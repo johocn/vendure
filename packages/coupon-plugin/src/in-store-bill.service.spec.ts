@@ -160,9 +160,9 @@ describe('InStoreBillService.quote', () => {
         expect(r.finalAmount).toBeNull();
     });
 
-    it('查询券时按 code 且带 template.channels 关系', async () => {
+    it('查询券时归一化 code（trim + 大写）且带 template.channels 关系', async () => {
         ccRepo.findOne.mockResolvedValueOnce(null);
-        await service.quote(ctx, 'C-ABCD-EFGH', 10000);
+        await service.quote(ctx, ' c-abcd-efgh ', 10000);
         expect(ccRepo.findOne).toHaveBeenCalledWith({
             where: { code: 'C-ABCD-EFGH' },
             relations: { template: { channels: true } },
@@ -210,9 +210,8 @@ describe('InStoreBillService.redeem', () => {
         const bill: any = await service.redeem(ctx, ' C-ABCD-EFGH ', 20000, '老客户');
 
         expect(updateQb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'USED' }));
-        expect(updateQb.where).toHaveBeenCalledWith('id = :id AND status = :unused', {
+        expect(updateQb.where).toHaveBeenCalledWith("id = :id AND status IN ('UNUSED', 'RETURNED')", {
             id: 11,
-            unused: 'UNUSED',
         });
         expect(bill).toMatchObject({
             id: 21,
@@ -234,6 +233,14 @@ describe('InStoreBillService.redeem', () => {
             remark: '老客户',
         });
         expect(bill.billedAt).toBeInstanceOf(Date);
+    });
+
+    it('退款回退券（RETURNED）→ 可再次到店核销（与扫码/到店列表口径一致）', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(
+            ccStub({ status: 'RETURNED', template: tplStub({ usageScene: 'IN_STORE' }) }),
+        );
+        const bill: any = await service.redeem(ctx, 'C-ABCD-EFGH', 20000);
+        expect(bill).toMatchObject({ customerCouponId: 11, discountAmount: 4000, finalAmount: 16000 });
     });
 
     it('券不存在 → 抛 UserInputError（优惠券不存在），不写流水', async () => {
@@ -375,7 +382,7 @@ describe('InStoreBillService.listPending（核销页默认待核销券列表）'
 
     it('默认：固定过滤条件 + 临期优先排序 + 候选集上限 500 + 默认分页 20', async () => {
         const r = await service.listPending(ctx, {});
-        expect(pendingQb.where).toHaveBeenCalledWith('cc.status = :status', { status: 'UNUSED' });
+        expect(pendingQb.where).toHaveBeenCalledWith("cc.status IN ('UNUSED', 'RETURNED')");
         expect(pendingQb.andWhere).toHaveBeenCalledWith('tpl.enabled = :enabled', { enabled: true });
         expect(pendingQb.andWhere).toHaveBeenCalledWith('(tpl.usageScene = :sceneStore OR tpl.usageScene = :sceneAll)', {
             sceneStore: 'IN_STORE', sceneAll: 'ALL',

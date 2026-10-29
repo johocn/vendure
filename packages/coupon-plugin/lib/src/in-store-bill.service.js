@@ -33,7 +33,7 @@ let InStoreBillService = class InStoreBillService {
      */
     async locate(ctx, code) {
         var _a;
-        const trimmed = (code !== null && code !== void 0 ? code : '').trim();
+        const trimmed = (code !== null && code !== void 0 ? code : '').trim().toUpperCase();
         if (!trimmed) {
             return { ok: false, reason: in_store_bill_1.IN_STORE_REASON.COUPON_NOT_FOUND };
         }
@@ -48,7 +48,8 @@ let InStoreBillService = class InStoreBillService {
         if (!tpl || !tpl.enabled) {
             return { ok: false, reason: in_store_bill_1.IN_STORE_REASON.TEMPLATE_DISABLED };
         }
-        if (cc.status !== 'UNUSED') {
+        // 与到店收银列表 / 扫码核销口径一致：退款回退（RETURNED）的券仍可再次核销
+        if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') {
             return { ok: false, reason: in_store_bill_1.IN_STORE_REASON.COUPON_NOT_UNUSED };
         }
         // 已被代买单预占的券状态仍是 UNUSED，但此时线下再核销会与线上委托单双花；
@@ -134,8 +135,8 @@ let InStoreBillService = class InStoreBillService {
             .getRepository(ctx, customer_coupon_entity_1.CustomerCoupon)
             .createQueryBuilder()
             .update()
-            .set({ status: 'USED', usedAt: new Date() })
-            .where('id = :id AND status = :unused', { id: cc.id, unused: 'UNUSED' })
+            .set({ status: 'USED', usedAt: new Date(), usedOrderId: null })
+            .where("id = :id AND status IN ('UNUSED', 'RETURNED')", { id: cc.id })
             .execute();
         if (((_a = consume.affected) !== null && _a !== void 0 ? _a : 0) === 0) {
             throw new core_1.UserInputError(in_store_bill_1.IN_STORE_REASON_MESSAGES[in_store_bill_1.IN_STORE_REASON.COUPON_NOT_UNUSED]);
@@ -234,7 +235,7 @@ let InStoreBillService = class InStoreBillService {
             .createQueryBuilder('cc')
             .leftJoinAndSelect('cc.template', 'tpl')
             .leftJoinAndSelect('tpl.channels', 'tch')
-            .where('cc.status = :status', { status: 'UNUSED' })
+            .where("cc.status IN ('UNUSED', 'RETURNED')")
             .andWhere('tpl.enabled = :enabled', { enabled: true })
             .andWhere('(tpl.usageScene = :sceneStore OR tpl.usageScene = :sceneAll)', {
             sceneStore: 'IN_STORE',
@@ -309,7 +310,7 @@ let InStoreBillService = class InStoreBillService {
             qb.andWhere('b.operatorId = :operatorId', { operatorId: Number(ctx.activeUserId) });
         }
         if (options === null || options === void 0 ? void 0 : options.couponCode) {
-            qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim() });
+            qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim().toUpperCase() });
         }
         if (options === null || options === void 0 ? void 0 : options.from) {
             qb.andWhere('b.billedAt >= :from', { from: options.from });
