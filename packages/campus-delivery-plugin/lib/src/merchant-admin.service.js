@@ -225,6 +225,8 @@ let MerchantAdminService = class MerchantAdminService {
             .andWhere("order.customFields.hallStatus IN ('pending_merchant','accepted','open','grabbed','pending_dispatch','third_party','owned_pool','owned_dispatched','merchant_delivering','scheduled')")
             .leftJoinAndSelect('order.lines', 'lines')
             .leftJoinAndSelect('lines.productVariant', 'variant')
+            // 顾客关联：工作台卡片展示脱敏手机号（便于按尾号检索/联系），不取明文
+            .leftJoinAndSelect('order.customer', 'customer')
             .getMany();
         // 今日已送达口径：按校园时区（UTC+8）日界，不随部署服务器时区漂移
         const startOfDay = new Date((0, campus_time_1.startOfCampusDay)(Date.now()));
@@ -895,7 +897,7 @@ let MerchantAdminService = class MerchantAdminService {
             : [];
         const riderNames = new Map(customers.map(c => { var _a, _b; return [String(c.id), (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.riderRealName) !== null && _b !== void 0 ? _b : '']; }));
         return orders.map(o => {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
             const cf = o.customFields;
             return {
                 id: String(o.id),
@@ -913,7 +915,9 @@ let MerchantAdminService = class MerchantAdminService {
                 provider: cf.thirdPartyProvider || null,
                 thirdPartyNo: cf.thirdPartyNo || null,
                 handoverCode: cf.handoverCode || null,
-                lines: ((_h = o.lines) !== null && _h !== void 0 ? _h : []).map(l => {
+                // 脱敏口径与号码保护一致：11 位保留前 3 后 4，绝不外泄明文
+                customerPhone: this.privacy.mask((_j = (_h = o.customer) === null || _h === void 0 ? void 0 : _h.phoneNumber) !== null && _j !== void 0 ? _j : null),
+                lines: ((_k = o.lines) !== null && _k !== void 0 ? _k : []).map(l => {
                     var _a, _b;
                     return ({
                         name: (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '',

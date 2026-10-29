@@ -30,6 +30,8 @@ export interface MerchantBoardOrder {
     provider: string | null;
     thirdPartyNo: string | null;
     handoverCode: string | null;
+    /** 顾客手机号（脱敏，与号码保护同口径）：工作台检索用，不返回明文 */
+    customerPhone: string | null;
     lines: MerchantBoardLine[];
 }
 export interface MerchantBoard {

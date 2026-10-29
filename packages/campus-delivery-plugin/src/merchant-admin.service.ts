@@ -59,6 +59,8 @@ export interface MerchantBoardOrder {
     provider: string | null; // 外部快递：dada / meituan（运营中心派单后写入）
     thirdPartyNo: string | null; // 外部快递平台单号
     handoverCode: string | null; // 交接码（第一段送达交接点后生成，骑手取货时核对）
+    /** 顾客手机号（脱敏，与号码保护同口径）：工作台检索用，不返回明文 */
+    customerPhone: string | null;
     lines: MerchantBoardLine[];
 }
 
@@ -379,6 +381,8 @@ export class MerchantAdminService {
             )
             .leftJoinAndSelect('order.lines', 'lines')
             .leftJoinAndSelect('lines.productVariant', 'variant')
+            // 顾客关联：工作台卡片展示脱敏手机号（便于按尾号检索/联系），不取明文
+            .leftJoinAndSelect('order.customer', 'customer')
             .getMany();
         // 今日已送达口径：按校园时区（UTC+8）日界，不随部署服务器时区漂移
         const startOfDay = new Date(startOfCampusDay(Date.now()));
@@ -1102,6 +1106,8 @@ export class MerchantAdminService {
                 provider: cf.thirdPartyProvider || null,
                 thirdPartyNo: cf.thirdPartyNo || null,
                 handoverCode: cf.handoverCode || null,
+                // 脱敏口径与号码保护一致：11 位保留前 3 后 4，绝不外泄明文
+                customerPhone: this.privacy.mask(o.customer?.phoneNumber ?? null),
                 lines: (o.lines ?? []).map(l => ({
                     name: l.productVariant?.name ?? '',
                     quantity: l.quantity,

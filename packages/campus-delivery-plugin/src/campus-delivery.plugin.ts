@@ -359,6 +359,8 @@ import { TelemetryService } from './telemetry.service';
                     provider: String
                     thirdPartyNo: String
                     handoverCode: String
+                    """顾客手机号（脱敏，号码保护同口径）；工作台检索/联系用"""
+                    customerPhone: String
                     lines: [MerchantBoardLine!]!
                 }
 
