@@ -56,6 +56,7 @@ const points_mall_plugin_1 = require("@vendure/points-mall-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const merchant_plugin_1 = require("@vendure/merchant-plugin");
 const bill_pay_plugin_1 = require("@vendure/bill-pay-plugin");
 const campus_delivery_plugin_1 = require("@vendure/campus-delivery-plugin");
 const campus_jianghu_plugin_1 = require("@vendure/campus-jianghu-plugin");
@@ -454,6 +455,7 @@ exports.devConfig = {
         favorite_plugin_1.FavoritePlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
         coupon_plugin_1.CouponPlugin.init(),
+        merchant_plugin_1.MerchantPlugin.init(),
         bill_pay_plugin_1.BillPayPlugin.init(),
         live_streaming_plugin_1.LiveStreamingPlugin.init({
             pushDomain: process.env.LIVE_PUSH_DOMAIN || 'rtmp://push.test.com/live/',
@@ -539,7 +541,6 @@ function getDbConfig() {
         case 'postgres':
             console.log('Using postgres connection');
             return {
-                // DB_SYNC=0 关闭线上自动同步（order 表已删列累积逼近 1600 列上限，同步会启动失败）
                 synchronize: process.env.DB_SYNC !== '0',
                 type: 'postgres',
                 host: process.env.DB_HOST || 'localhost',

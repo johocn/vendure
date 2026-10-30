@@ -1012,6 +1012,9 @@ importers:
 
   packages/coupon-plugin:
     dependencies:
+      '@vendure/merchant-plugin':
+        specifier: workspace:*
+        version: link:../merchant-plugin
       '@vendure/recharge-card-plugin':
         specifier: workspace:*
         version: link:../recharge-card-plugin
@@ -1531,6 +1534,9 @@ importers:
       '@vendure/member-level-plugin':
         specifier: 0.0.1
         version: link:../member-level-plugin
+      '@vendure/merchant-plugin':
+        specifier: 0.0.1
+        version: link:../merchant-plugin
       '@vendure/message-plugin':
         specifier: 0.0.1
         version: link:../message-plugin
@@ -2062,6 +2068,21 @@ importers:
         version: 5.8.2
 
   packages/member-level-plugin:
+    devDependencies:
+      '@vendure/common':
+        specifier: workspace:*
+        version: link:../common
+      '@vendure/core':
+        specifier: workspace:*
+        version: link:../core
+      rimraf:
+        specifier: ^5.0.5
+        version: 5.0.5
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+
+  packages/merchant-plugin:
     devDependencies:
       '@vendure/common':
         specifier: workspace:*
