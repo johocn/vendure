@@ -21,6 +21,20 @@ const CUSTOMER_CANCELLABLE_STATES = ['Created', 'AddingItems', 'ArrangingPayment
 /** 已下单未支付（支付已授权未结算）也允许顾客自助取消 */
 const UNPAID_AUTHORIZED_STATE = 'PaymentAuthorized';
 /**
+ * 已实付外卖单自助取消窗口：hallStatus 必须仍是「未开始履约」的态——
+ * 空（未入厅/入厅失败）、scheduled（预约未到点）、pending_merchant（等商家接单）、open（等骑手接单）。
+ * 一旦商家接单/出餐、骑手抢单、推送外部快递或送达，都不再允许顾客自助取消。
+ */
+const PAID_CANCELLABLE_HALL_STATUSES = ['', 'scheduled', 'pending_merchant', 'open'];
+/** 走骑手履约的校园路线（R4 到店自取不在本窗口内；普通快递单不走本分支） */
+const CAMPUS_RIDER_ROUTES = ['R1', 'R2', 'R3', 'R5'];
+/** 已产生的配送动作：出现即禁止自助取消 */
+const ASSIGNED_DELIVERY_STATUSES = ['assigned', 'in_progress', 'delivered'];
+/** 可退款支付状态（与 campus 退款口径一致） */
+const REFUNDABLE_PAYMENT_STATES = ['Settled', 'Authorized'];
+/** 已实付状态 */
+const PAID_SETTLED_STATE = 'PaymentSettled';
+/**
  * C 端「我的订单」列表查询。
  *
  * 前端 `vshop/src/api/queries/order.ts#getOrders` 一直在发
@@ -73,6 +87,9 @@ let MyOrdersShopResolver = class MyOrdersShopResolver {
      *   再整体取消订单（已下单单走 cancelOrderByOrderLines，幂等释放分配）。
      *   守卫：任一支付已结算（Settled）→ 拒绝（实付单走售后退款）；含酒店行 → 拒绝
      *   （走 OrderHotelCancelModal 专用取消/退款流程，避免预订单悬空）。
+     * - 已实付外卖单（PaymentSettled）：仅「未开始履约」窗口（hallStatus=空/scheduled/pending_merchant/open，
+     *   且无骑手/无外部运单/未送达）允许自助取消；全额退款后取消订单，由取消事件自动脱厅/释放时段锁。
+     *   已接单、已出餐、已抢单、已推送外部快递、已送达一律拒绝（提示走售后）。
      */
     async cancelMyOrder(ctx, orderId) {
         var _a, _b, _c, _d;
@@ -87,6 +104,9 @@ let MyOrdersShopResolver = class MyOrdersShopResolver {
         const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
         if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new core_1.ForbiddenError();
+        }
+        if (order.state === PAID_SETTLED_STATE) {
+            return this.cancelPaidOrder(ctx, order);
         }
         if (!CUSTOMER_CANCELLABLE_STATES.includes(order.state) && order.state !== UNPAID_AUTHORIZED_STATE) {
             throw new core_1.UserInputError(`ORDER_CANNOT_BE_CANCELLED:${order.state}`);
@@ -134,6 +154,116 @@ let MyOrdersShopResolver = class MyOrdersShopResolver {
             throw new core_1.UserInputError(result.message);
         }
         return result;
+    }
+    /**
+     * 已实付外卖单自助取消：退款 + 取消。
+     * 用订单级 PG 咨询锁串行化，避免与商家拒单 / T4 无人接单退款 / 调度超时兜底并发时重复退款。
+     * 退款口径与 campus 一致：只退 Settled/Authorized 且仍有余额的支付单（排除 Failed 退款单）。
+     * 取消后由 campus 插件的 Cancelled 事件自动脱厅、取消外部运单、释放时段锁位。
+     */
+    async cancelPaidOrder(ctx, order) {
+        var _a, _b, _c, _d, _e;
+        const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
+        const route = String((_b = cf.fulfillmentRoute) !== null && _b !== void 0 ? _b : '');
+        // 仅校园骑手履约单；R4 到店自取/普通快递不在此窗口（到店自取可能已核销，盲退有资损风险）
+        if (cf.orderKind !== 'errand' && !CAMPUS_RIDER_ROUTES.includes(route)) {
+            throw new core_1.UserInputError(`ORDER_CANNOT_BE_CANCELLED:${order.state}`);
+        }
+        this.assertPaidCancelable(cf);
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:refund:${order.id}`;
+        try {
+            const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!((_c = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _c === void 0 ? void 0 : _c.ok)) {
+                throw new core_1.UserInputError('该订单正在处理中，请稍后重试');
+            }
+            // 锁内复查：等待锁期间可能已被商家接单/骑手抢单/T4 退款
+            const fresh = await this.orderService.findOne(ctx, order.id, ['lines']);
+            if (!fresh || fresh.state !== PAID_SETTLED_STATE) {
+                throw new core_1.UserInputError(`ORDER_CANNOT_BE_CANCELLED:${(_d = fresh === null || fresh === void 0 ? void 0 : fresh.state) !== null && _d !== void 0 ? _d : 'UNKNOWN'}`);
+            }
+            this.assertPaidCancelable(((_e = fresh.customFields) !== null && _e !== void 0 ? _e : {}));
+            await this.refundAllPaid(ctx, fresh);
+            const cancelled = await this.orderService.cancelOrder(ctx, {
+                orderId: fresh.id,
+                reason: '顾客取消（已支付未接单）',
+            });
+            if ((0, core_1.isGraphQlErrorResult)(cancelled)) {
+                core_1.Logger.warn(`实付单取消失败 order#${order.id}: ${cancelled.message}`, loggerCtx);
+                throw new core_1.UserInputError(cancelled.message);
+            }
+            return cancelled;
+        }
+        finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            }
+            catch (_f) {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
+    }
+    /** 校验「已支付且尚未开始履约」：任何履约动作出现即拒绝自助取消 */
+    assertPaidCancelable(cf) {
+        var _a, _b;
+        const hallStatus = String((_a = cf.hallStatus) !== null && _a !== void 0 ? _a : '');
+        if (!PAID_CANCELLABLE_HALL_STATUSES.includes(hallStatus)) {
+            throw new core_1.UserInputError(`ORDER_ALREADY_IN_FULFILLMENT:${hallStatus}`);
+        }
+        const deliveryStatus = String((_b = cf.deliveryStatus) !== null && _b !== void 0 ? _b : '');
+        if (cf.deliveryStaffId != null || ASSIGNED_DELIVERY_STATUSES.includes(deliveryStatus)) {
+            throw new core_1.UserInputError('ORDER_ALREADY_ASSIGNED');
+        }
+        // 外部快递已推送/已接单（含回调异常态）同样不可自助取消
+        if (cf.thirdPartyState || cf.thirdPartyOrderId) {
+            throw new core_1.UserInputError('ORDER_ALREADY_ASSIGNED');
+        }
+    }
+    /** 全额退款：逐笔退剩余额度；refundOrder 停在 Pending 时推进到 Settled，未达 Settled 视为失败 */
+    async refundAllPaid(ctx, order) {
+        var _a, _b, _c, _d, _e, _f;
+        const payments = await this.connection
+            .getRepository(ctx, core_1.Payment)
+            .find({ where: { order: { id: order.id } }, order: { id: 'DESC' } });
+        for (const payment of payments) {
+            if (!REFUNDABLE_PAYMENT_STATES.includes(String(payment.state)))
+                continue;
+            const refunded = await this.connection
+                .getRepository(ctx, core_1.Refund)
+                .createQueryBuilder('r')
+                .select('COALESCE(SUM(r.total), 0)', 'sum')
+                .where('r.paymentId = :pid', { pid: payment.id })
+                .andWhere('r.state <> :failed', { failed: 'Failed' })
+                .getRawOne();
+            const remaining = Number(payment.amount) - Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0);
+            if (remaining <= 0)
+                continue;
+            let refund = await this.orderService.refundOrder(ctx, {
+                paymentId: payment.id,
+                amount: remaining,
+                // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（与 campus 同口径）
+                shipping: 0,
+                adjustment: 0,
+                reason: `customer cancel (${order.code})`,
+            });
+            if (!refund || refund.errorCode) {
+                core_1.Logger.warn(`实付单退款失败 order#${order.id}: ${(_b = refund === null || refund === void 0 ? void 0 : refund.errorCode) !== null && _b !== void 0 ? _b : 'unknown'}`, loggerCtx);
+                throw new core_1.UserInputError(`REFUND_FAILED:${(_c = refund === null || refund === void 0 ? void 0 : refund.errorCode) !== null && _c !== void 0 ? _c : 'UNKNOWN'}`);
+            }
+            if (refund.state === 'Pending') {
+                refund = await this.orderService.settleRefund(ctx, {
+                    id: refund.id,
+                    transactionId: (_e = (_d = refund.transactionId) !== null && _d !== void 0 ? _d : refund.paymentId) !== null && _e !== void 0 ? _e : '',
+                });
+            }
+            if ((refund === null || refund === void 0 ? void 0 : refund.state) !== 'Settled') {
+                core_1.Logger.warn(`实付单退款未达 Settled order#${order.id}: ${refund === null || refund === void 0 ? void 0 : refund.state}`, loggerCtx);
+                throw new core_1.UserInputError(`REFUND_FAILED:${(_f = refund === null || refund === void 0 ? void 0 : refund.state) !== null && _f !== void 0 ? _f : 'UNKNOWN'}`);
+            }
+        }
     }
 };
 exports.MyOrdersShopResolver = MyOrdersShopResolver;
