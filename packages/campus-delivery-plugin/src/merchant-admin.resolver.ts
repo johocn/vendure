@@ -206,11 +206,31 @@ export class MerchantAdminResolver {
     async campusMerchantAfterSales(
         @Ctx() ctx: RequestContext,
         @Args({ name: 'state', type: () => String, nullable: true }) state?: string | null,
+        @Args({ name: 'type', type: () => String, nullable: true }) type?: string | null,
+        @Args({ name: 'orderCode', type: () => String, nullable: true }) orderCode?: string | null,
+        @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
+        @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
-        return this.merchant.afterSalesList(ctx, state);
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, from, to, skip, take });
     }
 
-    /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded） */
+    /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesDetail(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesDetail(ctx, id);
+    }
+
+    /** 售后处理统计（§81）：待处理/超时/今日处理量/今日退款额 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesStats(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesStats(ctx);
+    }
+
+    /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantAfterSalesApprove(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
@@ -226,6 +246,18 @@ export class MerchantAdminResolver {
         @Args('reason') reason: string,
     ) {
         return this.merchant.afterSalesReject(ctx, id, reason);
+    }
+
+    /** 商家协商留言（§81）：与顾客 C 端售后详情双向互通，Closed 后禁言 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReply(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('content') content: string,
+        @Args({ name: 'images', type: () => [String], nullable: true }) images?: string[] | null,
+    ) {
+        return this.merchant.afterSalesReply(ctx, id, content, images);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

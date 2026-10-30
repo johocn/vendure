@@ -31,6 +31,8 @@ const daily_limit_1 = require("./daily-limit");
 const auto_accept_1 = require("./auto-accept");
 const closure_calendar_1 = require("./closure-calendar");
 const batch_orders_1 = require("./batch-orders");
+/** 需商家处理的状态：Pending=待审批 / Appealed=顾客申诉（商家可再次同意） */
+const AFTER_SALES_PENDING_STATES = ['Pending', 'Appealed'];
 /** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
 exports.KDS_WARN_MINUTES = 15;
 exports.KDS_LATE_MINUTES = 25;
@@ -1148,35 +1150,79 @@ let MerchantAdminService = class MerchantAdminService {
             },
         };
     }
-    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    async afterSalesList(ctx, state) {
+    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部 */
+    async afterSalesList(ctx, state, opts = {}) {
+        var _a, _b;
         const repo = this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest);
         // 渠道隔离：售后单本身挂了 channels，但其归属以订单渠道为准（售后单可能由平台代建）
-        const base = () => repo.createQueryBuilder('a')
-            .leftJoinAndSelect('a.order', 'o')
+        const scoped = () => repo.createQueryBuilder('a')
+            .leftJoin('a.order', 'o')
             .leftJoin('o.channels', 'c')
             .where('c.id = :ch', { ch: ctx.channelId })
             .andWhere('o.customFields.hallStatus IS NOT NULL');
-        const pendingCount = await base().andWhere('a.state = :st', { st: 'Pending' }).getCount();
-        const total = await base().getCount();
+        const { from, to } = this.afterSalesRange(opts);
+        /** 追加非 state 筛选条件（原地修改并返回，保持 QueryBuilder 类型以便 getMany 正常推断） */
+        const applyFilters = (target) => {
+            var _a, _b;
+            const type = String((_a = opts.type) !== null && _a !== void 0 ? _a : '').trim();
+            if (type)
+                target.andWhere('a.type = :tp', { tp: type });
+            const code = String((_b = opts.orderCode) !== null && _b !== void 0 ? _b : '').trim();
+            if (code)
+                target.andWhere('o.code ILIKE :code', { code: `%${code}%` });
+            if (from)
+                target.andWhere('a.createdAt >= :from', { from });
+            if (to)
+                target.andWhere('a.createdAt < :to', { to });
+            return target;
+        };
+        // 状态计数不受 state 筛选影响：入口红点与页签角标口径统一
+        const countRows = await scoped()
+            .select('a.state', 'state')
+            .addSelect('COUNT(*)', 'n')
+            .groupBy('a.state')
+            .getRawMany();
+        const stateCounts = countRows
+            .map(r => { var _a; return ({ state: String((_a = r.state) !== null && _a !== void 0 ? _a : ''), count: Number(r.n) || 0 }); })
+            .sort((a, b) => b.count - a.count || a.state.localeCompare(b.state));
+        const pendingCount = stateCounts
+            .filter(r => AFTER_SALES_PENDING_STATES.includes(r.state))
+            .reduce((s, r) => s + r.count, 0);
         const wanted = String(state !== null && state !== void 0 ? state : '').trim();
-        const qb = base()
+        const totalQb = applyFilters(scoped());
+        if (wanted)
+            totalQb.andWhere('a.state = :st', { st: wanted });
+        const total = await totalQb.getCount();
+        const take = Math.min(Math.max(Number((_a = opts.take) !== null && _a !== void 0 ? _a : 50) || 50, 1), 100);
+        const skip = Math.max(Number((_b = opts.skip) !== null && _b !== void 0 ? _b : 0) || 0, 0);
+        const qb = applyFilters(scoped())
             .leftJoinAndSelect('a.customer', 'customer')
             .orderBy('a.createdAt', 'DESC')
-            .take(50);
+            .skip(skip)
+            .take(take);
         if (wanted)
             qb.andWhere('a.state = :st', { st: wanted });
         const rows = await qb.getMany();
         const counts = await this.afterSalesMessageCounts(ctx, rows.map(r => Number(r.id)));
-        return { items: rows.map(r => this.toAfterSalesRow(r, counts)), pendingCount, total };
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const now = Date.now();
+        return {
+            items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now)),
+            pendingCount,
+            total,
+            stateCounts,
+            skip,
+            take,
+        };
     }
     /**
      * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
-     * 先按「本店渠道 + Pending」校验，避免越权或已处理单重复触发退款。
+     * 先按「本店渠道 + 待处理」校验，避免越权或已处理单重复触发退款。
+     * 顾客申诉（Rejected → Appealed）后商家仍可同意（appealRequest 已把申诉说明写入留言流）。
      */
     async afterSalesApprove(ctx, id) {
         var _a;
-        await this.assertChannelAfterSales(ctx, id, ['Pending']);
+        await this.assertChannelAfterSales(ctx, id, AFTER_SALES_PENDING_STATES);
         const svc = this.getAfterSales();
         if (!svc)
             throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
@@ -1187,6 +1233,119 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError(`同意售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
         return this.afterSalesOne(ctx, id);
+    }
+    /**
+     * 售后详情（§81）：售后单 + 协商留言（含顾客申诉说明）+ 状态时间线 + 退款失败留痕。
+     * 渠道隔离同列表；留言表缺失时降级为空列表，不影响详情可用。
+     */
+    async afterSalesDetail(ctx, id) {
+        var _a, _b;
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        const counts = await this.afterSalesMessageCounts(ctx, [Number(request.id)]);
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const messages = await this.afterSalesMessageRows(Number(request.id));
+        const stateHistory = await this.afterSalesHistoryRows(Number(request.id));
+        return {
+            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now()),
+            messages,
+            messageTotal: (_a = counts.get(Number(request.id))) !== null && _a !== void 0 ? _a : messages.length,
+            stateHistory,
+            refundError: (_b = request.refundError) !== null && _b !== void 0 ? _b : null,
+            actualRefundAmount: request.actualRefundAmount == null ? null : Number(request.actualRefundAmount),
+            timeoutHours,
+        };
+    }
+    /** 商家协商留言（§81）：Closed 禁言；正文/图片上限由售后插件校验，错误转成顾客可读文案 */
+    async afterSalesReply(ctx, id, content, images) {
+        var _a;
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        if (request.state === 'Closed')
+            throw new core_2.UserInputError('售后单已关闭，不能再留言');
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能留言');
+        try {
+            const msg = await svc.addMessage(ctx, id, 'admin', String(content !== null && content !== void 0 ? content : ''), images !== null && images !== void 0 ? images : null);
+            return {
+                id: String(msg.id),
+                senderType: String(msg.senderType),
+                senderName: String(msg.senderName),
+                content: String(msg.content),
+                images: Array.isArray(msg.images) ? msg.images : [],
+                createdAt: msg.createdAt,
+            };
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`留言失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+    }
+    /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
+    async afterSalesStats(ctx) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const now = Date.now();
+        const dayStart = new Date((0, campus_time_1.startOfCampusDay)(now));
+        const dayEnd = new Date((0, campus_time_1.startOfCampusDay)(now) + 24 * 3600000);
+        const overdueBefore = new Date(now - timeoutHours * 3600000);
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        // 渠道隔离：售后单回落到订单，再用订单-渠道关联表判定归属
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId" AND o."customFieldsHallstatus" IS NOT NULL)';
+        const pendingRows = await raw.query(`SELECT COUNT(*) FILTER (WHERE a.state IN ('Pending', 'Appealed')) AS "pending",
+                    COUNT(*) FILTER (WHERE a.state = 'Pending' AND a."createdAt" <= $2) AS "overdue"
+               FROM after_sales_request a WHERE ${scope}`, [chId, overdueBefore]);
+        const handledRows = await raw.query(`SELECT COUNT(DISTINCT h."requestId") AS "n"
+               FROM after_sales_state_history h
+               JOIN after_sales_request a ON a.id = h."requestId"
+              WHERE h."createdAt" >= $2 AND h."createdAt" < $3
+                AND h."toState" IN ('Approved', 'Rejected', 'Refunded')
+                AND ${scope}`, [chId, dayStart, dayEnd]);
+        const refundRows = await raw.query(`SELECT COUNT(*) AS "n",
+                    COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0) AS "amount"
+               FROM after_sales_request a
+              WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3
+                AND ${scope}`, [chId, dayStart, dayEnd]);
+        return {
+            pending: Number((_b = (_a = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _a === void 0 ? void 0 : _a.pending) !== null && _b !== void 0 ? _b : 0),
+            overdue: Number((_d = (_c = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _c === void 0 ? void 0 : _c.overdue) !== null && _d !== void 0 ? _d : 0),
+            timeoutHours,
+            todayHandled: Number((_f = (_e = handledRows === null || handledRows === void 0 ? void 0 : handledRows[0]) === null || _e === void 0 ? void 0 : _e.n) !== null && _f !== void 0 ? _f : 0),
+            todayRefunded: Number((_h = (_g = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _g === void 0 ? void 0 : _g.n) !== null && _h !== void 0 ? _h : 0),
+            todayRefundAmount: Number((_k = (_j = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _j === void 0 ? void 0 : _j.amount) !== null && _k !== void 0 ? _k : 0),
+        };
+    }
+    /** 申请时间区间：纯日期按校园日（UTC+8）切分，to 含当天；非法格式直接拒绝 */
+    afterSalesRange(opts) {
+        var _a, _b;
+        const DAY_MS = 24 * 3600000;
+        const parse = (input, endOfDay) => {
+            const text = input.trim();
+            if (!text)
+                return null;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+                const dayStart = (0, campus_time_1.startOfCampusDay)(new Date(text).getTime());
+                if (Number.isNaN(dayStart))
+                    throw new core_2.UserInputError('申请时间格式不合法（YYYY-MM-DD）');
+                return endOfDay ? dayStart + DAY_MS : dayStart;
+            }
+            const t = new Date(text).getTime();
+            if (Number.isNaN(t))
+                throw new core_2.UserInputError('申请时间格式不合法');
+            return t;
+        };
+        const fromT = parse(String((_a = opts.from) !== null && _a !== void 0 ? _a : ''), false);
+        const toT = parse(String((_b = opts.to) !== null && _b !== void 0 ? _b : ''), true);
+        if (fromT != null && toT != null && fromT >= toT)
+            throw new core_2.UserInputError('结束时间必须晚于开始时间');
+        return { from: fromT == null ? null : new Date(fromT), to: toT == null ? null : new Date(toT) };
+    }
+    /** 渠道售后处理时限（小时）：afterSalesTimeoutHours，未配置按售后插件默认 48 */
+    afterSalesTimeoutHours(ctx) {
+        var _a, _b, _c;
+        const cf = ((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
+        const n = Number((_c = cf.afterSalesTimeoutHours) !== null && _c !== void 0 ? _c : 48);
+        return Number.isFinite(n) && n >= 0 ? n : 48;
     }
     /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
     async afterSalesReject(ctx, id, reason) {
@@ -1213,7 +1372,7 @@ let MerchantAdminService = class MerchantAdminService {
         var _a, _b, _c, _d;
         const request = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({
             where: { id: id },
-            relations: { order: { channels: true }, channels: true },
+            relations: { order: { channels: true }, channels: true, customer: true },
         });
         const inChannel = ((_a = request === null || request === void 0 ? void 0 : request.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId)))
             || ((_d = (_c = (_b = request === null || request === void 0 ? void 0 : request.order) === null || _b === void 0 ? void 0 : _b.channels) === null || _c === void 0 ? void 0 : _c.some) === null || _d === void 0 ? void 0 : _d.call(_c, (c) => String(c.id) === String(ctx.channelId)));
@@ -1232,7 +1391,61 @@ let MerchantAdminService = class MerchantAdminService {
         if (!row)
             throw new core_2.UserInputError('售后单不存在');
         const counts = await this.afterSalesMessageCounts(ctx, [Number(row.id)]);
-        return this.toAfterSalesRow(row, counts);
+        return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now());
+    }
+    /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
+    async afterSalesMessageRows(requestId) {
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT id, "senderType", "senderName", content, images, "createdAt" FROM after_sales_message '
+                + 'WHERE "requestId" = $1 ORDER BY "createdAt" ASC LIMIT 100', [requestId]);
+            return (Array.isArray(rows) ? rows : []).map(r => {
+                var _a, _b, _c;
+                // images 为 simple-json 列（多数驱动返回字符串），兼容对象直出
+                let images = [];
+                if (Array.isArray(r.images)) {
+                    images = r.images;
+                }
+                else if (typeof r.images === 'string') {
+                    try {
+                        const parsed = JSON.parse(r.images);
+                        if (Array.isArray(parsed))
+                            images = parsed;
+                    }
+                    catch (_d) {
+                        images = [];
+                    }
+                }
+                return {
+                    id: String(r.id),
+                    senderType: String((_a = r.senderType) !== null && _a !== void 0 ? _a : ''),
+                    senderName: String((_b = r.senderName) !== null && _b !== void 0 ? _b : ''),
+                    content: String((_c = r.content) !== null && _c !== void 0 ? _c : ''),
+                    images,
+                    createdAt: new Date(r.createdAt),
+                };
+            });
+        }
+        catch (_a) {
+            return [];
+        }
+    }
+    /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空 */
+    async afterSalesHistoryRows(requestId) {
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT "fromState", "toState", "createdAt" FROM after_sales_state_history '
+                + 'WHERE "requestId" = $1 ORDER BY "createdAt" ASC LIMIT 50', [requestId]);
+            return (Array.isArray(rows) ? rows : []).map(r => {
+                var _a;
+                return ({
+                    fromState: r.fromState == null ? null : String(r.fromState),
+                    toState: String((_a = r.toState) !== null && _a !== void 0 ? _a : ''),
+                    createdAt: new Date(r.createdAt),
+                });
+            });
+        }
+        catch (_a) {
+            return [];
+        }
     }
     /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
     async afterSalesMessageCounts(ctx, ids) {
@@ -1251,7 +1464,7 @@ let MerchantAdminService = class MerchantAdminService {
         }
         return out;
     }
-    toAfterSalesRow(row, counts) {
+    toAfterSalesRow(row, counts, timeoutHours, now) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const customer = row.customer;
         const order = row.order;
@@ -1272,6 +1485,9 @@ let MerchantAdminService = class MerchantAdminService {
                 : null,
             createdAt: row.createdAt,
             refundedAt: (_k = row.refundedAt) !== null && _k !== void 0 ? _k : null,
+            // 超时口径与售后插件 PENDING_REMIND 一致：仅 Pending 按申请时间计时
+            overdue: row.state === 'Pending'
+                && new Date(row.createdAt).getTime() + timeoutHours * 3600000 <= now,
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

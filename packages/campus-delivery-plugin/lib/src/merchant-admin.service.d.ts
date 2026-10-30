@@ -150,12 +150,81 @@ export interface MerchantAfterSalesRow {
     createdAt: Date;
     /** 退款到账时间（未退款为 null） */
     refundedAt: Date | null;
+    /** 待处理且已超过渠道处理时限（超时阈值见售后插件 afterSalesTimeoutHours） */
+    overdue: boolean;
+}
+/** 售后状态计数（§81）：列表筛选旁的角标 */
+export interface MerchantAfterSalesStateCount {
+    state: string;
+    count: number;
 }
 /** 售后申请清单（§81）：待处理数不受列表筛选影响，供入口红点 */
 export interface MerchantAfterSalesList {
     items: MerchantAfterSalesRow[];
+    /** 待商家处理数（Pending + Appealed），不受筛选影响 */
     pendingCount: number;
+    /** 当前筛选条件命中总数 */
     total: number;
+    /** 全店各状态计数（不受 state 筛选影响） */
+    stateCounts: MerchantAfterSalesStateCount[];
+    skip: number;
+    take: number;
+}
+/** 售后列表筛选条件（§81） */
+export interface MerchantAfterSalesListOptions {
+    type?: string | null;
+    /** 订单号模糊匹配（A2400xxx） */
+    orderCode?: string | null;
+    /** 申请时间下界（YYYY-MM-DD 或 ISO） */
+    from?: string | null;
+    /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
+    to?: string | null;
+    skip?: number | null;
+    take?: number | null;
+}
+/** 协商留言行（§81 商家端）：顾客与商家双向可见 */
+export interface MerchantAfterSalesMessage {
+    id: string;
+    /** customer=顾客 / admin=商家 */
+    senderType: string;
+    senderName: string;
+    content: string;
+    images: string[];
+    createdAt: Date;
+}
+/** 状态流转历史行（售后时间线） */
+export interface MerchantAfterSalesHistoryRow {
+    fromState: string | null;
+    toState: string;
+    createdAt: Date;
+}
+/** 售后详情（§81）：列表行 + 协商留言 + 状态时间线 + 退款失败留痕 */
+export interface MerchantAfterSalesDetail {
+    request: MerchantAfterSalesRow;
+    messages: MerchantAfterSalesMessage[];
+    messageTotal: number;
+    stateHistory: MerchantAfterSalesHistoryRow[];
+    /** 退款失败原因（RefundFailed 留痕） */
+    refundError: string | null;
+    /** 实际退款到账金额（分，未退款为 null） */
+    actualRefundAmount: number | null;
+    /** 渠道处理时限（小时），用于前端展示超时口径 */
+    timeoutHours: number;
+}
+/** 售后处理统计（§81）：入口红点 + 今日处理量 + 今日退款额 */
+export interface MerchantAfterSalesStats {
+    /** 待商家处理（Pending + Appealed） */
+    pending: number;
+    /** 待处理中已超时的单数 */
+    overdue: number;
+    /** 渠道处理时限（小时） */
+    timeoutHours: number;
+    /** 今日已处理售后单数（状态流转到 Approved/Rejected/Refunded） */
+    todayHandled: number;
+    /** 今日退款成功单数 */
+    todayRefunded: number;
+    /** 今日退款金额（分） */
+    todayRefundAmount: number;
 }
 export interface MerchantBoard {
     paused: boolean;
@@ -515,18 +584,36 @@ export declare class MerchantAdminService {
     prepSummary(ctx: RequestContext): Promise<MerchantPrepItem[]>;
     /** 营业日报（§80）：单日经营快照 —— KPI、时段分布、商品 Top5、对比昨日与近 7 日均值 */
     dailyReport(ctx: RequestContext, date?: string | null): Promise<MerchantDailyReport>;
-    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    afterSalesList(ctx: RequestContext, state?: string | null): Promise<MerchantAfterSalesList>;
+    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部 */
+    afterSalesList(ctx: RequestContext, state?: string | null, opts?: MerchantAfterSalesListOptions): Promise<MerchantAfterSalesList>;
     /**
      * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
-     * 先按「本店渠道 + Pending」校验，避免越权或已处理单重复触发退款。
+     * 先按「本店渠道 + 待处理」校验，避免越权或已处理单重复触发退款。
+     * 顾客申诉（Rejected → Appealed）后商家仍可同意（appealRequest 已把申诉说明写入留言流）。
      */
     afterSalesApprove(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /**
+     * 售后详情（§81）：售后单 + 协商留言（含顾客申诉说明）+ 状态时间线 + 退款失败留痕。
+     * 渠道隔离同列表；留言表缺失时降级为空列表，不影响详情可用。
+     */
+    afterSalesDetail(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesDetail>;
+    /** 商家协商留言（§81）：Closed 禁言；正文/图片上限由售后插件校验，错误转成顾客可读文案 */
+    afterSalesReply(ctx: RequestContext, id: ID, content: string, images?: string[] | null): Promise<MerchantAfterSalesMessage>;
+    /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
+    afterSalesStats(ctx: RequestContext): Promise<MerchantAfterSalesStats>;
+    /** 申请时间区间：纯日期按校园日（UTC+8）切分，to 含当天；非法格式直接拒绝 */
+    private afterSalesRange;
+    /** 渠道售后处理时限（小时）：afterSalesTimeoutHours，未配置按售后插件默认 48 */
+    private afterSalesTimeoutHours;
     /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
     afterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
     /** 售后单必须属于当前店铺，且状态在允许集合内（空集合=不校验状态） */
     private assertChannelAfterSales;
     private afterSalesOne;
+    /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
+    private afterSalesMessageRows;
+    /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空 */
+    private afterSalesHistoryRows;
     /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
     private afterSalesMessageCounts;
     private toAfterSalesRow;

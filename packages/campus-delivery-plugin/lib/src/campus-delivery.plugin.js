@@ -783,15 +783,76 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     createdAt: DateTime!
                     """退款到账时间"""
                     refundedAt: DateTime
+                    """待处理且已超过渠道处理时限（售后插件 afterSalesTimeoutHours）"""
+                    overdue: Boolean!
+                }
+
+                """售后状态计数（§81）：列表页签角标"""
+                type CampusMerchantAfterSalesStateCount {
+                    state: String!
+                    count: Int!
                 }
 
                 """售后申请清单（§81）"""
                 type CampusMerchantAfterSalesList {
                     items: [CampusMerchantAfterSalesItem!]!
-                    """待处理数（不受 state 筛选影响，供入口红点）"""
+                    """待商家处理数（Pending + Appealed），不受筛选影响，供入口红点"""
                     pendingCount: Int!
-                    """本店售后单总数"""
+                    """当前筛选条件命中总数"""
                     total: Int!
+                    """全店各状态计数（不受 state 筛选影响）"""
+                    stateCounts: [CampusMerchantAfterSalesStateCount!]!
+                    skip: Int!
+                    take: Int!
+                }
+
+                """协商留言行（§81）：顾客与商家双向可见"""
+                type CampusMerchantAfterSalesMessage {
+                    id: ID!
+                    """customer=顾客 / admin=商家"""
+                    senderType: String!
+                    senderName: String!
+                    content: String!
+                    images: [String!]!
+                    createdAt: DateTime!
+                }
+
+                """状态流转时间线（售后详情）"""
+                type CampusMerchantAfterSalesHistory {
+                    fromState: String
+                    toState: String!
+                    createdAt: DateTime!
+                }
+
+                """售后详情（§81）：售后单 + 协商留言 + 状态时间线 + 退款失败留痕"""
+                type CampusMerchantAfterSalesDetail {
+                    request: CampusMerchantAfterSalesItem!
+                    messages: [CampusMerchantAfterSalesMessage!]!
+                    """留言总条数（列表最多回传 100 条）"""
+                    messageTotal: Int!
+                    stateHistory: [CampusMerchantAfterSalesHistory!]!
+                    """退款失败原因（RefundFailed 留痕）"""
+                    refundError: String
+                    """实际退款到账金额（分，未退款为 null）"""
+                    actualRefundAmount: Int
+                    """渠道处理时限（小时）"""
+                    timeoutHours: Int!
+                }
+
+                """售后处理统计（§81）：入口红点 + 今日处理量/退款额"""
+                type CampusMerchantAfterSalesStats {
+                    """待商家处理（Pending + Appealed）"""
+                    pending: Int!
+                    """待处理中已超时的单数"""
+                    overdue: Int!
+                    """渠道处理时限（小时）"""
+                    timeoutHours: Int!
+                    """今日已处理售后单数"""
+                    todayHandled: Int!
+                    """今日退款成功单数"""
+                    todayRefunded: Int!
+                    """今日退款金额（分）"""
+                    todayRefundAmount: Int!
                 }
 
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
@@ -1678,7 +1739,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
+                    campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
+                    """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
+                    campusMerchantAfterSalesStats: CampusMerchantAfterSalesStats!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -1962,6 +2027,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesApprove(id: ID!): CampusMerchantAfterSalesItem!
                     """驳回售后（§81）：reason 必填，顾客 C 端可见"""
                     campusMerchantAfterSalesReject(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
+                    """商家协商留言（§81）：与顾客售后详情双向互通，Closed 后禁言"""
+                    campusMerchantAfterSalesReply(id: ID!, content: String!, images: [String!]): CampusMerchantAfterSalesMessage!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
