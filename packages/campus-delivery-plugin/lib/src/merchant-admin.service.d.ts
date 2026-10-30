@@ -158,6 +158,10 @@ export interface MerchantAfterSalesRow {
     exchangeTrackingNo: string | null;
     /** 换货承运商（§83） */
     exchangeCarrier: string | null;
+    /** 即将超时（§88）：仍在处理时限内，但剩余时间小于渠道临期提醒阈值 */
+    dueSoon: boolean;
+    /** 售后标签名（§88）：本店自定义标签，按创建先后 */
+    tags: string[];
 }
 /** 换货发货结果复用列表行；批量处理逐单结果 */
 export interface MerchantAfterSalesBatchResult {
@@ -238,6 +242,8 @@ export interface MerchantAfterSalesRules {
     firstResponseTargetHours: number;
     /** 完结目标小时（0=未设） */
     resolveTargetHours: number;
+    /** 临期提醒小时（0=关闭，§88） */
+    dueSoonHours: number;
 }
 /** 商家快捷回复模板（§87）：本店渠道共用 */
 export interface MerchantAfterSalesReplyTemplate {
@@ -311,6 +317,8 @@ export interface MerchantAfterSalesListOptions {
     orderCode?: string | null;
     /** 顾客关键字（手机号/姓名模糊匹配，§87） */
     keyword?: string | null;
+    /** 标签筛选（本店标签 id，§88） */
+    tag?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -333,6 +341,10 @@ export interface MerchantAfterSalesHistoryRow {
     fromState: string | null;
     toState: string;
     createdAt: Date;
+    /** 处理人 User id（顾客/系统路径为 null，§88） */
+    operatorUserId: string | null;
+    /** 处理人姓名（管理员，未匹配到为 null） */
+    operatorName: string | null;
 }
 /** 收货地址（售后详情：商家确认退货/换货时核对） */
 export interface MerchantAfterSalesAddress {
@@ -384,6 +396,36 @@ export interface MerchantAfterSalesStats {
     todayRefundAmount: number;
     /** 待商家回复的售后会话数（最新留言来自顾客） */
     pendingReply: number;
+    /** 临期未处理单数（§88） */
+    dueSoon: number;
+    /** 渠道临期提醒阈值（小时，0=关闭） */
+    dueSoonHours: number;
+}
+/** 售后标签（§88）：本店渠道自定义 */
+export interface MerchantAfterSalesTag {
+    id: string;
+    name: string;
+    /** 当前打标单数 */
+    usedCount: number;
+}
+/** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
+export interface MerchantAfterSalesWorkbench {
+    /** 待同意（Pending + Appealed） */
+    toApprove: number;
+    /** 待收货（Returning） */
+    toReceive: number;
+    /** 退款失败待人工 */
+    refundFailed: number;
+    /** 待回复留言 */
+    pendingReply: number;
+    /** 已超时待处理 */
+    overdue: number;
+    /** 临期未处理 */
+    dueSoon: number;
+    /** 最早一笔待处理单的申请时间（无待处理为 null） */
+    oldestPendingAt: Date | null;
+    /** 最老待处理单已等待小时数 */
+    oldestPendingHours: number;
 }
 export interface MerchantBoard {
     paused: boolean;
@@ -802,6 +844,7 @@ export declare class MerchantAdminService {
         refundAutoRetry?: number | null;
         firstResponseTargetHours?: number | null;
         resolveTargetHours?: number | null;
+        dueSoonHours?: number | null;
     }): Promise<MerchantAfterSalesRules>;
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     afterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
@@ -850,6 +893,16 @@ export declare class MerchantAdminService {
     deleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 手动为退款失败单排程重试（§87）：复用/复位任务到 PENDING，1 分钟后由兜底扫描执行 */
     afterSalesScheduleRefundRetry(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesTaskRow>;
+    /** 售后标签列表（§88）：本店渠道，附当前打标单数 */
+    afterSalesTags(ctx: RequestContext): Promise<MerchantAfterSalesTag[]>;
+    /** 新增 / 重命名售后标签（§88）：单店上限 20 个，名称最多 12 字 */
+    saveAfterSalesTag(ctx: RequestContext, id: ID | null | undefined, name: string): Promise<MerchantAfterSalesTag>;
+    /** 删除售后标签（§88）：一并清除本店打标关联 */
+    deleteAfterSalesTag(ctx: RequestContext, id: ID): Promise<boolean>;
+    /** 设置售后单标签（§88）：整体替换，单次最多 5 个，返回标签名 */
+    setAfterSalesTags(ctx: RequestContext, id: ID, tagIds: ID[]): Promise<string[]>;
+    /** 批量取某批售后单的标签名（§88）：表缺失时降级为空 */
+    private afterSalesTagNames;
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
     private assertRequestInChannel;
     /** 规则变更后重排未执行任务（§86）：按新时限重算到期时间，0 表示关闭则作废 */
@@ -887,6 +940,8 @@ export declare class MerchantAdminService {
     afterSalesReply(ctx: RequestContext, id: ID, content: string, images?: string[] | null): Promise<MerchantAfterSalesMessage>;
     /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
     afterSalesStats(ctx: RequestContext): Promise<MerchantAfterSalesStats>;
+    /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
+    afterSalesWorkbench(ctx: RequestContext): Promise<MerchantAfterSalesWorkbench>;
     /** 申请时间区间：纯日期按校园日（UTC+8）切分，to 含当天；非法格式直接拒绝 */
     private afterSalesRange;
     /** 渠道售后处理时限（小时）：afterSalesTimeoutHours，未配置按售后插件默认 48 */
@@ -898,7 +953,7 @@ export declare class MerchantAdminService {
     private afterSalesOne;
     /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
     private afterSalesMessageRows;
-    /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空 */
+    /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空；§88 补充处理人 */
     private afterSalesHistoryRows;
     /** 每单最新留言发送方（批量）：用于 unread 标记（最新为 customer 即待商家回复） */
     private afterSalesLastSender;

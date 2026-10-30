@@ -55,7 +55,7 @@ export declare class MerchantAdminResolver {
     /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
     campusMerchantDailyReport(ctx: RequestContext, date?: string | null): Promise<import("./merchant-admin.service").MerchantDailyReport>;
     /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
+    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
     campusMerchantAfterSalesDetail(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesDetail>;
     /** 售后处理统计（§81）：待处理/超时/今日处理量/今日退款额 */
@@ -78,6 +78,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesNotes(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesNote[]>;
     /** 快捷回复模板（§87）：本店渠道共用 */
     campusMerchantAfterSalesReplyTemplates(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate[]>;
+    /** 售后工作台摘要（§88） */
+    campusMerchantAfterSalesWorkbench(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesWorkbench>;
+    /** 售后标签列表（§88） */
+    campusMerchantAfterSalesTags(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesTag[]>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
@@ -97,7 +101,7 @@ export declare class MerchantAdminResolver {
     /** 保存售后寄回地址（§83） */
     campusMerchantUpdateAfterSalesReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
     /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
-    campusMerchantUpdateAfterSalesRules(ctx: RequestContext, timeoutHours?: number | null, autoApproveHours?: number | null, refundAutoRetry?: number | null, firstResponseTargetHours?: number | null, resolveTargetHours?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
+    campusMerchantUpdateAfterSalesRules(ctx: RequestContext, timeoutHours?: number | null, autoApproveHours?: number | null, refundAutoRetry?: number | null, firstResponseTargetHours?: number | null, resolveTargetHours?: number | null, dueSoonHours?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     campusMerchantAfterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 商家催办顾客（§84）：60 秒内同单一次 */
@@ -118,6 +122,12 @@ export declare class MerchantAdminResolver {
     campusMerchantDeleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 手动排程退款重试（§87）：仅 RefundFailed */
     campusMerchantAfterSalesScheduleRefundRetry(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesTaskRow>;
+    /** 保存售后标签（§88）：id 为空=新增 */
+    campusMerchantSaveAfterSalesTag(ctx: RequestContext, id: ID | null, name: string): Promise<import("./merchant-admin.service").MerchantAfterSalesTag>;
+    /** 删除售后标签（§88） */
+    campusMerchantDeleteAfterSalesTag(ctx: RequestContext, id: ID): Promise<boolean>;
+    /** 设置售后单标签（§88）：整体替换 */
+    campusMerchantSetAfterSalesTags(ctx: RequestContext, id: ID, tagIds: ID[]): Promise<string[]>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

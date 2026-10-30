@@ -1195,7 +1195,7 @@ let MerchantAdminService = class MerchantAdminService {
         const { from, to } = this.afterSalesRange(opts);
         /** 追加非 state 筛选条件（原地修改并返回，保持 QueryBuilder 类型以便 getMany 正常推断） */
         const applyFilters = (target) => {
-            var _a, _b, _c;
+            var _a, _b, _c, _d;
             const type = String((_a = opts.type) !== null && _a !== void 0 ? _a : '').trim();
             if (type)
                 target.andWhere('a.type = :tp', { tp: type });
@@ -1209,6 +1209,12 @@ let MerchantAdminService = class MerchantAdminService {
                     .andWhere('(kwc."phoneNumber" ILIKE :kw OR kwc."firstName" ILIKE :kw OR kwc."lastName" ILIKE :kw)', {
                     kw: `%${keyword}%`,
                 });
+            }
+            // 标签筛选（§88）：按本店标签过滤，跨店 tagId 自然无命中
+            const tag = String((_d = opts.tag) !== null && _d !== void 0 ? _d : '').trim();
+            if (tag) {
+                target.andWhere('a.id IN (SELECT l."requestId" FROM campus_after_sales_tag_link l '
+                    + 'WHERE l."channelId" = :tch AND l."tagId" = :tag)', { tch: Number(ctx.channelId), tag: Number(tag) });
             }
             if (from)
                 target.andWhere('a.createdAt >= :from', { from });
@@ -1245,10 +1251,15 @@ let MerchantAdminService = class MerchantAdminService {
         const rows = await qb.getMany();
         const counts = await this.afterSalesMessageCounts(ctx, rows.map(r => Number(r.id)));
         const lastSender = await this.afterSalesLastSender(rows.map(r => Number(r.id)));
+        const tagMap = await this.afterSalesTagNames(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const rules = await this.afterSalesRules(ctx);
         const now = Date.now();
         return {
-            items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now, lastSender)),
+            items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now, lastSender, {
+                tags: tagMap,
+                dueSoonHours: rules.dueSoonHours,
+            })),
             pendingCount,
             total,
             stateCounts,
@@ -1433,7 +1444,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 售后规则（§84）：渠道字段，缺省与售后插件默认一致（48h / 0 / 1） */
     async afterSalesRules(ctx) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const repo = this.connection.getRepository(ctx, core_2.Channel);
         const channel = await repo.findOne({ where: { id: ctx.channelId } });
         if (!channel)
@@ -1445,6 +1456,7 @@ let MerchantAdminService = class MerchantAdminService {
             refundAutoRetry: Number((_d = cf.afterSalesRefundAutoRetry) !== null && _d !== void 0 ? _d : 1),
             firstResponseTargetHours: Number((_e = cf.afterSalesFirstResponseTargetHours) !== null && _e !== void 0 ? _e : 0),
             resolveTargetHours: Number((_f = cf.afterSalesResolveTargetHours) !== null && _f !== void 0 ? _f : 0),
+            dueSoonHours: Number((_g = cf.afterSalesDueSoonHours) !== null && _g !== void 0 ? _g : 12),
         };
     }
     /**
@@ -1493,6 +1505,13 @@ let MerchantAdminService = class MerchantAdminService {
                 throw new core_2.UserInputError('完结目标应为 0-168 小时（0=不考核）');
             }
             cf.afterSalesResolveTargetHours = n;
+        }
+        if (input.dueSoonHours !== undefined) {
+            const n = Math.floor(Number(input.dueSoonHours));
+            if (input.dueSoonHours == null || !Number.isFinite(n) || n < 0 || n > 72) {
+                throw new core_2.UserInputError('临期提醒阈值应为 0-72 小时（0=关闭）');
+            }
+            cf.afterSalesDueSoonHours = n;
         }
         channel.customFields = cf;
         await repo.save(channel);
@@ -1933,6 +1952,114 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError('退款重试任务登记失败');
         return this.toTaskRow(fresh);
     }
+    /** 售后标签列表（§88）：本店渠道，附当前打标单数 */
+    async afterSalesTags(ctx) {
+        const rows = await this.connection.rawConnection.query('SELECT t.id, t.name, '
+            + '(SELECT COUNT(*)::int FROM campus_after_sales_tag_link l '
+            + 'WHERE l."channelId" = t."channelId" AND l."tagId" = t.id) AS "usedCount" '
+            + 'FROM campus_after_sales_tag t WHERE t."channelId" = $1 ORDER BY t.id ASC', [Number(ctx.channelId)]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => {
+            var _a;
+            return ({
+                id: String(r.id),
+                name: String((_a = r.name) !== null && _a !== void 0 ? _a : ''),
+                usedCount: Number(r.usedCount) || 0,
+            });
+        });
+    }
+    /** 新增 / 重命名售后标签（§88）：单店上限 20 个，名称最多 12 字 */
+    async saveAfterSalesTag(ctx, id, name) {
+        var _a, _b, _c, _d;
+        const text = String(name !== null && name !== void 0 ? name : '').trim();
+        if (!text)
+            throw new core_2.UserInputError('请填写标签名称');
+        if (text.length > 12)
+            throw new core_2.UserInputError('标签名称最多 12 字');
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        if (id != null) {
+            const rows = await raw.query('UPDATE campus_after_sales_tag SET name = $1, "updatedAt" = now() '
+                + 'WHERE id = $2 AND "channelId" = $3 RETURNING id, name', [text, Number(id), chId]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            const r = list === null || list === void 0 ? void 0 : list[0];
+            if (!r)
+                throw new core_2.UserInputError('标签不存在或不属于当前店铺');
+            return { id: String(r.id), name: String((_a = r.name) !== null && _a !== void 0 ? _a : text), usedCount: 0 };
+        }
+        const countRows = await raw.query('SELECT COUNT(*)::int AS n FROM campus_after_sales_tag WHERE "channelId" = $1', [chId]);
+        const countList = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
+        if (Number((_c = (_b = countList === null || countList === void 0 ? void 0 : countList[0]) === null || _b === void 0 ? void 0 : _b.n) !== null && _c !== void 0 ? _c : 0) >= 20) {
+            throw new core_2.UserInputError('售后标签最多 20 个，请先删除不用的标签');
+        }
+        const rows = await raw.query('INSERT INTO campus_after_sales_tag ("channelId", name) VALUES ($1, $2) RETURNING id, name', [chId, text]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const r = list === null || list === void 0 ? void 0 : list[0];
+        if (!r)
+            throw new core_2.UserInputError('标签保存失败');
+        return { id: String(r.id), name: String((_d = r.name) !== null && _d !== void 0 ? _d : text), usedCount: 0 };
+    }
+    /** 删除售后标签（§88）：一并清除本店打标关联 */
+    async deleteAfterSalesTag(ctx, id) {
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        const rows = await raw.query('DELETE FROM campus_after_sales_tag WHERE id = $1 AND "channelId" = $2 RETURNING id', [Number(id), chId]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        if (!Array.isArray(list) || !list.length)
+            return false;
+        await raw.query('DELETE FROM campus_after_sales_tag_link WHERE "channelId" = $1 AND "tagId" = $2', [chId, Number(id)]);
+        return true;
+    }
+    /** 设置售后单标签（§88）：整体替换，单次最多 5 个，返回标签名 */
+    async setAfterSalesTags(ctx, id, tagIds) {
+        var _a, _b, _c;
+        await this.assertRequestInChannel(ctx, id);
+        const chId = Number(ctx.channelId);
+        const ids = Array.from(new Set((Array.isArray(tagIds) ? tagIds : [])
+            .map(t => Number(t))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (ids.length > 5)
+            throw new core_2.UserInputError('单张售后单最多 5 个标签');
+        if (ids.length) {
+            const ownRows = await this.connection.rawConnection.query('SELECT COUNT(*)::int AS n FROM campus_after_sales_tag WHERE "channelId" = $1 AND id = ANY($2::int[])', [chId, ids]);
+            const ownList = Array.isArray(ownRows) && Array.isArray(ownRows[0]) ? ownRows[0] : ownRows;
+            if (Number((_b = (_a = ownList === null || ownList === void 0 ? void 0 : ownList[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0) !== ids.length) {
+                throw new core_2.UserInputError('存在不属于当前店铺的标签');
+            }
+        }
+        await this.connection.rawConnection.transaction(async (manager) => {
+            await manager.query('DELETE FROM campus_after_sales_tag_link WHERE "channelId" = $1 AND "requestId" = $2', [chId, Number(id)]);
+            if (ids.length) {
+                await manager.query('INSERT INTO campus_after_sales_tag_link ("channelId", "requestId", "tagId") '
+                    + 'SELECT $1, $2, unnest($3::int[]) ON CONFLICT DO NOTHING', [chId, Number(id), ids]);
+            }
+        });
+        const map = await this.afterSalesTagNames(ctx, [Number(id)]);
+        return (_c = map.get(Number(id))) !== null && _c !== void 0 ? _c : [];
+    }
+    /** 批量取某批售后单的标签名（§88）：表缺失时降级为空 */
+    async afterSalesTagNames(ctx, ids) {
+        var _a, _b, _c;
+        const out = new Map();
+        const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length)
+            return out;
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT l."requestId", t.name FROM campus_after_sales_tag_link l '
+                + 'JOIN campus_after_sales_tag t ON t.id = l."tagId" '
+                + 'WHERE l."channelId" = $1 AND l."requestId" = ANY($2::int[]) ORDER BY t.id ASC', [Number(ctx.channelId), list]);
+            for (const r of (_a = (Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows)) !== null && _a !== void 0 ? _a : []) {
+                const key = Number(r.requestId);
+                const names = (_b = out.get(key)) !== null && _b !== void 0 ? _b : [];
+                names.push(String((_c = r.name) !== null && _c !== void 0 ? _c : ''));
+                out.set(key, names);
+            }
+        }
+        catch (_d) {
+            return out;
+        }
+        return out;
+    }
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
     async assertRequestInChannel(ctx, id) {
         const rows = await this.connection.rawConnection.query('SELECT 1 FROM after_sales_request a WHERE a.id = $2 AND EXISTS ('
@@ -2304,7 +2431,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
     async afterSalesStats(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         const dayStart = new Date((0, campus_time_1.startOfCampusDay)(now));
@@ -2318,6 +2445,19 @@ let MerchantAdminService = class MerchantAdminService {
         const pendingRows = await raw.query(`SELECT COUNT(*) FILTER (WHERE a.state IN ('Pending', 'Appealed')) AS "pending",
                     COUNT(*) FILTER (WHERE a.state = 'Pending' AND a."createdAt" <= $2) AS "overdue"
                FROM after_sales_request a WHERE ${scope}`, [chId, overdueBefore]);
+        // 临期（§88）：未超时但剩余时间不足阈值；阈值 0=关闭
+        const dueSoonHours = (await this.afterSalesRules(ctx)).dueSoonHours;
+        let dueSoon = 0;
+        if (dueSoonHours > 0) {
+            const dueSoonRows = await raw.query(`SELECT COUNT(*) AS "n" FROM after_sales_request a
+                  WHERE ${scope} AND a.state = 'Pending'
+                    AND a."createdAt" > $2 AND a."createdAt" <= $3`, [
+                chId,
+                new Date(now - timeoutHours * 3600000),
+                new Date(now - (timeoutHours - dueSoonHours) * 3600000),
+            ]);
+            dueSoon = Number((_b = (_a = dueSoonRows === null || dueSoonRows === void 0 ? void 0 : dueSoonRows[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0);
+        }
         const handledRows = await raw.query(`SELECT COUNT(DISTINCT h."requestId") AS "n"
                FROM after_sales_state_history h
                JOIN after_sales_request a ON a.id = h."requestId"
@@ -2336,19 +2476,49 @@ let MerchantAdminService = class MerchantAdminService {
                   WHERE ${scope}
                     AND (SELECT m."senderType" FROM after_sales_message m
                           WHERE m."requestId" = a.id ORDER BY m."createdAt" DESC LIMIT 1) = 'customer'`, [chId]);
-            pendingReply = Number((_b = (_a = replyRows === null || replyRows === void 0 ? void 0 : replyRows[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0);
+            pendingReply = Number((_d = (_c = replyRows === null || replyRows === void 0 ? void 0 : replyRows[0]) === null || _c === void 0 ? void 0 : _c.n) !== null && _d !== void 0 ? _d : 0);
         }
-        catch (_o) {
+        catch (_q) {
             // 留言表缺失时视为无待回复
         }
         return {
-            pending: Number((_d = (_c = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _c === void 0 ? void 0 : _c.pending) !== null && _d !== void 0 ? _d : 0),
-            overdue: Number((_f = (_e = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _e === void 0 ? void 0 : _e.overdue) !== null && _f !== void 0 ? _f : 0),
+            pending: Number((_f = (_e = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _e === void 0 ? void 0 : _e.pending) !== null && _f !== void 0 ? _f : 0),
+            overdue: Number((_h = (_g = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _g === void 0 ? void 0 : _g.overdue) !== null && _h !== void 0 ? _h : 0),
             timeoutHours,
-            todayHandled: Number((_h = (_g = handledRows === null || handledRows === void 0 ? void 0 : handledRows[0]) === null || _g === void 0 ? void 0 : _g.n) !== null && _h !== void 0 ? _h : 0),
-            todayRefunded: Number((_k = (_j = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _j === void 0 ? void 0 : _j.n) !== null && _k !== void 0 ? _k : 0),
-            todayRefundAmount: Number((_m = (_l = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _l === void 0 ? void 0 : _l.amount) !== null && _m !== void 0 ? _m : 0),
+            todayHandled: Number((_k = (_j = handledRows === null || handledRows === void 0 ? void 0 : handledRows[0]) === null || _j === void 0 ? void 0 : _j.n) !== null && _k !== void 0 ? _k : 0),
+            todayRefunded: Number((_m = (_l = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _l === void 0 ? void 0 : _l.n) !== null && _m !== void 0 ? _m : 0),
+            todayRefundAmount: Number((_p = (_o = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _o === void 0 ? void 0 : _o.amount) !== null && _p !== void 0 ? _p : 0),
             pendingReply,
+            dueSoon,
+            dueSoonHours,
+        };
+    }
+    /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
+    async afterSalesWorkbench(ctx) {
+        var _a, _b, _c, _d, _e;
+        const stats = await this.afterSalesStats(ctx);
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId" AND o."customFieldsHallstatus" IS NOT NULL)';
+        const rows = await raw.query(`SELECT COUNT(*) FILTER (WHERE a.state IN ('Pending', 'Appealed'))::int AS "toApprove",
+                    COUNT(*) FILTER (WHERE a.state = 'Returning')::int AS "toReceive",
+                    COUNT(*) FILTER (WHERE a.state = 'RefundFailed')::int AS "refundFailed",
+                    MIN(a."createdAt") FILTER (WHERE a.state IN ('Pending', 'Appealed')) AS "oldest"
+               FROM after_sales_request a WHERE ${scope}`, [chId]);
+        const r = (_b = (_a = (Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows)) === null || _a === void 0 ? void 0 : _a[0]) !== null && _b !== void 0 ? _b : {};
+        const oldest = r.oldest == null ? null : new Date(r.oldest);
+        return {
+            toApprove: Number((_c = r.toApprove) !== null && _c !== void 0 ? _c : 0),
+            toReceive: Number((_d = r.toReceive) !== null && _d !== void 0 ? _d : 0),
+            refundFailed: Number((_e = r.refundFailed) !== null && _e !== void 0 ? _e : 0),
+            pendingReply: stats.pendingReply,
+            overdue: stats.overdue,
+            dueSoon: stats.dueSoon,
+            oldestPendingAt: oldest,
+            oldestPendingHours: oldest == null
+                ? 0
+                : Math.max(0, Math.floor((Date.now() - oldest.getTime()) / 3600000)),
         };
     }
     /** 申请时间区间：纯日期按校园日（UTC+8）切分，to 含当天；非法格式直接拒绝 */
@@ -2428,7 +2598,12 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError('售后单不存在');
         const counts = await this.afterSalesMessageCounts(ctx, [Number(row.id)]);
         const lastSender = await this.afterSalesLastSender([Number(row.id)]);
-        return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender);
+        const tagMap = await this.afterSalesTagNames(ctx, [Number(row.id)]);
+        const rules = await this.afterSalesRules(ctx);
+        return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender, {
+            tags: tagMap,
+            dueSoonHours: rules.dueSoonHours,
+        });
     }
     /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
     async afterSalesMessageRows(requestId) {
@@ -2466,17 +2641,24 @@ let MerchantAdminService = class MerchantAdminService {
             return [];
         }
     }
-    /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空 */
+    /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空；§88 补充处理人 */
     async afterSalesHistoryRows(requestId) {
         try {
-            const rows = await this.connection.rawConnection.query('SELECT "fromState", "toState", "createdAt" FROM after_sales_state_history '
-                + 'WHERE "requestId" = $1 ORDER BY "createdAt" ASC LIMIT 50', [requestId]);
+            const rows = await this.connection.rawConnection.query('SELECT h."fromState", h."toState", h."createdAt", h."operatorUserId", '
+                + 'ad."firstName", ad."lastName" '
+                + 'FROM after_sales_state_history h '
+                + 'LEFT JOIN administrator ad ON ad."userId" = h."operatorUserId" '
+                + 'WHERE h."requestId" = $1 ORDER BY h."createdAt" ASC LIMIT 50', [requestId]);
             return (Array.isArray(rows) ? rows : []).map(r => {
                 var _a;
                 return ({
                     fromState: r.fromState == null ? null : String(r.fromState),
                     toState: String((_a = r.toState) !== null && _a !== void 0 ? _a : ''),
                     createdAt: new Date(r.createdAt),
+                    operatorUserId: r.operatorUserId == null ? null : String(r.operatorUserId),
+                    operatorName: r.operatorUserId == null
+                        ? null
+                        : ([r.firstName, r.lastName].filter(Boolean).join('') || null),
                 });
             });
         }
@@ -2546,34 +2728,40 @@ let MerchantAdminService = class MerchantAdminService {
         }
         return out;
     }
-    toAfterSalesRow(row, counts, timeoutHours, now, lastSender) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    toAfterSalesRow(row, counts, timeoutHours, now, lastSender, opts = {}) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
         const customer = row.customer;
         const order = row.order;
+        const dueSoonHours = Number((_a = opts.dueSoonHours) !== null && _a !== void 0 ? _a : 0);
+        const deadline = new Date(row.createdAt).getTime() + timeoutHours * 3600000;
         return {
             id: String(row.id),
-            orderId: String((_a = row.orderId) !== null && _a !== void 0 ? _a : ''),
-            orderCode: (_b = order === null || order === void 0 ? void 0 : order.code) !== null && _b !== void 0 ? _b : '',
-            state: String((_c = row.state) !== null && _c !== void 0 ? _c : ''),
-            type: String((_d = row.type) !== null && _d !== void 0 ? _d : ''),
-            reason: String((_e = row.reason) !== null && _e !== void 0 ? _e : ''),
-            description: (_f = row.description) !== null && _f !== void 0 ? _f : null,
-            refundAmount: Number((_g = row.refundAmount) !== null && _g !== void 0 ? _g : 0),
-            rejectReason: (_h = row.rejectReason) !== null && _h !== void 0 ? _h : null,
+            orderId: String((_b = row.orderId) !== null && _b !== void 0 ? _b : ''),
+            orderCode: (_c = order === null || order === void 0 ? void 0 : order.code) !== null && _c !== void 0 ? _c : '',
+            state: String((_d = row.state) !== null && _d !== void 0 ? _d : ''),
+            type: String((_e = row.type) !== null && _e !== void 0 ? _e : ''),
+            reason: String((_f = row.reason) !== null && _f !== void 0 ? _f : ''),
+            description: (_g = row.description) !== null && _g !== void 0 ? _g : null,
+            refundAmount: Number((_h = row.refundAmount) !== null && _h !== void 0 ? _h : 0),
+            rejectReason: (_j = row.rejectReason) !== null && _j !== void 0 ? _j : null,
             evidenceImages: Array.isArray(row.evidenceImages) ? row.evidenceImages : [],
-            messageCount: (_j = counts.get(Number(row.id))) !== null && _j !== void 0 ? _j : 0,
+            messageCount: (_k = counts.get(Number(row.id))) !== null && _k !== void 0 ? _k : 0,
             customerName: customer
                 ? [customer.firstName, customer.lastName].filter(Boolean).join('') || null
                 : null,
             createdAt: row.createdAt,
-            refundedAt: (_k = row.refundedAt) !== null && _k !== void 0 ? _k : null,
+            refundedAt: (_l = row.refundedAt) !== null && _l !== void 0 ? _l : null,
             // 超时口径与售后插件 PENDING_REMIND 一致：仅 Pending 按申请时间计时
             overdue: row.state === 'Pending'
                 && new Date(row.createdAt).getTime() + timeoutHours * 3600000 <= now,
             // 未读=最后一条留言由顾客发出（商家回完即消失），无需额外已读表
             unread: lastSender.get(Number(row.id)) === 'customer',
-            exchangeTrackingNo: (_l = row.exchangeTrackingNo) !== null && _l !== void 0 ? _l : null,
-            exchangeCarrier: (_m = row.exchangeCarrier) !== null && _m !== void 0 ? _m : null,
+            exchangeTrackingNo: (_m = row.exchangeTrackingNo) !== null && _m !== void 0 ? _m : null,
+            exchangeCarrier: (_o = row.exchangeCarrier) !== null && _o !== void 0 ? _o : null,
+            // 临期：仍在处理时限内，剩余不足阈值（已超时由 overdue 单独标识）
+            dueSoon: row.state === 'Pending' && dueSoonHours > 0
+                && deadline > now && deadline - now <= dueSoonHours * 3600000,
+            tags: (_q = (_p = opts.tags) === null || _p === void 0 ? void 0 : _p.get(Number(row.id))) !== null && _q !== void 0 ? _q : [],
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

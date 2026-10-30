@@ -148,6 +148,7 @@ import { ResumePaymentShopResolver } from './resume-payment-shop.resolver';
 import { TelemetryService } from './telemetry.service';
 import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
 import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
+import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -183,6 +184,7 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
         P11TelemetryMigration,
         P17AfterSalesNoteMigration,
         P18ReplyTemplateMigration,
+        P19AfterSalesTagMigration,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
@@ -657,6 +659,10 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     exchangeTrackingNo: String
                     """换货承运商（§83）"""
                     exchangeCarrier: String
+                    """即将超时（§88）：未超时但剩余时间不足渠道阈值"""
+                    dueSoon: Boolean!
+                    """售后标签名（§88）：本店自定义标签"""
+                    tags: [String!]!
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -694,6 +700,10 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     fromState: String
                     toState: String!
                     createdAt: DateTime!
+                    """处理人 User id（顾客/系统路径为空，§88）"""
+                    operatorUserId: ID
+                    """处理人姓名（管理员；为空=顾客或系统自动，§88）"""
+                    operatorName: String
                 }
 
                 """收货地址（售后详情核对用）"""
@@ -750,6 +760,38 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     todayRefundAmount: Int!
                     """待商家回复的售后会话数"""
                     pendingReply: Int!
+                    """临期未处理单数（§88）"""
+                    dueSoon: Int!
+                    """渠道临期提醒阈值（小时，0=关闭）"""
+                    dueSoonHours: Int!
+                }
+
+                """售后标签（§88）：本店渠道自定义"""
+                type CampusMerchantAfterSalesTag {
+                    id: ID!
+                    name: String!
+                    """当前打标单数"""
+                    usedCount: Int!
+                }
+
+                """售后工作台摘要（§88）：一次返回各待办入口与最老待处理时长"""
+                type CampusMerchantAfterSalesWorkbench {
+                    """待同意（Pending + Appealed）"""
+                    toApprove: Int!
+                    """待收货（Returning）"""
+                    toReceive: Int!
+                    """退款失败待人工"""
+                    refundFailed: Int!
+                    """待回复留言"""
+                    pendingReply: Int!
+                    """已超时待处理"""
+                    overdue: Int!
+                    """临期未处理"""
+                    dueSoon: Int!
+                    """最早一笔待处理单申请时间"""
+                    oldestPendingAt: DateTime
+                    """最老待处理单已等待小时数"""
+                    oldestPendingHours: Int!
                 }
 
                 """批量售后处理逐单结果（§83）"""
@@ -844,6 +886,8 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     firstResponseTargetHours: Int!
                     """完结目标（小时，0=不考核）"""
                     resolveTargetHours: Int!
+                    """临期提醒阈值（小时，0=关闭，§88）"""
+                    dueSoonHours: Int!
                 }
 
                 """商家快捷回复模板（§87）：本店渠道共用"""
@@ -1789,7 +1833,11 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    """售后工作台摘要（§88）：一次请求返回各待办入口计数"""
+                    campusMerchantAfterSalesWorkbench: CampusMerchantAfterSalesWorkbench!
+                    """售后标签列表（§88）"""
+                    campusMerchantAfterSalesTags: [CampusMerchantAfterSalesTag!]!
                     """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
@@ -2110,7 +2158,7 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     """保存售后寄回地址（§83）"""
                     campusMerchantUpdateAfterSalesReturnAddress(address: String!): Boolean!
                     """保存售后规则（§84）：超时提醒 1-168h，自动同意 0-168h，自动重试 0-5 次"""
-                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int, firstResponseTargetHours: Int, resolveTargetHours: Int): CampusMerchantAfterSalesRules!
+                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int, firstResponseTargetHours: Int, resolveTargetHours: Int, dueSoonHours: Int): CampusMerchantAfterSalesRules!
                     """商家关闭待处理售后（§84）：Pending → Closed，原因必填"""
                     campusMerchantAfterSalesClose(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     """商家催办顾客（§84）：60 秒内同单一次，站内信提醒"""
@@ -2131,6 +2179,12 @@ import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
                     campusMerchantDeleteAfterSalesReplyTemplate(id: ID!): Boolean!
                     """手动排程退款重试（§87）：仅 RefundFailed，复位任务 1 分钟后执行"""
                     campusMerchantAfterSalesScheduleRefundRetry(id: ID!): CampusMerchantAfterSalesTask!
+                    """保存售后标签（§88）：id 为空=新增，单店上限 20 个"""
+                    campusMerchantSaveAfterSalesTag(id: ID, name: String!): CampusMerchantAfterSalesTag!
+                    """删除售后标签（§88）"""
+                    campusMerchantDeleteAfterSalesTag(id: ID!): Boolean!
+                    """设置售后单标签（§88）：整体替换，最多 5 个"""
+                    campusMerchantSetAfterSalesTags(id: ID!, tagIds: [ID!]!): [String!]!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
