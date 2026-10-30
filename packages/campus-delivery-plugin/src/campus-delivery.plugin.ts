@@ -147,6 +147,7 @@ import { TelemetryAdminResolver, TelemetryShopResolver } from './telemetry.resol
 import { ResumePaymentShopResolver } from './resume-payment-shop.resolver';
 import { TelemetryService } from './telemetry.service';
 import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
+import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -181,6 +182,7 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
         P10ReviewAlertMigration,
         P11TelemetryMigration,
         P17AfterSalesNoteMigration,
+        P18ReplyTemplateMigration,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
@@ -807,6 +809,13 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
                     """完结均值（分钟）：创建→Refunded/Closed"""
                     resolveAvgMinutes: Int!
                     resolveMaxMinutes: Int!
+                    """首响目标达标率（百分比，0=未设目标或无数据）"""
+                    firstResponseOnTargetRate: Int!
+                    """完结目标达标率（百分比，0=未设目标或无数据）"""
+                    resolveOnTargetRate: Int!
+                    """超出首响目标单数 / 超出完结目标单数"""
+                    firstResponseOverdue: Int!
+                    resolveOverdue: Int!
                 }
 
                 """商家售后内部备注（§86）：仅商家可见"""
@@ -831,6 +840,17 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
                     autoApproveHours: Int!
                     """退款失败自动重试次数（0=关闭）"""
                     refundAutoRetry: Int!
+                    """首响目标（小时，0=不考核）"""
+                    firstResponseTargetHours: Int!
+                    """完结目标（小时，0=不考核）"""
+                    resolveTargetHours: Int!
+                }
+
+                """商家快捷回复模板（§87）：本店渠道共用"""
+                type CampusMerchantAfterSalesReplyTemplate {
+                    id: ID!
+                    content: String!
+                    createdAt: DateTime!
                 }
 
                 """退款流水（§84）：按退款时间倒序"""
@@ -1769,7 +1789,7 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String, type: String, orderCode: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
                     """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
@@ -1790,6 +1810,8 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
                     campusMerchantAfterSalesTopCustomers(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesTopCustomer!]!
                     """售后内部备注（§86）：仅本店可见"""
                     campusMerchantAfterSalesNotes(id: ID!): [CampusMerchantAfterSalesNote!]!
+                    """快捷回复模板（§87）：本店渠道"""
+                    campusMerchantAfterSalesReplyTemplates: [CampusMerchantAfterSalesReplyTemplate!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2088,7 +2110,7 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
                     """保存售后寄回地址（§83）"""
                     campusMerchantUpdateAfterSalesReturnAddress(address: String!): Boolean!
                     """保存售后规则（§84）：超时提醒 1-168h，自动同意 0-168h，自动重试 0-5 次"""
-                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int): CampusMerchantAfterSalesRules!
+                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int, firstResponseTargetHours: Int, resolveTargetHours: Int): CampusMerchantAfterSalesRules!
                     """商家关闭待处理售后（§84）：Pending → Closed，原因必填"""
                     campusMerchantAfterSalesClose(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     """商家催办顾客（§84）：60 秒内同单一次，站内信提醒"""
@@ -2103,6 +2125,12 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
                     campusMerchantAfterSalesDeleteNote(id: ID!, noteId: ID!): Boolean!
                     """批量催办顾客（§86）：单次最多 20 条，逐单返回结果"""
                     campusMerchantAfterSalesBatchRemind(ids: [ID!]!, note: String): [CampusMerchantAfterSalesBatchResult!]!
+                    """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
+                    campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
+                    """删除快捷回复模板（§87）"""
+                    campusMerchantDeleteAfterSalesReplyTemplate(id: ID!): Boolean!
+                    """手动排程退款重试（§87）：仅 RefundFailed，复位任务 1 分钟后执行"""
+                    campusMerchantAfterSalesScheduleRefundRetry(id: ID!): CampusMerchantAfterSalesTask!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

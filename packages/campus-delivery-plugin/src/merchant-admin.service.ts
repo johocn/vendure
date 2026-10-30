@@ -245,6 +245,13 @@ export interface MerchantAfterSalesReport {
     /** 完结时长（分钟）：创建→Refunded/Closed，无数据为 0 */
     resolveAvgMinutes: number;
     resolveMaxMinutes: number;
+    /** 首响目标达标率（百分比，0=未设目标或无数据） */
+    firstResponseOnTargetRate: number;
+    /** 完结目标达标率（百分比，0=未设目标或无数据） */
+    resolveOnTargetRate: number;
+    /** 超出首响目标的单数 / 超出完结目标的单数 */
+    firstResponseOverdue: number;
+    resolveOverdue: number;
 }
 
 /** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
@@ -263,6 +270,17 @@ export interface MerchantAfterSalesRules {
     autoApproveHours: number;
     /** 退款失败自动重试次数（0=关闭） */
     refundAutoRetry: number;
+    /** 首响目标小时（0=未设） */
+    firstResponseTargetHours: number;
+    /** 完结目标小时（0=未设） */
+    resolveTargetHours: number;
+}
+
+/** 商家快捷回复模板（§87）：本店渠道共用 */
+export interface MerchantAfterSalesReplyTemplate {
+    id: string;
+    content: string;
+    createdAt: Date;
 }
 
 /** 退款流水（§84）：按退款时间倒序 */
@@ -336,6 +354,8 @@ export interface MerchantAfterSalesListOptions {
     type?: string | null;
     /** 订单号模糊匹配（A2400xxx） */
     orderCode?: string | null;
+    /** 顾客关键字（手机号/姓名模糊匹配，§87） */
+    keyword?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -1820,6 +1840,14 @@ export class MerchantAdminService {
             if (type) target.andWhere('a.type = :tp', { tp: type });
             const code = String(opts.orderCode ?? '').trim();
             if (code) target.andWhere('o.code ILIKE :code', { code: `%${code}%` });
+            // 顾客关键字（§87）：手机号/姓/名模糊匹配；只做筛选，列表字段仍按既有脱敏口径
+            const keyword = String(opts.keyword ?? '').trim();
+            if (keyword) {
+                target.leftJoin('a.customer', 'kwc')
+                    .andWhere('(kwc."phoneNumber" ILIKE :kw OR kwc."firstName" ILIKE :kw OR kwc."lastName" ILIKE :kw)', {
+                        kw: `%${keyword}%`,
+                    });
+            }
             if (from) target.andWhere('a.createdAt >= :from', { from });
             if (to) target.andWhere('a.createdAt < :to', { to });
             return target;
@@ -2051,16 +2079,25 @@ export class MerchantAdminService {
             timeoutHours: Number(cf.afterSalesTimeoutHours ?? 48),
             autoApproveHours: Number(cf.afterSalesAutoApproveHours ?? 0),
             refundAutoRetry: Number(cf.afterSalesRefundAutoRetry ?? 1),
+            firstResponseTargetHours: Number(cf.afterSalesFirstResponseTargetHours ?? 0),
+            resolveTargetHours: Number(cf.afterSalesResolveTargetHours ?? 0),
         };
     }
 
     /**
      * 保存售后规则（§84）：只写传入项，保留渠道其它自定义字段。
-     * 超时提醒 1-168h；自动同意 0-168h（0=关闭）；自动重试 0-5 次（0=关闭）。
+     * 超时提醒 1-168h；自动同意 0-168h（0=关闭）；自动重试 0-5 次（0=关闭）；
+     * 首响/完结目标 0-168h（0=未设，§87）。
      */
     async updateAfterSalesRules(
         ctx: RequestContext,
-        input: { timeoutHours?: number | null; autoApproveHours?: number | null; refundAutoRetry?: number | null },
+        input: {
+            timeoutHours?: number | null;
+            autoApproveHours?: number | null;
+            refundAutoRetry?: number | null;
+            firstResponseTargetHours?: number | null;
+            resolveTargetHours?: number | null;
+        },
     ): Promise<MerchantAfterSalesRules> {
         const repo = this.connection.getRepository(ctx, Channel);
         const channel = await repo.findOne({ where: { id: ctx.channelId as any } });
@@ -2087,11 +2124,27 @@ export class MerchantAdminService {
             }
             cf.afterSalesRefundAutoRetry = n;
         }
+        if (input.firstResponseTargetHours !== undefined) {
+            const n = Math.floor(Number(input.firstResponseTargetHours));
+            if (input.firstResponseTargetHours == null || !Number.isFinite(n) || n < 0 || n > 168) {
+                throw new UserInputError('首响目标应为 0-168 小时（0=不考核）');
+            }
+            cf.afterSalesFirstResponseTargetHours = n;
+        }
+        if (input.resolveTargetHours !== undefined) {
+            const n = Math.floor(Number(input.resolveTargetHours));
+            if (input.resolveTargetHours == null || !Number.isFinite(n) || n < 0 || n > 168) {
+                throw new UserInputError('完结目标应为 0-168 小时（0=不考核）');
+            }
+            cf.afterSalesResolveTargetHours = n;
+        }
         channel.customFields = cf;
         await repo.save(channel);
         const saved = await this.afterSalesRules(ctx);
         // 规则变更立即生效（§86）：重排未执行任务，避免旧时限继续按原到期时间执行
         await this.rescheduleAfterSalesTasks(ctx, saved);
+        // 退款重试次数变更立即生效（§87）：为 RefundFailed 单补排/复位重试任务
+        await this.rescheduleRefundRetryTasks(ctx, saved);
         return saved;
     }
 
@@ -2451,6 +2504,110 @@ export class MerchantAdminService {
         return results;
     }
 
+    /** 快捷回复模板列表（§87）：本店渠道，按创建先后 */
+    async afterSalesReplyTemplates(ctx: RequestContext): Promise<MerchantAfterSalesReplyTemplate[]> {
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT id, content, "createdAt" FROM campus_after_sales_reply_template '
+            + 'WHERE "channelId" = $1 ORDER BY id ASC LIMIT 50',
+            [Number(ctx.channelId)],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => ({
+            id: String(r.id),
+            content: String(r.content ?? ''),
+            createdAt: new Date(r.createdAt),
+        }));
+    }
+
+    /** 新增 / 修改快捷回复模板（§87）：单店上限 30 条，单条最多 200 字 */
+    async saveAfterSalesReplyTemplate(
+        ctx: RequestContext,
+        id: ID | null | undefined,
+        content: string,
+    ): Promise<MerchantAfterSalesReplyTemplate> {
+        const text = String(content ?? '').trim();
+        if (!text) throw new UserInputError('请填写模板内容');
+        if (text.length > 200) throw new UserInputError('模板最多 200 字');
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        if (id != null) {
+            const rows: any = await raw.query(
+                'UPDATE campus_after_sales_reply_template SET content = $1, "updatedAt" = now() '
+                + 'WHERE id = $2 AND "channelId" = $3 RETURNING id, content, "createdAt"',
+                [text, Number(id), chId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            const r = list?.[0];
+            if (!r) throw new UserInputError('模板不存在或不属于当前店铺');
+            return { id: String(r.id), content: String(r.content ?? text), createdAt: new Date(r.createdAt) };
+        }
+        const countRows: any = await raw.query(
+            'SELECT COUNT(*)::int AS n FROM campus_after_sales_reply_template WHERE "channelId" = $1',
+            [chId],
+        );
+        const countList: any[] = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
+        if (Number(countList?.[0]?.n ?? 0) >= 30) {
+            throw new UserInputError('快捷回复模板最多 30 条，请先删除不用的模板');
+        }
+        const rows: any = await raw.query(
+            'INSERT INTO campus_after_sales_reply_template ("channelId", content) VALUES ($1, $2) '
+            + 'RETURNING id, content, "createdAt"',
+            [chId, text],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const r = list?.[0];
+        if (!r) throw new UserInputError('模板保存失败');
+        return { id: String(r.id), content: String(r.content ?? text), createdAt: new Date(r.createdAt) };
+    }
+
+    /** 删除快捷回复模板（§87） */
+    async deleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean> {
+        const rows: any = await this.connection.rawConnection.query(
+            'DELETE FROM campus_after_sales_reply_template WHERE id = $1 AND "channelId" = $2 RETURNING id',
+            [Number(id), Number(ctx.channelId)],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return Array.isArray(list) && list.length > 0;
+    }
+
+    /** 手动为退款失败单排程重试（§87）：复用/复位任务到 PENDING，1 分钟后由兜底扫描执行 */
+    async afterSalesScheduleRefundRetry(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesTaskRow> {
+        await this.assertChannelAfterSales(ctx, id, ['RefundFailed']);
+        const job = this.getAfterSalesJob();
+        if (!job) throw new UserInputError('售后插件未安装，暂不能排程退款重试');
+        const rules = await this.afterSalesRules(ctx);
+        // 自动重试关闭时手动仍允许一轮兜底尝试
+        const maxAttempt = rules.refundAutoRetry > 0 ? rules.refundAutoRetry : 3;
+        const repo = this.connection.getRepository(ctx, AfterSalesTimeoutTask);
+        const where = {
+            requestId: Number(id),
+            channelId: Number(ctx.channelId),
+            type: AfterSalesTimeoutType.REFUND_RETRY,
+            status: AfterSalesTimeoutStatus.PENDING,
+        };
+        const existing = await repo.findOne({ where: where as any, order: { id: 'DESC' } });
+        if (existing) {
+            existing.attempt = 0;
+            existing.maxAttempt = maxAttempt;
+            existing.dueAt = new Date(Date.now() + 60_000);
+            existing.retryCount = 0;
+            existing.lastError = null;
+            await repo.save(existing);
+            return this.toTaskRow(existing);
+        }
+        await job.scheduleTimeout(
+            AfterSalesTimeoutType.REFUND_RETRY,
+            Number(id),
+            Number(ctx.channelId),
+            60_000,
+            'RefundFailed',
+            maxAttempt,
+        );
+        const fresh = await repo.findOne({ where: where as any, order: { id: 'DESC' } });
+        if (!fresh) throw new UserInputError('退款重试任务登记失败');
+        return this.toTaskRow(fresh);
+    }
+
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
     private async assertRequestInChannel(ctx: RequestContext, id: ID): Promise<void> {
         const rows: any = await this.connection.rawConnection.query(
@@ -2492,6 +2649,72 @@ export class MerchantAdminService {
                 task.dueAt = new Date(new Date(req.createdAt).getTime() + hours * 3_600_000);
             }
             await taskRepo.save(task);
+        }
+    }
+
+    /**
+     * 退款重试次数变更立即生效（§87）：
+     * 自动重试关闭 → 作废本店待执行的退款重试任务；
+     * 否则为 RefundFailed 单补排/复位任务（次数下调到已用次数以下则不再补排）。
+     */
+    private async rescheduleRefundRetryTasks(ctx: RequestContext, rules: MerchantAfterSalesRules): Promise<void> {
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        if (rules.refundAutoRetry <= 0) {
+            await raw.query(
+                `UPDATE after_sales_timeout_task SET status = 'cancelled'
+                  WHERE "channelId" = $1 AND type = 'refund_retry' AND status = 'pending'`,
+                [chId],
+            );
+            return;
+        }
+        const job = this.getAfterSalesJob();
+        if (!job) return;
+        const rows: any = await raw.query(
+            `SELECT a.id AS "requestId", t.id AS "taskId"
+               FROM after_sales_request a
+               JOIN "order" o ON o.id = a."orderId"
+               JOIN order_channels_channel oc ON oc."orderId" = o.id AND oc."channelId" = $1
+               LEFT JOIN LATERAL (SELECT t1.id FROM after_sales_timeout_task t1
+                                   WHERE t1."requestId" = a.id AND t1.type = 'refund_retry'
+                                   ORDER BY t1.id DESC LIMIT 1) t ON true
+              WHERE a.state = 'RefundFailed'`,
+            [chId],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const taskRepo = this.connection.getRepository(ctx, AfterSalesTimeoutTask);
+        for (const r of Array.isArray(list) ? list : []) {
+            const maxAttempt = rules.refundAutoRetry;
+            if (r.taskId != null) {
+                const task = await taskRepo.findOne({ where: { id: Number(r.taskId) } });
+                if (!task) continue;
+                task.maxAttempt = maxAttempt;
+                if (Number(task.attempt) >= maxAttempt) {
+                    // 次数下调后已用次数超出上限：旧任务保留审计，不再执行
+                    if (task.status === AfterSalesTimeoutStatus.PENDING) {
+                        task.status = AfterSalesTimeoutStatus.CANCELLED;
+                        await taskRepo.save(task);
+                    }
+                    continue;
+                }
+                if (task.status !== AfterSalesTimeoutStatus.PENDING) {
+                    // 旧任务已结束（耗尽/失败），按剩余次数复位为待执行
+                    task.status = AfterSalesTimeoutStatus.PENDING;
+                    task.retryCount = 0;
+                    task.lastError = null;
+                    task.dueAt = new Date(Date.now() + 30 * 60 * 1000);
+                }
+                await taskRepo.save(task);
+                continue;
+            }
+            await job.scheduleTimeout(
+                AfterSalesTimeoutType.REFUND_RETRY,
+                Number(r.requestId),
+                chId,
+                30 * 60 * 1000,
+                'RefundFailed',
+                maxAttempt,
+            );
         }
     }
 
@@ -2628,26 +2851,42 @@ export class MerchantAdminService {
                 [chId, start, end],
             );
             // SLA（§86）：首响=创建到商家首条留言；完结=创建到首次 Refunded/Closed
+            const rules = await this.afterSalesRules(ctx);
             const firstRows: any = await raw.query(
                 `SELECT AVG(EXTRACT(EPOCH FROM (fr."createdAt" - a."createdAt")) / 60)::int AS avg_min,
-                        MAX(EXTRACT(EPOCH FROM (fr."createdAt" - a."createdAt")) / 60)::int AS max_min
+                        MAX(EXTRACT(EPOCH FROM (fr."createdAt" - a."createdAt")) / 60)::int AS max_min,
+                        COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (fr."createdAt" - a."createdAt")) <= $4)::int AS hit,
+                        COUNT(*)::int AS n
                    FROM after_sales_request a
                    JOIN LATERAL (SELECT MIN(m."createdAt") AS "createdAt" FROM after_sales_message m
                                   WHERE m."requestId" = a.id AND m."senderType" = 'admin') fr
                      ON fr."createdAt" IS NOT NULL
                   WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}`,
-                [chId, start, end],
+                [chId, start, end, rules.firstResponseTargetHours * 3600],
             );
             const resolveRows: any = await raw.query(
                 `SELECT AVG(EXTRACT(EPOCH FROM (r."createdAt" - a."createdAt")) / 60)::int AS avg_min,
-                        MAX(EXTRACT(EPOCH FROM (r."createdAt" - a."createdAt")) / 60)::int AS max_min
+                        MAX(EXTRACT(EPOCH FROM (r."createdAt" - a."createdAt")) / 60)::int AS max_min,
+                        COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (r."createdAt" - a."createdAt")) <= $4)::int AS hit,
+                        COUNT(*)::int AS n
                    FROM after_sales_request a
                    JOIN LATERAL (SELECT MIN(h."createdAt") AS "createdAt" FROM after_sales_state_history h
                                   WHERE h."requestId" = a.id AND h."toState" IN ('Refunded', 'Closed')) r
                      ON r."createdAt" IS NOT NULL
                   WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}`,
-                [chId, start, end],
+                [chId, start, end, rules.resolveTargetHours * 3600],
             );
+            // 达标率只在配置了目标时计算；无样本或未配置返回 0
+            const firstN = Number(firstRows?.[0]?.n ?? 0);
+            const firstHit = Number(firstRows?.[0]?.hit ?? 0);
+            const resolveN = Number(resolveRows?.[0]?.n ?? 0);
+            const resolveHit = Number(resolveRows?.[0]?.hit ?? 0);
+            const firstResponseOnTargetRate = rules.firstResponseTargetHours > 0 && firstN > 0
+                ? Math.round((firstHit / firstN) * 100)
+                : 0;
+            const resolveOnTargetRate = rules.resolveTargetHours > 0 && resolveN > 0
+                ? Math.round((resolveHit / resolveN) * 100)
+                : 0;
             const byDay = new Map<string, { count: number; refunded: number; refundAmount: number }>();
             for (const r of (Array.isArray(dayCreated) ? dayCreated : [])) {
                 byDay.set(String(r.d), { count: Number(r.n) || 0, refunded: 0, refundAmount: 0 });
@@ -2682,6 +2921,10 @@ export class MerchantAdminService {
                 firstResponseMaxMinutes: Number(firstRows?.[0]?.max_min ?? 0),
                 resolveAvgMinutes: Number(resolveRows?.[0]?.avg_min ?? 0),
                 resolveMaxMinutes: Number(resolveRows?.[0]?.max_min ?? 0),
+                firstResponseOnTargetRate,
+                resolveOnTargetRate,
+                firstResponseOverdue: rules.firstResponseTargetHours > 0 ? Math.max(firstN - firstHit, 0) : 0,
+                resolveOverdue: rules.resolveTargetHours > 0 ? Math.max(resolveN - resolveHit, 0) : 0,
             };
         } catch (e: any) {
             throw new UserInputError(`售后报表查询失败：${e?.message ?? e}`);

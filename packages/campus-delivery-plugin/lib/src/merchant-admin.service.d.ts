@@ -211,6 +211,13 @@ export interface MerchantAfterSalesReport {
     /** 完结时长（分钟）：创建→Refunded/Closed，无数据为 0 */
     resolveAvgMinutes: number;
     resolveMaxMinutes: number;
+    /** 首响目标达标率（百分比，0=未设目标或无数据） */
+    firstResponseOnTargetRate: number;
+    /** 完结目标达标率（百分比，0=未设目标或无数据） */
+    resolveOnTargetRate: number;
+    /** 超出首响目标的单数 / 超出完结目标的单数 */
+    firstResponseOverdue: number;
+    resolveOverdue: number;
 }
 /** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
 export interface MerchantAfterSalesNote {
@@ -227,6 +234,16 @@ export interface MerchantAfterSalesRules {
     autoApproveHours: number;
     /** 退款失败自动重试次数（0=关闭） */
     refundAutoRetry: number;
+    /** 首响目标小时（0=未设） */
+    firstResponseTargetHours: number;
+    /** 完结目标小时（0=未设） */
+    resolveTargetHours: number;
+}
+/** 商家快捷回复模板（§87）：本店渠道共用 */
+export interface MerchantAfterSalesReplyTemplate {
+    id: string;
+    content: string;
+    createdAt: Date;
 }
 /** 退款流水（§84）：按退款时间倒序 */
 export interface MerchantAfterSalesRefundRow {
@@ -292,6 +309,8 @@ export interface MerchantAfterSalesListOptions {
     type?: string | null;
     /** 订单号模糊匹配（A2400xxx） */
     orderCode?: string | null;
+    /** 顾客关键字（手机号/姓名模糊匹配，§87） */
+    keyword?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -774,12 +793,15 @@ export declare class MerchantAdminService {
     afterSalesRules(ctx: RequestContext): Promise<MerchantAfterSalesRules>;
     /**
      * 保存售后规则（§84）：只写传入项，保留渠道其它自定义字段。
-     * 超时提醒 1-168h；自动同意 0-168h（0=关闭）；自动重试 0-5 次（0=关闭）。
+     * 超时提醒 1-168h；自动同意 0-168h（0=关闭）；自动重试 0-5 次（0=关闭）；
+     * 首响/完结目标 0-168h（0=未设，§87）。
      */
     updateAfterSalesRules(ctx: RequestContext, input: {
         timeoutHours?: number | null;
         autoApproveHours?: number | null;
         refundAutoRetry?: number | null;
+        firstResponseTargetHours?: number | null;
+        resolveTargetHours?: number | null;
     }): Promise<MerchantAfterSalesRules>;
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     afterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
@@ -820,10 +842,24 @@ export declare class MerchantAdminService {
     deleteAfterSalesNote(ctx: RequestContext, id: ID, noteId: ID): Promise<boolean>;
     /** 批量催办顾客（§86）：单批上限 20，逐单结果；仍受同单 60 秒冷却约束 */
     afterSalesBatchRemind(ctx: RequestContext, ids: ID[], note?: string | null): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 快捷回复模板列表（§87）：本店渠道，按创建先后 */
+    afterSalesReplyTemplates(ctx: RequestContext): Promise<MerchantAfterSalesReplyTemplate[]>;
+    /** 新增 / 修改快捷回复模板（§87）：单店上限 30 条，单条最多 200 字 */
+    saveAfterSalesReplyTemplate(ctx: RequestContext, id: ID | null | undefined, content: string): Promise<MerchantAfterSalesReplyTemplate>;
+    /** 删除快捷回复模板（§87） */
+    deleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
+    /** 手动为退款失败单排程重试（§87）：复用/复位任务到 PENDING，1 分钟后由兜底扫描执行 */
+    afterSalesScheduleRefundRetry(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesTaskRow>;
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
     private assertRequestInChannel;
     /** 规则变更后重排未执行任务（§86）：按新时限重算到期时间，0 表示关闭则作废 */
     private rescheduleAfterSalesTasks;
+    /**
+     * 退款重试次数变更立即生效（§87）：
+     * 自动重试关闭 → 作废本店待执行的退款重试任务；
+     * 否则为 RefundFailed 单补排/复位任务（次数下调到已用次数以下则不再补排）。
+     */
+    private rescheduleRefundRetryTasks;
     private toTaskRow;
     /** 售后超时任务执行器（§85）：可选依赖，未装售后插件时为空 */
     private afterSalesJobSvc?;

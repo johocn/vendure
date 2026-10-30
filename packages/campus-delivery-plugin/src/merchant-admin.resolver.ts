@@ -208,12 +208,13 @@ export class MerchantAdminResolver {
         @Args({ name: 'state', type: () => String, nullable: true }) state?: string | null,
         @Args({ name: 'type', type: () => String, nullable: true }) type?: string | null,
         @Args({ name: 'orderCode', type: () => String, nullable: true }) orderCode?: string | null,
+        @Args({ name: 'keyword', type: () => String, nullable: true }) keyword?: string | null,
         @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
         @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, from, to, skip, take });
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, from, to, skip, take });
     }
 
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
@@ -309,6 +310,13 @@ export class MerchantAdminResolver {
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantAfterSalesNotes(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
         return this.merchant.afterSalesNotes(ctx, id);
+    }
+
+    /** 快捷回复模板（§87）：本店渠道共用 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReplyTemplates(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesReplyTemplates(ctx);
     }
 
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
@@ -408,8 +416,16 @@ export class MerchantAdminResolver {
         @Args({ name: 'timeoutHours', type: () => Number, nullable: true }) timeoutHours?: number | null,
         @Args({ name: 'autoApproveHours', type: () => Number, nullable: true }) autoApproveHours?: number | null,
         @Args({ name: 'refundAutoRetry', type: () => Number, nullable: true }) refundAutoRetry?: number | null,
+        @Args({ name: 'firstResponseTargetHours', type: () => Number, nullable: true }) firstResponseTargetHours?: number | null,
+        @Args({ name: 'resolveTargetHours', type: () => Number, nullable: true }) resolveTargetHours?: number | null,
     ) {
-        return this.merchant.updateAfterSalesRules(ctx, { timeoutHours, autoApproveHours, refundAutoRetry });
+        return this.merchant.updateAfterSalesRules(ctx, {
+            timeoutHours,
+            autoApproveHours,
+            refundAutoRetry,
+            firstResponseTargetHours,
+            resolveTargetHours,
+        });
     }
 
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
@@ -483,6 +499,31 @@ export class MerchantAdminResolver {
         @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
     ) {
         return this.merchant.afterSalesBatchRemind(ctx, ids, note);
+    }
+
+    /** 保存快捷回复模板（§87）：id 为空=新增 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSaveAfterSalesReplyTemplate(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'id', type: () => String, nullable: true }) id: ID | null,
+        @Args('content') content: string,
+    ) {
+        return this.merchant.saveAfterSalesReplyTemplate(ctx, id, content);
+    }
+
+    /** 删除快捷回复模板（§87） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantDeleteAfterSalesReplyTemplate(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.deleteAfterSalesReplyTemplate(ctx, id);
+    }
+
+    /** 手动排程退款重试（§87）：仅 RefundFailed */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesScheduleRefundRetry(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesScheduleRefundRetry(ctx, id);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

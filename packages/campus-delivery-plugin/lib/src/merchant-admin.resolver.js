@@ -117,8 +117,8 @@ let MerchantAdminResolver = class MerchantAdminResolver {
         return this.merchant.dailyReport(ctx, date);
     }
     /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    async campusMerchantAfterSales(ctx, state, type, orderCode, from, to, skip, take) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, from, to, skip, take });
+    async campusMerchantAfterSales(ctx, state, type, orderCode, keyword, from, to, skip, take) {
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, from, to, skip, take });
     }
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
     async campusMerchantAfterSalesDetail(ctx, id) {
@@ -160,6 +160,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesNotes(ctx, id) {
         return this.merchant.afterSalesNotes(ctx, id);
     }
+    /** 快捷回复模板（§87）：本店渠道共用 */
+    async campusMerchantAfterSalesReplyTemplates(ctx) {
+        return this.merchant.afterSalesReplyTemplates(ctx);
+    }
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     async campusMerchantAfterSalesApprove(ctx, id) {
         return this.merchant.afterSalesApprove(ctx, id);
@@ -197,8 +201,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
         return this.merchant.updateAfterSalesReturnAddress(ctx, address);
     }
     /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
-    async campusMerchantUpdateAfterSalesRules(ctx, timeoutHours, autoApproveHours, refundAutoRetry) {
-        return this.merchant.updateAfterSalesRules(ctx, { timeoutHours, autoApproveHours, refundAutoRetry });
+    async campusMerchantUpdateAfterSalesRules(ctx, timeoutHours, autoApproveHours, refundAutoRetry, firstResponseTargetHours, resolveTargetHours) {
+        return this.merchant.updateAfterSalesRules(ctx, {
+            timeoutHours,
+            autoApproveHours,
+            refundAutoRetry,
+            firstResponseTargetHours,
+            resolveTargetHours,
+        });
     }
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     async campusMerchantAfterSalesClose(ctx, id, reason) {
@@ -227,6 +237,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 批量催办顾客（§86）：单次最多 20 条 */
     async campusMerchantAfterSalesBatchRemind(ctx, ids, note) {
         return this.merchant.afterSalesBatchRemind(ctx, ids, note);
+    }
+    /** 保存快捷回复模板（§87）：id 为空=新增 */
+    async campusMerchantSaveAfterSalesReplyTemplate(ctx, id, content) {
+        return this.merchant.saveAfterSalesReplyTemplate(ctx, id, content);
+    }
+    /** 删除快捷回复模板（§87） */
+    async campusMerchantDeleteAfterSalesReplyTemplate(ctx, id) {
+        return this.merchant.deleteAfterSalesReplyTemplate(ctx, id);
+    }
+    /** 手动排程退款重试（§87）：仅 RefundFailed */
+    async campusMerchantAfterSalesScheduleRefundRetry(ctx, id) {
+        return this.merchant.afterSalesScheduleRefundRetry(ctx, id);
     }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
@@ -499,12 +521,13 @@ __decorate([
     __param(1, (0, graphql_1.Args)({ name: 'state', type: () => String, nullable: true })),
     __param(2, (0, graphql_1.Args)({ name: 'type', type: () => String, nullable: true })),
     __param(3, (0, graphql_1.Args)({ name: 'orderCode', type: () => String, nullable: true })),
-    __param(4, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
-    __param(5, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
-    __param(6, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
-    __param(7, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'keyword', type: () => String, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
+    __param(6, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
+    __param(7, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(8, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSales", null);
 __decorate([
@@ -605,6 +628,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesNotes", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReplyTemplates", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
@@ -700,8 +731,10 @@ __decorate([
     __param(1, (0, graphql_1.Args)({ name: 'timeoutHours', type: () => Number, nullable: true })),
     __param(2, (0, graphql_1.Args)({ name: 'autoApproveHours', type: () => Number, nullable: true })),
     __param(3, (0, graphql_1.Args)({ name: 'refundAutoRetry', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'firstResponseTargetHours', type: () => Number, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'resolveTargetHours', type: () => Number, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesRules", null);
 __decorate([
@@ -773,6 +806,34 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Array, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesBatchRemind", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'id', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)('content')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSaveAfterSalesReplyTemplate", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantDeleteAfterSalesReplyTemplate", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesScheduleRefundRetry", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
