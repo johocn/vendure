@@ -68,6 +68,12 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesRules(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
     /** 退款流水（§84）：按退款时间倒序分页 */
     campusMerchantAfterSalesRefunds(ctx: RequestContext, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRefundList>;
+    /** 售后自动化任务（§85）：本店超时/自动同意/退款重试任务 */
+    campusMerchantAfterSalesTasks(ctx: RequestContext, status?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesTaskList>;
+    /** 导出 CSV（§85）：kind=requests|refunds，前端保存为文件 */
+    campusMerchantAfterSalesExport(ctx: RequestContext, from: string, to: string, kind: string): Promise<string>;
+    /** 高频售后顾客 Top N（§85） */
+    campusMerchantAfterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesTopCustomer[]>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
@@ -92,6 +98,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 商家催办顾客（§84）：60 秒内同单一次 */
     campusMerchantAfterSalesRemind(ctx: RequestContext, id: ID, note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 立即执行售后自动化任务（§85） */
+    campusMerchantAfterSalesRunTask(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesTaskRow>;
+    /** 一键拉黑高频售后顾客（§85） */
+    campusMerchantBlacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID, reason?: string | null): Promise<boolean>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

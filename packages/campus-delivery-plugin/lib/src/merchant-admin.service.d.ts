@@ -230,6 +230,33 @@ export interface MerchantAfterSalesRefundList {
     items: MerchantAfterSalesRefundRow[];
     total: number;
 }
+/** 售后自动化任务（§85）：定时提醒/自动同意/退款重试的运行记录 */
+export interface MerchantAfterSalesTaskRow {
+    id: string;
+    type: string;
+    requestId: number;
+    status: string;
+    dueAt: Date;
+    attempt: number;
+    maxAttempt: number;
+    retryCount: number;
+    lastError: string | null;
+    executedAt: Date | null;
+}
+export interface MerchantAfterSalesTaskList {
+    items: MerchantAfterSalesTaskRow[];
+    total: number;
+}
+/** 高频售后顾客（§85）：手机号脱敏展示 */
+export interface MerchantAfterSalesTopCustomer {
+    customerId: string;
+    name: string;
+    phone: string;
+    count: number;
+    /** 区间内退款额（分） */
+    refundAmount: number;
+    blacklisted: boolean;
+}
 /** 售后状态计数（§81）：列表筛选旁的角标 */
 export interface MerchantAfterSalesStateCount {
     state: string;
@@ -746,6 +773,37 @@ export declare class MerchantAdminService {
         skip?: number | null;
         take?: number | null;
     }): Promise<MerchantAfterSalesRefundList>;
+    /** 售后自动化任务列表（§85）：本店渠道，按到期时间倒序 */
+    afterSalesTasks(ctx: RequestContext, opts?: {
+        status?: string | null;
+        skip?: number | null;
+        take?: number | null;
+    }): Promise<MerchantAfterSalesTaskList>;
+    /**
+     * 立即执行超时任务（§85）：重置为 PENDING + 到期时间为当前，复用任务锁跑一次，
+     * FAILED 任务借此补跑；已执行/已作废不允许重复执行。
+     */
+    afterSalesRunTask(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesTaskRow>;
+    /**
+     * 售后明细 / 退款流水导出（§85）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 供前端保存为 .csv；日期为校园日（UTC+8）。
+     */
+    afterSalesExport(ctx: RequestContext, from: string, to: string, kind: string): Promise<string>;
+    /** 高频售后顾客 Top N（§85）：区间内售后次数/退款额，附黑名单状态，手机号脱敏 */
+    afterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesTopCustomer[]>;
+    /** 一键拉黑高频售后顾客（§85）：仅限在本店有售后记录的顾客，已存在则不重复插入 */
+    blacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID, reason?: string | null): Promise<boolean>;
+    private toTaskRow;
+    /** 售后超时任务执行器（§85）：可选依赖，未装售后插件时为空 */
+    private afterSalesJobSvc?;
+    private getAfterSalesJob;
+    /** 金额分 → 元（两位小数），导出用 */
+    private yuan;
+    /** 校园时间导出格式：YYYY-MM-DD HH:mm:ss（UTC+8） */
+    private campusDateTime;
+    /** 手机号脱敏：保留前 3 后 4，长度不足时整体打码 */
+    private maskPhone;
+    private toCsv;
     /**
      * 售后报表（§83）：按校园日（UTC+8）统计区间内创建量、退款单数与金额、当前超时数、逐日趋势。
      * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。

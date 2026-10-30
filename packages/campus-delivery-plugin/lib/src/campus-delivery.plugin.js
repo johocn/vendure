@@ -972,6 +972,41 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     total: Int!
                 }
 
+                """售后自动化任务（§85）：超时提醒/自动同意/退款重试"""
+                type CampusMerchantAfterSalesTask {
+                    id: ID!
+                    """pending_remind | pending_auto_approve | refund_retry"""
+                    type: String!
+                    requestId: Int!
+                    """pending | cancelled | executed | failed"""
+                    status: String!
+                    dueAt: DateTime!
+                    """业务次数（退款重试已执行次数）"""
+                    attempt: Int!
+                    """业务上限"""
+                    maxAttempt: Int!
+                    """执行失败重试次数"""
+                    retryCount: Int!
+                    lastError: String
+                    executedAt: DateTime
+                }
+
+                type CampusMerchantAfterSalesTaskList {
+                    items: [CampusMerchantAfterSalesTask!]!
+                    total: Int!
+                }
+
+                """高频售后顾客（§85）：手机号脱敏"""
+                type CampusMerchantAfterSalesTopCustomer {
+                    customerId: ID!
+                    name: String!
+                    phone: String!
+                    count: Int!
+                    """区间内退款额（分）"""
+                    refundAmount: Int!
+                    blacklisted: Boolean!
+                }
+
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
                 type CampusPrintResult {
                     ok: Boolean!
@@ -1869,6 +1904,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesRules: CampusMerchantAfterSalesRules!
                     """退款流水（§84）：按退款时间倒序分页"""
                     campusMerchantAfterSalesRefunds(from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesRefundList!
+                    """售后自动化任务（§85）：本店超时/自动同意/退款重试任务"""
+                    campusMerchantAfterSalesTasks(status: String, skip: Int, take: Int): CampusMerchantAfterSalesTaskList!
+                    """导出售后明细/退款流水 CSV（§85）：kind=requests|refunds"""
+                    campusMerchantAfterSalesExport(from: String!, to: String!, kind: String!): String!
+                    """高频售后顾客 Top N（§85）：附黑名单状态"""
+                    campusMerchantAfterSalesTopCustomers(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesTopCustomer!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2172,6 +2213,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesClose(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     """商家催办顾客（§84）：60 秒内同单一次，站内信提醒"""
                     campusMerchantAfterSalesRemind(id: ID!, note: String): CampusMerchantAfterSalesItem!
+                    """立即执行售后自动化任务（§85）：重置到期后复用任务锁执行"""
+                    campusMerchantAfterSalesRunTask(id: ID!): CampusMerchantAfterSalesTask!
+                    """一键拉黑高频售后顾客（§85）"""
+                    campusMerchantBlacklistAfterSalesCustomer(customerId: ID!, reason: String): Boolean!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

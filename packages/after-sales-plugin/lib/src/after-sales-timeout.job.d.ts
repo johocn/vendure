@@ -28,6 +28,11 @@ export declare class AfterSalesTimeoutJob implements OnApplicationShutdown {
     /** 兜底扫描：直接执行 dueAt 已到的 PENDING 任务（不依赖 JobQueue worker） */
     private runDueTasks;
     /**
+     * 商家端「立即执行」入口：调用方需先把任务重置为 PENDING + dueAt=now，
+     * 这里复用任务锁正常执行一次（FAILED 任务重置后同样可补跑）。
+     */
+    runTaskNow(taskId: number): Promise<void>;
+    /**
      * 任务级 advisory lock：兜底定时器、JobQueue worker、补偿扫描可能同时命中同一任务，
      * 锁内二次读取 status 保证只执行一次（已执行的会因 status != PENDING 直接跳过）。
      */

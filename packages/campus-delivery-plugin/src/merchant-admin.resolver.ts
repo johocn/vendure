@@ -268,6 +268,42 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesRefunds(ctx, { from, to, skip, take });
     }
 
+    /** 售后自动化任务（§85）：本店超时/自动同意/退款重试任务 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesTasks(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'status', type: () => String, nullable: true }) status?: string | null,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
+    ) {
+        return this.merchant.afterSalesTasks(ctx, { status, skip, take });
+    }
+
+    /** 导出 CSV（§85）：kind=requests|refunds，前端保存为文件 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesExport(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+        @Args('kind') kind: string,
+    ) {
+        return this.merchant.afterSalesExport(ctx, from, to, kind);
+    }
+
+    /** 高频售后顾客 Top N（§85） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesTopCustomers(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+        @Args({ name: 'limit', type: () => Number, nullable: true }) limit?: number | null,
+    ) {
+        return this.merchant.afterSalesTopCustomers(ctx, from, to, limit);
+    }
+
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
@@ -389,6 +425,24 @@ export class MerchantAdminResolver {
         @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
     ) {
         return this.merchant.afterSalesRemind(ctx, id, note);
+    }
+
+    /** 立即执行售后自动化任务（§85） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRunTask(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesRunTask(ctx, id);
+    }
+
+    /** 一键拉黑高频售后顾客（§85） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantBlacklistAfterSalesCustomer(
+        @Ctx() ctx: RequestContext,
+        @Args('customerId') customerId: ID,
+        @Args({ name: 'reason', type: () => String, nullable: true }) reason?: string | null,
+    ) {
+        return this.merchant.blacklistAfterSalesCustomer(ctx, customerId, reason);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

@@ -1547,6 +1547,246 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError(`退款流水查询失败：${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`);
         }
     }
+    /** 售后自动化任务列表（§85）：本店渠道，按到期时间倒序 */
+    async afterSalesTasks(ctx, opts = {}) {
+        var _a, _b, _c;
+        const repo = this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesTimeoutTask);
+        const skip = Math.max(0, Math.floor(Number((_a = opts.skip) !== null && _a !== void 0 ? _a : 0)) || 0);
+        const take = Math.min(100, Math.max(1, Math.floor(Number((_b = opts.take) !== null && _b !== void 0 ? _b : 20)) || 20));
+        const where = { channelId: Number(ctx.channelId) };
+        const status = String((_c = opts.status) !== null && _c !== void 0 ? _c : '').trim();
+        if (status) {
+            if (!Object.values(after_sales_plugin_1.AfterSalesTimeoutStatus).includes(status)) {
+                throw new core_2.UserInputError('任务状态无效');
+            }
+            where.status = status;
+        }
+        const [rows, total] = await repo.findAndCount({
+            where,
+            order: { dueAt: 'DESC', id: 'DESC' },
+            skip,
+            take,
+        });
+        return { items: rows.map(t => this.toTaskRow(t)), total };
+    }
+    /**
+     * 立即执行超时任务（§85）：重置为 PENDING + 到期时间为当前，复用任务锁跑一次，
+     * FAILED 任务借此补跑；已执行/已作废不允许重复执行。
+     */
+    async afterSalesRunTask(ctx, id) {
+        var _a;
+        const repo = this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesTimeoutTask);
+        const task = await repo.findOne({ where: { id: id, channelId: ctx.channelId } });
+        if (!task)
+            throw new core_2.UserInputError('任务不存在或不属于当前店铺');
+        if ([after_sales_plugin_1.AfterSalesTimeoutStatus.EXECUTED, after_sales_plugin_1.AfterSalesTimeoutStatus.CANCELLED].includes(task.status)) {
+            throw new core_2.UserInputError('任务已结束，不能重复执行');
+        }
+        const job = this.getAfterSalesJob();
+        if (!job)
+            throw new core_2.UserInputError('售后插件未安装，暂不能执行任务');
+        task.status = after_sales_plugin_1.AfterSalesTimeoutStatus.PENDING;
+        task.dueAt = new Date();
+        task.retryCount = 0;
+        task.lastError = null;
+        await repo.save(task);
+        try {
+            await job.runTaskNow(Number(task.id));
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`任务执行失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+        const fresh = await repo.findOne({ where: { id: task.id } });
+        return this.toTaskRow(fresh !== null && fresh !== void 0 ? fresh : task);
+    }
+    /**
+     * 售后明细 / 退款流水导出（§85）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 供前端保存为 .csv；日期为校园日（UTC+8）。
+     */
+    async afterSalesExport(ctx, from, to, kind) {
+        var _a;
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end)
+            throw new core_2.UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime())
+            throw new core_2.UserInputError('开始日期不能晚于结束日期');
+        if (end.getTime() - start.getTime() > 366 * 86400000)
+            throw new core_2.UserInputError('导出区间最长一年');
+        const k = String(kind !== null && kind !== void 0 ? kind : '').trim();
+        if (k !== 'requests' && k !== 'refunds')
+            throw new core_2.UserInputError('导出类型无效');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            if (k === 'requests') {
+                const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.state, a.reason, a."rejectReason",
+                            a."createdAt", COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                            a."refundedAt"
+                       FROM after_sales_request a
+                       LEFT JOIN "order" o ON o.id = a."orderId"
+                      WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                      ORDER BY a."createdAt" DESC LIMIT 5000`, [chId, start, end]);
+                const header = ['售后单号', '订单号', '类型', '状态', '申请原因', '驳回/关闭原因', '申请时间', '退款金额(元)', '退款时间'];
+                const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                    r.id, r.orderCode, r.type, r.state, r.reason, r.rejectReason,
+                    this.campusDateTime(r.createdAt), this.yuan(r.amount), this.campusDateTime(r.refundedAt),
+                ]);
+                return this.toCsv(header, lines);
+            }
+            const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.reason, a."refundTransactionId",
+                        COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount, a."refundedAt"
+                   FROM after_sales_request a
+                   LEFT JOIN "order" o ON o.id = a."orderId"
+                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}
+                  ORDER BY a."refundedAt" DESC LIMIT 5000`, [chId, start, end]);
+            const header = ['售后单号', '订单号', '类型', '申请原因', '退款金额(元)', '退款时间', '退款流水号'];
+            const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                r.id, r.orderCode, r.type, r.reason, this.yuan(r.amount),
+                this.campusDateTime(r.refundedAt), r.refundTransactionId,
+            ]);
+            return this.toCsv(header, lines);
+        }
+        catch (e) {
+            if (e instanceof core_2.UserInputError)
+                throw e;
+            throw new core_2.UserInputError(`导出失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+    }
+    /** 高频售后顾客 Top N（§85）：区间内售后次数/退款额，附黑名单状态，手机号脱敏 */
+    async afterSalesTopCustomers(ctx, from, to, limit) {
+        var _a;
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end)
+            throw new core_2.UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime())
+            throw new core_2.UserInputError('开始日期不能晚于结束日期');
+        const take = Math.min(50, Math.max(1, Math.floor(Number(limit !== null && limit !== void 0 ? limit : 10)) || 10));
+        const chId = Number(ctx.channelId);
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            const rows = await this.connection.rawConnection.query(`SELECT a."customerId", c."firstName", c."lastName", c."phoneNumber" AS phone,
+                        COUNT(*)::int AS n,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0)::int AS amount,
+                        EXISTS (SELECT 1 FROM campus_blacklist b WHERE b."channelId" = $1 AND b.type = 'user'
+                                AND b."customerId" = a."customerId" AND b.active = true) AS blacklisted
+                   FROM after_sales_request a
+                   LEFT JOIN customer c ON c.id = a."customerId"
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                    AND a."customerId" IS NOT NULL
+                  GROUP BY a."customerId", c."firstName", c."lastName", c."phoneNumber"
+                  ORDER BY n DESC, amount DESC
+                  LIMIT $4`, [chId, start, end, take]);
+            return (Array.isArray(rows) ? rows : []).map(r => {
+                var _a, _b;
+                return ({
+                    customerId: String(r.customerId),
+                    name: `${String((_a = r.lastName) !== null && _a !== void 0 ? _a : '')}${String((_b = r.firstName) !== null && _b !== void 0 ? _b : '')}`.trim() || '顾客',
+                    phone: this.maskPhone(r.phone),
+                    count: Number(r.n) || 0,
+                    refundAmount: Number(r.amount) || 0,
+                    blacklisted: Boolean(r.blacklisted),
+                });
+            });
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`售后顾客分析失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+    }
+    /** 一键拉黑高频售后顾客（§85）：仅限在本店有售后记录的顾客，已存在则不重复插入 */
+    async blacklistAfterSalesCustomer(ctx, customerId, reason) {
+        var _a;
+        const cid = Number(customerId);
+        if (!Number.isFinite(cid) || cid <= 0)
+            throw new core_2.UserInputError('顾客参数无效');
+        const why = (String(reason !== null && reason !== void 0 ? reason : '').trim() || '售后异常（商家手动拉黑）').slice(0, 200);
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        try {
+            const owned = await raw.query('SELECT 1 FROM after_sales_request a WHERE a."customerId" = $2 AND EXISTS ('
+                + 'SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+                + 'AND oc."channelId" = $1 WHERE o.id = a."orderId") LIMIT 1', [chId, cid]);
+            const hits = Array.isArray(owned) && Array.isArray(owned[0]) ? owned[0] : owned;
+            if (!Array.isArray(hits) || !hits.length) {
+                throw new core_2.UserInputError('该顾客在本店没有售后记录');
+            }
+            await raw.query(`INSERT INTO campus_blacklist ("channelId", type, "customerId", phone, reason, "createdBy", active)
+                 SELECT $1, 'user', $2, NULL, $3, 'merchant', true
+                  WHERE NOT EXISTS (
+                        SELECT 1 FROM campus_blacklist b
+                         WHERE b."channelId" = $1 AND b.type = 'user'
+                           AND b."customerId" = $2 AND b.active = true
+                    )`, [chId, cid, why]);
+            return true;
+        }
+        catch (e) {
+            if (e instanceof core_2.UserInputError)
+                throw e;
+            throw new core_2.UserInputError(`加入黑名单失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+    }
+    toTaskRow(t) {
+        var _a, _b;
+        return {
+            id: String(t.id),
+            type: String(t.type),
+            requestId: Number(t.requestId),
+            status: String(t.status),
+            dueAt: t.dueAt,
+            attempt: Number(t.attempt) || 0,
+            maxAttempt: Number(t.maxAttempt) || 0,
+            retryCount: Number(t.retryCount) || 0,
+            lastError: (_a = t.lastError) !== null && _a !== void 0 ? _a : null,
+            executedAt: (_b = t.executedAt) !== null && _b !== void 0 ? _b : null,
+        };
+    }
+    getAfterSalesJob() {
+        var _a, _b, _c;
+        if (this.afterSalesJobSvc !== undefined)
+            return (_a = this.afterSalesJobSvc) !== null && _a !== void 0 ? _a : null;
+        try {
+            this.afterSalesJobSvc = this.moduleRef ? new core_2.Injector(this.moduleRef).get(after_sales_plugin_1.AfterSalesTimeoutJob) : null;
+        }
+        catch (e) {
+            this.afterSalesJobSvc = null;
+            core_2.Logger.warn(`AfterSalesTimeoutJob 不可用，商家端任务执行降级: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'CampusMerchant');
+        }
+        return (_c = this.afterSalesJobSvc) !== null && _c !== void 0 ? _c : null;
+    }
+    /** 金额分 → 元（两位小数），导出用 */
+    yuan(fen) {
+        const n = Number(fen);
+        return Number.isFinite(n) ? (n / 100).toFixed(2) : '0.00';
+    }
+    /** 校园时间导出格式：YYYY-MM-DD HH:mm:ss（UTC+8） */
+    campusDateTime(v) {
+        if (v == null)
+            return '';
+        const d = v instanceof Date ? v : new Date(v);
+        if (Number.isNaN(d.getTime()))
+            return '';
+        return d.toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' });
+    }
+    /** 手机号脱敏：保留前 3 后 4，长度不足时整体打码 */
+    maskPhone(v) {
+        const s = String(v !== null && v !== void 0 ? v : '');
+        if (!s)
+            return '';
+        return s.length >= 8 ? `${s.slice(0, 3)}****${s.slice(-4)}` : '****';
+    }
+    toCsv(header, rows) {
+        const cell = (v) => {
+            const s = v == null ? '' : String(v);
+            return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lines = [header, ...rows].map(r => r.map(cell).join(','));
+        // UTF-8 BOM：Excel 直接打开中文不乱码
+        return '\uFEFF' + lines.join('\r\n');
+    }
     /**
      * 售后报表（§83）：按校园日（UTC+8）统计区间内创建量、退款单数与金额、当前超时数、逐日趋势。
      * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。

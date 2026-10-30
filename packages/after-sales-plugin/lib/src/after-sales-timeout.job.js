@@ -101,6 +101,13 @@ let AfterSalesTimeoutJob = class AfterSalesTimeoutJob {
         }
     }
     /**
+     * 商家端「立即执行」入口：调用方需先把任务重置为 PENDING + dueAt=now，
+     * 这里复用任务锁正常执行一次（FAILED 任务重置后同样可补跑）。
+     */
+    async runTaskNow(taskId) {
+        await this.processWithLock({ taskId: String(taskId) });
+    }
+    /**
      * 任务级 advisory lock：兜底定时器、JobQueue worker、补偿扫描可能同时命中同一任务，
      * 锁内二次读取 status 保证只执行一次（已执行的会因 status != PENDING 直接跳过）。
      */
