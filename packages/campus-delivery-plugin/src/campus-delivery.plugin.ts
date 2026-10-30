@@ -149,6 +149,7 @@ import { TelemetryService } from './telemetry.service';
 import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
 import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
 import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
+import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-assignee';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -185,6 +186,7 @@ import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
         P17AfterSalesNoteMigration,
         P18ReplyTemplateMigration,
         P19AfterSalesTagMigration,
+        P20AfterSalesAssigneeMigration,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
@@ -663,6 +665,10 @@ import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
                     dueSoon: Boolean!
                     """售后标签名（§88）：本店自定义标签"""
                     tags: [String!]!
+                    """指派处理人 User id（未指派为空，§89）"""
+                    assigneeUserId: ID
+                    """处理人姓名（未指派或未匹配为空，§89）"""
+                    assigneeName: String
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -772,6 +778,29 @@ import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
                     name: String!
                     """当前打标单数"""
                     usedCount: Int!
+                }
+
+                """售后处理人候选（§89）：本店渠道管理员"""
+                type CampusMerchantAfterSalesAssignee {
+                    """管理员 User id（指派时传该值）"""
+                    id: ID!
+                    name: String!
+                    """登录账号"""
+                    identifier: String!
+                }
+
+                """员工处理绩效（§89）：按操作人统计"""
+                type CampusMerchantAfterSalesStaffRow {
+                    operatorUserId: ID!
+                    operatorName: String!
+                    """处理过的售后单数（去重）"""
+                    handled: Int!
+                    """推进到完结（Refunded/Closed）的单数"""
+                    resolved: Int!
+                    """首次操作距申请的平均分钟"""
+                    firstActionAvgMinutes: Int!
+                    """完结操作距申请的平均分钟（无完结为 0）"""
+                    resolveAvgMinutes: Int!
                 }
 
                 """售后工作台摘要（§88）：一次返回各待办入口与最老待处理时长"""
@@ -1833,11 +1862,15 @@ import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
                     """售后工作台摘要（§88）：一次请求返回各待办入口计数"""
                     campusMerchantAfterSalesWorkbench: CampusMerchantAfterSalesWorkbench!
                     """售后标签列表（§88）"""
                     campusMerchantAfterSalesTags: [CampusMerchantAfterSalesTag!]!
+                    """处理人候选（§89）：本店渠道管理员"""
+                    campusMerchantAfterSalesAssignees: [CampusMerchantAfterSalesAssignee!]!
+                    """员工处理绩效（§89）：区间内按操作人统计，区间最长一年"""
+                    campusMerchantAfterSalesStaffStats(from: String!, to: String!): [CampusMerchantAfterSalesStaffRow!]!
                     """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
@@ -2185,6 +2218,12 @@ import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
                     campusMerchantDeleteAfterSalesTag(id: ID!): Boolean!
                     """设置售后单标签（§88）：整体替换，最多 5 个"""
                     campusMerchantSetAfterSalesTags(id: ID!, tagIds: [ID!]!): [String!]!
+                    """指派处理人（§89）：userId 为空=取消指派，仅本店渠道管理员"""
+                    campusMerchantAfterSalesAssign(id: ID!, userId: ID): CampusMerchantAfterSalesItem!
+                    """批量打标签（§89）：上限 50 单，逐单返回结果"""
+                    campusMerchantAfterSalesBatchTag(ids: [ID!]!, tagIds: [ID!]!): [CampusMerchantAfterSalesBatchResult!]!
+                    """解除本店顾客拉黑（§89）"""
+                    campusMerchantUnblacklistAfterSalesCustomer(customerId: ID!): Boolean!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

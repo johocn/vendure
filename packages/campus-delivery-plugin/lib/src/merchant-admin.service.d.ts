@@ -162,6 +162,10 @@ export interface MerchantAfterSalesRow {
     dueSoon: boolean;
     /** 售后标签名（§88）：本店自定义标签，按创建先后 */
     tags: string[];
+    /** 指派处理人（§89）：本店管理员 User id，未指派为 null */
+    assigneeUserId: string | null;
+    /** 处理人姓名（未指派或未匹配到为 null） */
+    assigneeName: string | null;
 }
 /** 换货发货结果复用列表行；批量处理逐单结果 */
 export interface MerchantAfterSalesBatchResult {
@@ -319,6 +323,8 @@ export interface MerchantAfterSalesListOptions {
     keyword?: string | null;
     /** 标签筛选（本店标签 id，§88） */
     tag?: string | null;
+    /** 处理人筛选（本店管理员 userId；'none'=未指派，§89） */
+    assignee?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -407,6 +413,27 @@ export interface MerchantAfterSalesTag {
     name: string;
     /** 当前打标单数 */
     usedCount: number;
+}
+/** 售后处理人候选（§89）：本店渠道管理员 */
+export interface MerchantAfterSalesAssignee {
+    /** 管理员 User id（指派时传该值） */
+    id: string;
+    name: string;
+    /** 登录账号 */
+    identifier: string;
+}
+/** 员工处理绩效（§89）：按操作人统计 */
+export interface MerchantAfterSalesStaffRow {
+    operatorUserId: string;
+    operatorName: string;
+    /** 处理过的售后单数（去重） */
+    handled: number;
+    /** 推进到完结（Refunded/Closed）的单数 */
+    resolved: number;
+    /** 首次操作距申请的平均分钟 */
+    firstActionAvgMinutes: number;
+    /** 完结操作距申请的平均分钟（无完结为 0） */
+    resolveAvgMinutes: number;
 }
 /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
 export interface MerchantAfterSalesWorkbench {
@@ -903,6 +930,18 @@ export declare class MerchantAdminService {
     setAfterSalesTags(ctx: RequestContext, id: ID, tagIds: ID[]): Promise<string[]>;
     /** 批量取某批售后单的标签名（§88）：表缺失时降级为空 */
     private afterSalesTagNames;
+    /** 批量取某批售后单的处理人（§89）：表缺失时降级为空 */
+    private afterSalesAssigneeMap;
+    /** 处理人候选（§89）：本店渠道内有角色权限的管理员 */
+    afterSalesAssignees(ctx: RequestContext): Promise<MerchantAfterSalesAssignee[]>;
+    /** 指派处理人（§89）：传空=取消指派；处理人必须是本店渠道管理员 */
+    afterSalesAssign(ctx: RequestContext, id: ID, userId: ID | null): Promise<MerchantAfterSalesRow>;
+    /** 批量打标签（§89）：上限 50 单、5 个标签，逐单返回结果，失败不阻断整批 */
+    afterSalesBatchTag(ctx: RequestContext, ids: ID[], tagIds: ID[]): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 解除本店拉黑（§89）：按顾客维度撤销 active 记录 */
+    unblacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID): Promise<boolean>;
+    /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */
+    afterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<MerchantAfterSalesStaffRow[]>;
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
     private assertRequestInChannel;
     /** 规则变更后重排未执行任务（§86）：按新时限重算到期时间，0 表示关闭则作废 */

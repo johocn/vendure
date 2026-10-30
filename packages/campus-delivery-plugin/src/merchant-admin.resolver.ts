@@ -210,12 +210,13 @@ export class MerchantAdminResolver {
         @Args({ name: 'orderCode', type: () => String, nullable: true }) orderCode?: string | null,
         @Args({ name: 'keyword', type: () => String, nullable: true }) keyword?: string | null,
         @Args({ name: 'tag', type: () => String, nullable: true }) tag?: string | null,
+        @Args({ name: 'assignee', type: () => String, nullable: true }) assignee?: string | null,
         @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
         @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, from, to, skip, take });
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, from, to, skip, take });
     }
 
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
@@ -332,6 +333,24 @@ export class MerchantAdminResolver {
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantAfterSalesTags(@Ctx() ctx: RequestContext) {
         return this.merchant.afterSalesTags(ctx);
+    }
+
+    /** 处理人候选（§89） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAssignees(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesAssignees(ctx);
+    }
+
+    /** 员工处理绩效（§89） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesStaffStats(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+    ) {
+        return this.merchant.afterSalesStaffStats(ctx, from, to);
     }
 
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
@@ -570,6 +589,35 @@ export class MerchantAdminResolver {
         @Args({ name: 'tagIds', type: () => [String] }) tagIds: ID[],
     ) {
         return this.merchant.setAfterSalesTags(ctx, id, tagIds);
+    }
+
+    /** 指派处理人（§89）：userId 为空=取消指派 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAssign(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'userId', type: () => String, nullable: true }) userId: ID | null,
+    ) {
+        return this.merchant.afterSalesAssign(ctx, id, userId);
+    }
+
+    /** 批量打标签（§89） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesBatchTag(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'ids', type: () => [String] }) ids: ID[],
+        @Args({ name: 'tagIds', type: () => [String] }) tagIds: ID[],
+    ) {
+        return this.merchant.afterSalesBatchTag(ctx, ids, tagIds);
+    }
+
+    /** 解除本店顾客拉黑（§89） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUnblacklistAfterSalesCustomer(@Ctx() ctx: RequestContext, @Args('customerId') customerId: ID) {
+        return this.merchant.unblacklistAfterSalesCustomer(ctx, customerId);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

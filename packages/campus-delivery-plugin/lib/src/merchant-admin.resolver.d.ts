@@ -55,7 +55,7 @@ export declare class MerchantAdminResolver {
     /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
     campusMerchantDailyReport(ctx: RequestContext, date?: string | null): Promise<import("./merchant-admin.service").MerchantDailyReport>;
     /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
+    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, assignee?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
     campusMerchantAfterSalesDetail(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesDetail>;
     /** 售后处理统计（§81）：待处理/超时/今日处理量/今日退款额 */
@@ -82,6 +82,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesWorkbench(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesWorkbench>;
     /** 售后标签列表（§88） */
     campusMerchantAfterSalesTags(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesTag[]>;
+    /** 处理人候选（§89） */
+    campusMerchantAfterSalesAssignees(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesAssignee[]>;
+    /** 员工处理绩效（§89） */
+    campusMerchantAfterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantAfterSalesStaffRow[]>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
@@ -128,6 +132,12 @@ export declare class MerchantAdminResolver {
     campusMerchantDeleteAfterSalesTag(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 设置售后单标签（§88）：整体替换 */
     campusMerchantSetAfterSalesTags(ctx: RequestContext, id: ID, tagIds: ID[]): Promise<string[]>;
+    /** 指派处理人（§89）：userId 为空=取消指派 */
+    campusMerchantAfterSalesAssign(ctx: RequestContext, id: ID, userId: ID | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 批量打标签（§89） */
+    campusMerchantAfterSalesBatchTag(ctx: RequestContext, ids: ID[], tagIds: ID[]): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
+    /** 解除本店顾客拉黑（§89） */
+    campusMerchantUnblacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID): Promise<boolean>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */
