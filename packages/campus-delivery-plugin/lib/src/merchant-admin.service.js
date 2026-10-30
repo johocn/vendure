@@ -1265,6 +1265,15 @@ let MerchantAdminService = class MerchantAdminService {
                         + 'WHERE m."requestId" = a.id ORDER BY m."createdAt" DESC LIMIT 1) = \'customer\'');
                 }
             }
+            // 金额筛选（§92）：按退款金额（实际退款优先，未退款取申请额）
+            const minAmount = Number(opts.minAmount);
+            if (Number.isFinite(minAmount) && minAmount > 0) {
+                target.andWhere('COALESCE(a."actualRefundAmount", a."refundAmount") >= :minA', { minA: Math.floor(minAmount) });
+            }
+            const maxAmount = Number(opts.maxAmount);
+            if (Number.isFinite(maxAmount) && maxAmount > 0) {
+                target.andWhere('COALESCE(a."actualRefundAmount", a."refundAmount") <= :maxA', { maxA: Math.floor(maxAmount) });
+            }
             return target;
         };
         // 状态计数不受 state 筛选影响：入口红点与页签角标口径统一
@@ -1367,6 +1376,7 @@ let MerchantAdminService = class MerchantAdminService {
                 : null,
             orderItems: await this.afterSalesOrderItems(Number((_g = order === null || order === void 0 ? void 0 : order.id) !== null && _g !== void 0 ? _g : request.orderId)),
             orderTotal: Number((_h = order === null || order === void 0 ? void 0 : order.totalWithTax) !== null && _h !== void 0 ? _h : 0),
+            assignHistory: await this.afterSalesAssignLogs(Number(request.id)),
         };
     }
     /**
@@ -2155,11 +2165,17 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 指派处理人（§89）：传空=取消指派；处理人必须是本店渠道管理员 */
     async afterSalesAssign(ctx, id, userId) {
+        var _a;
         await this.assertRequestInChannel(ctx, id);
         const chId = Number(ctx.channelId);
         const raw = this.connection.rawConnection;
+        const prevRows = await raw.query('SELECT "assigneeUserId" FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = $2', [chId, Number(id)]);
+        const prevList = Array.isArray(prevRows) && Array.isArray(prevRows[0]) ? prevRows[0] : prevRows;
+        const fromId = ((_a = prevList === null || prevList === void 0 ? void 0 : prevList[0]) === null || _a === void 0 ? void 0 : _a.assigneeUserId) == null ? null : Number(prevList[0].assigneeUserId);
         if (userId == null) {
             await raw.query('DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = $2', [chId, Number(id)]);
+            if (fromId != null)
+                await this.recordAssignChange(chId, Number(id), fromId, null);
             return this.afterSalesOne(ctx, id);
         }
         const uid = Number(userId);
@@ -2176,6 +2192,8 @@ let MerchantAdminService = class MerchantAdminService {
             + 'VALUES ($1, $2, $3) '
             + 'ON CONFLICT ("channelId", "requestId") DO UPDATE '
             + 'SET "assigneeUserId" = EXCLUDED."assigneeUserId", "updatedAt" = now()', [chId, Number(id), uid]);
+        if (fromId !== uid)
+            await this.recordAssignChange(chId, Number(id), fromId, uid);
         return this.afterSalesOne(ctx, id);
     }
     /** 批量打标签（§89）：上限 50 单、5 个标签，逐单返回结果，失败不阻断整批 */
@@ -2273,7 +2291,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
     async afterSalesBatchAssign(ctx, ids, userId) {
-        var _a;
+        var _a, _b;
         const chId = Number(ctx.channelId);
         const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
             .map(n => Number(n))
@@ -2307,6 +2325,13 @@ let MerchantAdminService = class MerchantAdminService {
         }
         const valid = list.filter(n => ownedMap.has(n));
         if (valid.length) {
+            const prevRows = await raw.query('SELECT "requestId", "assigneeUserId" FROM campus_after_sales_assignee '
+                + 'WHERE "channelId" = $1 AND "requestId" = ANY($2::int[])', [chId, valid]);
+            const prevList = Array.isArray(prevRows) && Array.isArray(prevRows[0]) ? prevRows[0] : prevRows;
+            const prevMap = new Map();
+            for (const r of Array.isArray(prevList) ? prevList : []) {
+                prevMap.set(Number(r.requestId), Number(r.assigneeUserId));
+            }
             await raw.transaction(async (manager) => {
                 await manager.query('DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = ANY($2::int[])', [chId, valid]);
                 if (uid != null) {
@@ -2314,6 +2339,14 @@ let MerchantAdminService = class MerchantAdminService {
                         + 'SELECT $1, unnest($2::int[]), $3 ON CONFLICT ("channelId", "requestId") DO NOTHING', [chId, valid, uid]);
                 }
             });
+            // 指派历史（§92）：仅记录实际发生变化的单
+            for (const rid of valid) {
+                const fromId = (_b = prevMap.get(rid)) !== null && _b !== void 0 ? _b : null;
+                const toId = uid !== null && uid !== void 0 ? uid : null;
+                if (fromId === toId)
+                    continue;
+                await this.recordAssignChange(chId, rid, fromId, toId);
+            }
         }
         return list.map(n => {
             var _a;
@@ -2321,6 +2354,162 @@ let MerchantAdminService = class MerchantAdminService {
                 ? { id: String(n), success: true, state: (_a = ownedMap.get(n)) !== null && _a !== void 0 ? _a : '', message: '' }
                 : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' };
         });
+    }
+    /** 记录指派变更（§92）：写日志失败不阻断指派本身 */
+    async recordAssignChange(channelId, requestId, fromUserId, toUserId) {
+        var _a;
+        try {
+            await this.connection.rawConnection.query('INSERT INTO campus_after_sales_assign_log ("channelId", "requestId", "fromUserId", "toUserId") '
+                + 'VALUES ($1, $2, $3, $4)', [channelId, requestId, fromUserId, toUserId]);
+        }
+        catch (e) {
+            core_2.Logger.warn(`record assign change failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'MerchantAdmin');
+        }
+    }
+    /** 指派历史（§92）：按时间倒序，带双方姓名 */
+    async afterSalesAssignLogs(requestId) {
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT l."fromUserId", l."toUserId", l."createdAt", '
+                + 'f."firstName" AS ff, f."lastName" AS fl, '
+                + 't."firstName" AS tf, t."lastName" AS tl '
+                + 'FROM campus_after_sales_assign_log l '
+                + 'LEFT JOIN administrator f ON f."userId" = l."fromUserId" '
+                + 'LEFT JOIN administrator t ON t."userId" = l."toUserId" '
+                + 'WHERE l."requestId" = $1 ORDER BY l."createdAt" DESC LIMIT 50', [requestId]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => ({
+                fromUserId: r.fromUserId == null ? null : String(r.fromUserId),
+                fromName: [r.ff, r.fl].filter(Boolean).join('') || null,
+                toUserId: r.toUserId == null ? null : String(r.toUserId),
+                toName: [r.tf, r.tl].filter(Boolean).join('') || null,
+                createdAt: new Date(r.createdAt),
+            }));
+        }
+        catch (_a) {
+            return [];
+        }
+    }
+    /** 批量内部备注（§92）：上限 50 单，逐单结果；单条售后备注上限 200 条 */
+    async afterSalesBatchNote(ctx, ids, content) {
+        var _a;
+        const chId = Number(ctx.channelId);
+        const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length)
+            return [];
+        if (list.length > 50)
+            throw new core_2.UserInputError('单批最多 50 单');
+        const text = String(content !== null && content !== void 0 ? content : '').trim();
+        if (!text)
+            throw new core_2.UserInputError('请填写备注内容');
+        if (text.length > 500)
+            throw new core_2.UserInputError('备注最多 500 字');
+        const raw = this.connection.rawConnection;
+        const ownedRows = await raw.query('SELECT a.id, a.state FROM after_sales_request a '
+            + 'JOIN "order" o ON o.id = a."orderId" '
+            + 'JOIN order_channels_channel oc ON oc."orderId" = o.id AND oc."channelId" = $1 '
+            + 'WHERE a.id = ANY($2::int[])', [chId, list]);
+        const owned = Array.isArray(ownedRows) && Array.isArray(ownedRows[0]) ? ownedRows[0] : ownedRows;
+        const ownedMap = new Map();
+        for (const r of Array.isArray(owned) ? owned : []) {
+            ownedMap.set(Number(r.id), String((_a = r.state) !== null && _a !== void 0 ? _a : ''));
+        }
+        const valid = list.filter(n => ownedMap.has(n));
+        const capped = new Set();
+        if (valid.length) {
+            const inserted = await raw.query('INSERT INTO campus_after_sales_note ("channelId", "requestId", "content", "createdBy") '
+                + 'SELECT $1, rid, $3, \'merchant\' FROM unnest($2::int[]) AS rid '
+                + 'WHERE (SELECT COUNT(*) FROM campus_after_sales_note n WHERE n."requestId" = rid) < 200 '
+                + 'RETURNING "requestId"', [chId, valid, text]);
+            const insList = Array.isArray(inserted) && Array.isArray(inserted[0]) ? inserted[0] : inserted;
+            const done = new Set((Array.isArray(insList) ? insList : []).map((r) => Number(r.requestId)));
+            for (const rid of valid) {
+                if (!done.has(rid))
+                    capped.add(rid);
+            }
+        }
+        return list.map(n => {
+            var _a, _b;
+            if (!ownedMap.has(n)) {
+                return { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' };
+            }
+            if (capped.has(n)) {
+                return { id: String(n), success: false, state: (_a = ownedMap.get(n)) !== null && _a !== void 0 ? _a : '', message: '该售后单备注已达 200 条上限' };
+            }
+            return { id: String(n), success: true, state: (_b = ownedMap.get(n)) !== null && _b !== void 0 ? _b : '', message: '' };
+        });
+    }
+    /** 商品售后统计（§92）：区间内 Top 商品售后单量、退款额与售后率 */
+    async afterSalesProductReport(ctx, from, to, limit) {
+        var _a;
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end)
+            throw new core_2.UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime())
+            throw new core_2.UserInputError('开始日期不能晚于结束日期');
+        if (end.getTime() - start.getTime() > 366 * 86400000)
+            throw new core_2.UserInputError('查询区间最长一年');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const top = Math.min(50, Math.max(1, Math.floor(Number(limit !== null && limit !== void 0 ? limit : 10)) || 10));
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            const requestRows = await raw.query(`WITH rp AS (
+                    SELECT DISTINCT a.id, a.state,
+                           COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                           p.id AS pid
+                      FROM after_sales_request a
+                      JOIN "order" o ON o.id = a."orderId"
+                      JOIN order_line ol ON ol."orderId" = o.id
+                      JOIN product_variant pv ON pv.id = ol."productVariantId"
+                      JOIN product p ON p.id = pv."productId"
+                     WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                )
+                SELECT rp.pid AS "productId",
+                       COALESCE(pt.name, '商品 #' || rp.pid) AS "productName",
+                       COUNT(*)::int AS "requestCount",
+                       COUNT(*) FILTER (WHERE rp.state = 'Refunded')::int AS "refundCount",
+                       COALESCE(SUM(rp.amount) FILTER (WHERE rp.state = 'Refunded'), 0)::int AS "refundAmount"
+                  FROM rp
+                  LEFT JOIN product_translation pt ON pt."baseId" = rp.pid AND pt."languageCode" = 'zh_Hans'
+                 GROUP BY rp.pid, pt.name
+                 ORDER BY "requestCount" DESC, "refundAmount" DESC
+                 LIMIT $4`, [chId, start, end, top]);
+            const salesRows = await raw.query(`SELECT p.id AS pid, COUNT(DISTINCT o.id)::int AS n
+                   FROM "order" o
+                   JOIN order_line ol ON ol."orderId" = o.id
+                   JOIN product_variant pv ON pv.id = ol."productVariantId"
+                   JOIN product p ON p.id = pv."productId"
+                  WHERE o."createdAt" >= $2 AND o."createdAt" < $3
+                    AND o.state <> 'Cancelled'
+                    AND EXISTS (SELECT 1 FROM order_channels_channel oc
+                                WHERE oc."orderId" = o.id AND oc."channelId" = $1)
+                  GROUP BY p.id`, [chId, start, end]);
+            const sales = new Map();
+            for (const r of (Array.isArray(salesRows) ? salesRows : [])) {
+                sales.set(Number(r.pid), Number(r.n) || 0);
+            }
+            return (Array.isArray(requestRows) ? requestRows : []).map(r => {
+                var _a, _b;
+                const pid = Number(r.productId);
+                const orders = (_a = sales.get(pid)) !== null && _a !== void 0 ? _a : 0;
+                const requests = Number(r.requestCount) || 0;
+                return {
+                    productId: String(pid),
+                    productName: String((_b = r.productName) !== null && _b !== void 0 ? _b : ''),
+                    requestCount: requests,
+                    refundCount: Number(r.refundCount) || 0,
+                    refundAmount: Number(r.refundAmount) || 0,
+                    requestRate: orders > 0 ? Math.round((requests / orders) * 100) : 0,
+                };
+            });
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`商品售后统计查询失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
     }
     /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
     async afterSalesExportSelection(ctx, ids, kind) {

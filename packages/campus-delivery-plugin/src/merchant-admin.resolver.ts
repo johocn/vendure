@@ -1,4 +1,4 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, RequestContext, UserInputError } from '@vendure/core';
 import { CampusPermissions } from './permissions';
 import { MerchantAdminService } from './merchant-admin.service';
@@ -213,12 +213,14 @@ export class MerchantAdminResolver {
         @Args({ name: 'assignee', type: () => String, nullable: true }) assignee?: string | null,
         @Args({ name: 'messageKeyword', type: () => String, nullable: true }) messageKeyword?: string | null,
         @Args({ name: 'attention', type: () => String, nullable: true }) attention?: string | null,
+        @Args({ name: 'minAmount', type: () => Int, nullable: true }) minAmount?: number | null,
+        @Args({ name: 'maxAmount', type: () => Int, nullable: true }) maxAmount?: number | null,
         @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
         @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, from, to, skip, take });
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, from, to, skip, take });
     }
 
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
@@ -244,6 +246,18 @@ export class MerchantAdminResolver {
         @Args('to') to: string,
     ) {
         return this.merchant.afterSalesReport(ctx, from, to);
+    }
+
+    /** 商品维度售后统计（§92）：Top 商品售后单量/退款额/售后率 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesProductReport(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+        @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number | null,
+    ) {
+        return this.merchant.afterSalesProductReport(ctx, from, to, limit);
     }
 
     /** 售后寄回地址（§83）：本店渠道配置 */
@@ -566,6 +580,17 @@ export class MerchantAdminResolver {
         @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
     ) {
         return this.merchant.afterSalesBatchRemind(ctx, ids, note);
+    }
+
+    /** 批量内部备注（§92）：上限 50 单，逐单结果 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesBatchNote(
+        @Ctx() ctx: RequestContext,
+        @Args('ids') ids: ID[],
+        @Args('content') content: string,
+    ) {
+        return this.merchant.afterSalesBatchNote(ctx, ids, content);
     }
 
     /** 保存快捷回复模板（§87）：id 为空=新增 */

@@ -400,6 +400,10 @@ export interface MerchantAfterSalesListOptions {
     messageKeyword?: string | null;
     /** 快捷筛选（§91）：overdue=已超时 / dueSoon=临期 / unread=顾客留言未回复 */
     attention?: string | null;
+    /** 金额下界（分，按退款金额筛选，§92） */
+    minAmount?: number | null;
+    /** 金额上界（分，§92） */
+    maxAmount?: number | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -445,6 +449,26 @@ export interface MerchantAfterSalesLine {
     unitPrice: number;
 }
 
+/** 指派变更记录（§92）：谁把售后单指派给谁 */
+export interface MerchantAfterSalesAssignLogRow {
+    fromUserId: string | null;
+    fromName: string | null;
+    toUserId: string | null;
+    toName: string | null;
+    createdAt: Date;
+}
+
+/** 商品售后统计（§92）：区间内某商品的售后单量/退款与售后率 */
+export interface MerchantAfterSalesProductRow {
+    productId: string;
+    productName: string;
+    requestCount: number;
+    refundCount: number;
+    refundAmount: number;
+    /** 售后率（百分比）：售后单数 / 该商品区间订单数，无订单为 0 */
+    requestRate: number;
+}
+
 /** 售后详情（§81）：列表行 + 协商留言 + 状态时间线 + 退款失败留痕 */
 export interface MerchantAfterSalesDetail {
     request: MerchantAfterSalesRow;
@@ -465,6 +489,8 @@ export interface MerchantAfterSalesDetail {
     orderItems: MerchantAfterSalesLine[];
     /** 订单实付总额（含税，分） */
     orderTotal: number;
+    /** 指派变更历史（§92），按时间倒序 */
+    assignHistory: MerchantAfterSalesAssignLogRow[];
 }
 
 /** 售后处理统计（§81）：入口红点 + 今日处理量 + 今日退款额 */
@@ -2014,6 +2040,21 @@ export class MerchantAdminService {
                     );
                 }
             }
+            // 金额筛选（§92）：按退款金额（实际退款优先，未退款取申请额）
+            const minAmount = Number(opts.minAmount);
+            if (Number.isFinite(minAmount) && minAmount > 0) {
+                target.andWhere(
+                    'COALESCE(a."actualRefundAmount", a."refundAmount") >= :minA',
+                    { minA: Math.floor(minAmount) },
+                );
+            }
+            const maxAmount = Number(opts.maxAmount);
+            if (Number.isFinite(maxAmount) && maxAmount > 0) {
+                target.andWhere(
+                    'COALESCE(a."actualRefundAmount", a."refundAmount") <= :maxA',
+                    { maxA: Math.floor(maxAmount) },
+                );
+            }
             return target;
         };
 
@@ -2116,6 +2157,7 @@ export class MerchantAdminService {
                 : null,
             orderItems: await this.afterSalesOrderItems(Number(order?.id ?? request.orderId)),
             orderTotal: Number(order?.totalWithTax ?? 0),
+            assignHistory: await this.afterSalesAssignLogs(Number(request.id)),
         };
     }
 
@@ -2972,11 +3014,18 @@ export class MerchantAdminService {
         await this.assertRequestInChannel(ctx, id);
         const chId = Number(ctx.channelId);
         const raw = this.connection.rawConnection;
+        const prevRows: any = await raw.query(
+            'SELECT "assigneeUserId" FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = $2',
+            [chId, Number(id)],
+        );
+        const prevList: any[] = Array.isArray(prevRows) && Array.isArray(prevRows[0]) ? prevRows[0] : prevRows;
+        const fromId = prevList?.[0]?.assigneeUserId == null ? null : Number(prevList[0].assigneeUserId);
         if (userId == null) {
             await raw.query(
                 'DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = $2',
                 [chId, Number(id)],
             );
+            if (fromId != null) await this.recordAssignChange(chId, Number(id), fromId, null);
             return this.afterSalesOne(ctx, id);
         }
         const uid = Number(userId);
@@ -2999,6 +3048,7 @@ export class MerchantAdminService {
             + 'SET "assigneeUserId" = EXCLUDED."assigneeUserId", "updatedAt" = now()',
             [chId, Number(id), uid],
         );
+        if (fromId !== uid) await this.recordAssignChange(chId, Number(id), fromId, uid);
         return this.afterSalesOne(ctx, id);
     }
 
@@ -3140,6 +3190,16 @@ export class MerchantAdminService {
         }
         const valid = list.filter(n => ownedMap.has(n));
         if (valid.length) {
+            const prevRows: any = await raw.query(
+                'SELECT "requestId", "assigneeUserId" FROM campus_after_sales_assignee '
+                + 'WHERE "channelId" = $1 AND "requestId" = ANY($2::int[])',
+                [chId, valid],
+            );
+            const prevList: any[] = Array.isArray(prevRows) && Array.isArray(prevRows[0]) ? prevRows[0] : prevRows;
+            const prevMap = new Map<number, number>();
+            for (const r of Array.isArray(prevList) ? prevList : []) {
+                prevMap.set(Number(r.requestId), Number(r.assigneeUserId));
+            }
             await raw.transaction(async (manager: any) => {
                 await manager.query(
                     'DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = ANY($2::int[])',
@@ -3153,10 +3213,184 @@ export class MerchantAdminService {
                     );
                 }
             });
+            // 指派历史（§92）：仅记录实际发生变化的单
+            for (const rid of valid) {
+                const fromId = prevMap.get(rid) ?? null;
+                const toId = uid ?? null;
+                if (fromId === toId) continue;
+                await this.recordAssignChange(chId, rid, fromId, toId);
+            }
         }
         return list.map(n => ownedMap.has(n)
             ? { id: String(n), success: true, state: ownedMap.get(n) ?? '', message: '' }
             : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' });
+    }
+
+    /** 记录指派变更（§92）：写日志失败不阻断指派本身 */
+    private async recordAssignChange(channelId: number, requestId: number, fromUserId: number | null, toUserId: number | null): Promise<void> {
+        try {
+            await this.connection.rawConnection.query(
+                'INSERT INTO campus_after_sales_assign_log ("channelId", "requestId", "fromUserId", "toUserId") '
+                + 'VALUES ($1, $2, $3, $4)',
+                [channelId, requestId, fromUserId, toUserId],
+            );
+        } catch (e: any) {
+            Logger.warn(`record assign change failed: ${String(e?.message ?? e)}`, 'MerchantAdmin');
+        }
+    }
+
+    /** 指派历史（§92）：按时间倒序，带双方姓名 */
+    private async afterSalesAssignLogs(requestId: number): Promise<MerchantAfterSalesAssignLogRow[]> {
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT l."fromUserId", l."toUserId", l."createdAt", '
+                + 'f."firstName" AS ff, f."lastName" AS fl, '
+                + 't."firstName" AS tf, t."lastName" AS tl '
+                + 'FROM campus_after_sales_assign_log l '
+                + 'LEFT JOIN administrator f ON f."userId" = l."fromUserId" '
+                + 'LEFT JOIN administrator t ON t."userId" = l."toUserId" '
+                + 'WHERE l."requestId" = $1 ORDER BY l."createdAt" DESC LIMIT 50',
+                [requestId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => ({
+                fromUserId: r.fromUserId == null ? null : String(r.fromUserId),
+                fromName: [r.ff, r.fl].filter(Boolean).join('') || null,
+                toUserId: r.toUserId == null ? null : String(r.toUserId),
+                toName: [r.tf, r.tl].filter(Boolean).join('') || null,
+                createdAt: new Date(r.createdAt),
+            }));
+        } catch {
+            return [];
+        }
+    }
+
+    /** 批量内部备注（§92）：上限 50 单，逐单结果；单条售后备注上限 200 条 */
+    async afterSalesBatchNote(ctx: RequestContext, ids: ID[], content: string): Promise<MerchantAfterSalesBatchResult[]> {
+        const chId = Number(ctx.channelId);
+        const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length) return [];
+        if (list.length > 50) throw new UserInputError('单批最多 50 单');
+        const text = String(content ?? '').trim();
+        if (!text) throw new UserInputError('请填写备注内容');
+        if (text.length > 500) throw new UserInputError('备注最多 500 字');
+        const raw = this.connection.rawConnection;
+        const ownedRows: any = await raw.query(
+            'SELECT a.id, a.state FROM after_sales_request a '
+            + 'JOIN "order" o ON o.id = a."orderId" '
+            + 'JOIN order_channels_channel oc ON oc."orderId" = o.id AND oc."channelId" = $1 '
+            + 'WHERE a.id = ANY($2::int[])',
+            [chId, list],
+        );
+        const owned: any[] = Array.isArray(ownedRows) && Array.isArray(ownedRows[0]) ? ownedRows[0] : ownedRows;
+        const ownedMap = new Map<number, string>();
+        for (const r of Array.isArray(owned) ? owned : []) {
+            ownedMap.set(Number(r.id), String(r.state ?? ''));
+        }
+        const valid = list.filter(n => ownedMap.has(n));
+        const capped = new Set<number>();
+        if (valid.length) {
+            const inserted: any = await raw.query(
+                'INSERT INTO campus_after_sales_note ("channelId", "requestId", "content", "createdBy") '
+                + 'SELECT $1, rid, $3, \'merchant\' FROM unnest($2::int[]) AS rid '
+                + 'WHERE (SELECT COUNT(*) FROM campus_after_sales_note n WHERE n."requestId" = rid) < 200 '
+                + 'RETURNING "requestId"',
+                [chId, valid, text],
+            );
+            const insList: any[] = Array.isArray(inserted) && Array.isArray(inserted[0]) ? inserted[0] : inserted;
+            const done = new Set<number>((Array.isArray(insList) ? insList : []).map((r: any) => Number(r.requestId)));
+            for (const rid of valid) {
+                if (!done.has(rid)) capped.add(rid);
+            }
+        }
+        return list.map(n => {
+            if (!ownedMap.has(n)) {
+                return { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' };
+            }
+            if (capped.has(n)) {
+                return { id: String(n), success: false, state: ownedMap.get(n) ?? '', message: '该售后单备注已达 200 条上限' };
+            }
+            return { id: String(n), success: true, state: ownedMap.get(n) ?? '', message: '' };
+        });
+    }
+
+    /** 商品售后统计（§92）：区间内 Top 商品售后单量、退款额与售后率 */
+    async afterSalesProductReport(
+        ctx: RequestContext,
+        from: string,
+        to: string,
+        limit?: number | null,
+    ): Promise<MerchantAfterSalesProductRow[]> {
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end) throw new UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime()) throw new UserInputError('开始日期不能晚于结束日期');
+        if (end.getTime() - start.getTime() > 366 * 86_400_000) throw new UserInputError('查询区间最长一年');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const top = Math.min(50, Math.max(1, Math.floor(Number(limit ?? 10)) || 10));
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            const requestRows: any = await raw.query(
+                `WITH rp AS (
+                    SELECT DISTINCT a.id, a.state,
+                           COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                           p.id AS pid
+                      FROM after_sales_request a
+                      JOIN "order" o ON o.id = a."orderId"
+                      JOIN order_line ol ON ol."orderId" = o.id
+                      JOIN product_variant pv ON pv.id = ol."productVariantId"
+                      JOIN product p ON p.id = pv."productId"
+                     WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                )
+                SELECT rp.pid AS "productId",
+                       COALESCE(pt.name, '商品 #' || rp.pid) AS "productName",
+                       COUNT(*)::int AS "requestCount",
+                       COUNT(*) FILTER (WHERE rp.state = 'Refunded')::int AS "refundCount",
+                       COALESCE(SUM(rp.amount) FILTER (WHERE rp.state = 'Refunded'), 0)::int AS "refundAmount"
+                  FROM rp
+                  LEFT JOIN product_translation pt ON pt."baseId" = rp.pid AND pt."languageCode" = 'zh_Hans'
+                 GROUP BY rp.pid, pt.name
+                 ORDER BY "requestCount" DESC, "refundAmount" DESC
+                 LIMIT $4`,
+                [chId, start, end, top],
+            );
+            const salesRows: any = await raw.query(
+                `SELECT p.id AS pid, COUNT(DISTINCT o.id)::int AS n
+                   FROM "order" o
+                   JOIN order_line ol ON ol."orderId" = o.id
+                   JOIN product_variant pv ON pv.id = ol."productVariantId"
+                   JOIN product p ON p.id = pv."productId"
+                  WHERE o."createdAt" >= $2 AND o."createdAt" < $3
+                    AND o.state <> 'Cancelled'
+                    AND EXISTS (SELECT 1 FROM order_channels_channel oc
+                                WHERE oc."orderId" = o.id AND oc."channelId" = $1)
+                  GROUP BY p.id`,
+                [chId, start, end],
+            );
+            const sales = new Map<number, number>();
+            for (const r of (Array.isArray(salesRows) ? salesRows : [])) {
+                sales.set(Number(r.pid), Number(r.n) || 0);
+            }
+            return (Array.isArray(requestRows) ? requestRows : []).map(r => {
+                const pid = Number(r.productId);
+                const orders = sales.get(pid) ?? 0;
+                const requests = Number(r.requestCount) || 0;
+                return {
+                    productId: String(pid),
+                    productName: String(r.productName ?? ''),
+                    requestCount: requests,
+                    refundCount: Number(r.refundCount) || 0,
+                    refundAmount: Number(r.refundAmount) || 0,
+                    requestRate: orders > 0 ? Math.round((requests / orders) * 100) : 0,
+                };
+            });
+        } catch (e: any) {
+            throw new UserInputError(`商品售后统计查询失败：${e?.message ?? e}`);
+        }
     }
 
     /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */

@@ -353,6 +353,10 @@ export interface MerchantAfterSalesListOptions {
     messageKeyword?: string | null;
     /** 快捷筛选（§91）：overdue=已超时 / dueSoon=临期 / unread=顾客留言未回复 */
     attention?: string | null;
+    /** 金额下界（分，按退款金额筛选，§92） */
+    minAmount?: number | null;
+    /** 金额上界（分，§92） */
+    maxAmount?: number | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -393,6 +397,24 @@ export interface MerchantAfterSalesLine {
     /** 行单价（含税，分） */
     unitPrice: number;
 }
+/** 指派变更记录（§92）：谁把售后单指派给谁 */
+export interface MerchantAfterSalesAssignLogRow {
+    fromUserId: string | null;
+    fromName: string | null;
+    toUserId: string | null;
+    toName: string | null;
+    createdAt: Date;
+}
+/** 商品售后统计（§92）：区间内某商品的售后单量/退款与售后率 */
+export interface MerchantAfterSalesProductRow {
+    productId: string;
+    productName: string;
+    requestCount: number;
+    refundCount: number;
+    refundAmount: number;
+    /** 售后率（百分比）：售后单数 / 该商品区间订单数，无订单为 0 */
+    requestRate: number;
+}
 /** 售后详情（§81）：列表行 + 协商留言 + 状态时间线 + 退款失败留痕 */
 export interface MerchantAfterSalesDetail {
     request: MerchantAfterSalesRow;
@@ -413,6 +435,8 @@ export interface MerchantAfterSalesDetail {
     orderItems: MerchantAfterSalesLine[];
     /** 订单实付总额（含税，分） */
     orderTotal: number;
+    /** 指派变更历史（§92），按时间倒序 */
+    assignHistory: MerchantAfterSalesAssignLogRow[];
 }
 /** 售后处理统计（§81）：入口红点 + 今日处理量 + 今日退款额 */
 export interface MerchantAfterSalesStats {
@@ -975,6 +999,14 @@ export declare class MerchantAdminService {
     }): Promise<MerchantAfterSalesBlacklistEntry[]>;
     /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
     afterSalesBatchAssign(ctx: RequestContext, ids: ID[], userId: ID | null): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 记录指派变更（§92）：写日志失败不阻断指派本身 */
+    private recordAssignChange;
+    /** 指派历史（§92）：按时间倒序，带双方姓名 */
+    private afterSalesAssignLogs;
+    /** 批量内部备注（§92）：上限 50 单，逐单结果；单条售后备注上限 200 条 */
+    afterSalesBatchNote(ctx: RequestContext, ids: ID[], content: string): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 商品售后统计（§92）：区间内 Top 商品售后单量、退款额与售后率 */
+    afterSalesProductReport(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesProductRow[]>;
     /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
     afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string>;
     /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */

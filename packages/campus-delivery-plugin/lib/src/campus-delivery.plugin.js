@@ -151,6 +151,7 @@ const p18_reply_template_1 = require("./migrations/p18-reply-template");
 const p19_after_sales_tag_1 = require("./migrations/p19-after-sales-tag");
 const p20_after_sales_assignee_1 = require("./migrations/p20-after-sales-assignee");
 const p21_after_sales_sla_alert_1 = require("./migrations/p21-after-sales-sla-alert");
+const p22_after_sales_assign_log_1 = require("./migrations/p22-after-sales-assign-log");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
 // 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
@@ -336,6 +337,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p19_after_sales_tag_1.P19AfterSalesTagMigration,
             p20_after_sales_assignee_1.P20AfterSalesAssigneeMigration,
             p21_after_sales_sla_alert_1.P21AfterSalesSlaAlertMigration,
+            p22_after_sales_assign_log_1.P22AfterSalesAssignLogMigration,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
             p13_auto_accept_1.P13AutoAcceptMigration,
@@ -898,6 +900,29 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     orderItems: [CampusMerchantAfterSalesLine!]!
                     """订单实付总额（含税，分）"""
                     orderTotal: Int!
+                    """指派变更历史（§92），按时间倒序"""
+                    assignHistory: [CampusMerchantAfterSalesAssignLog!]!
+                }
+
+                """指派变更记录（§92）"""
+                type CampusMerchantAfterSalesAssignLog {
+                    fromUserId: ID
+                    fromName: String
+                    toUserId: ID
+                    toName: String
+                    createdAt: DateTime!
+                }
+
+                """商品售后统计（§92）：区间内某商品的售后单量/退款与售后率"""
+                type CampusMerchantAfterSalesProductRow {
+                    productId: ID!
+                    productName: String!
+                    requestCount: Int!
+                    refundCount: Int!
+                    """退款金额（分）"""
+                    refundAmount: Int!
+                    """售后率（百分比）：售后单数 / 该商品区间订单数"""
+                    requestRate: Int!
                 }
 
                 """售后处理统计（§81）：入口红点 + 今日处理量/退款额"""
@@ -2039,7 +2064,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, messageKeyword: String, attention: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, messageKeyword: String, attention: String, minAmount: Int, maxAmount: Int, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
                     """售后工作台摘要（§88）：一次请求返回各待办入口计数"""
                     campusMerchantAfterSalesWorkbench: CampusMerchantAfterSalesWorkbench!
                     """售后标签列表（§88）"""
@@ -2060,6 +2085,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesStats: CampusMerchantAfterSalesStats!
                     """售后报表（§83）：区间内量/退款/超时与逐日趋势"""
                     campusMerchantAfterSalesReport(from: String!, to: String!): CampusMerchantAfterSalesReport!
+                    """商品维度售后统计（§92）：Top 商品售后单量/退款额/售后率"""
+                    campusMerchantAfterSalesProductReport(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesProductRow!]!
                     """售后寄回地址（§83）：本店渠道配置"""
                     campusMerchantAfterSalesReturnAddress: String!
                     """售后规则（§84）：处理时限/超时自动同意/退款自动重试"""
@@ -2389,6 +2416,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesDeleteNote(id: ID!, noteId: ID!): Boolean!
                     """批量催办顾客（§86）：单次最多 20 条，逐单返回结果"""
                     campusMerchantAfterSalesBatchRemind(ids: [ID!]!, note: String): [CampusMerchantAfterSalesBatchResult!]!
+                    """批量内部备注（§92）：上限 50 单，逐单结果"""
+                    campusMerchantAfterSalesBatchNote(ids: [ID!]!, content: String!): [CampusMerchantAfterSalesBatchResult!]!
                     """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
