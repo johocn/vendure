@@ -18,16 +18,23 @@ const after_sales_service_1 = require("./after-sales.service");
 const after_sales_events_1 = require("./after-sales.events");
 const after_sales_timeout_entity_1 = require("./after-sales-timeout.entity");
 const constants_1 = require("./constants");
+const periodic_fallback_1 = require("./periodic-fallback");
 /** 执行失败重试上限（与 order-timeout-plugin 同义） */
 const MAX_RETRY = 3;
 /** 退款重试基础间隔：30min × 2^attempt（指数退避） */
 const REFUND_RETRY_BASE_DELAY_MS = 30 * 60 * 1000;
+/** 进程内兜底扫描间隔：生产无 worker 时 ScheduledTask/JobQueue 都不执行，靠该定时器直接跑到期任务 */
+const FALLBACK_SCAN_INTERVAL_MS = 60 * 1000;
+/** 单轮兜底扫描上限（按 dueAt 升序，超限下一轮继续） */
+const FALLBACK_SCAN_LIMIT = 100;
 let AfterSalesTimeoutJob = class AfterSalesTimeoutJob {
     constructor(jobQueueService, connection, moduleRef, afterSalesService) {
         this.jobQueueService = jobQueueService;
         this.connection = connection;
         this.moduleRef = moduleRef;
         this.afterSalesService = afterSalesService;
+        /** 进程内兜底定时器 */
+        this.fallback = null;
         this.taskRepo = this.connection.rawConnection.getRepository(after_sales_timeout_entity_1.AfterSalesTimeoutTask);
         this.requestRepo = this.connection.rawConnection.getRepository(after_sales_request_entity_1.AfterSalesRequest);
     }
@@ -37,9 +44,87 @@ let AfterSalesTimeoutJob = class AfterSalesTimeoutJob {
         this.jobQueue = await this.jobQueueService.createQueue({
             name: 'after-sales-timeout',
             process: async (job) => {
-                await this.process(job.data);
+                await this.processWithLock(job.data);
             },
         });
+        // 关键：生产环境通常只起 server 不起 worker（无 startJobQueue），ScheduledTask 也不会执行；
+        // 若只依赖 JobQueue 的延迟任务 + 补偿扫描，售后超时提醒/48h 自动同意/退款重试全部失效。
+        // 这里用进程内定时器直接消费到期任务兜底（多实例经 advisory lock 串行，幂等无重复执行）。
+        this.startFallbackTimer();
+    }
+    onApplicationShutdown() {
+        var _a;
+        (_a = this.fallback) === null || _a === void 0 ? void 0 : _a.stop();
+        this.fallback = null;
+    }
+    startFallbackTimer() {
+        if (this.fallback)
+            return;
+        this.fallback = new periodic_fallback_1.PeriodicFallback({
+            name: 'after-sales-timeout',
+            intervalMs: FALLBACK_SCAN_INTERVAL_MS,
+            loggerCtx: constants_1.loggerCtx,
+        });
+        this.fallback.start(() => this.runDueTasks());
+    }
+    /** 兜底扫描：直接执行 dueAt 已到的 PENDING 任务（不依赖 JobQueue worker） */
+    async runDueTasks() {
+        var _a, _b;
+        try {
+            const now = new Date();
+            const tasks = await this.taskRepo.find({
+                where: { status: after_sales_timeout_entity_1.AfterSalesTimeoutStatus.PENDING },
+                order: { dueAt: 'ASC' },
+                take: FALLBACK_SCAN_LIMIT,
+            });
+            for (const task of tasks) {
+                if (task.dueAt > now)
+                    break; // dueAt 升序，后面都未到期
+                if (task.retryCount >= MAX_RETRY)
+                    continue;
+                try {
+                    await this.processWithLock({
+                        taskId: String(task.id),
+                        requestId: task.requestId,
+                        channelId: task.channelId,
+                        type: task.type,
+                    });
+                }
+                catch (e) {
+                    // 单任务失败不阻断整轮；失败计数与终态已由 process() 落库
+                    core_2.Logger.warn(`fallback task ${task.id} failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+                }
+            }
+        }
+        catch (e) {
+            core_2.Logger.error(`fallback due-task scan failed: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, constants_1.loggerCtx);
+        }
+    }
+    /**
+     * 任务级 advisory lock：兜底定时器、JobQueue worker、补偿扫描可能同时命中同一任务，
+     * 锁内二次读取 status 保证只执行一次（已执行的会因 status != PENDING 直接跳过）。
+     */
+    async processWithLock(data) {
+        var _a;
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `after-sales:timeout:${data.taskId}`;
+        try {
+            const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.ok))
+                return; // 另一个执行器正在处理
+            await this.process(data);
+        }
+        finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            }
+            catch (_b) {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
     }
     async process(data) {
         var _a;
@@ -121,6 +206,7 @@ let AfterSalesTimeoutJob = class AfterSalesTimeoutJob {
      * 失败且未耗尽→指数退避重排（任务保持 PENDING）；耗尽→EXECUTED + 商家提醒。
      */
     async executeRefundRetry(ctx, task) {
+        var _a;
         const markExhausted = async () => {
             task.status = after_sales_timeout_entity_1.AfterSalesTimeoutStatus.EXECUTED;
             task.executedAt = new Date();
@@ -147,7 +233,26 @@ let AfterSalesTimeoutJob = class AfterSalesTimeoutJob {
             core_2.Logger.info(`Exchange request ${task.requestId} skips refund retry, task ${task.id} CANCELLED`, constants_1.loggerCtx);
             return;
         }
-        const after = await this.afterSalesService.retryRefund(ctx, task.requestId);
+        let after;
+        try {
+            after = await this.afterSalesService.retryRefund(ctx, task.requestId);
+        }
+        catch (e) {
+            // 退款核心抛出（余额仍不足、渠道异常等）也计为一次失败尝试，走同一指数退避/耗尽逻辑；
+            // 不能冒泡到 process() 的 retryCount 分支——那里上限为 3 且不递增 attempt，会让配置的重试次数失效。
+            task.attempt += 1;
+            task.lastError = String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e);
+            core_2.Logger.warn(`Refund retry ${task.attempt}/${task.maxAttempt} threw for request ${task.requestId}: ${task.lastError}`, constants_1.loggerCtx);
+            if (task.attempt >= task.maxAttempt) {
+                await markExhausted();
+                return;
+            }
+            const retryDelayMs = REFUND_RETRY_BASE_DELAY_MS * Math.pow(2, task.attempt);
+            task.dueAt = new Date(Date.now() + retryDelayMs);
+            await this.taskRepo.save(task);
+            await this.jobQueue.add({ taskId: String(task.id), requestId: task.requestId, channelId: task.channelId, type: task.type }, { delay: retryDelayMs, retries: MAX_RETRY });
+            return;
+        }
         task.attempt += 1;
         if (after.state === 'Refunded') {
             task.status = after_sales_timeout_entity_1.AfterSalesTimeoutStatus.EXECUTED;

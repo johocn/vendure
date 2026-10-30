@@ -1,3 +1,4 @@
+import { OnApplicationShutdown } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { JobQueueService, TransactionalConnection } from '@vendure/core';
 import { AfterSalesService } from './after-sales.service';
@@ -8,7 +9,7 @@ export interface AfterSalesTimeoutJobData {
     channelId: number;
     type: AfterSalesTimeoutType;
 }
-export declare class AfterSalesTimeoutJob {
+export declare class AfterSalesTimeoutJob implements OnApplicationShutdown {
     private jobQueueService;
     private connection;
     private moduleRef;
@@ -18,8 +19,19 @@ export declare class AfterSalesTimeoutJob {
     private requestRepo;
     private injector;
     private eventBus;
+    /** 进程内兜底定时器 */
+    private fallback;
     constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, moduleRef: ModuleRef, afterSalesService: AfterSalesService);
     init(): Promise<void>;
+    onApplicationShutdown(): void;
+    private startFallbackTimer;
+    /** 兜底扫描：直接执行 dueAt 已到的 PENDING 任务（不依赖 JobQueue worker） */
+    private runDueTasks;
+    /**
+     * 任务级 advisory lock：兜底定时器、JobQueue worker、补偿扫描可能同时命中同一任务，
+     * 锁内二次读取 status 保证只执行一次（已执行的会因 status != PENDING 直接跳过）。
+     */
+    private processWithLock;
     private process;
     /**
      * RefundFailed 自动重试：调 retryRefund 复用退款核心；成功→EXECUTED；

@@ -16,6 +16,7 @@ export declare class AfterSalesAdminResolver {
     confirmReturnReceived(ctx: RequestContext, id: number, receivedQuantity?: number): Promise<any>;
     processAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;
     retryAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;
+    closeAfterSalesRequest(ctx: RequestContext, id: number): Promise<any>;
     afterSalesMessages(ctx: RequestContext, id: number, options: any): Promise<any>;
     replyAfterSalesMessage(ctx: RequestContext, id: number, content: string, images?: string[]): Promise<any>;
     exchangeShipAfterSalesRequest(ctx: RequestContext, id: number, trackingNo: string, carrier: string): Promise<any>;

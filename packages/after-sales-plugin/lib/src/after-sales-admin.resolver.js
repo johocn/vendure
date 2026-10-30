@@ -59,6 +59,9 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
     async retryAfterSalesRefund(ctx, id) {
         return this.afterSalesService.retryRefund(ctx, id);
     }
+    async closeAfterSalesRequest(ctx, id) {
+        return this.afterSalesService.closeRequest(ctx, id);
+    }
     async afterSalesMessages(ctx, id, options) {
         return this.afterSalesService.listMessages(ctx, id, 'admin', options);
     }
@@ -192,6 +195,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], AfterSalesAdminResolver.prototype, "retryAfterSalesRefund", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "closeAfterSalesRequest", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.ReadOrder),

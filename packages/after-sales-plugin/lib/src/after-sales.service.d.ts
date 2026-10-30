@@ -49,7 +49,18 @@ export declare class AfterSalesService {
         description?: string;
         refundAmount: number;
     }): Promise<AfterSalesRequest>;
+    /**
+     * Shop 侧写操作归属校验：后台（admin）由 Permission.UpdateOrder 兜底，
+     * shop 必须确认售后单属于当前登录顾客，否则为越权（IDOR）。
+     */
+    private assertCustomerOwnership;
     cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
+    /**
+     * 退款完成结案：Refunded → Closed。
+     * 退款到账后售后单若一直停在 Refunded，该订单/行会被查重逻辑永久占用、后台列表持续堆积，
+     * 因此提供显式结案出口（其余终局态如 ExchangeShipped 已有各自关闭路径）。
+     */
+    closeRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest>;
     /** 凭证图白名单 MIME 及其扩展名（扩展名用于 createFromFileStream 判定 MIME） */
     private static readonly EVIDENCE_MIME_EXT;
@@ -101,12 +112,23 @@ export declare class AfterSalesService {
      */
     retryRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     /**
-     * 退款核心：调用 orderService.refundOrder 创建原生 Refund；若支付处理器将 Refund 停在 Pending
-     * （真实网关异步对账场景），则再调 settleRefund 推进到 Settled 终态。
-     * 仅当 Refund 达 Settled 才把售后单置 Refunded 并落账；失败则置 RefundFailed（留 refundError，可重试）。
-     * 杜绝"已标退款但钱从未退回"的假退款脏数据。
+     * 退款核心：按「新→旧」把退款额拆分到多张可退支付单（组合支付：余额+微信/多笔），
+     * 逐笔 refundOrder；停在 Pending 时 settleRefund 推进，只有全部达 Settled 才置 Refunded。
+     * 某笔失败时：已成功打款的笔次保留（钱已真实退回，不可回滚），售后单置 RefundFailed，
+     * 下次重试会自动按更新后的剩余额度继续退，避免重复退款。
      */
     private executeRefund;
+    /**
+     * 订单可退余额（与 planRefunds 同口径）：可退支付单实收合计 − 已退合计（排除 Failed，未真实打款）。
+     * 无任何可退支付单时返回 -1，表示「无法计算」，调用方据此跳过收紧、维持原上限校验。
+     */
+    private refundableBalance;
+    /**
+     * 生成退款计划（新→旧）：每张支付单退「自身剩余额度」，累计到 request.refundAmount 为止。
+     * 组合支付（余额+微信/多笔）跨单拆分；总额不足返回 null（调用方拒绝，绝不部分退）。
+     * 只认 Settled/Authorized，已退总额排除 Failed（结算失败未真实打款，允许重试）。
+     */
+    private planRefunds;
     /** 幂等地把售后单置为 RefundFailed（不入事务，供 catch 兜底），避免异常路径留下半成品脏数据 */
     private applyRefundFailed;
     /**

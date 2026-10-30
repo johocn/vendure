@@ -316,6 +316,8 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
                 retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+                """退款完成结案：Refunded → Closed（释放订单/行的售后占用）"""
+                closeAfterSalesRequest(id: ID!): AfterSalesRequestAdmin!
                 batchApproveAfterSalesRequests(ids: [ID!]!): [AfterSalesBatchResult!]!
                 batchRejectAfterSalesRequests(ids: [ID!]!, reason: String!): [AfterSalesBatchResult!]!
                 updateAfterSalesReturnAddress(address: String!): Boolean!
