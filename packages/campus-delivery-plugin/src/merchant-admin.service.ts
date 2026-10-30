@@ -1558,29 +1558,39 @@ export class MerchantAdminService {
         return { ok: true, soldOut: Boolean(soldOut) };
     }
 
-    /** 全店批量沽清 / 批量恢复：仅本渠道商品，返回实际影响条数（打烊后一键恢复用） */
+    /** 全店批量沽清 / 批量恢复：仅本渠道未删除商品，返回实际影响条数（打烊后一键恢复用） */
     async setAllProductsSoldOut(ctx: RequestContext, soldOut: boolean) {
         const flag = Boolean(soldOut);
-        const rows: any = await this.connection.rawConnection.query(
-            'UPDATE product p SET "customFieldsWaimaisoldout" = $2 '
-            + 'FROM product_channels_channel pc '
-            + 'WHERE pc."productId" = p.id AND pc."channelId" = $1 '
-            + 'RETURNING p.id',
-            [ctx.channelId, flag],
-        );
-        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
-        const ids: number[] = (Array.isArray(list) ? list : []).map((r: any) => Number(r.id));
-        if (flag) {
-            // 登记批次：仅供次日 04:00 自动恢复命中这些商品
-            await this.connection.rawConnection.query(
-                'INSERT INTO campus_soldout_batch ("channelId", "productId") '
-                + 'SELECT $1, unnest($2::int[]) '
-                + 'ON CONFLICT ("channelId", "productId") DO NOTHING',
-                [ctx.channelId, ids],
+        // 标识更新与批次登记必须同一事务：否则批次写入失败会留下「已沽清但次日不会被自动恢复」的商品
+        const ids = await this.connection.rawConnection.transaction(async manager => {
+            const rows: any = await manager.query(
+                'UPDATE product p SET "customFieldsWaimaisoldout" = $2 '
+                + 'FROM product_channels_channel pc '
+                + 'WHERE pc."productId" = p.id AND pc."channelId" = $1 '
+                + 'AND p."deletedAt" IS NULL '
+                + 'RETURNING p.id',
+                [ctx.channelId, flag],
             );
-        } else {
-            await this.clearSoldOutBatch(ctx, {});
-        }
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            const changed: number[] = (Array.isArray(list) ? list : []).map((r: any) => Number(r.id));
+            if (flag) {
+                // 登记批次：仅供次日 04:00 自动恢复命中这些商品
+                if (changed.length) {
+                    await manager.query(
+                        'INSERT INTO campus_soldout_batch ("channelId", "productId") '
+                        + 'SELECT $1, unnest($2::int[]) '
+                        + 'ON CONFLICT ("channelId", "productId") DO NOTHING',
+                        [ctx.channelId, changed],
+                    );
+                }
+            } else {
+                await manager.query(
+                    'DELETE FROM campus_soldout_batch WHERE "channelId" = $1',
+                    [ctx.channelId],
+                );
+            }
+            return changed;
+        });
         return { ok: true, soldOut: flag, count: ids.length };
     }
 

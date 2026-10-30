@@ -2,6 +2,7 @@
  * 菜品每日限量 / 每人限购（§68）。
  * 口径：配置为 null 或 0 = 不限；额度按「校园本地日」（UTC+8）统计已支付订单，
  * 不落库当日用量表——次日自然归零，无需定时任务重置。
+ * 下单闸门校验时额外把「待付款（ArrangingPayment）」计入占用，避免并发/未付款订单突破额度。
  */
 export const DAILY_LIMIT_MAX = 9999;
 
@@ -14,6 +15,12 @@ export const DAILY_LIMIT_PAID_STATES = [
     'PartiallyDelivered',
     'Delivered',
 ];
+
+/**
+ * 下单闸门校验口径：在已支付状态基础上加入 ArrangingPayment（已进入支付流程但尚未付款）作为「占用」，
+ * 配合渠道级事务锁，避免两笔并发订单都通过预检后各自支付（超卖）。展示类查询仍用 PAID 口径。
+ */
+export const DAILY_LIMIT_RESERVED_STATES = [...DAILY_LIMIT_PAID_STATES, 'ArrangingPayment'];
 
 /** 限量配置归一：null / 空 / 非正数 / 非法 → null（不限），否则取整 */
 export function normalizeLimit(value: unknown): number | null {
@@ -65,17 +72,18 @@ export function localDayRange(now = Date.now(), tzOffsetMinutes = 480): { start:
 
 const numList = (v: any) => (Array.isArray(v) ? v : []).map((x: any) => Number(x)).filter(n => Number.isFinite(n));
 
-/** 当日已售份数（按商品）：只统计已支付订单；customerId 存在时只统计该顾客 */
+/** 当日已售份数（按商品）：默认只统计已支付订单；includeReserved 时把待付款也计入占用 */
 export async function queryDailySold(
     raw: any,
     channelId: number,
     productIds: number[],
-    opts: { customerId?: number | null; excludeOrderId?: number | null; now?: number } = {},
+    opts: { customerId?: number | null; excludeOrderId?: number | null; now?: number; includeReserved?: boolean } = {},
 ): Promise<Map<number, number>> {
     const ids = numList(productIds);
     const out = new Map<number, number>();
     if (!ids.length) return out;
     const { start, end } = localDayRange(opts.now ?? Date.now());
+    const states = opts.includeReserved ? DAILY_LIMIT_RESERVED_STATES : DAILY_LIMIT_PAID_STATES;
     const rows: any = await raw.query(
         'SELECT pv."productId" AS pid, SUM(ol.quantity)::int AS qty '
         + 'FROM order_line ol '
@@ -88,7 +96,7 @@ export async function queryDailySold(
         + 'AND ($7::int IS NULL OR o.id <> $7) '
         + 'GROUP BY pv."productId"',
         [
-            channelId, start, end, DAILY_LIMIT_PAID_STATES,
+            channelId, start, end, states,
             ids, opts.customerId ?? null, opts.excludeOrderId ?? null,
         ],
     );
@@ -102,6 +110,7 @@ export async function findDailyLimitViolation(
     conn: { rawConnection: any },
     channelId: number,
     orderId: number,
+    tx?: { query: (sql: string, params?: any[]) => Promise<any> },
 ): Promise<string | null> {
     const raw = conn.rawConnection;
     const rows: any = await raw.query(
@@ -122,12 +131,19 @@ export async function findDailyLimitViolation(
     const limited = (lines ?? []).filter((l: any) => Number(l.dl) > 0 || Number(l.pul) > 0);
     if (!limited.length) return null;
 
+    // 渠道级事务锁：与订单状态写入同事务，串行化同店铺的限量预检，
+    // 配合 RESERVED 口径让后到的并发订单能看到先到订单已占用的额度。
+    // 无事务上下文（如直接调用/单测）时跳过，行为退化为只做读取校验。
+    if (tx) {
+        await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`campus:daily-limit:${channelId}`]);
+    }
+
     const customerId = lines?.[0]?.customerId == null ? null : Number(lines[0].customerId);
     const ids = [...new Set(limited.map((l: any) => Number(l.pid)))];
-    const soldMap = await queryDailySold(raw, channelId, ids, { excludeOrderId: orderId });
+    const soldMap = await queryDailySold(raw, channelId, ids, { excludeOrderId: orderId, includeReserved: true });
     const mineMap = customerId == null
         ? new Map<number, number>()
-        : await queryDailySold(raw, channelId, ids, { excludeOrderId: orderId, customerId });
+        : await queryDailySold(raw, channelId, ids, { excludeOrderId: orderId, customerId, includeReserved: true });
 
     for (const l of limited) {
         const pid = Number(l.pid);

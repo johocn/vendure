@@ -2,13 +2,14 @@ import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
 import { PeriodicFallback } from './periodic-fallback';
 import { localDateKey } from './rider-shift-window';
+import { campusHour } from './campus-time';
 
 const loggerCtx = 'CampusSoldOutAutoRestore';
 /** 启动后首跑延迟：等迁移建表 / DB 连接稳定 */
 const BOOT_DELAY_MS = 120_000;
 /** 检查周期：每 10 分钟看一次是否到点（生产单进程自管定时器，与黑名单扫描同形态） */
 const INTERVAL_MS = 10 * 60_000;
-/** 每日恢复时点（本地时间）：凌晨 4 点，早于早餐备货 */
+/** 每日恢复时点（校园本地时间 UTC+8）：凌晨 4 点，早于早餐备货 */
 const RESTORE_HOUR = 4;
 
 /**
@@ -45,7 +46,8 @@ export class SoldOutAutoRestoreJob implements OnApplicationShutdown {
 
     async runOnce(): Promise<void> {
         const now = new Date();
-        if (now.getHours() < RESTORE_HOUR) return;
+        // 与 localDateKey 保持同一时区口径（固定 UTC+8），避免非 UTC+8 服务器恢复时点漂移
+        if (campusHour(now.getTime()) < RESTORE_HOUR) return;
         const day = localDateKey(now);
         if (this.lastRunDay === day) return;
         const done = await this.restoreAll();

@@ -32,6 +32,11 @@ export interface AdminListOptions {
 
 const TREND_DAYS = 7;
 const TOP_EVENTS = 5;
+/** 公开写入入口的进程内限流（多实例部署时每实例独立计数，仅用于抑制匿名刷写） */
+const RATE_WINDOW_MS = 60_000;
+const TRACK_CALLS_PER_WINDOW = 40;
+const ERROR_CALLS_PER_WINDOW = 10;
+const RATE_MAP_MAX = 5000;
 
 function pageSize(take?: number): number {
     const n = Number(take ?? 20);
@@ -46,10 +51,15 @@ function pageStart(skip?: number): number {
 
 @Injectable()
 export class TelemetryService {
+    /** 限流窗口：clientKey → {count, resetAt} */
+    private rateWindows = new Map<string, { count: number; resetAt: number }>();
+
     constructor(private connection: TransactionalConnection) {}
 
     /** C 端批量埋点上报（匿名可用），返回实际入库条数。 */
     async trackEvents(ctx: RequestContext, input: any): Promise<number> {
+        // 公开入口限流：超限直接丢弃（不抛错，避免影响端侧上报链路）
+        if (!this.allowRate(`track:${requestMeta(ctx).ip ?? 'unknown'}`, TRACK_CALLS_PER_WINDOW)) return 0;
         const events = normalizeTrackEventBatch(input?.events);
         if (!events.length) return 0;
         const channelId = ctx.channelId as number;
@@ -78,6 +88,7 @@ export class TelemetryService {
      * 同类错误 1 分钟内不重复落库，避免同一崩溃循环刷屏。
      */
     async reportError(ctx: RequestContext, input: any): Promise<boolean> {
+        if (!this.allowRate(`error:${requestMeta(ctx).ip ?? 'unknown'}`, ERROR_CALLS_PER_WINDOW)) return false;
         const report = sanitizeErrorReport(input);
         if (!report) return false;
         const channelId = ctx.channelId as number;
@@ -202,6 +213,25 @@ export class TelemetryService {
             })),
             totalItems,
         };
+    }
+
+    /** 固定窗口限流：超限返回 false（丢弃本次上报，不抛错） */
+    private allowRate(key: string, limit: number, now = Date.now()): boolean {
+        if (this.rateWindows.size >= RATE_MAP_MAX) this.pruneRateWindows(now);
+        const w = this.rateWindows.get(key);
+        if (!w || w.resetAt <= now) {
+            this.rateWindows.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+            return true;
+        }
+        if (w.count >= limit) return false;
+        w.count += 1;
+        return true;
+    }
+
+    private pruneRateWindows(now: number): void {
+        for (const [key, w] of this.rateWindows) {
+            if (w.resetAt <= now) this.rateWindows.delete(key);
+        }
     }
 
     /** 已登录顾客 id（游客返回 null）；失败不阻断上报。 */

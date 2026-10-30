@@ -20,12 +20,17 @@ function data(opts: { channelCf?: any; cf?: any; id?: number; channelId?: number
 
 describe('campusOrderGateProcess', () => {
     const query = vi.fn();
+    /** 事务内 manager（限量并发占用校验用）；本组用例无命中限量商品，不会真正执行 */
+    const managerQuery = vi.fn();
     beforeEach(() => {
         vi.clearAllMocks();
         // 固定校园时刻 12:00（UTC+8 → UTC 04:00），让营业时间判断可稳定断言
         vi.useFakeTimers();
         vi.setSystemTime(new Date(Date.UTC(2026, 9, 25, 4, 0, 0)));
-        bindOrderGateConnection({ rawConnection: { query } } as any);
+        bindOrderGateConnection({
+            rawConnection: { query },
+            getRepository: () => ({ manager: { query: managerQuery } }),
+        } as any);
     });
     afterEach(() => {
         vi.useRealTimers();

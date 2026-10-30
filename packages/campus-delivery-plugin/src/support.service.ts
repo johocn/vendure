@@ -268,9 +268,11 @@ export class SupportService {
             `ticket:${ticket.id}`,
             { channel: ctx.channel?.code },
         );
-        return { ...ticket, ...SupportService.afterSalesView(
-            afterSalesRequestId == null ? null : { id: afterSalesRequestId, state: null },
-        ) };
+        // 自动关联成功时回显真实售后摘要（状态/金额），避免建单响应显示空状态
+        const summary = afterSalesRequestId == null
+            ? null
+            : (await this.loadAfterSalesSummaries(ctx, [ticket])).byId.get(Number(afterSalesRequestId)) ?? null;
+        return { ...ticket, ...SupportService.afterSalesView(summary) };
     }
 
     async myTickets(ctx: RequestContext, skip?: number, take?: number) {
@@ -356,6 +358,11 @@ export class SupportService {
         const channelIds = Array.isArray(request.channels) ? request.channels.map(c => Number(c.id)) : [];
         if (channelIds.length && !channelIds.includes(Number(ctx.channelId))) {
             throw new UserInputError('售后单不属于当前店铺');
+        }
+        // 顾客一致性：工单无订单号时无法靠订单比对，必须校验售后单归属顾客，
+        // 否则可把顾客 A 的工单挂到同店铺顾客 B 的售后单，A 的工单列表会回显 B 的退款信息。
+        if (request.customerId != null && Number(request.customerId) !== Number(ticket.customerId)) {
+            throw new UserInputError('售后单与工单不属于同一顾客');
         }
         if (ticket.orderId != null && Number(ticket.orderId) !== Number(request.orderId)) {
             throw new UserInputError('售后单与工单关联订单不一致');
