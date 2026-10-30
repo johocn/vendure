@@ -243,6 +243,14 @@ export interface MerchantAfterSalesBlacklistEntry {
     createdBy: string;
     createdAt: Date;
 }
+/** 处理人负载（§91）：未完结 / 超时 / 临期 单数，userId=0 表示未指派 */
+export interface MerchantAfterSalesAssigneeLoad {
+    assigneeUserId: string;
+    assigneeName: string;
+    openCount: number;
+    overdueCount: number;
+    dueSoonCount: number;
+}
 /** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
 export interface MerchantAfterSalesNote {
     id: string;
@@ -341,6 +349,10 @@ export interface MerchantAfterSalesListOptions {
     tag?: string | null;
     /** 处理人筛选（本店管理员 userId；'none'=未指派，§89） */
     assignee?: string | null;
+    /** 留言关键词（§91）：搜索顾客与商家协商留言内容 */
+    messageKeyword?: string | null;
+    /** 快捷筛选（§91）：overdue=已超时 / dueSoon=临期 / unread=顾客留言未回复 */
+    attention?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -963,6 +975,10 @@ export declare class MerchantAdminService {
     }): Promise<MerchantAfterSalesBlacklistEntry[]>;
     /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
     afterSalesBatchAssign(ctx: RequestContext, ids: ID[], userId: ID | null): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
+    afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string>;
+    /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */
+    afterSalesAssigneeLoad(ctx: RequestContext): Promise<MerchantAfterSalesAssigneeLoad[]>;
     /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */
     afterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<MerchantAfterSalesStaffRow[]>;
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */

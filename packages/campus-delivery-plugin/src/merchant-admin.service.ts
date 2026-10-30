@@ -279,6 +279,15 @@ export interface MerchantAfterSalesBlacklistEntry {
     createdAt: Date;
 }
 
+/** 处理人负载（§91）：未完结 / 超时 / 临期 单数，userId=0 表示未指派 */
+export interface MerchantAfterSalesAssigneeLoad {
+    assigneeUserId: string;
+    assigneeName: string;
+    openCount: number;
+    overdueCount: number;
+    dueSoonCount: number;
+}
+
 /** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
 export interface MerchantAfterSalesNote {
     id: string;
@@ -387,6 +396,10 @@ export interface MerchantAfterSalesListOptions {
     tag?: string | null;
     /** 处理人筛选（本店管理员 userId；'none'=未指派，§89） */
     assignee?: string | null;
+    /** 留言关键词（§91）：搜索顾客与商家协商留言内容 */
+    messageKeyword?: string | null;
+    /** 快捷筛选（§91）：overdue=已超时 / dueSoon=临期 / unread=顾客留言未回复 */
+    attention?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -1924,6 +1937,7 @@ export class MerchantAdminService {
             .andWhere('o.customFields.hallStatus IS NOT NULL');
 
         const { from, to } = this.afterSalesRange(opts);
+        const rules = await this.afterSalesRules(ctx);
         /** 追加非 state 筛选条件（原地修改并返回，保持 QueryBuilder 类型以便 getMany 正常推断） */
         const applyFilters = (target: ReturnType<typeof scoped>) => {
             const type = String(opts.type ?? '').trim();
@@ -1967,6 +1981,39 @@ export class MerchantAdminService {
                     );
                 }
             }
+            // 留言关键词（§91）：命中顾客或商家任一留言即可
+            const messageKeyword = String(opts.messageKeyword ?? '').trim();
+            if (messageKeyword) {
+                target.andWhere(
+                    'EXISTS (SELECT 1 FROM after_sales_message mk '
+                    + 'WHERE mk."requestId" = a.id AND mk.content ILIKE :mk)',
+                    { mk: `%${messageKeyword}%` },
+                );
+            }
+            // 快捷筛选（§91）：超时 / 临期 / 未回复
+            const attention = String(opts.attention ?? '').trim();
+            if (attention) {
+                if (attention === 'overdue') {
+                    target.andWhere('a.state = \'Pending\'')
+                        .andWhere('a."createdAt" + make_interval(hours => :toh) <= now()', { toh: this.afterSalesTimeoutHours(ctx) });
+                } else if (attention === 'dueSoon') {
+                    if (rules.dueSoonHours > 0) {
+                        target.andWhere('a.state = \'Pending\'')
+                            .andWhere('a."createdAt" + make_interval(hours => :toh) > now()', { toh: this.afterSalesTimeoutHours(ctx) })
+                            .andWhere('a."createdAt" + make_interval(hours => :toh) - now() <= make_interval(hours => :dsh)', {
+                                toh: this.afterSalesTimeoutHours(ctx),
+                                dsh: rules.dueSoonHours,
+                            });
+                    } else {
+                        target.andWhere('1 = 0');
+                    }
+                } else if (attention === 'unread') {
+                    target.andWhere(
+                        '(SELECT m."senderType" FROM after_sales_message m '
+                        + 'WHERE m."requestId" = a.id ORDER BY m."createdAt" DESC LIMIT 1) = \'customer\'',
+                    );
+                }
+            }
             return target;
         };
 
@@ -2003,7 +2050,6 @@ export class MerchantAdminService {
         const tagMap = await this.afterSalesTagNames(ctx, rows.map(r => Number(r.id)));
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
-        const rules = await this.afterSalesRules(ctx);
         const now = Date.now();
         return {
             items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now, lastSender, {
@@ -3111,6 +3157,96 @@ export class MerchantAdminService {
         return list.map(n => ownedMap.has(n)
             ? { id: String(n), success: true, state: ownedMap.get(n) ?? '', message: '' }
             : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' });
+    }
+
+    /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
+    async afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string> {
+        const chId = Number(ctx.channelId);
+        const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length) throw new UserInputError('请选择要导出的售后单');
+        if (list.length > 500) throw new UserInputError('单次最多导出 500 单');
+        const k = String(kind ?? '').trim();
+        if (k !== 'requests' && k !== 'refunds') throw new UserInputError('导出类型无效');
+        const raw = this.connection.rawConnection;
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            if (k === 'requests') {
+                const rows: any = await raw.query(
+                    `SELECT a.id, o.code AS "orderCode", a.type, a.state, a.reason, a."rejectReason",
+                            a."createdAt", COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                            a."refundedAt"
+                       FROM after_sales_request a
+                       LEFT JOIN "order" o ON o.id = a."orderId"
+                      WHERE a.id = ANY($2::int[]) AND ${scope}
+                      ORDER BY a."createdAt" DESC`,
+                    [chId, list],
+                );
+                const header = ['售后单号', '订单号', '类型', '状态', '申请原因', '驳回/关闭原因', '申请时间', '退款金额(元)', '退款时间'];
+                const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                    r.id, r.orderCode, r.type, r.state, r.reason, r.rejectReason,
+                    this.campusDateTime(r.createdAt), this.yuan(r.amount), this.campusDateTime(r.refundedAt),
+                ]);
+                return this.toCsv(header, lines);
+            }
+            const rows: any = await raw.query(
+                `SELECT a.id, o.code AS "orderCode", a.type, a.reason, a."refundTransactionId",
+                        COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount, a."refundedAt"
+                   FROM after_sales_request a
+                   LEFT JOIN "order" o ON o.id = a."orderId"
+                  WHERE a.state = 'Refunded' AND a.id = ANY($2::int[]) AND ${scope}
+                  ORDER BY a."refundedAt" DESC`,
+                [chId, list],
+            );
+            const header = ['售后单号', '订单号', '类型', '申请原因', '退款金额(元)', '退款时间', '退款流水号'];
+            const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                r.id, r.orderCode, r.type, r.reason, this.yuan(r.amount),
+                this.campusDateTime(r.refundedAt), r.refundTransactionId,
+            ]);
+            return this.toCsv(header, lines);
+        } catch (e: any) {
+            if (e instanceof UserInputError) throw e;
+            throw new UserInputError(`导出失败：${e?.message ?? e}`);
+        }
+    }
+
+    /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */
+    async afterSalesAssigneeLoad(ctx: RequestContext): Promise<MerchantAfterSalesAssigneeLoad[]> {
+        const chId = Number(ctx.channelId);
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const rules = await this.afterSalesRules(ctx);
+        const rows: any = await this.connection.rawConnection.query(
+            `SELECT COALESCE(l."assigneeUserId", 0) AS uid,
+                    MAX(COALESCE(ad."firstName", '') || COALESCE(ad."lastName", '')) AS name,
+                    COUNT(*)::int AS open_count,
+                    COUNT(*) FILTER (WHERE a."createdAt" + make_interval(hours => $2) <= now())::int AS overdue_count,
+                    COUNT(*) FILTER (
+                        WHERE $3::int > 0
+                          AND a."createdAt" + make_interval(hours => $2) > now()
+                          AND a."createdAt" + make_interval(hours => $2) - now() <= make_interval(hours => $3::int)
+                    )::int AS due_soon_count
+               FROM after_sales_request a
+               LEFT JOIN campus_after_sales_assignee l
+                 ON l."requestId" = a.id AND l."channelId" = $1
+               LEFT JOIN administrator ad ON ad."userId" = l."assigneeUserId"
+              WHERE a.state NOT IN ('Refunded', 'Rejected', 'Closed')
+                AND EXISTS (SELECT 1 FROM "order" o
+                            JOIN order_channels_channel oc ON oc."orderId" = o.id
+                            WHERE o.id = a."orderId" AND oc."channelId" = $1)
+              GROUP BY 1
+              ORDER BY open_count DESC`,
+            [chId, timeoutHours, rules.dueSoonHours],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => ({
+            assigneeUserId: String(r.uid),
+            assigneeName: Number(r.uid) === 0 ? '未指派' : (String(r.name ?? '').trim() || `操作人 #${String(r.uid)}`),
+            openCount: Number(r.open_count) || 0,
+            overdueCount: Number(r.overdue_count) || 0,
+            dueSoonCount: Number(r.due_soon_count) || 0,
+        }));
     }
 
     /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */

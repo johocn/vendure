@@ -211,12 +211,14 @@ export class MerchantAdminResolver {
         @Args({ name: 'keyword', type: () => String, nullable: true }) keyword?: string | null,
         @Args({ name: 'tag', type: () => String, nullable: true }) tag?: string | null,
         @Args({ name: 'assignee', type: () => String, nullable: true }) assignee?: string | null,
+        @Args({ name: 'messageKeyword', type: () => String, nullable: true }) messageKeyword?: string | null,
+        @Args({ name: 'attention', type: () => String, nullable: true }) attention?: string | null,
         @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
         @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, from, to, skip, take });
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, from, to, skip, take });
     }
 
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
@@ -362,6 +364,24 @@ export class MerchantAdminResolver {
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
         return this.merchant.afterSalesBlacklist(ctx, { skip, take });
+    }
+
+    /** 处理人负载（§91） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAssigneeLoad(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesAssigneeLoad(ctx);
+    }
+
+    /** 导出选中售后单 CSV（§91） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesExportByIds(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'ids', type: () => [String] }) ids: ID[],
+        @Args('kind') kind: string,
+    ) {
+        return this.merchant.afterSalesExportSelection(ctx, ids, kind);
     }
 
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */

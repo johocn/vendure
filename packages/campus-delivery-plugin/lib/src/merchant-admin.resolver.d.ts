@@ -55,7 +55,7 @@ export declare class MerchantAdminResolver {
     /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
     campusMerchantDailyReport(ctx: RequestContext, date?: string | null): Promise<import("./merchant-admin.service").MerchantDailyReport>;
     /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, assignee?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
+    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, assignee?: string | null, messageKeyword?: string | null, attention?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
     campusMerchantAfterSalesDetail(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesDetail>;
     /** 售后处理统计（§81）：待处理/超时/今日处理量/今日退款额 */
@@ -88,6 +88,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantAfterSalesStaffRow[]>;
     /** 本店黑名单列表（§90） */
     campusMerchantAfterSalesBlacklist(ctx: RequestContext, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesBlacklistEntry[]>;
+    /** 处理人负载（§91） */
+    campusMerchantAfterSalesAssigneeLoad(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesAssigneeLoad[]>;
+    /** 导出选中售后单 CSV（§91） */
+    campusMerchantAfterSalesExportByIds(ctx: RequestContext, ids: ID[], kind: string): Promise<string>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */

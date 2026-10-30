@@ -910,6 +910,16 @@ import { P21AfterSalesSlaAlertMigration } from './migrations/p21-after-sales-sla
                     createdAt: DateTime!
                 }
 
+                """处理人负载（§91）：未完结 / 超时 / 临期 单数"""
+                type CampusMerchantAfterSalesAssigneeLoad {
+                    """管理员 User id；0 表示未指派"""
+                    assigneeUserId: ID!
+                    assigneeName: String!
+                    openCount: Int!
+                    overdueCount: Int!
+                    dueSoonCount: Int!
+                }
+
                 """商家售后内部备注（§86）：仅商家可见"""
                 type CampusMerchantAfterSalesNote {
                     id: ID!
@@ -1883,7 +1893,7 @@ import { P21AfterSalesSlaAlertMigration } from './migrations/p21-after-sales-sla
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, messageKeyword: String, attention: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
                     """售后工作台摘要（§88）：一次请求返回各待办入口计数"""
                     campusMerchantAfterSalesWorkbench: CampusMerchantAfterSalesWorkbench!
                     """售后标签列表（§88）"""
@@ -1894,6 +1904,10 @@ import { P21AfterSalesSlaAlertMigration } from './migrations/p21-after-sales-sla
                     campusMerchantAfterSalesStaffStats(from: String!, to: String!): [CampusMerchantAfterSalesStaffRow!]!
                     """本店黑名单列表（§90）：仅 active 记录"""
                     campusMerchantAfterSalesBlacklist(skip: Int, take: Int): [CampusMerchantAfterSalesBlacklistEntry!]!
+                    """处理人负载（§91）：按处理人统计未完结单"""
+                    campusMerchantAfterSalesAssigneeLoad: [CampusMerchantAfterSalesAssigneeLoad!]!
+                    """导出选中售后单 CSV（§91）：上限 500 单，kind=requests|refunds"""
+                    campusMerchantAfterSalesExportByIds(ids: [ID!]!, kind: String!): String!
                     """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""

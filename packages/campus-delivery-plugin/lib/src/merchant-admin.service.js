@@ -1193,9 +1193,10 @@ let MerchantAdminService = class MerchantAdminService {
             .where('c.id = :ch', { ch: ctx.channelId })
             .andWhere('o.customFields.hallStatus IS NOT NULL');
         const { from, to } = this.afterSalesRange(opts);
+        const rules = await this.afterSalesRules(ctx);
         /** 追加非 state 筛选条件（原地修改并返回，保持 QueryBuilder 类型以便 getMany 正常推断） */
         const applyFilters = (target) => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f, _g;
             const type = String((_a = opts.type) !== null && _a !== void 0 ? _a : '').trim();
             if (type)
                 target.andWhere('a.type = :tp', { tp: type });
@@ -1233,6 +1234,37 @@ let MerchantAdminService = class MerchantAdminService {
                         + 'WHERE al."channelId" = :ach AND al."assigneeUserId" = :assignee)', { ach, assignee: Number(assignee) });
                 }
             }
+            // 留言关键词（§91）：命中顾客或商家任一留言即可
+            const messageKeyword = String((_f = opts.messageKeyword) !== null && _f !== void 0 ? _f : '').trim();
+            if (messageKeyword) {
+                target.andWhere('EXISTS (SELECT 1 FROM after_sales_message mk '
+                    + 'WHERE mk."requestId" = a.id AND mk.content ILIKE :mk)', { mk: `%${messageKeyword}%` });
+            }
+            // 快捷筛选（§91）：超时 / 临期 / 未回复
+            const attention = String((_g = opts.attention) !== null && _g !== void 0 ? _g : '').trim();
+            if (attention) {
+                if (attention === 'overdue') {
+                    target.andWhere('a.state = \'Pending\'')
+                        .andWhere('a."createdAt" + make_interval(hours => :toh) <= now()', { toh: this.afterSalesTimeoutHours(ctx) });
+                }
+                else if (attention === 'dueSoon') {
+                    if (rules.dueSoonHours > 0) {
+                        target.andWhere('a.state = \'Pending\'')
+                            .andWhere('a."createdAt" + make_interval(hours => :toh) > now()', { toh: this.afterSalesTimeoutHours(ctx) })
+                            .andWhere('a."createdAt" + make_interval(hours => :toh) - now() <= make_interval(hours => :dsh)', {
+                            toh: this.afterSalesTimeoutHours(ctx),
+                            dsh: rules.dueSoonHours,
+                        });
+                    }
+                    else {
+                        target.andWhere('1 = 0');
+                    }
+                }
+                else if (attention === 'unread') {
+                    target.andWhere('(SELECT m."senderType" FROM after_sales_message m '
+                        + 'WHERE m."requestId" = a.id ORDER BY m."createdAt" DESC LIMIT 1) = \'customer\'');
+                }
+            }
             return target;
         };
         // 状态计数不受 state 筛选影响：入口红点与页签角标口径统一
@@ -1267,7 +1299,6 @@ let MerchantAdminService = class MerchantAdminService {
         const tagMap = await this.afterSalesTagNames(ctx, rows.map(r => Number(r.id)));
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
-        const rules = await this.afterSalesRules(ctx);
         const now = Date.now();
         return {
             items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now, lastSender, {
@@ -2289,6 +2320,94 @@ let MerchantAdminService = class MerchantAdminService {
             return ownedMap.has(n)
                 ? { id: String(n), success: true, state: (_a = ownedMap.get(n)) !== null && _a !== void 0 ? _a : '', message: '' }
                 : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' };
+        });
+    }
+    /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
+    async afterSalesExportSelection(ctx, ids, kind) {
+        var _a;
+        const chId = Number(ctx.channelId);
+        const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length)
+            throw new core_2.UserInputError('请选择要导出的售后单');
+        if (list.length > 500)
+            throw new core_2.UserInputError('单次最多导出 500 单');
+        const k = String(kind !== null && kind !== void 0 ? kind : '').trim();
+        if (k !== 'requests' && k !== 'refunds')
+            throw new core_2.UserInputError('导出类型无效');
+        const raw = this.connection.rawConnection;
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            if (k === 'requests') {
+                const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.state, a.reason, a."rejectReason",
+                            a."createdAt", COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                            a."refundedAt"
+                       FROM after_sales_request a
+                       LEFT JOIN "order" o ON o.id = a."orderId"
+                      WHERE a.id = ANY($2::int[]) AND ${scope}
+                      ORDER BY a."createdAt" DESC`, [chId, list]);
+                const header = ['售后单号', '订单号', '类型', '状态', '申请原因', '驳回/关闭原因', '申请时间', '退款金额(元)', '退款时间'];
+                const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                    r.id, r.orderCode, r.type, r.state, r.reason, r.rejectReason,
+                    this.campusDateTime(r.createdAt), this.yuan(r.amount), this.campusDateTime(r.refundedAt),
+                ]);
+                return this.toCsv(header, lines);
+            }
+            const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.reason, a."refundTransactionId",
+                        COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount, a."refundedAt"
+                   FROM after_sales_request a
+                   LEFT JOIN "order" o ON o.id = a."orderId"
+                  WHERE a.state = 'Refunded' AND a.id = ANY($2::int[]) AND ${scope}
+                  ORDER BY a."refundedAt" DESC`, [chId, list]);
+            const header = ['售后单号', '订单号', '类型', '申请原因', '退款金额(元)', '退款时间', '退款流水号'];
+            const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                r.id, r.orderCode, r.type, r.reason, this.yuan(r.amount),
+                this.campusDateTime(r.refundedAt), r.refundTransactionId,
+            ]);
+            return this.toCsv(header, lines);
+        }
+        catch (e) {
+            if (e instanceof core_2.UserInputError)
+                throw e;
+            throw new core_2.UserInputError(`导出失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+    }
+    /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */
+    async afterSalesAssigneeLoad(ctx) {
+        const chId = Number(ctx.channelId);
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const rules = await this.afterSalesRules(ctx);
+        const rows = await this.connection.rawConnection.query(`SELECT COALESCE(l."assigneeUserId", 0) AS uid,
+                    MAX(COALESCE(ad."firstName", '') || COALESCE(ad."lastName", '')) AS name,
+                    COUNT(*)::int AS open_count,
+                    COUNT(*) FILTER (WHERE a."createdAt" + make_interval(hours => $2) <= now())::int AS overdue_count,
+                    COUNT(*) FILTER (
+                        WHERE $3::int > 0
+                          AND a."createdAt" + make_interval(hours => $2) > now()
+                          AND a."createdAt" + make_interval(hours => $2) - now() <= make_interval(hours => $3::int)
+                    )::int AS due_soon_count
+               FROM after_sales_request a
+               LEFT JOIN campus_after_sales_assignee l
+                 ON l."requestId" = a.id AND l."channelId" = $1
+               LEFT JOIN administrator ad ON ad."userId" = l."assigneeUserId"
+              WHERE a.state NOT IN ('Refunded', 'Rejected', 'Closed')
+                AND EXISTS (SELECT 1 FROM "order" o
+                            JOIN order_channels_channel oc ON oc."orderId" = o.id
+                            WHERE o.id = a."orderId" AND oc."channelId" = $1)
+              GROUP BY 1
+              ORDER BY open_count DESC`, [chId, timeoutHours, rules.dueSoonHours]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => {
+            var _a;
+            return ({
+                assigneeUserId: String(r.uid),
+                assigneeName: Number(r.uid) === 0 ? '未指派' : (String((_a = r.name) !== null && _a !== void 0 ? _a : '').trim() || `操作人 #${String(r.uid)}`),
+                openCount: Number(r.open_count) || 0,
+                overdueCount: Number(r.overdue_count) || 0,
+                dueSoonCount: Number(r.due_soon_count) || 0,
+            });
         });
     }
     /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */
