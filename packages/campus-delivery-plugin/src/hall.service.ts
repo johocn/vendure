@@ -5,6 +5,7 @@ import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugi
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { SlotLockService } from './slot-lock.service';
 import { resolveHandoverPoint, resolveRoutePlan } from './route-matrix';
 
@@ -34,6 +35,7 @@ export class HallService {
         private slotLock: SlotLockService,
         private moduleRef: ModuleRef,
         private capacity: CapacityService,
+        private feishu?: FeishuNotifyService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -56,13 +58,14 @@ export class HallService {
         return { lat: Number(b.lat), lng: Number(b.lng) };
     }
 
-    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null */
+    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null。
+     *  支持跨天时段（如 '23:30-00:10'）：结束时间不大于开始时间时视为次日。 */
     static slotSpanMinutes(text: string): number | null {
         const m = /(\d{1,2}):(\d{2})\s*[-–~至]\s*(\d{1,2}):(\d{2})/.exec(text);
         if (!m) return null;
         const start = Number(m[1]) * 60 + Number(m[2]);
         const end = Number(m[3]) * 60 + Number(m[4]);
-        const span = end - start;
+        const span = (end <= start ? end + 24 * 60 : end) - start;
         return span > 0 && span <= 12 * 60 ? span : null;
     }
 
@@ -122,6 +125,20 @@ export class HallService {
             promiseSource: promise.source,
             ...(degrade ? { campusCause: 'no_handover_point' } : {}),
         };
+        // 降级不能静默（P1）：运费按 R1/R2 收、实际按 campus_rider 直送，必须让运营可见并人工兜底。
+        if (degrade) {
+            Logger.error(
+                `Order ${order.code} ${route} degraded to campus_rider: no usable handover point`,
+                'CampusHall',
+            );
+            void this.feishu?.pushEvent(
+                'alert',
+                '交接点缺失，订单已降级',
+                `订单 ${order.code}（${route}）缺少 ${route} 校园交接点，已降级为传信者到店直送。请补齐交接点配置，并视情况退还运费差价。`,
+                order.code,
+                `degrade:${order.code}`,
+            );
+        }
         const locked = await this.slotLock.lock(ctx, order);
         const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
         const deferred =

@@ -63,7 +63,19 @@ describe('setDeliveryTarget route/slot 扩展', () => {
         const slotRepo = { findOne: vi.fn().mockResolvedValue(opts.slot === undefined ? slot : opts.slot) };
         const cfgRepo = {
             findOne: vi.fn().mockResolvedValue(
-                opts.cfg === undefined ? { channelId: 1, routesEnabled: ['R1', 'R2', 'R3'] } : opts.cfg,
+                opts.cfg === undefined
+                    ? {
+                          channelId: 1,
+                          routesEnabled: ['R1', 'R2', 'R3'],
+                          // R1/R2 派单前置（P1）：门店坐标 + 对应路线交接点齐备，否则 setDeliveryTarget 会提前拦截
+                          storeLat: 30,
+                          storeLng: 120,
+                          handoverPoints: {
+                              R1: [{ name: '南门交接点', lat: 30, lng: 120 }],
+                              R2: [{ name: '东门交接点', lat: 30, lng: 120 }],
+                          },
+                      }
+                    : opts.cfg,
             ),
         };
         const repos: Record<string, any> = {
@@ -110,6 +122,44 @@ describe('setDeliveryTarget route/slot 扩展', () => {
         const c = makeEnv({ slot: { ...slot, active: false } });
         await expect(c.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段不可用');
     });
+    it('已选配送方式 → 改地址后按同一方式重算运费', async () => {
+        const env = makeEnv();
+        env.orderService.updateCustomFields.mockResolvedValue({
+            id: 100, state: 'AddingItems', shippingLines: [{ shippingMethodId: 9 }],
+        });
+        env.orderService.setShippingMethod = vi.fn().mockResolvedValue({ id: 100, totalWithTax: 6000 });
+        const order = await env.svc.setDeliveryTarget(ctx, 1, 7, 'R1');
+        expect(env.orderService.setShippingMethod).toHaveBeenCalledWith(ctx, 100, [9]);
+        expect((order as any).totalWithTax).toBe(6000);
+    });
+
+    it('已选方式不适用于新地址/路线 → 清空并提示重选', async () => {
+        const env = makeEnv();
+        env.orderService.updateCustomFields.mockResolvedValue({
+            id: 100, state: 'AddingItems', shippingLines: [{ shippingMethodId: 9 }],
+        });
+        env.orderService.setShippingMethod = vi.fn()
+            .mockResolvedValueOnce({ __typename: 'IneligibleShippingMethodError', errorCode: 'INELIGIBLE_SHIPPING_METHOD_ERROR', message: '不适用' })
+            .mockResolvedValueOnce({ id: 100 });
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R1')).rejects.toThrow('请重新选择配送方式');
+        expect(env.orderService.setShippingMethod).toHaveBeenLastCalledWith(ctx, 100, []);
+    });
+
+    it('未选配送方式 / 非 AddingItems → 不触发重算', async () => {
+        const env = makeEnv();
+        env.orderService.setShippingMethod = vi.fn();
+        await env.svc.setDeliveryTarget(ctx, 1, 7, 'R1');
+        expect(env.orderService.setShippingMethod).not.toHaveBeenCalled();
+
+        const paid = makeEnv();
+        paid.orderService.updateCustomFields.mockResolvedValue({
+            id: 100, state: 'ArrangingPayment', shippingLines: [{ shippingMethodId: 9 }],
+        });
+        paid.orderService.setShippingMethod = vi.fn();
+        await paid.svc.setDeliveryTarget(ctx, 1, 7, 'R1');
+        expect(paid.orderService.setShippingMethod).not.toHaveBeenCalled();
+    });
+
     it('R2 放行写入 fulfillmentRoute=R2；其余非法 route 仍拒绝', async () => {
         const env = makeEnv();
         await env.svc.setDeliveryTarget(ctx, 1, 7, 'R2' as any);
@@ -143,6 +193,18 @@ describe('setDeliveryTarget route/slot 扩展', () => {
         });
     });
 
+    it('R1/R2 前置未就绪（缺门店坐标 / 缺对应路线交接点）→ 拒绝下单', async () => {
+        const noCoord = makeEnv({ cfg: { channelId: 1, routesEnabled: ['R1', 'R2', 'R3'], handoverPoints: { R1: [{ name: '南门', lat: 30, lng: 120 }], R2: [{ name: '东门', lat: 30, lng: 120 }] } } });
+        await expect(noCoord.svc.setDeliveryTarget(ctx, 1, 7, 'R2' as any)).rejects.toThrow('该配送路线当前不可用');
+        const noPoint = makeEnv({ cfg: { channelId: 1, routesEnabled: ['R1', 'R2', 'R3'], storeLat: 30, storeLng: 120, handoverPoints: {} } });
+        await expect(noPoint.svc.setDeliveryTarget(ctx, 1, 7, 'R2' as any)).rejects.toThrow('该配送路线当前不可用');
+        // R1 缺交接点同样拒绝（否则会静默降级为传信者直送但按 R1 收费）
+        await expect(noPoint.svc.setDeliveryTarget(ctx, 1, 7, 'R1' as any)).rejects.toThrow('该配送路线当前不可用');
+        // R3 不依赖交接点，仍可下单
+        const env = makeEnv({ cfg: { channelId: 1, routesEnabled: ['R3'] } });
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R3' as any)).resolves.toBeDefined();
+    });
+
     it('渠道关闭的路线 → 拒绝下单', async () => {
         const env = makeEnv({ cfg: { channelId: 1, routesEnabled: ['R1'] } });
         await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R3')).rejects.toThrow('该配送路线当前不可用');
@@ -157,7 +219,12 @@ describe('setDeliveryTarget route/slot 扩展', () => {
 describe('CampusConfigService.updateConfig 字段白名单（P2）', () => {
     function makeEnv(cfg: any = {}) {
         const repo = {
-            findOne: vi.fn().mockResolvedValue({ channelId: 1, routesEnabled: ['R1'], ...cfg }),
+            findOne: vi.fn().mockResolvedValue({
+                channelId: 1,
+                routesEnabled: ['R1'],
+                handoverPoints: { R1: [{ name: '南门交接点', lat: 30, lng: 120 }] },
+                ...cfg,
+            }),
             save: vi.fn().mockImplementation(v => Promise.resolve(v)),
         };
         const svc = new CampusConfigService({ getRepository: () => repo } as any, {} as any);
@@ -208,6 +275,36 @@ describe('CampusConfigService.updateConfig 字段白名单（P2）', () => {
         expect(repo.save).not.toHaveBeenCalled();
     });
 
+    it('启用 R1 必须已配置 R1 交接点；启用 R2 还需要门店坐标与 R2 交接点', async () => {
+        const { svc } = makeEnv();
+        // 默认 cfg 已启用 R1，本次清空交接点 → 拒绝
+        await expect(svc.updateConfig(ctx, { handoverPoints: {} } as any))
+            .rejects.toThrow('R1 校园交接点');
+
+        const noCoord = makeEnv();
+        await expect(noCoord.svc.updateConfig(ctx, { routesEnabled: ['R1', 'R2'] } as any))
+            .rejects.toThrow('门店取货点经纬度');
+        const noPoint = makeEnv({ storeLat: 30, storeLng: 120 });
+        await expect(noPoint.svc.updateConfig(ctx, { routesEnabled: ['R1', 'R2'] } as any))
+            .rejects.toThrow('R2 校园交接点');
+        expect(noPoint.repo.save).not.toHaveBeenCalled();
+
+        // 前置齐备 → 放行
+        const ok = makeEnv({
+            storeLat: 30,
+            storeLng: 120,
+            handoverPoints: {
+                R1: [{ name: '南门交接点', lat: 30, lng: 120 }],
+                R2: [{ name: '东门交接点', lat: 30, lng: 120 }],
+            },
+        });
+        await ok.svc.updateConfig(ctx, { routesEnabled: ['R1', 'R2'] } as any);
+        expect(ok.repo.save).toHaveBeenCalled();
+        // 不触碰 R2 前置的无关配置不应被连带拒绝（存量渠道兼容）
+        await ok.svc.updateConfig(ctx, { storeNotice: '公告' } as any);
+        expect(ok.repo.save).toHaveBeenCalled();
+    });
+
     it('交接点校验：非对象/非数组/坐标非法 → 拒绝', async () => {
         const { svc, repo } = makeEnv();
         await expect(svc.updateConfig(ctx, { handoverPoints: 'x' } as any)).rejects.toThrow('handoverPoints 必须是对象');
@@ -216,7 +313,16 @@ describe('CampusConfigService.updateConfig 字段白名单（P2）', () => {
             .rejects.toThrow('交接点 R2 坐标不合法');
         expect(repo.save).not.toHaveBeenCalled();
 
-        await svc.updateConfig(ctx, { handoverPoints: { R2: [{ lat: 30, lng: 120 }] } } as any);
+        // 只保留 R2 点会清掉 R1 点：R1 仍启用 → 拒绝（避免静默降级）
+        await expect(svc.updateConfig(ctx, { handoverPoints: { R2: [{ lat: 30, lng: 120 }] } } as any))
+            .rejects.toThrow('R1 校园交接点');
+
+        await svc.updateConfig(ctx, {
+            handoverPoints: {
+                R1: [{ name: '南门', lat: 30, lng: 120 }],
+                R2: [{ name: '东门', lat: 30, lng: 120 }],
+            },
+        } as any);
         expect(repo.save).toHaveBeenCalled();
     });
 });

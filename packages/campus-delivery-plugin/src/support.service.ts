@@ -1,15 +1,19 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     Customer,
     CustomerService,
     ForbiddenError,
     ID,
+    Injector,
     Logger,
     Order,
     RequestContext,
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { AfterSalesRequest, AfterSalesService } from '@vendure/after-sales-plugin';
+import { In, Not } from 'typeorm';
 import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './support.entities';
 import { RiderCreditService } from './rider-credit.service';
 import { FeishuNotifyService, FeishuPushTarget } from './feishu/feishu-notify.service';
@@ -43,12 +47,28 @@ function normalizeImages(images?: string[] | null): string[] {
  */
 @Injectable()
 export class SupportService {
+    /** 售后插件为可选依赖：未安装时工单仍可用，仅“工单↔售后”联动降级 */
+    private afterSalesSvc?: AfterSalesService | null;
+
     constructor(
         private connection: TransactionalConnection,
         private customerService: CustomerService,
         private credit: RiderCreditService,
         private feishu: FeishuNotifyService,
+        private moduleRef?: ModuleRef,
     ) {}
+
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private getAfterSales(): AfterSalesService | null {
+        if (this.afterSalesSvc !== undefined) return this.afterSalesSvc ?? null;
+        try {
+            this.afterSalesSvc = this.moduleRef ? new Injector(this.moduleRef).get(AfterSalesService) : null;
+        } catch (e: any) {
+            this.afterSalesSvc = null;
+            Logger.warn(`AfterSalesService 不可用，工单与售后联动降级: ${e?.message ?? e}`, loggerCtx);
+        }
+        return this.afterSalesSvc ?? null;
+    }
 
     private async requireCustomer(ctx: RequestContext): Promise<Customer> {
         if (!ctx.activeUserId) throw new ForbiddenError();
@@ -108,6 +128,103 @@ export class SupportService {
 
     // ---------------- 客服工单 ----------------
 
+    /**
+     * 工单→售后打通：按订单号解析订单（校验归属与本店渠道）并挂接该订单在途售后单。
+     * 订单号解析不到时保持宽松（工单仍可提交，仅不关联），避免顾客写错一位订单号就投诉无门；
+     * 但订单存在且不属于本人时明确拒绝，防止工单被挂到他人订单上造成误处理。
+     */
+    private async resolveOrderLink(
+        ctx: RequestContext,
+        customerId: ID,
+        orderCode: string | null,
+    ): Promise<{ orderId: number | null; afterSalesRequestId: number | null }> {
+        if (!orderCode) return { orderId: null, afterSalesRequestId: null };
+        let order: any = null;
+        try {
+            order = await this.connection.getRepository(ctx, Order).findOne({
+                where: { code: orderCode as any },
+                relations: ['customer', 'channels'] as any,
+            });
+        } catch (e: any) {
+            Logger.warn(`工单关联订单解析失败 code=${orderCode}: ${e?.message ?? e}`, loggerCtx);
+            return { orderId: null, afterSalesRequestId: null };
+        }
+        if (!order) return { orderId: null, afterSalesRequestId: null };
+        const channelIds = Array.isArray(order.channels) ? order.channels.map((c: any) => Number(c.id)) : [];
+        const owned = order.customer != null && String(order.customer.id) === String(customerId);
+        if (!owned || (channelIds.length > 0 && !channelIds.includes(Number(ctx.channelId)))) {
+            throw new UserInputError('订单号不存在或不属于本人');
+        }
+        return {
+            orderId: Number(order.id),
+            afterSalesRequestId: await this.findActiveAfterSalesId(ctx, Number(order.id)),
+        };
+    }
+
+    /** 该订单最新一条未关闭售后单（未装售后插件/实体未注册时返回 null，绝不阻断工单） */
+    private async findActiveAfterSalesId(ctx: RequestContext, orderId: number): Promise<number | null> {
+        try {
+            const row = await this.connection.getRepository(ctx, AfterSalesRequest).findOne({
+                where: { orderId: orderId as any, state: Not('Closed') as any },
+                order: { id: 'DESC' } as any,
+            });
+            return row ? Number(row.id) : null;
+        } catch (e: any) {
+            Logger.warn(`售后单关联查询失败 order=${orderId}: ${e?.message ?? e}`, loggerCtx);
+            return null;
+        }
+    }
+
+    /** 批量取售后单摘要（工单列表回显用）：按工单已关联 id ∪ 订单号反查，返回 [售后单 id, 订单 id] 两级索引 */
+    private async loadAfterSalesSummaries(
+        ctx: RequestContext,
+        tickets: CampusSupportTicket[],
+    ): Promise<{ byId: Map<number, any>; latestByOrderId: Map<number, any> }> {
+        const byId = new Map<number, any>();
+        const latestByOrderId = new Map<number, any>();
+        const ids = tickets.map(t => t.afterSalesRequestId).filter((v): v is number => v != null).map(Number);
+        const orderIds = tickets.map(t => t.orderId).filter((v): v is number => v != null).map(Number);
+        if (!ids.length && !orderIds.length) return { byId, latestByOrderId };
+        try {
+            const rows = await this.connection.getRepository(ctx, AfterSalesRequest).find({
+                where: [
+                    ...(ids.length ? [{ id: In(ids) }] : []),
+                    ...(orderIds.length ? [{ orderId: In(orderIds) }] : []),
+                ] as any,
+                order: { id: 'DESC' } as any,
+            });
+            for (const row of rows) {
+                byId.set(Number(row.id), row);
+                const orderKey = Number(row.orderId);
+                // rows 按 id 倒序：首次出现即该订单最新一单
+                if (!latestByOrderId.has(orderKey)) latestByOrderId.set(orderKey, row);
+            }
+        } catch (e: any) {
+            Logger.warn(`售后单批量查询失败: ${e?.message ?? e}`, loggerCtx);
+        }
+        return { byId, latestByOrderId };
+    }
+
+    private static afterSalesView(row: any | null | undefined) {
+        if (!row) {
+            return {
+                afterSalesRequestId: null,
+                afterSalesState: null,
+                afterSalesType: null,
+                afterSalesRefundAmount: null,
+                afterSalesActualRefundAmount: null,
+            };
+        }
+        return {
+            afterSalesRequestId: Number(row.id),
+            afterSalesState: row.state ?? null,
+            afterSalesType: row.type ?? null,
+            afterSalesRefundAmount: row.refundAmount == null ? null : Number(row.refundAmount),
+            afterSalesActualRefundAmount:
+                row.actualRefundAmount == null ? null : Number(row.actualRefundAmount),
+        };
+    }
+
     async createTicket(
         ctx: RequestContext,
         input: { category: string; content: string; images?: string[] | null; orderCode?: string | null },
@@ -119,10 +236,13 @@ export class SupportService {
         if (!content) throw new UserInputError('请填写问题描述');
         if (content.length > MAX_CONTENT) throw new UserInputError(`问题描述不能超过 ${MAX_CONTENT} 个字符`);
         const orderCode = input.orderCode == null ? null : String(input.orderCode).trim() || null;
+        const { orderId, afterSalesRequestId } = await this.resolveOrderLink(ctx, customer.id, orderCode);
         const ticket = await this.connection.getRepository(ctx, CampusSupportTicket).save({
             channelId: ctx.channelId,
             customerId: customer.id,
             orderCode,
+            orderId,
+            afterSalesRequestId,
             category,
             content,
             images: normalizeImages(input.images),
@@ -136,6 +256,11 @@ export class SupportService {
             [
                 `类型：${category}`,
                 orderCode ? `订单：${orderCode}` : '',
+                afterSalesRequestId
+                    ? `售后单：#${afterSalesRequestId}（已自动关联）`
+                    : category === 'refund'
+                        ? '售后单：未关联（顾客尚未发起售后申请）'
+                        : '',
                 `顾客：${name}${customer.phoneNumber ? `（${customer.phoneNumber}）` : ''}`,
                 `内容：${content.slice(0, 120)}${content.length > 120 ? '…' : ''}`,
             ].filter(Boolean).join('\n'),
@@ -143,17 +268,39 @@ export class SupportService {
             `ticket:${ticket.id}`,
             { channel: ctx.channel?.code },
         );
-        return ticket;
+        return { ...ticket, ...SupportService.afterSalesView(
+            afterSalesRequestId == null ? null : { id: afterSalesRequestId, state: null },
+        ) };
     }
 
     async myTickets(ctx: RequestContext, skip?: number, take?: number) {
         const customer = await this.requireCustomer(ctx);
-        return this.connection.getRepository(ctx, CampusSupportTicket).find({
+        const items = await this.connection.getRepository(ctx, CampusSupportTicket).find({
             where: { customerId: customer.id as any, channelId: ctx.channelId as any },
             order: { createdAt: 'DESC' },
             skip: clampSkip(skip),
             take: clampTake(take),
         });
+        if (!items.length) return items;
+        // 售后进度回显：顾客在工单列表即可看到关联售后单当前状态，不必跳转售后中心
+        const { byId, latestByOrderId } = await this.loadAfterSalesSummaries(ctx, items);
+        return items.map(t =>
+            this.withAfterSalesView(
+                t,
+                byId.get(Number(t.afterSalesRequestId)) ??
+                    (t.orderId != null ? latestByOrderId.get(Number(t.orderId)) : null),
+            ),
+        );
+    }
+
+    /** 工单行 + 售后摘要（无关联时各字段为 null） */
+    private withAfterSalesView(ticket: CampusSupportTicket, row: any | null | undefined) {
+        return {
+            ...ticket,
+            ...SupportService.afterSalesView(row),
+            // 无显式关联但按订单反查到售后单时，回显解析出的 id，便于前端跳转
+            afterSalesRequestId: ticket.afterSalesRequestId ?? (row ? Number(row.id) : null),
+        };
     }
 
     async adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number) {
@@ -172,17 +319,85 @@ export class SupportService {
             ? await this.connection.getRepository(ctx, Customer).findByIds(items.map(i => String(i.customerId)) as any)
             : [];
         const byId = new Map(customers.map(c => [String(c.id), c]));
+        // 工单与售后打通：列表直接回显关联售后单状态/金额，运营无需另开售后列表对照
+        const { byId: asById, latestByOrderId } = await this.loadAfterSalesSummaries(ctx, items);
         return {
             items: items.map(t => {
                 const c = byId.get(String(t.customerId));
+                const view = this.withAfterSalesView(
+                    t,
+                    asById.get(Number(t.afterSalesRequestId)) ??
+                        (t.orderId != null ? latestByOrderId.get(Number(t.orderId)) : null),
+                );
                 return {
-                    ...t,
+                    ...view,
                     customerName: [c?.firstName, c?.lastName].filter(Boolean).join(' ') || '-',
                     customerPhone: c?.phoneNumber ?? null,
                 };
             }),
             total,
         };
+    }
+
+    /**
+     * 运营手工关联售后单（建单自动关联未命中时使用，如售后单在工单之后才发起）。
+     * 校验同一店铺、同一订单，防止把工单挂到无关售后单。
+     */
+    async linkTicketAfterSales(ctx: RequestContext, id: ID, afterSalesRequestId: ID) {
+        const ticket = await this.connection.getRepository(ctx, CampusSupportTicket).findOne({
+            where: { id: id as any, channelId: ctx.channelId as any },
+        });
+        if (!ticket) throw new UserInputError('工单不存在或不属于当前店铺');
+        const request = await this.connection.getRepository(ctx, AfterSalesRequest).findOne({
+            where: { id: (Number(afterSalesRequestId) || afterSalesRequestId) as any },
+            relations: ['channels'] as any,
+        });
+        if (!request) throw new UserInputError('售后单不存在');
+        const channelIds = Array.isArray(request.channels) ? request.channels.map(c => Number(c.id)) : [];
+        if (channelIds.length && !channelIds.includes(Number(ctx.channelId))) {
+            throw new UserInputError('售后单不属于当前店铺');
+        }
+        if (ticket.orderId != null && Number(ticket.orderId) !== Number(request.orderId)) {
+            throw new UserInputError('售后单与工单关联订单不一致');
+        }
+        await this.connection.getRepository(ctx, CampusSupportTicket).update(ticket.id, {
+            afterSalesRequestId: Number(request.id),
+            // 工单未关联订单时以售后单订单补齐，便于列表按订单追溯
+            orderId: ticket.orderId ?? Number(request.orderId),
+        } as any);
+        return this.withAfterSalesView(
+            {
+                ...ticket,
+                orderId: ticket.orderId ?? Number(request.orderId),
+                afterSalesRequestId: Number(request.id),
+            } as any,
+            request,
+        );
+    }
+
+    /**
+     * 售后状态联动：售后单退款到账后自动关闭关联工单（回复留痕），
+     * 避免工单长期 open、运营重复联系顾客。仅处理 Refunded，其余状态工单保持原状交给运营跟。
+     */
+    async onAfterSalesStateChange(ctx: RequestContext, requestId: number, toState: string): Promise<void> {
+        if (toState !== 'Refunded') return;
+        try {
+            const repo = this.connection.getRepository(ctx, CampusSupportTicket);
+            const open = await repo.find({
+                where: { afterSalesRequestId: requestId as any, status: Not('closed') as any },
+            });
+            for (const t of open) {
+                const note = '售后退款已到账，工单自动关闭';
+                await repo.update(t.id, {
+                    status: 'closed',
+                    reply: t.reply ? `${t.reply}；${note}` : note,
+                    repliedBy: 'system',
+                    repliedAt: new Date(),
+                } as any);
+            }
+        } catch (e: any) {
+            Logger.warn(`工单售后联动关单失败 request=${requestId}: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 
     /** 运营回复（replied）/ 关闭（closed）；回复内容必填（关闭时可选沿用原回复） */
@@ -208,7 +423,22 @@ export class SupportService {
             ? `工单 #${ticket.id} 已关闭${text ? `：${text}` : ''}`
             : `工单 #${ticket.id} 回复：${text}`;
         await this.sendInAppMessage(ctx, ticket.customerId, title, body);
+        // 工单与售后打通：已关联售后单时，回复同时写入售后协商留言，顾客在售后单里也能看到同一结论
+        if (ticket.afterSalesRequestId != null) {
+            await this.forwardReplyToAfterSales(ctx, Number(ticket.afterSalesRequestId), text || body);
+        }
         return { ...ticket, status: target, reply: text || ticket.reply };
+    }
+
+    /** 回复同步到售后协商留言（售后单已关闭/插件未装时仅告警，不影响工单处理） */
+    private async forwardReplyToAfterSales(ctx: RequestContext, requestId: number, content: string): Promise<void> {
+        const svc = this.getAfterSales();
+        if (!svc) return;
+        try {
+            await svc.addMessage(ctx, requestId as any, 'admin', content.slice(0, 1000));
+        } catch (e: any) {
+            Logger.warn(`工单回复同步售后留言失败 request=${requestId}: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 
     // ---------------- 骑手申诉 ----------------

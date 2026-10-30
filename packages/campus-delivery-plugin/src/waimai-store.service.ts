@@ -304,7 +304,7 @@ export class WaimaiStoreService {
                 foodSafetyGrade: cfg.foodSafetyGrade ?? null,
                 foodSafetyCommitmentImage: cfg.foodSafetyCommitmentImage ?? null,
                 kitchenLiveUrl: cfg.kitchenLiveEnabled ? cfg.kitchenLiveUrl ?? null : null,
-                kitchenLiveEnabled: cfg.kitchenLiveEnabled,
+                kitchenLiveEnabled: cfg.kitchenLiveEnabled ?? false,
                 packingFeeEnabled: cfg.packingFeeEnabled ?? false,
                 packingFeeMode: normalizePackingFeeMode(cfg.packingFeeMode),
                 packingFeeAmount: cfg.packingFeeAmount ?? 0,
@@ -550,7 +550,9 @@ export class WaimaiStoreService {
             }
             cfg.printCopies = copies;
         }
-        if (cfg.printProvider !== 'local' && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
+        // 未配置时与运行侧（cloud-print / merchant-admin）保持同一默认值 local，避免旧配置/裸对象被误判为云通道
+        if (String(cfg.printProvider ?? 'local') !== 'local'
+            && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
             throw new UserInputError('选择云打印时请填写服务商账号、设备编号与密钥');
         }
         // 超时赔付：未传即保留（旧表单不会清空已配值）

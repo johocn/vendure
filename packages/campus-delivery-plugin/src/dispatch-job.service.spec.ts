@@ -36,15 +36,25 @@ function makeEnv(opts: {
             scanned.find(o => String(o.id) === String(where?.id)) ?? null,
         )),
         update: vi.fn().mockResolvedValue({}),
-        createQueryBuilder: () => ({
-            leftJoin: vi.fn().mockReturnThis(),
-            where: vi.fn().mockReturnThis(),
-            andWhere: vi.fn().mockReturnThis(),
-            orderBy: vi.fn().mockReturnThis(),
-            addOrderBy: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            getMany: vi.fn().mockResolvedValue([...scanned]),
-        }),
+        // 扫描按 hallStatus 分桶取数：mock 按 IN (:...statuses) 过滤，模拟真实分桶行为
+        createQueryBuilder: () => {
+            let statuses: string[] | null = null;
+            const qb: any = {
+                leftJoin: () => qb,
+                where: () => qb,
+                andWhere: (_sql: string, params?: any) => {
+                    if (Array.isArray(params?.statuses)) statuses = params.statuses;
+                    return qb;
+                },
+                orderBy: () => qb,
+                addOrderBy: () => qb,
+                limit: () => qb,
+                getMany: () => Promise.resolve(
+                    scanned.filter(o => !statuses || statuses.includes(String(o.customFields?.hallStatus ?? ''))),
+                ),
+            };
+            return qb;
+        },
     };
     const configRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? { autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 }) };
     const refundRepo = {
@@ -893,6 +903,55 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(call).toBeDefined();
         expect(call[1]).toBe('调度扫描积压');
         expect(call[2]).toContain('200');
+    });
+
+    // P2 积压策略：open 占满窗口时，其它状态必须仍有独立配额，否则路线兜底/异常 SLA 永远不执行
+    it('open 积压占满 200 → 在途状态仍独立扫描（商户接单超时兜底不被饿死）', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const manyOpen = Array.from({ length: 200 }, (_v, i) => ({
+            id: 2000 + i,
+            code: `BULK${i}`,
+            createdAt: minAgo(1),
+            customFields: { hallStatus: 'open', hallEnteredAt: minAgo(1) },
+        }));
+        const staleMerchant = {
+            id: 3001,
+            code: 'PM1',
+            createdAt: minAgo(30),
+            customFields: { hallStatus: 'pending_merchant', hallEnteredAt: minAgo(30), fulfillmentRoute: 'R1' },
+        };
+        const { svc, hallSvc } = makeEnv({ scanOrders: [...manyOpen, staleMerchant], feishu });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(),
+            3001,
+            ['pending_merchant'],
+            expect.objectContaining({ hallStatus: 'owned_dispatched' }),
+        );
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'dispatch_backlog:1');
+        expect(call[2]).toContain('open(200)');
+    });
+
+    it('预约单独立分桶：活单积压时预约单仍能按期放量', async () => {
+        const manyOpen = Array.from({ length: 200 }, (_v, i) => ({
+            id: 4000 + i,
+            code: `BULK${i}`,
+            createdAt: minAgo(1),
+            customFields: { hallStatus: 'open', hallEnteredAt: minAgo(1) },
+        }));
+        const sched = {
+            id: 4100,
+            code: 'SC1',
+            createdAt: minAgo(120),
+            customFields: { hallStatus: 'scheduled', scheduledFor: new Date(now + 10 * 60_000), hallEnteredAt: minAgo(120) },
+        };
+        const { svc, hallSvc } = makeEnv({ scanOrders: [...manyOpen, sched] });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.releaseScheduled).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ id: 4100 }),
+            expect.anything(),
+        );
     });
 
     it('未达上限 → 不推积压告警', async () => {

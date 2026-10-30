@@ -31,6 +31,16 @@ export class SupportAdminResolver {
         return this.support.replyTicket(ctx, id, reply, status);
     }
 
+    @Mutation()
+    @Allow(CampusPermissions.CampusDispatch as any)
+    async campusLinkSupportTicketAfterSales(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'afterSalesRequestId', type: () => GqlID }) afterSalesRequestId: ID,
+    ) {
+        return this.support.linkTicketAfterSales(ctx, id, afterSalesRequestId);
+    }
+
     @Query()
     @Allow(CampusPermissions.CampusDispatch as any)
     async campusRiderAppeals(

@@ -9,6 +9,10 @@ export class CampusSupportTicket extends VendureEntity {
     @Column('int') channelId: ID;
     @Column('int') customerId: ID;
     @Column({ type: 'varchar', nullable: true }) orderCode: string | null;
+    /** 关联订单主键（建单时按订单号解析并校验归属；未匹配到订单为 null） */
+    @Column({ type: 'int', nullable: true }) orderId: number | null;
+    /** 关联售后单主键（工单与售后打通：建单自动挂接在途售后单，运营也可手工关联） */
+    @Column({ type: 'int', nullable: true }) afterSalesRequestId: number | null;
     /** order / delivery / refund / invoice / other */
     @Column() category: string;
     @Column({ type: 'text' }) content: string;

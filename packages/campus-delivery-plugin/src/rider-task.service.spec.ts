@@ -22,7 +22,8 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }, feishu?: any)
         // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
         rawConnection: { query: rawQuery },
     } as any;
-    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any, feishu), repo, saved, rawQuery, feishu };
+    // 构造参数次序：connection / rider / credit / hall / notify / privacy / feishu（第 7 位才是飞书）
+    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any, { resolve: vi.fn() } as any, feishu), repo, saved, rawQuery, feishu };
 }
 
 const assigned = {

@@ -187,9 +187,13 @@ describe('HallService 承诺送达时间固化（P0 超时赔付）', () => {
         expect(Math.round((cf.promisedAt.getTime() - start.getTime()) / 60_000)).toBe(25);
     });
 
-    it('时段文本跨零点/异常长度 → 视为不可解析', () => {
-        expect(HallService.slotSpanMinutes('23:30-00:30')).toBeNull();
+    it('时段文本跨零点按次日解析；异常长度视为不可解析', () => {
+        expect(HallService.slotSpanMinutes('23:30-00:30')).toBe(60);
+        expect(HallService.slotSpanMinutes('23:30-00:10')).toBe(40);
         expect(HallService.slotSpanMinutes('11:00-11:30')).toBe(30);
+        // 超过 12h 视为脏数据（如配置错误），退回配送时长估算
+        expect(HallService.slotSpanMinutes('11:00-23:30')).toBeNull();
+        expect(HallService.slotSpanMinutes('晚间')).toBeNull();
     });
 });
 

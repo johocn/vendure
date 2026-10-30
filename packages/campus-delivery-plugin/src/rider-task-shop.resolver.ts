@@ -28,6 +28,13 @@ export class RiderTaskShopResolver {
         return this.riderTaskService.orderRider(ctx, orderId);
     }
 
+    /** 交接码：仅本单骑手可查（R1/R2 第二段起送必填），未指派/已送达返回 null */
+    @Query()
+    @Allow(Permission.Authenticated)
+    async campusTaskHandoverCode(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.riderTaskService.handoverCode(ctx, orderId);
+    }
+
     /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
     @Mutation()
     @Allow(Permission.Authenticated)

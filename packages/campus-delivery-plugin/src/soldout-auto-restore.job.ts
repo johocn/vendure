@@ -1,5 +1,6 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
+import { PeriodicFallback } from './periodic-fallback';
 import { localDateKey } from './rider-shift-window';
 
 const loggerCtx = 'CampusSoldOutAutoRestore';
@@ -17,31 +18,25 @@ const RESTORE_HOUR = 4;
  */
 @Injectable()
 export class SoldOutAutoRestoreJob implements OnApplicationShutdown {
-    private timer: ReturnType<typeof setInterval> | null = null;
-    private bootTimer: ReturnType<typeof setTimeout> | null = null;
-    private running = false;
+    private fallback: PeriodicFallback | null = null;
     private lastRunDay: string | null = null;
 
     constructor(private connection: TransactionalConnection) {}
 
     start(): void {
-        if (this.timer) return;
-        const tick = () => {
-            if (this.running) return;
-            this.running = true;
-            this.runOnce()
-                .catch(e => Logger.warn(`sold-out auto restore failed: ${String(e?.message ?? e)}`, loggerCtx))
-                .finally(() => { this.running = false; });
-        };
-        this.bootTimer = setTimeout(tick, BOOT_DELAY_MS);
-        this.timer = setInterval(tick, INTERVAL_MS);
+        if (this.fallback) return;
+        this.fallback = new PeriodicFallback({
+            name: 'soldout-auto-restore',
+            intervalMs: INTERVAL_MS,
+            bootDelayMs: BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.runOnce());
     }
 
     stop(): void {
-        if (this.bootTimer) clearTimeout(this.bootTimer);
-        if (this.timer) clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        this.fallback?.stop();
+        this.fallback = null;
     }
 
     onApplicationShutdown(): void {

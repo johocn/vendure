@@ -22,9 +22,16 @@ export class R2MarkService {
         const leg1 = (order.customFields as any)?.leg1Status as string | null;
         if (leg1 === 'arrived_gate') return { leg1Status: 'arrived_gate' }; // 幂等：不重复写 handoverAt
         if (leg1 != null && leg1 !== 'preparing') throw new UserInputError('当前状态不支持到校确认');
-        // 条件写：与取消/并发重复提交竞争时只允许一次成功，且不复活已取消单
+        // 外部运单已取消：不允许学生端再标到校（否则会出现"运单取消但显示已到校"的假状态）
+        if (String((order.customFields as any)?.thirdPartyState ?? '') === 'cancelled') {
+            throw new UserInputError('外部运单已取消，请重新下单');
+        }
+        // 条件写：与取消/并发重复提交竞争时只允许一次成功，且不复活已取消单；
+        // handoverAt 用 COALESCE 保留外部回调已写入的到校时间（第一段唯一事实源），
+        // 避免学生端后点确认把权威时间覆盖成更晚的时间，影响超时/时效口径。
         const out: any = await this.connection.rawConnection.query(
-            'UPDATE "order" SET "customFieldsLeg1status" = $2, "customFieldsHandoverat" = $3 '
+            'UPDATE "order" SET "customFieldsLeg1status" = $2, '
+            + '"customFieldsHandoverat" = COALESCE("customFieldsHandoverat", $3) '
             + 'WHERE id = $1 AND COALESCE("customFieldsLeg1status", \'\') IN (\'\', \'preparing\') '
             + 'AND "state" <> \'Cancelled\' RETURNING id',
             [order.id, 'arrived_gate', new Date()],

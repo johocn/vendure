@@ -64,6 +64,22 @@ describe('R2MarkService.markArrived', () => {
         expect(env.rawQuery).not.toHaveBeenCalled();
     });
 
+    it('外部运单已取消 → 拒绝标记到校', async () => {
+        const env = makeEnv({
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', thirdPartyState: 'cancelled' }, customer: { user: { id: 9 } } },
+        });
+        await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('外部运单已取消');
+        expect(env.rawQuery).not.toHaveBeenCalled();
+    });
+
+    it('外部回调已写入 handoverAt → 学生端确认不覆盖权威时间（COALESCE）', async () => {
+        const env = makeEnv({
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: null, thirdPartyState: 'delivered', handoverAt: new Date('2026-01-01T00:00:00Z') }, customer: { user: { id: 9 } } },
+        });
+        await env.svc.markArrived({ activeUserId: 9 } as any, 6);
+        expect(env.rawQuery.mock.calls[0][0]).toContain('COALESCE("customFieldsHandoverat", $3)');
+    });
+
     it('CAS 未命中（并发改状态/已取消）→ 报状态已变更', async () => {
         const env = makeEnv({
             order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'preparing' }, customer: { user: { id: 9 } } },

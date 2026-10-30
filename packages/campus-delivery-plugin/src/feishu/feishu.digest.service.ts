@@ -2,6 +2,7 @@ import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
 
 import { campusDayKey, CAMPUS_TZ_OFFSET_MS, startOfCampusDay } from '../campus-time';
+import { PeriodicFallback } from '../periodic-fallback';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
 import { FeishuClient } from './feishu.client';
 import { FeishuCommandService } from './feishu.command.service';
@@ -22,7 +23,9 @@ export function campusHhmm(t: number): string {
  */
 @Injectable()
 export class FeishuDigestService implements OnApplicationShutdown {
-    private timer?: NodeJS.Timeout;
+    /** 汇总与心跳各自一条兜底循环：互不阻塞（汇总推送慢时不拖住心跳） */
+    private digestLoop: PeriodicFallback | null = null;
+    private heartbeatLoop: PeriodicFallback | null = null;
     private running = false;
     /** 进程内兜底（webhook 模式无法回读消息时防同进程重复发送，不落库） */
     private sent = new Map<string, string>();
@@ -35,17 +38,19 @@ export class FeishuDigestService implements OnApplicationShutdown {
     ) {}
 
     start(intervalMs = 60_000): void {
-        if (this.timer || !this.client.enabled) return;
-        this.timer = setInterval(() => {
-            void this.tick().catch(e => Logger.error(`digest tick: ${e?.message ?? e}`, loggerCtx));
-            void this.heartbeatTick().catch(e => Logger.error(`heartbeat tick: ${e?.message ?? e}`, loggerCtx));
-        }, intervalMs);
+        if (this.digestLoop || !this.client.enabled) return;
+        this.digestLoop = new PeriodicFallback({ name: 'feishu-digest', intervalMs, loggerCtx });
+        this.heartbeatLoop = new PeriodicFallback({ name: 'feishu-heartbeat', intervalMs, loggerCtx });
+        this.digestLoop.start(() => this.tick());
+        this.heartbeatLoop.start(() => this.heartbeatTick());
         Logger.info(`每日汇总 + 心跳已启用，汇总 ${this.cfg.settings.digestAt}（UTC+8），心跳 1h（UTC+8）`, loggerCtx);
     }
 
     onApplicationShutdown(): void {
-        if (this.timer) clearInterval(this.timer);
-        this.timer = undefined;
+        this.digestLoop?.stop();
+        this.heartbeatLoop?.stop();
+        this.digestLoop = null;
+        this.heartbeatLoop = null;
     }
 
     private async tick(): Promise<void> {

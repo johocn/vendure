@@ -5,6 +5,7 @@ import { isWithinBusinessHours } from './business-hours';
 import { closedToday, safeClosureDates } from './closure-calendar';
 import { isAutoAcceptDue, normalizeAutoAcceptRoutes } from './auto-accept';
 import { MerchantAdminService } from './merchant-admin.service';
+import { PeriodicFallback } from './periodic-fallback';
 
 const loggerCtx = 'CampusAutoAccept';
 /** 启动后首跑延迟：等迁移补列（p13）与 DB 连接稳定 */
@@ -30,9 +31,7 @@ interface PendingRow {
  */
 @Injectable()
 export class AutoAcceptJob implements OnApplicationShutdown {
-    private timer: ReturnType<typeof setInterval> | null = null;
-    private bootTimer: ReturnType<typeof setTimeout> | null = null;
-    private running = false;
+    private fallback: PeriodicFallback | null = null;
 
     constructor(
         private connection: TransactionalConnection,
@@ -41,25 +40,19 @@ export class AutoAcceptJob implements OnApplicationShutdown {
     ) {}
 
     start(): void {
-        if (this.timer) return;
-        const tick = () => {
-            if (this.running) return;
-            this.running = true;
-            this.run()
-                .catch(e => Logger.warn(`auto accept tick failed: ${String(e?.message ?? e)}`, loggerCtx))
-                .finally(() => {
-                    this.running = false;
-                });
-        };
-        this.bootTimer = setTimeout(tick, BOOT_DELAY_MS);
-        this.timer = setInterval(tick, INTERVAL_MS);
+        if (this.fallback) return;
+        this.fallback = new PeriodicFallback({
+            name: 'auto-accept',
+            intervalMs: INTERVAL_MS,
+            bootDelayMs: BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.run());
     }
 
     stop(): void {
-        if (this.bootTimer) clearTimeout(this.bootTimer);
-        if (this.timer) clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        this.fallback?.stop();
+        this.fallback = null;
     }
 
     onApplicationShutdown(): void {

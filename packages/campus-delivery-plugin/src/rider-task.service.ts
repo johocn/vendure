@@ -270,6 +270,15 @@ export class RiderTaskService {
         return order;
     }
 
+    /** 交接码读取（R1/R2 第二段起送必填）：仅本单骑手、assigned/in_progress 可读。
+     *  原实现交接码只写入不暴露，骑手只能线下向交接点口头索取，取不到就卡在 grabbed 直到超时回厅。 */
+    async handoverCode(ctx: RequestContext, orderId: ID): Promise<string | null> {
+        const order = await this.assertOwner(ctx, orderId);
+        const cf = (order.customFields ?? {}) as any;
+        if (cf.deliveryStatus !== 'assigned' && cf.deliveryStatus !== 'in_progress') return null;
+        return cf.handoverCode ? String(cf.handoverCode) : null;
+    }
+
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     async deliver(ctx: RequestContext, orderId: ID, photos: string[], note?: string) {
         if (!photos?.length) throw new UserInputError('送达需至少一张照片');

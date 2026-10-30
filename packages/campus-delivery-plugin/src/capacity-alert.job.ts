@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
+import { PeriodicFallback } from './periodic-fallback';
 
 export type CapacitySeverity = 'critical' | 'warning';
 
@@ -73,7 +74,7 @@ export interface BacklogStat {
 }
 
 /**
- * 运力预警定时器（生产单进程，自管 setInterval；与 PaymentTimeoutJob / DispatchJobService 同形态）：
+ * 运力预警定时器（生产单进程无 worker，统一走 PeriodicFallback 进程内兜底，与其它后台任务同形态）：
  * 1) 关闭心跳超时的骑手在线会话（在线时长统计收口）；
  * 2) 按渠道统计「待抢大厅单量 vs 5min 内在线骑手数」，分级告警推飞书（严格项 @所有人），
  *    恢复健康后补一条「运力已恢复」，避免运营只看到告警看不到恢复。
@@ -83,9 +84,7 @@ export interface BacklogStat {
  */
 @Injectable()
 export class CapacityAlertJob implements OnApplicationShutdown {
-    private timer: ReturnType<typeof setInterval> | null = null;
-    private bootTimer: ReturnType<typeof setTimeout> | null = null;
-    private running = false;
+    private fallback: PeriodicFallback | null = null;
     /** channelId → 上次告警时间（冷却用） */
     private alerted = new Map<number, number>();
     /** channelId → 当前级别（用于升级立即推 / 恢复通知） */
@@ -103,21 +102,19 @@ export class CapacityAlertJob implements OnApplicationShutdown {
     }
 
     start(overrides?: Partial<CapacityAlertSettings>): void {
-        if (this.timer) return;
+        if (this.fallback) return;
         this.settings = { ...readCapacityAlertSettings(), ...(overrides ?? {}) };
         if (!this.settings.enabled) {
             Logger.info('运力预警已关闭（CAPACITY_ALERT_ENABLED=false）', 'CampusCapacity');
             return;
         }
-        const tick = () => {
-            if (this.running) return;
-            this.running = true;
-            this.run()
-                .catch(e => Logger.warn(`capacity alert tick failed: ${String(e?.message ?? e)}`, 'CampusCapacity'))
-                .finally(() => { this.running = false; });
-        };
-        this.bootTimer = setTimeout(tick, this.settings.bootDelayMs);
-        this.timer = setInterval(tick, this.settings.intervalMs);
+        this.fallback = new PeriodicFallback({
+            name: 'capacity-alert',
+            intervalMs: this.settings.intervalMs,
+            bootDelayMs: this.settings.bootDelayMs,
+            loggerCtx: 'CampusCapacity',
+        });
+        this.fallback.start(() => this.run());
         Logger.info(
             `运力预警已启动：每 ${Math.round(this.settings.intervalMs / 60_000)} 分钟扫描，`
             + `冷却 ${Math.round(this.settings.cooldownMs / 60_000)} 分钟，`
@@ -128,10 +125,8 @@ export class CapacityAlertJob implements OnApplicationShutdown {
     }
 
     stop(): void {
-        if (this.bootTimer) clearTimeout(this.bootTimer);
-        if (this.timer) clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        this.fallback?.stop();
+        this.fallback = null;
     }
 
     onApplicationShutdown(): void {

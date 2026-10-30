@@ -17,6 +17,7 @@ import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PaymentTimeoutStatus, PaymentTimeoutTask, PaymentTimeoutType } from './payment-timeout.entity';
+import { PeriodicFallback } from './periodic-fallback';
 
 export interface PaymentTimeoutJobData { taskId: number; }
 
@@ -49,9 +50,7 @@ const FAILED_SCAN_LIMIT = 100;
 export class PaymentTimeoutJob implements OnApplicationShutdown {
     private jobQueue!: JobQueue<PaymentTimeoutJobData>;
     private taskRepo: Repository<PaymentTimeoutTask>;
-    private compensationTimer: ReturnType<typeof setInterval> | null = null;
-    private compensationBootTimer: ReturnType<typeof setTimeout> | null = null;
-    private compensationRunning = false;
+    private compensation: PeriodicFallback | null = null;
     /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
     private alertedFailed = new Map<number, number>();
 
@@ -80,23 +79,19 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
      * 必须晚于 init()（runCompensation 依赖 jobQueue）。
      */
     startCompensationLoop(intervalMs = COMPENSATION_INTERVAL_MS): void {
-        if (this.compensationTimer) return;
-        const tick = () => {
-            if (this.compensationRunning) return; // 上一轮未结束跳过，避免堆积
-            this.compensationRunning = true;
-            this.runCompensation()
-                .catch(e => Logger.warn(`payment timeout compensation failed: ${String(e?.message ?? e)}`, loggerCtx))
-                .finally(() => { this.compensationRunning = false; });
-        };
-        this.compensationBootTimer = setTimeout(tick, COMPENSATION_BOOT_DELAY_MS);
-        this.compensationTimer = setInterval(tick, intervalMs);
+        if (this.compensation) return;
+        this.compensation = new PeriodicFallback({
+            name: 'payment-timeout-compensation',
+            intervalMs,
+            bootDelayMs: COMPENSATION_BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.compensation.start(() => this.runCompensation());
     }
 
     stopCompensationLoop(): void {
-        if (this.compensationBootTimer) clearTimeout(this.compensationBootTimer);
-        if (this.compensationTimer) clearInterval(this.compensationTimer);
-        this.compensationBootTimer = null;
-        this.compensationTimer = null;
+        this.compensation?.stop();
+        this.compensation = null;
     }
 
     onApplicationShutdown(): void {

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Order, OrderService, RequestContext, UserInputError } from '@vendure/core';
+import { isGraphQlErrorResult, Order, OrderService, RequestContext, UserInputError } from '@vendure/core';
 import { DataSource } from 'typeorm';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
@@ -7,6 +7,7 @@ import { CampusZone } from './campus-zone.entity';
 import { DeliverySlot } from './delivery-slot.entity';
 import { normalizeDeliveryFeeTiers } from './delivery-fee-tiers';
 import { normalizeClosureDates } from './closure-calendar';
+import { listHandoverPoints } from './route-matrix';
 
 /** 本地日期 YYYY-MM-DD（slotDate 为本地日期字符串，勿用 UTC 的 toISOString） */
 function localDateStr(d: Date): string {
@@ -347,6 +348,32 @@ export class CampusConfigService {
                 }
             }
         }
+        // 路线完备性（P1/#2）：R1/R2 恒走「校园交接点 + 传信者接力」，缺交接点会在支付后静默降级为
+        // 传信者到店直送（campusCause=no_handover_point），但运费仍按 R1/R2 收。
+        // 放在交接点结构校验之后，保证非法结构优先报结构错误；
+        // 仅在本次修改触碰路线或前置配置时校验，避免存量渠道改公告等无关字段被连带拒绝。
+        const touchesRoutePrereq =
+            patch.routesEnabled !== undefined
+            || patch.storeLat !== undefined || patch.storeLng !== undefined
+            || patch.handoverPoints !== undefined;
+        const nextRoutes = (patch.routesEnabled !== undefined ? patch.routesEnabled : cfg.routesEnabled ?? []) as string[];
+        if (touchesRoutePrereq && nextRoutes.includes('R1')) {
+            const points = patch.handoverPoints !== undefined ? patch.handoverPoints : (cfg.handoverPoints as any);
+            if (!listHandoverPoints('R1', { handoverPoints: points } as any).length) {
+                throw new UserInputError('启用 R1 前必须配置 R1 校园交接点（名称与经纬度）');
+            }
+        }
+        if (touchesRoutePrereq && nextRoutes.includes('R2')) {
+            const lat = patch.storeLat !== undefined ? patch.storeLat : cfg.storeLat;
+            const lng = patch.storeLng !== undefined ? patch.storeLng : cfg.storeLng;
+            if (lat == null || lng == null) {
+                throw new UserInputError('启用 R2 前必须填写门店取货点经纬度');
+            }
+            const points = patch.handoverPoints !== undefined ? patch.handoverPoints : (cfg.handoverPoints as any);
+            if (!listHandoverPoints('R2', { handoverPoints: points } as any).length) {
+                throw new UserInputError('启用 R2 前必须配置 R2 校园交接点（名称与经纬度）');
+            }
+        }
         Object.assign(cfg, patch);
         return this.dataSource.getRepository(CampusFulfillmentConfig).save(cfg);
     }
@@ -460,10 +487,23 @@ export class CampusConfigService {
         if (route) {
             // 路线开关校验：渠道关闭某路线后 C 端不能再下该路线的单（读不到配置按未启用处理）
             const cfgRepo = this.dataSource.getRepository(CampusFulfillmentConfig);
-            const cfg = await cfgRepo?.findOne?.({ where: { channelId: ctx.channelId as any } });
+            const cfg = await cfgRepo.findOne({ where: { channelId: ctx.channelId as any } });
             const enabled: string[] | undefined = cfg?.routesEnabled;
-            if (!enabled || !enabled.includes(route)) {
+            if (!cfg || !enabled || !enabled.includes(route)) {
                 throw new UserInputError('该配送路线当前不可用');
+            }
+            // R1/R2 派单前置（P1）：缺对应路线交接点时提前拦截，避免支付后才降级为传信者到店直送
+            // （运费仍按 R1/R2 收、时效承诺失真）。R1 只需交接点；R2 还必须有门店取货坐标。
+            if (route === 'R1' && !listHandoverPoints('R1', cfg as any).length) {
+                throw new UserInputError('该配送路线当前不可用');
+            }
+            if (route === 'R2') {
+                if (cfg.storeLat == null || cfg.storeLng == null) {
+                    throw new UserInputError('该配送路线当前不可用');
+                }
+                if (!listHandoverPoints('R2', cfg as any).length) {
+                    throw new UserInputError('该配送路线当前不可用');
+                }
             }
         }
         const fields: Record<string, any> = {
@@ -500,6 +540,18 @@ export class CampusConfigService {
         const orderId = ctx.session?.activeOrderId;
         if (!orderId) throw new UserInputError('购物车为空');
         // 与 core shop setOrderCustomFields mutation 内部实现等价（patchEntity + 保存 + OrderEvent）
-        return this.orderService.updateCustomFields(ctx, orderId, fields);
+        const updated = await this.orderService.updateCustomFields(ctx, orderId, fields);
+        // 结算顺序解耦（P1）：配送方式可能在选楼栋/路线之前就已落账，改地址后运费会滞留旧价。
+        // 仅在尚可改单的 AddingItems 下重算（ArrangingPayment 的金额已进入支付流程，Vendure 禁止再改）；
+        // 若已选方式不适用于新分区/路线，则清空要求重选，避免用户按旧运费继续支付。
+        if (updated.state !== 'AddingItems' || !updated.shippingLines?.length) return updated;
+        const methodId = updated.shippingLines[0].shippingMethodId;
+        if (methodId == null) return updated;
+        const recalculated = await this.orderService.setShippingMethod(ctx, orderId, [methodId]);
+        if (isGraphQlErrorResult(recalculated)) {
+            await this.orderService.setShippingMethod(ctx, orderId, []);
+            throw new UserInputError('所选配送方式不适用于该地址/路线，请重新选择配送方式');
+        }
+        return recalculated;
     }
 }

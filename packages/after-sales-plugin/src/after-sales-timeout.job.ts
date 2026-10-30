@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
     ChannelService,
@@ -22,6 +22,7 @@ import {
     AfterSalesTimeoutType,
 } from './after-sales-timeout.entity';
 import { loggerCtx } from './constants';
+import { PeriodicFallback } from './periodic-fallback';
 
 export interface AfterSalesTimeoutJobData {
     taskId: string;
@@ -34,14 +35,20 @@ export interface AfterSalesTimeoutJobData {
 const MAX_RETRY = 3;
 /** 退款重试基础间隔：30min × 2^attempt（指数退避） */
 const REFUND_RETRY_BASE_DELAY_MS = 30 * 60 * 1000;
+/** 进程内兜底扫描间隔：生产无 worker 时 ScheduledTask/JobQueue 都不执行，靠该定时器直接跑到期任务 */
+const FALLBACK_SCAN_INTERVAL_MS = 60 * 1000;
+/** 单轮兜底扫描上限（按 dueAt 升序，超限下一轮继续） */
+const FALLBACK_SCAN_LIMIT = 100;
 
 @Injectable()
-export class AfterSalesTimeoutJob {
+export class AfterSalesTimeoutJob implements OnApplicationShutdown {
     private jobQueue!: JobQueue<AfterSalesTimeoutJobData>;
     private taskRepo: Repository<AfterSalesTimeoutTask>;
     private requestRepo: Repository<AfterSalesRequest>;
     private injector!: Injector;
     private eventBus!: EventBus;
+    /** 进程内兜底定时器 */
+    private fallback: PeriodicFallback | null = null;
 
     constructor(
         private jobQueueService: JobQueueService,
@@ -59,9 +66,80 @@ export class AfterSalesTimeoutJob {
         this.jobQueue = await this.jobQueueService.createQueue({
             name: 'after-sales-timeout',
             process: async (job) => {
-                await this.process(job.data);
+                await this.processWithLock(job.data);
             },
         });
+        // 关键：生产环境通常只起 server 不起 worker（无 startJobQueue），ScheduledTask 也不会执行；
+        // 若只依赖 JobQueue 的延迟任务 + 补偿扫描，售后超时提醒/48h 自动同意/退款重试全部失效。
+        // 这里用进程内定时器直接消费到期任务兜底（多实例经 advisory lock 串行，幂等无重复执行）。
+        this.startFallbackTimer();
+    }
+
+    onApplicationShutdown(): void {
+        this.fallback?.stop();
+        this.fallback = null;
+    }
+
+    private startFallbackTimer(): void {
+        if (this.fallback) return;
+        this.fallback = new PeriodicFallback({
+            name: 'after-sales-timeout',
+            intervalMs: FALLBACK_SCAN_INTERVAL_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.runDueTasks());
+    }
+
+    /** 兜底扫描：直接执行 dueAt 已到的 PENDING 任务（不依赖 JobQueue worker） */
+    private async runDueTasks(): Promise<void> {
+        try {
+            const now = new Date();
+            const tasks = await this.taskRepo.find({
+                where: { status: AfterSalesTimeoutStatus.PENDING },
+                order: { dueAt: 'ASC' },
+                take: FALLBACK_SCAN_LIMIT,
+            });
+            for (const task of tasks) {
+                if (task.dueAt > now) break; // dueAt 升序，后面都未到期
+                if (task.retryCount >= MAX_RETRY) continue;
+                try {
+                    await this.processWithLock({
+                        taskId: String(task.id),
+                        requestId: task.requestId,
+                        channelId: task.channelId,
+                        type: task.type,
+                    });
+                } catch (e: any) {
+                    // 单任务失败不阻断整轮；失败计数与终态已由 process() 落库
+                    Logger.warn(`fallback task ${task.id} failed: ${e?.message ?? e}`, loggerCtx);
+                }
+            }
+        } catch (e: any) {
+            Logger.error(`fallback due-task scan failed: ${e?.message ?? e}`, loggerCtx);
+        }
+    }
+
+    /**
+     * 任务级 advisory lock：兜底定时器、JobQueue worker、补偿扫描可能同时命中同一任务，
+     * 锁内二次读取 status 保证只执行一次（已执行的会因 status != PENDING 直接跳过）。
+     */
+    private async processWithLock(data: AfterSalesTimeoutJobData): Promise<void> {
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `after-sales:timeout:${data.taskId}`;
+        try {
+            const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!rows?.[0]?.ok) return; // 另一个执行器正在处理
+            await this.process(data);
+        } finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            } catch {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
     }
 
     private async process(data: AfterSalesTimeoutJobData): Promise<void> {
@@ -193,7 +271,31 @@ export class AfterSalesTimeoutJob {
             return;
         }
 
-        const after = await this.afterSalesService.retryRefund(ctx, task.requestId as ID);
+        let after: { state: string } | undefined;
+        try {
+            after = await this.afterSalesService.retryRefund(ctx, task.requestId as ID);
+        } catch (e: any) {
+            // 退款核心抛出（余额仍不足、渠道异常等）也计为一次失败尝试，走同一指数退避/耗尽逻辑；
+            // 不能冒泡到 process() 的 retryCount 分支——那里上限为 3 且不递增 attempt，会让配置的重试次数失效。
+            task.attempt += 1;
+            task.lastError = String(e?.message ?? e);
+            Logger.warn(
+                `Refund retry ${task.attempt}/${task.maxAttempt} threw for request ${task.requestId}: ${task.lastError}`,
+                loggerCtx,
+            );
+            if (task.attempt >= task.maxAttempt) {
+                await markExhausted();
+                return;
+            }
+            const retryDelayMs = REFUND_RETRY_BASE_DELAY_MS * Math.pow(2, task.attempt);
+            task.dueAt = new Date(Date.now() + retryDelayMs);
+            await this.taskRepo.save(task);
+            await this.jobQueue.add(
+                { taskId: String(task.id), requestId: task.requestId, channelId: task.channelId, type: task.type },
+                { delay: retryDelayMs, retries: MAX_RETRY } as any,
+            );
+            return;
+        }
         task.attempt += 1;
         if (after.state === 'Refunded') {
             task.status = AfterSalesTimeoutStatus.EXECUTED;

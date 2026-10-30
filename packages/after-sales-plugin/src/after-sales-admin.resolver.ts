@@ -109,6 +109,12 @@ export class AfterSalesAdminResolver {
         return this.afterSalesService.retryRefund(ctx, id);
     }
 
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async closeAfterSalesRequest(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
+        return this.afterSalesService.closeRequest(ctx, id);
+    }
+
     @Query()
     @Allow(Permission.ReadOrder)
     async afterSalesMessages(

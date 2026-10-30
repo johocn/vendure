@@ -46,8 +46,15 @@ describe('WaimaiStoreService.listStores', () => {
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             businessHours: null,
             openNow: true,
+            closedToday: false, closureNote: null,
             errandBaseFee: 300,
             freeShippingThreshold: 1800,
+            deliveryFeeTiers: null,
+            foodLicenseNo: null, foodLicenseImage: null, foodLicenseExpiry: null,
+            foodSafetyGrade: null, foodSafetyCommitmentImage: null,
+            kitchenLiveUrl: null, kitchenLiveEnabled: false,
+            packingFeeEnabled: false, packingFeeMode: 'perItem', packingFeeAmount: 0,
+            packingFeeCap: null, packingFeeLabel: null,
         });
     });
     it('空 tags/缺月售/缺新字段容错（全 null），paused 透传', async () => {
@@ -82,7 +89,29 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
         });
         const list = await env.svc.listStoreConfigs({} as any);
         expect(list).toHaveLength(2);
+        const baseView = {
+            deliveryFeeTiers: null,
+            printMode: 'off', printProvider: 'local', printAccount: null,
+            printDeviceSn: null, printDeviceKey: null, printCopies: 1,
+            timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24,
+            timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
+            dynamicPricing: null,
+            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
+            merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
+            storeLat: null, storeLng: null,
+            privacyNumberEnabled: false, privacyNumberProvider: 'mask',
+            privacyNumberTtlMinutes: 60, privacyNumberPrefix: null,
+            foodLicenseNo: null, foodLicenseImage: null, foodLicenseExpiry: null,
+            foodSafetyGrade: null, foodSafetyCommitmentImage: null,
+            kitchenLiveUrl: null, kitchenLiveEnabled: false,
+            packingFeeEnabled: false, packingFeeMode: 'perItem', packingFeeAmount: 0,
+            packingFeeCap: null, packingFeeLabel: null,
+            mpAppId: null, mpCategory: null, mpVersion: null,
+            mpListingStatus: 'draft', mpPrivacyUrl: null, mpReviewNote: null,
+            voiceSearchProvider: 'mock', imageSearchProvider: 'mock',
+        };
         expect(list[0]).toEqual({
+            ...baseView,
             channelId: 2, channelName: '一食堂麻辣香锅', channelToken: 'canteen',
             routesEnabled: ['R1', 'R3'],
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
@@ -97,14 +126,11 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             notifyTemplateAddressChanged: null,
             h5BaseUrl: null,
-            printMode: 'off',
-            timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
-            dynamicPricing: null,
-            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
-            merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
-            storeLat: null, storeLng: null,
+            mpReady: false,
+            mpMissing: ['appId', 'category', 'version', 'privacyUrl', 'licenseNo'],
         });
         expect(list[1]).toEqual({
+            ...baseView,
             channelId: 3, channelName: '奶茶铺', channelToken: 'milktea',
             routesEnabled: [],
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
@@ -119,12 +145,8 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             notifyTemplateAddressChanged: null,
             h5BaseUrl: null,
-            printMode: 'off',
-            timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
-            dynamicPricing: null,
-            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
-            merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
-            storeLat: null, storeLng: null,
+            mpReady: false,
+            mpMissing: ['appId', 'category', 'version', 'privacyUrl', 'contactPhone', 'licenseNo'],
         });
     });
 });
@@ -183,6 +205,7 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             errandBaseFee: null,
             thirdPartyBaseFee: null,
             freeShippingThreshold: null,
+            deliveryFeeTiers: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
@@ -190,7 +213,8 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             notifyTemplateAddressChanged: null,
             h5BaseUrl: null,
-            printMode: 'off',
+            printMode: 'off', printProvider: 'local', printAccount: null,
+            printDeviceSn: null, printDeviceKey: null, printCopies: 1,
             timeoutCompensationEnabled: true, timeoutCompensationWindowHours: 24, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: null,
             dynamicPricing: null,
             routeFirstLeg: [],
@@ -198,6 +222,18 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             providerShopNo: [],
             merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
             storeLat: null, storeLng: null,
+            privacyNumberEnabled: false, privacyNumberProvider: 'mask',
+            privacyNumberTtlMinutes: 60, privacyNumberPrefix: null,
+            foodLicenseNo: null, foodLicenseImage: null, foodLicenseExpiry: null,
+            foodSafetyGrade: null, foodSafetyCommitmentImage: null,
+            kitchenLiveUrl: null, kitchenLiveEnabled: false,
+            packingFeeEnabled: false, packingFeeMode: 'perItem', packingFeeAmount: 0,
+            packingFeeCap: null, packingFeeLabel: null,
+            mpAppId: null, mpCategory: null, mpVersion: null,
+            mpListingStatus: 'draft', mpPrivacyUrl: null, mpReviewNote: null,
+            mpReady: false,
+            mpMissing: ['appId', 'category', 'version', 'privacyUrl', 'contactPhone', 'licenseNo'],
+            voiceSearchProvider: 'mock', imageSearchProvider: 'mock',
         });
     });
 

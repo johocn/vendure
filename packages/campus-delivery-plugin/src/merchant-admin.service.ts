@@ -253,6 +253,29 @@ export interface KitchenQueue {
     lateMinutes: number;
 }
 
+/** 备餐汇总（§79）：某商品今日份数分布（待接单/备餐中/已出餐）与加料份数 */
+export interface MerchantPrepAddon {
+    name: string;
+    quantity: number;
+}
+
+export interface MerchantPrepItem {
+    /** 商品/规格名（与小票、出餐屏同口径） */
+    name: string;
+    /** 待接单份数 */
+    pendingQty: number;
+    /** 备餐中份数 */
+    cookingQty: number;
+    /** 今日已出餐（已送达）份数 */
+    doneQty: number;
+    /** 待做合计 = 待接单 + 备餐中 */
+    todoQty: number;
+    /** 今日合计 = 待做 + 已做 */
+    totalQty: number;
+    /** 加料/口味份数（如「加辣 ×3」），按待做 + 已做合并统计 */
+    addons: MerchantPrepAddon[];
+}
+
 /** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
 export const KDS_WARN_MINUTES = 15;
 export const KDS_LATE_MINUTES = 25;
@@ -1250,6 +1273,67 @@ export class MerchantAdminService {
             warnMinutes: KDS_WARN_MINUTES,
             lateMinutes: KDS_LATE_MINUTES,
         };
+    }
+
+    /**
+     * 备餐汇总（§79）：今日「待接单 + 备餐中」按商品聚合待做份数，
+     * 叠加今日已送达份数，供后厨按份备料；加料/口味按同一商品合并计数。
+     * 口径与出餐屏/工作台一致：待做取活跃单（不落小票），已做按送达时间归今日。
+     */
+    async prepSummary(ctx: RequestContext): Promise<MerchantPrepItem[]> {
+        const repo = this.connection.getRepository(ctx, Order);
+        const todoOrders = await repo
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere("order.customFields.hallStatus IN ('pending_merchant','accepted')")
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .getMany();
+        const startOfDay = new Date(startOfCampusDay(Date.now()));
+        const doneOrders = await repo
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere("order.customFields.deliveryStatus = 'delivered'")
+            .andWhere('order.customFields.deliveredAt >= :start', { start: startOfDay })
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .getMany();
+
+        type Acc = { pending: number; cooking: number; done: number; addons: Map<string, number> };
+        const acc = new Map<string, Acc>();
+        const bump = (o: Order, field: 'pending' | 'cooking' | 'done') => {
+            for (const l of o.lines ?? []) {
+                const name = l.productVariant?.name ?? '';
+                if (!name) continue;
+                const cur = acc.get(name) ?? { pending: 0, cooking: 0, done: 0, addons: new Map<string, number>() };
+                cur[field] += l.quantity;
+                const addonsText = addonDisplayText((l.customFields as any)?.waimaiAddons);
+                if (addonsText) {
+                    for (const opt of addonsText.split(' / ')) {
+                        if (!opt) continue;
+                        cur.addons.set(opt, (cur.addons.get(opt) ?? 0) + l.quantity);
+                    }
+                }
+                acc.set(name, cur);
+            }
+        };
+        for (const o of todoOrders) bump(o, (o.customFields as any).hallStatus === 'accepted' ? 'cooking' : 'pending');
+        for (const o of doneOrders) bump(o, 'done');
+
+        return [...acc.entries()]
+            .map(([name, v]) => ({
+                name,
+                pendingQty: v.pending,
+                cookingQty: v.cooking,
+                doneQty: v.done,
+                todoQty: v.pending + v.cooking,
+                totalQty: v.pending + v.cooking + v.done,
+                addons: [...v.addons.entries()].map(([n, q]) => ({ name: n, quantity: q })),
+            }))
+            // 待做多的排前面（后厨优先看今天还要做多少），其次按今日总量、名称
+            .sort((a, b) => b.todoQty - a.todoQty || b.totalQty - a.totalQty || a.name.localeCompare(b.name));
     }
 
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

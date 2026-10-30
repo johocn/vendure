@@ -164,6 +164,18 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
         );
     });
 
+    it('R2 送达回调入厅同时写 leg1Status=arrived_gate（第一段权威事实源）', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party', handoverMode: 'to_campus_rider', fulfillmentRoute: 'R2' },
+        });
+        await svc.onDeliveryStatus(ctx, update('delivered'));
+        expect(hall.enterHallForHandover).toHaveBeenCalledWith(
+            expect.anything(), 1, 'external_handover', ['third_party'],
+            expect.objectContaining({ leg1Status: 'arrived_gate', handoverAt: expect.any(Date) }),
+        );
+    });
+
     it('已取消订单收到送达回调 → 只补状态，不复活进入大厅', async () => {
         const { svc, hall, rawQuery } = makeEnv({
             id: 1, code: 'A1', state: 'Cancelled',

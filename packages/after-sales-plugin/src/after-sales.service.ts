@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Readable } from 'node:stream';
-import { Not } from 'typeorm';
+import { In, Not } from 'typeorm';
 import {
     ID,
     Injector,
@@ -15,6 +15,8 @@ import {
     ChannelService,
     ConfigService,
     PaginatedList,
+    Payment,
+    Refund,
     RequestContext,
     Logger,
     TransactionalConnection,
@@ -32,6 +34,9 @@ import { AfterSalesStateHistory } from './after-sales-state-history.entity';
 import { AfterSalesStateTransitionEvent } from './after-sales.events';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
 import { InventoryService } from '@vendure/inventory-plugin';
+
+/** 可退款支付状态：只认已成功支付（Declined/Error/Cancelled 的重试单不可退） */
+const REFUNDABLE_PAYMENT_STATES = ['Settled', 'Authorized'];
 
 @Injectable()
 export class AfterSalesService {
@@ -203,14 +208,15 @@ export class AfterSalesService {
         // 3. 售后窗口校验：
         //    afterSalesWindowHours > 0 时按小时窗口（送达时间起算，外卖 24h 场景）；
         //    否则按 maxDays + 15 天质量问题延长逻辑。
-        //    计时起点 fulfillmentCompletedAt → fulfillmentDeliveredAt → deliveredAt（外卖骑手送达落库）→ updatedAt。
+        //    计时起点 fulfillmentCompletedAt → fulfillmentDeliveredAt → deliveredAt（外卖骑手送达落库）→ createdAt。
+        //    不能用 order.updatedAt：任何订单写回（备注、标签、状态回写等）都会重置时间，使售后窗口被无限延长。
         //    窗口仅对有配送档案的订单生效（外卖/骑手场景专属）；普通快递/自提单（档案字段为空）走 maxDays 分支，
         //    避免 24h 窗口误伤普通单（发货完成 24h 后即不可售后不合理）。
         const cf: Record<string, any> = (order.customFields ?? {}) as any;
         const gate = this.options?.requireOrderCustomField;
         const hasDeliveryArchive = !!gate?.field && cf[gate.field] != null;
         const orderDate: Date = cf.fulfillmentCompletedAt || cf.fulfillmentDeliveredAt || cf.deliveredAt
-            || order.updatedAt || order.createdAt;
+            || order.createdAt;
         const windowHours = this.options?.afterSalesWindowHours ?? 0;
         if (windowHours > 0 && hasDeliveryArchive) {
             const hoursSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60);
@@ -225,12 +231,16 @@ export class AfterSalesService {
             }
         }
 
-        // 3.1 送达门槛（外卖/骑手场景）：仅当订单存在配送档案（gate.field 有值）时要求等于指定值，
-        //     防止未送达（deliveryStatus 空/assigned/in_progress）的骑手单走售后与取消链路双退款；
-        //     普通快递/自提单无配送档案（字段为 null），跳过校验正常售后。
-        if (gate?.field && cf[gate.field] != null) {
+        // 3.1 送达门槛（外卖/骑手场景）：外卖订单（R1/R2/R3/R5 骑手单、跑腿单）必须已送达才可售后，
+        //     防止未送达的骑手单走售后与取消链路双退款；普通快递/自提单/R4 到店自取无骑手配送档案，跳过校验。
+        //     不能只在字段有值时校验：未开始配送时 deliveryStatus 为 null，正是最需要拦截的时刻
+        //     （旧逻辑下未接单的已支付外卖单可全额退款却不脱厅、不取消订单 → 商家照做、骑手照送，货钱双失）。
+        const route = String(cf.fulfillmentRoute ?? '');
+        const isCampusDeliveryOrder =
+            cf.orderKind === 'errand' || ['R1', 'R2', 'R3', 'R5'].includes(route) || cf.deliveryPlan != null;
+        if (gate?.field && (cf[gate.field] != null || isCampusDeliveryOrder)) {
             const actual = cf[gate.field];
-            if (String(actual) !== String(gate.value)) {
+            if (String(actual ?? '') !== String(gate.value)) {
                 throw new UserInputError(
                     `Cannot create after-sales: order not eligible (${gate.field}=${actual ?? 'null'})`,
                 );
@@ -244,11 +254,23 @@ export class AfterSalesService {
         if (input.orderLineId && !orderLine) {
             throw new UserInputError(`Order line ${input.orderLineId} not found in order ${input.orderId}`);
         }
+        // 下限校验：0/负数金额建单会在执行阶段因 planRefunds 返回空计划而直接置 Refunded，
+        // 产生「已退款但实退 0 元」的假结案，必须在建单入口挡住。
+        if (!Number.isFinite(input.refundAmount) || input.refundAmount <= 0) {
+            throw new UserInputError(`Refund amount must be a positive number, got ${input.refundAmount}`);
+        }
+        // 含税口径（P1）：proratedLinePrice / order.total 均为不含税额，按此上限会少退税额，
+        // 与 createSystemRequest 及实际退款额（支付单实收含税）不一致。优先取含税字段。
         const maxRefund = orderLine
-            ? orderLine.proratedLinePrice
-            : (order.totalQuantity > 0 ? order.total : 0);
-        if (input.refundAmount > maxRefund) {
-            throw new UserInputError(`Refund amount ${input.refundAmount} exceeds max ${maxRefund}`);
+            ? ((orderLine as any).proratedLinePriceWithTax ?? (orderLine as any).proratedLinePrice)
+            : ((order as any).totalWithTax
+                ?? (order.lines ?? []).reduce((s: number, l: any) => s + (l.proratedLinePriceWithTax ?? l.proratedLinePrice ?? 0), 0));
+        // 建单上限还要扣掉历史已退款：否则多笔售后叠加申请、审核通过后执行阶段才因支付单余额不足失败。
+        // 无支付单信息（balance < 0）时保持旧行为，仅按订单行/订单金额上限校验。
+        const balance = await this.refundableBalance(ctx, order.id as ID);
+        const effectiveMax = balance >= 0 ? Math.min(maxRefund, balance) : maxRefund;
+        if (input.refundAmount > effectiveMax) {
+            throw new UserInputError(`Refund amount ${input.refundAmount} exceeds max ${effectiveMax}`);
         }
 
         // 4.1 用解码后的实体 ID 存储外键：order.id / line.id 已是数据库内部数字 ID，
@@ -256,19 +278,20 @@ export class AfterSalesService {
         const entityOrderId = order.id;
         const entityOrderLineId = orderLine ? orderLine.id : null;
 
-        // 5. 重复售后校验：整单售后（无 orderLineId）按订单查重；指定行按行查重（均排除 Closed，
-        //    Rejected 也算占用——被拒单必须走申诉，不允许绕开仲裁重新提单）
+        // 5. 重复售后校验：整单售后（无 orderLineId）按订单查重；指定行按行查重（均排除 Closed / Refunded
+        //    两个终局态，Rejected 也算占用——被拒单必须走申诉，不允许绕开仲裁重新提单）。
+        //    排除 Refunded：退款已完成即可视为本条售后了结，否则同一订单/行永久不能再发起售后。
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         if (entityOrderLineId != null) {
             const existing = await repo.findOne({
-                where: { orderLineId: entityOrderLineId as any, state: Not('Closed' as any) },
+                where: { orderLineId: entityOrderLineId as any, state: Not(In(['Closed', 'Refunded'] as any)) },
             });
             if (existing) {
                 throw new UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
             }
         } else {
             const existing = await repo.findOne({
-                where: { orderId: entityOrderId as any, state: Not('Closed' as any) },
+                where: { orderId: entityOrderId as any, state: Not(In(['Closed', 'Refunded'] as any)) },
             });
             if (existing) {
                 throw new UserInputError(`After-sales already exists for order ${input.orderId}`);
@@ -319,7 +342,12 @@ export class AfterSalesService {
         if (input.orderLineId && !orderLine) {
             throw new UserInputError(`Order line ${input.orderLineId} not found in order ${input.orderId}`);
         }
-        const refundAmount = Math.max(0, Math.round(input.refundAmount || 0));
+        // 下限校验：0/负数金额建单会在执行阶段因 planRefunds 返回空计划而直接置 Refunded，
+        // 产生「已退款但实退 0 元」的假结案；系统建单的调用方（酒店取消/改期退差）均为正数。
+        if (!Number.isFinite(input.refundAmount) || input.refundAmount <= 0) {
+            throw new UserInputError(`Refund amount must be a positive number, got ${input.refundAmount}`);
+        }
+        const refundAmount = Math.round(input.refundAmount);
         // 含税口径优先（酒店预订等含税价租户：proratedLinePrice 为不含税额，会误拦真实可退额）
         const maxRefund = orderLine
             ? ((orderLine as any).proratedLinePriceWithTax ?? (orderLine as any).proratedLinePrice)
@@ -328,8 +356,11 @@ export class AfterSalesService {
                     (s: number, l: any) => s + (l.proratedLinePriceWithTax ?? l.proratedLinePrice ?? 0),
                     0,
                 ));
-        if (refundAmount > maxRefund) {
-            throw new UserInputError(`Refund amount ${refundAmount} exceeds max ${maxRefund}`);
+        // 与 createRequest 一致：上限还需扣掉历史已退款，避免系统建单超额后执行阶段才失败
+        const balance = await this.refundableBalance(ctx, order.id as ID);
+        const effectiveMax = balance >= 0 ? Math.min(maxRefund, balance) : maxRefund;
+        if (refundAmount > effectiveMax) {
+            throw new UserInputError(`Refund amount ${refundAmount} exceeds max ${effectiveMax}`);
         }
         if (!(order as any).customer?.id) {
             throw new UserInputError(`Order ${input.orderId} has no customer`);
@@ -338,10 +369,10 @@ export class AfterSalesService {
         const entityOrderId = order.id;
         const entityOrderLineId = orderLine ? orderLine.id : null;
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
-        // 行级幂等：同一订单行已有未关闭售后单则拒绝（酒店 booking.afterSalesRequestId 亦做去重）
+        // 行级幂等：同一订单行已有未了结（非 Closed/Refunded）售后单则拒绝（酒店 booking.afterSalesRequestId 亦做去重）
         if (entityOrderLineId != null) {
             const existing = await repo.findOne({
-                where: { orderLineId: entityOrderLineId as any, state: Not('Closed' as any) },
+                where: { orderLineId: entityOrderLineId as any, state: Not(In(['Closed', 'Refunded'] as any)) },
             });
             if (existing) {
                 throw new UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
@@ -367,10 +398,23 @@ export class AfterSalesService {
         return this.hydrate(ctx, saved.id);
     }
 
+    /**
+     * Shop 侧写操作归属校验：后台（admin）由 Permission.UpdateOrder 兜底，
+     * shop 必须确认售后单属于当前登录顾客，否则为越权（IDOR）。
+     */
+    private async assertCustomerOwnership(ctx: RequestContext, request: AfterSalesRequest): Promise<void> {
+        if (ctx.apiType !== 'shop') return;
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId || Number(request.customerId) !== customerId) {
+            throw new ForbiddenError();
+        }
+    }
+
     async cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id as any } });
         if (!request) throw new Error('Request not found');
+        await this.assertCustomerOwnership(ctx, request);
         if (request.state !== 'Pending') {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
@@ -379,10 +423,31 @@ export class AfterSalesService {
         return this.hydrate(ctx, saved.id);
     }
 
+    /**
+     * 退款完成结案：Refunded → Closed。
+     * 退款到账后售后单若一直停在 Refunded，该订单/行会被查重逻辑永久占用、后台列表持续堆积，
+     * 因此提供显式结案出口（其余终局态如 ExchangeShipped 已有各自关闭路径）。
+     */
+    async closeRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new EntityNotFoundError('AfterSalesRequest', id);
+        if (request.state !== 'Refunded') {
+            throw new UserInputError(`Cannot close request in state: ${request.state}`);
+        }
+        const fromState = request.state;
+        const saved = await this.commitState(ctx, request, fromState, 'Closed');
+        // 同步回写订单看板状态，避免订单长期挂「已退款」而与实际售后已结案不一致
+        await this.updateOrderAfterSalesStatus(ctx, saved.orderId, 'Closed');
+        Logger.info(`after-sales#${saved.id} 退款完成结案`, loggerCtx);
+        return this.hydrate(ctx, saved.id);
+    }
+
     async updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest> {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id as any } });
         if (!request) throw new Error('Request not found');
+        await this.assertCustomerOwnership(ctx, request);
         if (request.state !== 'Approved') {
             throw new Error(`Cannot update tracking in state: ${request.state}`);
         }
@@ -561,6 +626,15 @@ export class AfterSalesService {
             relations: ['order', 'order.payments'] as any,
         });
         if (!request) throw new EntityNotFoundError('AfterSalesRequest', id);
+        // 余额不足属于事务外前置拒绝，executeRefund 此时不会落 RefundFailed；
+        // 若不兜底，售后单会卡在 Received，而后台重试入口只认 RefundFailed，只能人工走 processAfterSalesRefund。
+        const plan = await this.planRefunds(ctx, request.orderId, request.refundAmount);
+        if (plan == null) {
+            const reason = `Cannot refund: insufficient refundable balance for order ${request.orderId}`;
+            await this.applyRefundFailed(ctx, request.id, reason, false);
+            Logger.warn(`refund_only 链式退款前置拒绝，已置 RefundFailed: ${reason}`, loggerCtx);
+            return this.hydrate(ctx, request.id as any);
+        }
         return this.executeRefund(ctx, request);
     }
 
@@ -652,6 +726,24 @@ export class AfterSalesService {
                 ),
             );
 
+            // 部分退货：退款额必须按实收数量收紧，否则「只收回 1 件仍退全额」造成资损。
+            // 仅在有订单行、显式传了实收数量且少于订购数量时生效；缺省全收不调整（兼容原全额退款）。
+            if (orderLine && orderedQty > 0 && receivedQuantity != null && recoverQty < orderedQty) {
+                const lineTax = Number(
+                    (orderLine as any).proratedLinePriceWithTax ?? (orderLine as any).proratedLinePrice ?? 0,
+                );
+                if (lineTax > 0) {
+                    const capped = Math.floor((lineTax * recoverQty) / orderedQty);
+                    if (capped < Number(request.refundAmount)) {
+                        Logger.warn(
+                            `after-sales#${request.id} 实收 ${recoverQty}/${orderedQty}，退款额 ${request.refundAmount} → ${capped}`,
+                            loggerCtx,
+                        );
+                        request.refundAmount = capped;
+                    }
+                }
+            }
+
             // 库存回补：按各仓实际发货比例多仓按包回补（单仓退化原逻辑），落 restockJson 留痕
             if (orderLine && this.inventoryService && recoverQty > 0) {
                 try {
@@ -731,82 +823,171 @@ export class AfterSalesService {
     }
 
     /**
-     * 退款核心：调用 orderService.refundOrder 创建原生 Refund；若支付处理器将 Refund 停在 Pending
-     * （真实网关异步对账场景），则再调 settleRefund 推进到 Settled 终态。
-     * 仅当 Refund 达 Settled 才把售后单置 Refunded 并落账；失败则置 RefundFailed（留 refundError，可重试）。
-     * 杜绝"已标退款但钱从未退回"的假退款脏数据。
+     * 退款核心：按「新→旧」把退款额拆分到多张可退支付单（组合支付：余额+微信/多笔），
+     * 逐笔 refundOrder；停在 Pending 时 settleRefund 推进，只有全部达 Settled 才置 Refunded。
+     * 某笔失败时：已成功打款的笔次保留（钱已真实退回，不可回滚），售后单置 RefundFailed，
+     * 下次重试会自动按更新后的剩余额度继续退，避免重复退款。
      */
     private async executeRefund(ctx: RequestContext, request: AfterSalesRequest): Promise<AfterSalesRequest> {
-        const payments = (request.order as any)?.payments as Array<{ id: ID; amount: number }> | undefined;
-        if (!payments || payments.length === 0) {
-            throw new UserInputError(`Cannot refund: no payment found for order ${request.orderId}`);
+        const plan = await this.planRefunds(ctx, request.orderId, request.refundAmount);
+        if (plan == null) {
+            throw new UserInputError(
+                `Cannot refund: insufficient refundable balance for order ${request.orderId}`,
+            );
         }
-        const paymentId = payments[0].id;
         const fromState = request.state;
 
         // 事务包裹：退款成功后统一提交（改状态 + 落账 + 回写 order.afterSalesStatus），失败回滚整笔。
         await this.connection.startTransaction(ctx);
         try {
-            const repo = this.connection.getRepository(ctx, AfterSalesRequest);
-            const refundResult = await this.orderService!.refundOrder(ctx, {
-                paymentId,
-                amount: request.refundAmount,
-                reason: `After-sales refund #${request.id}`,
-                shipping: 0, // Refund.shipping 为 NOT NULL 列，必须显式置 0
-                adjustment: 0,
-            } as any);
-
-            if (isGraphQlErrorResult(refundResult)) {
-                // refundOrder 拒绝（如超额 RefundAmountError）：无实际退款发生，置 RefundFailed 留痕并提交
-                request.refundError = `refundOrder 拒绝: ${JSON.stringify(refundResult)}`;
+            let settledAmount = 0;
+            const transactionIds: string[] = [];
+            // 该笔退款未达 Settled：把 Refund 置 Failed，使下次 planRefunds 不计入已退额度（可重试），
+            // 与 campus settleRefundOrMarkFailed 同口径。
+            const markRefundFailed = async (refund: any) => {
+                if (!refund?.id) return;
+                try {
+                    refund.state = 'Failed';
+                    await this.connection.getRepository(ctx, Refund).save(refund);
+                } catch (e: any) {
+                    Logger.warn(`mark refund ${refund.id} failed error: ${e?.message ?? e}`, loggerCtx);
+                }
+            };
+            const failPartial = async (error: string, reasonMsg: string) => {
+                request.refundError = error;
                 request.refundedAt = undefined;
+                request.actualRefundAmount = (request.actualRefundAmount ?? 0) + settledAmount;
                 await this.commitState(ctx, request, fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 await this.connection.commitOpenTransaction(ctx);
-                Logger.warn(`after-sales #${request.id} refundOrder 拒绝: ${request.refundError}`, loggerCtx);
+                Logger.warn(reasonMsg, loggerCtx);
                 return this.hydrate(ctx, request.id as any);
-            }
-            const refund = refundResult as any; // Vendure 原生 Refund
+            };
 
-            // 若仍停在 Pending（异步对账/需手动落定场景），推进到 Settled 终态
-            if (refund.state === 'Pending') {
-                const settled = await this.orderService!.settleRefund(ctx, {
-                    id: refund.id as ID,
-                    transactionId: refund.transactionId ?? '',
-                } as any);
-                refund.state = settled.state;
+            for (const leg of plan) {
+                let refund: any;
+                try {
+                    const refundResult = await this.orderService!.refundOrder(ctx, {
+                        paymentId: leg.paymentId,
+                        amount: leg.amount,
+                        reason: `After-sales refund #${request.id}`,
+                        shipping: 0, // Refund.shipping 为 NOT NULL 列，必须显式置 0
+                        adjustment: 0,
+                    } as any);
+                    if (isGraphQlErrorResult(refundResult)) {
+                        return failPartial(
+                            `refundOrder 拒绝: ${JSON.stringify(refundResult)}`,
+                            `after-sales #${request.id} refundOrder 拒绝 (partial ${settledAmount})`,
+                        );
+                    }
+                    refund = refundResult as any;
+                    if (refund.state === 'Pending') {
+                        const settled = await this.orderService!.settleRefund(ctx, {
+                            id: refund.id as ID,
+                            transactionId: refund.transactionId ?? '',
+                        } as any);
+                        refund.state = (settled as any).state;
+                        refund.transactionId = (settled as any).transactionId ?? refund.transactionId;
+                    }
+                } catch (e: any) {
+                    // 该笔未成功（或结算异常）：已成功的笔次保留并提交，剩余额度留给重试
+                    await markRefundFailed(refund);
+                    return failPartial(
+                        `退款异常: ${e?.message ?? e}`,
+                        `after-sales #${request.id} refund leg 异常 (partial ${settledAmount}): ${e?.message ?? e}`,
+                    );
+                }
+                if (refund.state !== 'Settled') {
+                    await markRefundFailed(refund);
+                    return failPartial(
+                        `退款未达 Settled，当前 ${refund.state}`,
+                        `after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`,
+                    );
+                }
+                settledAmount += refund.total != null ? Number(refund.total) : leg.amount;
+                if (refund.transactionId) transactionIds.push(String(refund.transactionId));
             }
 
-            if (refund.state === 'Settled') {
-                request.refundTransactionId = refund.transactionId || null;
-                request.actualRefundAmount = refund.total != null ? Number(refund.total) : request.refundAmount;
-                request.refundError = null;
-                request.refundedAt = new Date();
-                await this.commitState(ctx, request, fromState, 'Refunded');
-                await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
-                Logger.info(`Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`, loggerCtx);
-            } else {
-                // Failed 等非成功终态：不抛（调用方可进入 RefundFailed 重试），仅告警与留痕
-                request.refundError = `退款未达 Settled，当前 ${refund.state}`;
-                request.refundedAt = undefined;
-                await this.commitState(ctx, request, fromState, 'RefundFailed');
-                await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
-                Logger.warn(`after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`, loggerCtx);
-            }
-
+            request.refundTransactionId = transactionIds.length ? transactionIds.join(',') : null;
+            request.actualRefundAmount = (request.actualRefundAmount ?? 0) + settledAmount;
+            request.refundError = null;
+            request.refundedAt = new Date();
+            await this.commitState(ctx, request, fromState, 'Refunded');
+            await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
+            Logger.info(
+                `Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`,
+                loggerCtx,
+            );
             await this.connection.commitOpenTransaction(ctx);
         } catch (e: any) {
             await this.connection.rollBackTransaction(ctx);
-            if (e instanceof UserInputError && String(e.message).includes('refundOrder')) {
-                // refundOrder 拒绝已留痕 RefundFailed，这里直接抛给调用方
-                throw e;
-            }
             Logger.error(`Refund failed for after-sales #${request.id}: ${e.message}`, loggerCtx);
             // 未知异常：置 RefundFailed 以便重试，而非让事务留下半成品
             await this.applyRefundFailed(ctx, request.id, e.message, false);
             throw e;
         }
         return this.hydrate(ctx, request.id as any);
+    }
+
+    /**
+     * 订单可退余额（与 planRefunds 同口径）：可退支付单实收合计 − 已退合计（排除 Failed，未真实打款）。
+     * 无任何可退支付单时返回 -1，表示「无法计算」，调用方据此跳过收紧、维持原上限校验。
+     */
+    private async refundableBalance(ctx: RequestContext, orderId: ID): Promise<number> {
+        const payments = await this.connection.getRepository(ctx, Payment).find({
+            where: { order: { id: orderId } } as any,
+            order: { id: 'DESC' } as any,
+        });
+        const refundable = payments.filter(p => REFUNDABLE_PAYMENT_STATES.includes(String(p.state)));
+        if (refundable.length === 0) return -1;
+        let balance = 0;
+        for (const payment of refundable) {
+            const refunded = await this.connection
+                .getRepository(ctx, Refund)
+                .createQueryBuilder('r')
+                .select('COALESCE(SUM(r.total), 0)', 'sum')
+                .where('r.paymentId = :pid', { pid: payment.id })
+                .andWhere('r.state <> :failed', { failed: 'Failed' })
+                .getRawOne();
+            balance += Math.max(0, Number(payment.amount) - Number(refunded?.sum ?? 0));
+        }
+        return balance;
+    }
+
+    /**
+     * 生成退款计划（新→旧）：每张支付单退「自身剩余额度」，累计到 request.refundAmount 为止。
+     * 组合支付（余额+微信/多笔）跨单拆分；总额不足返回 null（调用方拒绝，绝不部分退）。
+     * 只认 Settled/Authorized，已退总额排除 Failed（结算失败未真实打款，允许重试）。
+     */
+    private async planRefunds(
+        ctx: RequestContext,
+        orderId: ID,
+        needAmount: number,
+    ): Promise<Array<{ paymentId: ID; amount: number }> | null> {
+        if (needAmount <= 0) return [];
+        const payments = await this.connection.getRepository(ctx, Payment).find({
+            where: { order: { id: orderId } } as any,
+            order: { id: 'DESC' } as any,
+        });
+        const plan: Array<{ paymentId: ID; amount: number }> = [];
+        let left = needAmount;
+        for (const payment of payments) {
+            if (!REFUNDABLE_PAYMENT_STATES.includes(String(payment.state))) continue;
+            const refunded = await this.connection
+                .getRepository(ctx, Refund)
+                .createQueryBuilder('r')
+                .select('COALESCE(SUM(r.total), 0)', 'sum')
+                .where('r.paymentId = :pid', { pid: payment.id })
+                .andWhere('r.state <> :failed', { failed: 'Failed' })
+                .getRawOne();
+            const remaining = Number(payment.amount) - Number(refunded?.sum ?? 0);
+            if (remaining <= 0) continue;
+            const take = Math.min(remaining, left);
+            plan.push({ paymentId: payment.id as ID, amount: take });
+            left -= take;
+            if (left <= 0) break;
+        }
+        return left > 0 ? null : plan;
     }
 
     /** 幂等地把售后单置为 RefundFailed（不入事务，供 catch 兜底），避免异常路径留下半成品脏数据 */
@@ -922,11 +1103,15 @@ export class AfterSalesService {
         }
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
 
-        const totalRequests = await repo
+        // 一次取窗口内 createdAt：总数与按日聚合共用，避免依赖 SUBSTR(timestamp)
+        //（PostgreSQL 没有该函数重载，sqlite 才有；生产 PG 环境下会直接报错）。
+        const createdRows = await repo
             .createQueryBuilder('r')
+            .select('r.createdAt', 'createdAt')
             .where('r.createdAt >= :from', { from: fromDate })
             .andWhere('r.createdAt <= :to', { to: toDate })
-            .getCount();
+            .getRawMany();
+        const totalRequests = createdRows.length;
 
         const pendingCount = await repo
             .createQueryBuilder('r')
@@ -934,24 +1119,27 @@ export class AfterSalesService {
             .andWhere('r.createdAt <= :to', { to: toDate })
             .getCount();
 
+        // 退款口径按 refundedAt 判定而非 state：Refunded 结案后会流转到 Closed，
+        // 若仍按 state='Refunded' 统计，已真实打款的金额会从看板里消失。
         const refundRow = await repo
             .createQueryBuilder('r')
             .select('COALESCE(SUM(r.actualRefundAmount), 0)', 'total')
-            .where("r.state = 'Refunded'")
+            .where('r.refundedAt IS NOT NULL')
             .andWhere('r.refundedAt >= :from', { from: fromDate })
             .andWhere('r.refundedAt <= :to', { to: toDate })
             .getRawOne();
         const totalRefundAmount = Number(refundRow?.total ?? 0);
 
-        const dailyRows = await repo
-            .createQueryBuilder('r')
-            .select('SUBSTR(r.createdAt, 1, 10)', 'date')
-            .addSelect('COUNT(*)', 'total')
-            .where('r.createdAt >= :from', { from: fromDate })
-            .andWhere('r.createdAt <= :to', { to: toDate })
-            .groupBy('SUBSTR(r.createdAt, 1, 10)')
-            .orderBy('SUBSTR(r.createdAt, 1, 10)', 'ASC')
-            .getRawMany();
+        // 按日聚合在 JS 完成（DB 无关）：直接截取 createdAt 原始串的日期前缀，避免时区换算漂移。
+        const dailyMap = new Map<string, number>();
+        for (const row of createdRows) {
+            const date = String((row as any).createdAt ?? '').slice(0, 10);
+            if (!date) continue;
+            dailyMap.set(date, (dailyMap.get(date) ?? 0) + 1);
+        }
+        const daily = [...dailyMap.entries()]
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([date, total]) => ({ date, total }));
 
         const stateRows = await repo
             .createQueryBuilder('r')
@@ -973,17 +1161,22 @@ export class AfterSalesService {
             .groupBy('r.type')
             .getRawMany();
 
-        // 平均处理时长（小时）：窗口内 Refunded 行 refundedAt - createdAt 的均值，保留两位；无数据为 null
-        const refunded = await repo.find({ where: { state: 'Refunded' as any } });
-        const hours = refunded
-            .filter(
-                (r) =>
-                    r.refundedAt &&
-                    new Date(r.createdAt as any) >= fromDate &&
-                    new Date(r.createdAt as any) <= toDate,
+        // 平均处理时长（小时）：窗口内「已真实退款」行 refundedAt - createdAt 的均值，保留两位；无数据为 null。
+        // 同样按 refundedAt 判定（含已结案的 Closed），避免结案后处理时长样本丢失。
+        const refundedRows = await repo
+            .createQueryBuilder('r')
+            .select('r.createdAt', 'createdAt')
+            .addSelect('r.refundedAt', 'refundedAt')
+            .where('r.refundedAt IS NOT NULL')
+            .andWhere('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .getRawMany();
+        const hours = refundedRows
+            .map(
+                (r: any) =>
+                    (new Date(r.refundedAt).getTime() - new Date(r.createdAt).getTime()) / 3600000,
             )
-            .map((r) => (r.refundedAt!.getTime() - new Date(r.createdAt as any).getTime()) / 3600000)
-            .filter((h) => h >= 0);
+            .filter((h: number) => Number.isFinite(h) && h >= 0);
         const avgHandleHours = hours.length
             ? Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 100) / 100
             : null;
@@ -993,7 +1186,7 @@ export class AfterSalesService {
             pendingCount,
             totalRefundAmount,
             avgHandleHours,
-            daily: dailyRows.map((row: any) => ({ date: String(row.date), total: Number(row.total) })),
+            daily,
             byState: stateRows.map((row: any) => ({
                 key: String(row.key),
                 count: Number(row.count),
@@ -1041,6 +1234,10 @@ export class AfterSalesService {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = await repo.findOne({ where: { id: requestId as any } });
         if (!request) throw new UserInputError(`After-sales request ${requestId} not found`);
+        // 顾客留言必须校验归属；商家回复走 Permission.UpdateOrder，不在此列
+        if (senderType === 'customer') {
+            await this.assertCustomerOwnership(ctx, request);
+        }
         if (request.state === 'Closed') {
             // ForbiddenError 是 I18nError，自定义文案会被丢弃，故用 UserInputError 透传禁言提示
             throw new UserInputError('After-sales request is closed: messaging disabled');

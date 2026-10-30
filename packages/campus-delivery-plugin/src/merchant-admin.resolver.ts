@@ -183,6 +183,13 @@ export class MerchantAdminResolver {
         return this.merchant.kitchenQueue(ctx);
     }
 
+    /** 备餐汇总（§79）：今日商品份数聚合，后厨按份备料/核对出餐 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantPrepSummary(@Ctx() ctx: RequestContext) {
+        return this.merchant.prepSummary(ctx);
+    }
+
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

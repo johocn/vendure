@@ -424,6 +424,9 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
                 const code = await this.hall.enterHallForHandover(oCtx, orderIdNum, 'external_handover', ['third_party'], {
                     ...patch,
                     handoverAt: new Date(),
+                    // R2 第一段（外部快递）抵达交接点即到校：与外部回调同语句落库，
+                    // 让 leg1Status 由权威事实源驱动，避免学生端标记与之并行/覆盖。
+                    ...(String(cf.fulfillmentRoute ?? '') === 'R2' ? { leg1Status: 'arrived_gate' } : {}),
                 });
                 if (!code) {
                     Logger.warn(`订单 ${order.code} 外部送达回调未入厅（订单已取消或状态已变更）`, loggerCtx);
