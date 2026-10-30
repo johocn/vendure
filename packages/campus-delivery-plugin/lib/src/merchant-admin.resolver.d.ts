@@ -74,6 +74,8 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesExport(ctx: RequestContext, from: string, to: string, kind: string): Promise<string>;
     /** 高频售后顾客 Top N（§85） */
     campusMerchantAfterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesTopCustomer[]>;
+    /** 售后内部备注（§86）：仅本店可见 */
+    campusMerchantAfterSalesNotes(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesNote[]>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
@@ -102,6 +104,12 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesRunTask(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesTaskRow>;
     /** 一键拉黑高频售后顾客（§85） */
     campusMerchantBlacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID, reason?: string | null): Promise<boolean>;
+    /** 新增售后内部备注（§86）：顾客不可见 */
+    campusMerchantAfterSalesAddNote(ctx: RequestContext, id: ID, content: string): Promise<import("./merchant-admin.service").MerchantAfterSalesNote>;
+    /** 删除售后内部备注（§86） */
+    campusMerchantAfterSalesDeleteNote(ctx: RequestContext, id: ID, noteId: ID): Promise<boolean>;
+    /** 批量催办顾客（§86）：单次最多 20 条 */
+    campusMerchantAfterSalesBatchRemind(ctx: RequestContext, ids: ID[], note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

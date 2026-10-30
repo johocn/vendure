@@ -304,6 +304,13 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesTopCustomers(ctx, from, to, limit);
     }
 
+    /** 售后内部备注（§86）：仅本店可见 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesNotes(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesNotes(ctx, id);
+    }
+
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
@@ -443,6 +450,39 @@ export class MerchantAdminResolver {
         @Args({ name: 'reason', type: () => String, nullable: true }) reason?: string | null,
     ) {
         return this.merchant.blacklistAfterSalesCustomer(ctx, customerId, reason);
+    }
+
+    /** 新增售后内部备注（§86）：顾客不可见 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAddNote(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('content') content: string,
+    ) {
+        return this.merchant.addAfterSalesNote(ctx, id, content);
+    }
+
+    /** 删除售后内部备注（§86） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesDeleteNote(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('noteId') noteId: ID,
+    ) {
+        return this.merchant.deleteAfterSalesNote(ctx, id, noteId);
+    }
+
+    /** 批量催办顾客（§86）：单次最多 20 条 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesBatchRemind(
+        @Ctx() ctx: RequestContext,
+        @Args('ids') ids: ID[],
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+    ) {
+        return this.merchant.afterSalesBatchRemind(ctx, ids, note);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

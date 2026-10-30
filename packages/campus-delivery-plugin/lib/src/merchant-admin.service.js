@@ -13,6 +13,7 @@ exports.MerchantAdminService = exports.KDS_LATE_MINUTES = exports.KDS_WARN_MINUT
 exports.isUrgePending = isUrgePending;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
+const typeorm_1 = require("typeorm");
 const core_2 = require("@vendure/core");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
@@ -289,6 +290,30 @@ let MerchantAdminService = class MerchantAdminService {
         const delivering = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'grabbed');
         const pick = (s) => dtos.filter((_, i) => cfOf(active[i]).hallStatus === s);
         const completedTodayAmount = deliveredToday.reduce((s, o) => s + (o.total || 0), 0);
+        // 出餐超时（§83）：待接单/备餐中等待 ≥25 分钟，与出餐屏 late 同口径
+        const nowMs = Date.now();
+        const overdueOrders = active.filter(o => {
+            const st = cfOf(o).hallStatus;
+            if (st !== 'pending_merchant' && st !== 'accepted')
+                return false;
+            return (nowMs - new Date(o.createdAt).getTime()) / 60000 >= exports.KDS_LATE_MINUTES;
+        }).length;
+        // 售后待办（§83）：一次聚合拿到各状态计数，避免为两个数字各发一次 count 查询
+        const asStateRows = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest)
+            .createQueryBuilder('a')
+            .leftJoin('a.order', 'o')
+            .leftJoin('o.channels', 'c')
+            .where('c.id = :ch', { ch: ctx.channelId })
+            .andWhere('o.customFields.hallStatus IS NOT NULL')
+            .select('a.state', 'state')
+            .addSelect('COUNT(*)', 'n')
+            .groupBy('a.state')
+            .getRawMany();
+        const asCountOf = (states) => asStateRows
+            .filter(r => { var _a; return states.includes(String((_a = r.state) !== null && _a !== void 0 ? _a : '')); })
+            .reduce((s, r) => s + (Number(r.n) || 0), 0);
+        const afterSalesPending = asCountOf(AFTER_SALES_PENDING_STATES);
+        const refundFailed = asCountOf(['RefundFailed']);
         const printProvider = String((_a = cfg.printProvider) !== null && _a !== void 0 ? _a : 'local');
         // 营业时间（自动开关门）：轻量原生查询，避免工作台 10s 轮询时反复实例化 Channel 实体
         const hours = await this.channelBusinessHours(ctx);
@@ -322,6 +347,9 @@ let MerchantAdminService = class MerchantAdminService {
             unfinishedOrders: pending.length + cooking.length,
             // 待处理顾客催单（§78）：活跃单里催过且商家未「已知晓」的单数
             urgedCount: dtos.filter(d => d.urged).length,
+            afterSalesPending,
+            refundFailed,
+            overdueOrders,
         };
     }
     /**
@@ -1443,7 +1471,10 @@ let MerchantAdminService = class MerchantAdminService {
         }
         channel.customFields = cf;
         await repo.save(channel);
-        return this.afterSalesRules(ctx);
+        const saved = await this.afterSalesRules(ctx);
+        // 规则变更立即生效（§86）：重排未执行任务，避免旧时限继续按原到期时间执行
+        await this.rescheduleAfterSalesTasks(ctx, saved);
+        return saved;
     }
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     async afterSalesClose(ctx, id, reason) {
@@ -1729,6 +1760,110 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError(`加入黑名单失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
     }
+    /** 售后内部备注（§86）：仅本店商家可见，按时间正序 */
+    async afterSalesNotes(ctx, id) {
+        await this.assertRequestInChannel(ctx, id);
+        const rows = await this.connection.rawConnection.query('SELECT id, content, "createdBy", "createdAt" FROM campus_after_sales_note '
+            + 'WHERE "channelId" = $1 AND "requestId" = $2 ORDER BY "createdAt" ASC LIMIT 200', [Number(ctx.channelId), Number(id)]);
+        return (Array.isArray(rows) ? rows : []).map(r => {
+            var _a, _b;
+            return ({
+                id: String(r.id),
+                content: String((_a = r.content) !== null && _a !== void 0 ? _a : ''),
+                createdBy: String((_b = r.createdBy) !== null && _b !== void 0 ? _b : 'merchant'),
+                createdAt: new Date(r.createdAt),
+            });
+        });
+    }
+    /** 新增内部备注（§86）：顾客端不可见，仅用于商家交接与留痕 */
+    async addAfterSalesNote(ctx, id, content) {
+        var _a, _b;
+        await this.assertRequestInChannel(ctx, id);
+        const text = String(content !== null && content !== void 0 ? content : '').trim();
+        if (!text)
+            throw new core_2.UserInputError('请填写备注内容');
+        if (text.length > 500)
+            throw new core_2.UserInputError('备注最多 500 字');
+        const rows = await this.connection.rawConnection.query('INSERT INTO campus_after_sales_note ("channelId", "requestId", "content", "createdBy") '
+            + `VALUES ($1, $2, $3, 'merchant') RETURNING id, content, "createdBy", "createdAt"`, [Number(ctx.channelId), Number(id), text]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const r = list === null || list === void 0 ? void 0 : list[0];
+        if (!r)
+            throw new core_2.UserInputError('备注保存失败');
+        return {
+            id: String(r.id),
+            content: String((_a = r.content) !== null && _a !== void 0 ? _a : text),
+            createdBy: String((_b = r.createdBy) !== null && _b !== void 0 ? _b : 'merchant'),
+            createdAt: new Date(r.createdAt),
+        };
+    }
+    /** 删除内部备注（§86）：仅本店备注可删 */
+    async deleteAfterSalesNote(ctx, id, noteId) {
+        await this.assertRequestInChannel(ctx, id);
+        const rows = await this.connection.rawConnection.query('DELETE FROM campus_after_sales_note WHERE id = $1 AND "channelId" = $2 AND "requestId" = $3 RETURNING id', [Number(noteId), Number(ctx.channelId), Number(id)]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return Array.isArray(list) && list.length > 0;
+    }
+    /** 批量催办顾客（§86）：单批上限 20，逐单结果；仍受同单 60 秒冷却约束 */
+    async afterSalesBatchRemind(ctx, ids, note) {
+        var _a;
+        const list = this.normalizeBatchIds(ids);
+        if (list.length > 20)
+            throw new core_2.UserInputError('单次最多催办 20 条');
+        const results = [];
+        for (const id of list) {
+            try {
+                const row = await this.afterSalesRemind(ctx, id, note);
+                results.push({ id: String(id), success: true, state: String(row.state), message: '' });
+            }
+            catch (e) {
+                results.push({ id: String(id), success: false, state: '', message: String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e) });
+            }
+        }
+        return results;
+    }
+    /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
+    async assertRequestInChannel(ctx, id) {
+        const rows = await this.connection.rawConnection.query('SELECT 1 FROM after_sales_request a WHERE a.id = $2 AND EXISTS ('
+            + 'SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId") LIMIT 1', [Number(ctx.channelId), Number(id)]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        if (!Array.isArray(list) || !list.length) {
+            throw new core_2.UserInputError('售后单不存在或不属于当前店铺');
+        }
+    }
+    /** 规则变更后重排未执行任务（§86）：按新时限重算到期时间，0 表示关闭则作废 */
+    async rescheduleAfterSalesTasks(ctx, rules) {
+        const taskRepo = this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesTimeoutTask);
+        const tasks = await taskRepo.find({
+            where: {
+                channelId: Number(ctx.channelId),
+                status: after_sales_plugin_1.AfterSalesTimeoutStatus.PENDING,
+                type: (0, typeorm_1.In)([after_sales_plugin_1.AfterSalesTimeoutType.PENDING_REMIND, after_sales_plugin_1.AfterSalesTimeoutType.PENDING_AUTO_APPROVE]),
+            },
+        });
+        if (!tasks.length)
+            return;
+        const reqIds = Array.from(new Set(tasks.map(t => Number(t.requestId))));
+        const requests = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest)
+            .find({ where: { id: (0, typeorm_1.In)(reqIds) } });
+        const byId = new Map(requests.map(r => [Number(r.id), r]));
+        for (const task of tasks) {
+            const req = byId.get(Number(task.requestId));
+            if (!req)
+                continue;
+            const hours = task.type === after_sales_plugin_1.AfterSalesTimeoutType.PENDING_REMIND
+                ? rules.timeoutHours
+                : rules.autoApproveHours;
+            if (hours <= 0) {
+                task.status = after_sales_plugin_1.AfterSalesTimeoutStatus.CANCELLED;
+            }
+            else {
+                task.dueAt = new Date(new Date(req.createdAt).getTime() + hours * 3600000);
+            }
+            await taskRepo.save(task);
+        }
+    }
     toTaskRow(t) {
         var _a, _b;
         return {
@@ -1792,7 +1927,7 @@ let MerchantAdminService = class MerchantAdminService {
      * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。
      */
     async afterSalesReport(ctx, from, to) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
         const start = this.campusDayStart(from);
         const end = this.campusDayEnd(to);
         if (!start || !end)
@@ -1839,6 +1974,21 @@ let MerchantAdminService = class MerchantAdminService {
                   WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
                     AND a."rejectReason" IS NOT NULL AND a."rejectReason" <> ''
                   GROUP BY a."rejectReason" ORDER BY n DESC LIMIT 5`, [chId, start, end]);
+            // SLA（§86）：首响=创建到商家首条留言；完结=创建到首次 Refunded/Closed
+            const firstRows = await raw.query(`SELECT AVG(EXTRACT(EPOCH FROM (fr."createdAt" - a."createdAt")) / 60)::int AS avg_min,
+                        MAX(EXTRACT(EPOCH FROM (fr."createdAt" - a."createdAt")) / 60)::int AS max_min
+                   FROM after_sales_request a
+                   JOIN LATERAL (SELECT MIN(m."createdAt") AS "createdAt" FROM after_sales_message m
+                                  WHERE m."requestId" = a.id AND m."senderType" = 'admin') fr
+                     ON fr."createdAt" IS NOT NULL
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}`, [chId, start, end]);
+            const resolveRows = await raw.query(`SELECT AVG(EXTRACT(EPOCH FROM (r."createdAt" - a."createdAt")) / 60)::int AS avg_min,
+                        MAX(EXTRACT(EPOCH FROM (r."createdAt" - a."createdAt")) / 60)::int AS max_min
+                   FROM after_sales_request a
+                   JOIN LATERAL (SELECT MIN(h."createdAt") AS "createdAt" FROM after_sales_state_history h
+                                  WHERE h."requestId" = a.id AND h."toState" IN ('Refunded', 'Closed')) r
+                     ON r."createdAt" IS NOT NULL
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}`, [chId, start, end]);
             const byDay = new Map();
             for (const r of (Array.isArray(dayCreated) ? dayCreated : [])) {
                 byDay.set(String(r.d), { count: Number(r.n) || 0, refunded: 0, refundAmount: 0 });
@@ -1869,10 +2019,14 @@ let MerchantAdminService = class MerchantAdminService {
                     .map(r => ({ reason: String(r.reason), count: Number(r.n) || 0 })),
                 rejectReasons: (Array.isArray(rejectRows) ? rejectRows : [])
                     .map(r => ({ reason: String(r.reason), count: Number(r.n) || 0 })),
+                firstResponseAvgMinutes: Number((_j = (_h = firstRows === null || firstRows === void 0 ? void 0 : firstRows[0]) === null || _h === void 0 ? void 0 : _h.avg_min) !== null && _j !== void 0 ? _j : 0),
+                firstResponseMaxMinutes: Number((_l = (_k = firstRows === null || firstRows === void 0 ? void 0 : firstRows[0]) === null || _k === void 0 ? void 0 : _k.max_min) !== null && _l !== void 0 ? _l : 0),
+                resolveAvgMinutes: Number((_o = (_m = resolveRows === null || resolveRows === void 0 ? void 0 : resolveRows[0]) === null || _m === void 0 ? void 0 : _m.avg_min) !== null && _o !== void 0 ? _o : 0),
+                resolveMaxMinutes: Number((_q = (_p = resolveRows === null || resolveRows === void 0 ? void 0 : resolveRows[0]) === null || _p === void 0 ? void 0 : _p.max_min) !== null && _q !== void 0 ? _q : 0),
             };
         }
         catch (e) {
-            throw new core_2.UserInputError(`售后报表查询失败：${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`);
+            throw new core_2.UserInputError(`售后报表查询失败：${(_r = e === null || e === void 0 ? void 0 : e.message) !== null && _r !== void 0 ? _r : e}`);
         }
     }
     /** 批量参数归一：去重、正整数、单批上限 50 */

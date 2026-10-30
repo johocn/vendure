@@ -156,6 +156,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesTopCustomers(ctx, from, to, limit) {
         return this.merchant.afterSalesTopCustomers(ctx, from, to, limit);
     }
+    /** 售后内部备注（§86）：仅本店可见 */
+    async campusMerchantAfterSalesNotes(ctx, id) {
+        return this.merchant.afterSalesNotes(ctx, id);
+    }
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     async campusMerchantAfterSalesApprove(ctx, id) {
         return this.merchant.afterSalesApprove(ctx, id);
@@ -211,6 +215,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 一键拉黑高频售后顾客（§85） */
     async campusMerchantBlacklistAfterSalesCustomer(ctx, customerId, reason) {
         return this.merchant.blacklistAfterSalesCustomer(ctx, customerId, reason);
+    }
+    /** 新增售后内部备注（§86）：顾客不可见 */
+    async campusMerchantAfterSalesAddNote(ctx, id, content) {
+        return this.merchant.addAfterSalesNote(ctx, id, content);
+    }
+    /** 删除售后内部备注（§86） */
+    async campusMerchantAfterSalesDeleteNote(ctx, id, noteId) {
+        return this.merchant.deleteAfterSalesNote(ctx, id, noteId);
+    }
+    /** 批量催办顾客（§86）：单次最多 20 条 */
+    async campusMerchantAfterSalesBatchRemind(ctx, ids, note) {
+        return this.merchant.afterSalesBatchRemind(ctx, ids, note);
     }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
@@ -580,6 +596,15 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesTopCustomers", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesNotes", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
@@ -718,6 +743,36 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantBlacklistAfterSalesCustomer", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('content')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesAddNote", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('noteId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesDeleteNote", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids')),
+    __param(2, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesBatchRemind", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

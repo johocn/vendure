@@ -205,6 +205,19 @@ export interface MerchantAfterSalesReport {
         reason: string;
         count: number;
     }>;
+    /** 首次响应时长（分钟）：创建→商家首条留言，无数据为 0 */
+    firstResponseAvgMinutes: number;
+    firstResponseMaxMinutes: number;
+    /** 完结时长（分钟）：创建→Refunded/Closed，无数据为 0 */
+    resolveAvgMinutes: number;
+    resolveMaxMinutes: number;
+}
+/** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
+export interface MerchantAfterSalesNote {
+    id: string;
+    content: string;
+    createdBy: string;
+    createdAt: Date;
 }
 /** 售后规则配置（§84）：渠道自定义字段，0 表示关闭自动化 */
 export interface MerchantAfterSalesRules {
@@ -389,6 +402,12 @@ export interface MerchantBoard {
     unfinishedOrders: number;
     /** 待处理顾客催单数（§78）：顾客催过且商家未「已知晓」的活跃单数 */
     urgedCount: number;
+    /** 待处理售后单数（§83 今日待办）：Pending + Appealed */
+    afterSalesPending: number;
+    /** 退款失败售后单数（§83 今日待办）：需商家人工重试 */
+    refundFailed: number;
+    /** 出餐超时订单数（§83 今日待办）：待接单/备餐中等待 ≥25 分钟，口径与出餐屏 late 一致 */
+    overdueOrders: number;
 }
 /** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
 export interface MerchantStoreProfile {
@@ -793,6 +812,18 @@ export declare class MerchantAdminService {
     afterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesTopCustomer[]>;
     /** 一键拉黑高频售后顾客（§85）：仅限在本店有售后记录的顾客，已存在则不重复插入 */
     blacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID, reason?: string | null): Promise<boolean>;
+    /** 售后内部备注（§86）：仅本店商家可见，按时间正序 */
+    afterSalesNotes(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesNote[]>;
+    /** 新增内部备注（§86）：顾客端不可见，仅用于商家交接与留痕 */
+    addAfterSalesNote(ctx: RequestContext, id: ID, content: string): Promise<MerchantAfterSalesNote>;
+    /** 删除内部备注（§86）：仅本店备注可删 */
+    deleteAfterSalesNote(ctx: RequestContext, id: ID, noteId: ID): Promise<boolean>;
+    /** 批量催办顾客（§86）：单批上限 20，逐单结果；仍受同单 60 秒冷却约束 */
+    afterSalesBatchRemind(ctx: RequestContext, ids: ID[], note?: string | null): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */
+    private assertRequestInChannel;
+    /** 规则变更后重排未执行任务（§86）：按新时限重算到期时间，0 表示关闭则作废 */
+    private rescheduleAfterSalesTasks;
     private toTaskRow;
     /** 售后超时任务执行器（§85）：可选依赖，未装售后插件时为空 */
     private afterSalesJobSvc?;

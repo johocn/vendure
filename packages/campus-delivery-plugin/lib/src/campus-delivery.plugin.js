@@ -145,6 +145,7 @@ const telemetry_entities_1 = require("./telemetry.entities");
 const telemetry_resolver_1 = require("./telemetry.resolver");
 const resume_payment_shop_resolver_1 = require("./resume-payment-shop.resolver");
 const telemetry_service_1 = require("./telemetry.service");
+const p17_after_sales_note_1 = require("./migrations/p17-after-sales-note");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
 // 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
@@ -323,6 +324,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p9_p7_delivery_fee_tiers_1.P9P7DeliveryFeeTiersMigration,
             p10_review_alert_1.P10ReviewAlertMigration,
             p11_telemetry_1.P11TelemetryMigration,
+            p17_after_sales_note_1.P17AfterSalesNoteMigration,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
             p13_auto_accept_1.P13AutoAcceptMigration,
@@ -649,6 +651,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     unfinishedOrders: Int!
                     """待处理顾客催单数（§78）"""
                     urgedCount: Int!
+                    """待处理售后单数（§83 今日待办）：Pending + Appealed"""
+                    afterSalesPending: Int!
+                    """退款失败售后单数（§83 今日待办）：需商家人工重试"""
+                    refundFailed: Int!
+                    """出餐超时订单数（§83 今日待办）：待接单/备餐中等待 ≥25 分钟"""
+                    overdueOrders: Int!
                 }
 
                 """KDS 出餐屏单行（含加料快照）"""
@@ -937,6 +945,20 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     reasons: [CampusMerchantAfterSalesReportReason!]!
                     """商家驳回原因 Top5"""
                     rejectReasons: [CampusMerchantAfterSalesReportReason!]!
+                    """首次响应均值（分钟）：创建→商家首条留言"""
+                    firstResponseAvgMinutes: Int!
+                    firstResponseMaxMinutes: Int!
+                    """完结均值（分钟）：创建→Refunded/Closed"""
+                    resolveAvgMinutes: Int!
+                    resolveMaxMinutes: Int!
+                }
+
+                """商家售后内部备注（§86）：仅商家可见"""
+                type CampusMerchantAfterSalesNote {
+                    id: ID!
+                    content: String!
+                    createdBy: String!
+                    createdAt: DateTime!
                 }
 
                 """售后原因分桶（§84）"""
@@ -1910,6 +1932,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesExport(from: String!, to: String!, kind: String!): String!
                     """高频售后顾客 Top N（§85）：附黑名单状态"""
                     campusMerchantAfterSalesTopCustomers(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesTopCustomer!]!
+                    """售后内部备注（§86）：仅本店可见"""
+                    campusMerchantAfterSalesNotes(id: ID!): [CampusMerchantAfterSalesNote!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2217,6 +2241,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesRunTask(id: ID!): CampusMerchantAfterSalesTask!
                     """一键拉黑高频售后顾客（§85）"""
                     campusMerchantBlacklistAfterSalesCustomer(customerId: ID!, reason: String): Boolean!
+                    """新增售后内部备注（§86）：顾客不可见"""
+                    campusMerchantAfterSalesAddNote(id: ID!, content: String!): CampusMerchantAfterSalesNote!
+                    """删除售后内部备注（§86）"""
+                    campusMerchantAfterSalesDeleteNote(id: ID!, noteId: ID!): Boolean!
+                    """批量催办顾客（§86）：单次最多 20 条，逐单返回结果"""
+                    campusMerchantAfterSalesBatchRemind(ids: [ID!]!, note: String): [CampusMerchantAfterSalesBatchResult!]!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
