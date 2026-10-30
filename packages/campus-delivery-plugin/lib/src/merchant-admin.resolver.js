@@ -100,6 +100,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantMarkPrinted(ctx, orderId) {
         return this.merchant.markPrinted(ctx, orderId);
     }
+    /** 顾客催单「已知晓」（§78）：商家确认后工作台/出餐屏解除催单提醒 */
+    async campusMerchantAckUrge(ctx, orderId) {
+        return this.merchant.ackUrge(ctx, orderId);
+    }
     /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
     async campusMerchantKitchenQueue(ctx) {
         return this.merchant.kitchenQueue(ctx);
@@ -334,6 +338,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantMarkPrinted", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAckUrge", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

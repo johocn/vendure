@@ -44,6 +44,10 @@ export declare class MerchantAdminResolver {
     campusMerchantMarkPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 顾客催单「已知晓」（§78）：商家确认后工作台/出餐屏解除催单提醒 */
+    campusMerchantAckUrge(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+    }>;
     /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
     campusMerchantKitchenQueue(ctx: RequestContext): Promise<import("./merchant-admin.service").KitchenQueue>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

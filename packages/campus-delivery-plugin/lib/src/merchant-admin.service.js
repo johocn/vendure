@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MerchantAdminService = exports.KDS_LATE_MINUTES = exports.KDS_WARN_MINUTES = void 0;
+exports.isUrgePending = isUrgePending;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_building_entity_1 = require("./campus-building.entity");
@@ -296,6 +297,8 @@ let MerchantAdminService = class MerchantAdminService {
             closureNote: (_e = closure === null || closure === void 0 ? void 0 : closure.note) !== null && _e !== void 0 ? _e : null,
             // 未出餐 = 待接单 + 备餐中（出餐完成即退出该计数）
             unfinishedOrders: pending.length + cooking.length,
+            // 待处理顾客催单（§78）：活跃单里催过且商家未「已知晓」的单数
+            urgedCount: dtos.filter(d => d.urged).length,
         };
     }
     /**
@@ -849,6 +852,40 @@ let MerchantAdminService = class MerchantAdminService {
         });
         return { ok: true };
     }
+    /** 商家确认「已知晓」顾客催单（§78）：只落小表时间戳，不改顾客侧 urged/urgedAt（骑手端仍可见催单标记） */
+    async ackUrge(ctx, orderId) {
+        var _a, _b;
+        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            where: { id: orderId },
+            relations: ['channels'],
+        });
+        const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
+        if (!order || !inChannel)
+            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+        const cf = ((_b = order.customFields) !== null && _b !== void 0 ? _b : {});
+        if (cf.urged !== true || !cf.urgedAt)
+            throw new core_1.UserInputError('该订单没有待处理的顾客催单');
+        await this.connection.rawConnection.query('INSERT INTO campus_urge_ack ("channelId", "orderId", "ackedAt") VALUES ($1, $2, now()) '
+            + 'ON CONFLICT ("channelId", "orderId") DO UPDATE SET "ackedAt" = now(), "updatedAt" = now()', [ctx.channelId, Number(order.id)]);
+        return { ok: true };
+    }
+    /** 批量取催单「已知晓」时间（§78）；小表缺失时按未处理兜底，不阻断工作台 */
+    async urgeAckMap(ctx, orderIds) {
+        const ids = orderIds.filter(n => Number.isFinite(n));
+        if (!ids.length)
+            return new Map();
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT "orderId", "ackedAt" FROM campus_urge_ack WHERE "channelId" = $1 AND "orderId" = ANY($2::int[])', [ctx.channelId, ids]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return new Map((Array.isArray(list) ? list : []).map((r) => [
+                String(r.orderId),
+                new Date(r.ackedAt),
+            ]));
+        }
+        catch (_a) {
+            return new Map();
+        }
+    }
     /** 云打印一张小票（后端签名直连服务商）：成功即回写 printedAt */
     async cloudPrint(ctx, orderId) {
         return this.cloud.printOrder(ctx, orderId, 'manual');
@@ -883,9 +920,11 @@ let MerchantAdminService = class MerchantAdminService {
             : [];
         const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
         const now = Date.now();
+        const ackMap = await this.urgeAckMap(ctx, orders.map(o => Number(o.id)));
         const tickets = orders.map(o => {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g;
             const cf = o.customFields;
+            const urgedAt = cf.urgedAt ? new Date(cf.urgedAt) : null;
             const waitingMinutes = Math.max(0, Math.floor((now - new Date(o.createdAt).getTime()) / 60000));
             return {
                 id: String(o.id),
@@ -900,7 +939,8 @@ let MerchantAdminService = class MerchantAdminService {
                 note: (_d = cf.note) !== null && _d !== void 0 ? _d : null,
                 printedAt: (_e = cf.waimaiPrintedAt) !== null && _e !== void 0 ? _e : null,
                 total: o.total,
-                lines: ((_f = o.lines) !== null && _f !== void 0 ? _f : []).map(l => {
+                urged: isUrgePending(cf.urged, urgedAt, (_f = ackMap.get(String(o.id))) !== null && _f !== void 0 ? _f : null),
+                lines: ((_g = o.lines) !== null && _g !== void 0 ? _g : []).map(l => {
                     var _a, _b, _c;
                     const addonsText = (0, addon_fee_1.addonDisplayText)((_a = l.customFields) === null || _a === void 0 ? void 0 : _a.waimaiAddons);
                     return {
@@ -911,11 +951,14 @@ let MerchantAdminService = class MerchantAdminService {
                 }),
             };
         });
+        // 顾客催单的票排前面（同催单状态下仍按支付先后）
+        tickets.sort((a, b) => Number(b.urged) - Number(a.urged) || +a.createdAt - +b.createdAt);
         return {
             tickets,
             pendingCount: tickets.filter(t => t.stage === 'pending').length,
             cookingCount: tickets.filter(t => t.stage === 'cooking').length,
             lateCount: tickets.filter(t => t.urgency === 'late').length,
+            urgedCount: tickets.filter(t => t.urged).length,
             warnMinutes: exports.KDS_WARN_MINUTES,
             lateMinutes: exports.KDS_LATE_MINUTES,
         };
@@ -1197,9 +1240,12 @@ let MerchantAdminService = class MerchantAdminService {
             ? await this.connection.rawConnection.getRepository('Customer').findByIds([...riderIds])
             : [];
         const riderNames = new Map(customers.map(c => { var _a, _b; return [String(c.id), (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.riderRealName) !== null && _b !== void 0 ? _b : '']; }));
+        // 催单「已知晓」时间（§78）：一次批量查，避免逐单查库
+        const ackMap = await this.urgeAckMap(ctx, orders.map(o => Number(o.id)));
         return orders.map(o => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
             const cf = o.customFields;
+            const urgedAt = cf.urgedAt ? new Date(cf.urgedAt) : null;
             return {
                 id: String(o.id),
                 code: o.code,
@@ -1216,9 +1262,11 @@ let MerchantAdminService = class MerchantAdminService {
                 provider: cf.thirdPartyProvider || null,
                 thirdPartyNo: cf.thirdPartyNo || null,
                 handoverCode: cf.handoverCode || null,
+                urged: isUrgePending(cf.urged, urgedAt, (_h = ackMap.get(String(o.id))) !== null && _h !== void 0 ? _h : null),
+                urgedAt,
                 // 脱敏口径与号码保护一致：11 位保留前 3 后 4，绝不外泄明文
-                customerPhone: this.privacy.mask((_j = (_h = o.customer) === null || _h === void 0 ? void 0 : _h.phoneNumber) !== null && _j !== void 0 ? _j : null),
-                lines: ((_k = o.lines) !== null && _k !== void 0 ? _k : []).map(l => {
+                customerPhone: this.privacy.mask((_k = (_j = o.customer) === null || _j === void 0 ? void 0 : _j.phoneNumber) !== null && _k !== void 0 ? _k : null),
+                lines: ((_l = o.lines) !== null && _l !== void 0 ? _l : []).map(l => {
                     var _a, _b;
                     return ({
                         name: (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '',
@@ -1242,4 +1290,10 @@ exports.MerchantAdminService = MerchantAdminService = __decorate([
         privacy_number_service_1.PrivacyNumberService,
         cloud_print_service_1.CloudPrintService])
 ], MerchantAdminService);
+/** 催单是否仍未处理（§78）：顾客置了 urged 且「已知晓」时间早于最近一次催单（顾客再催会重新变为待处理） */
+function isUrgePending(urged, urgedAt, ackedAt) {
+    if (urged !== true || !urgedAt)
+        return false;
+    return !ackedAt || ackedAt.getTime() < urgedAt.getTime();
+}
 //# sourceMappingURL=merchant-admin.service.js.map

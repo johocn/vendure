@@ -61,6 +61,10 @@ export interface MerchantBoardOrder {
     handoverCode: string | null; // 交接码（第一段送达交接点后生成，骑手取货时核对）
     /** 顾客手机号（脱敏，与号码保护同口径）：工作台检索用，不返回明文 */
     customerPhone: string | null;
+    /** 顾客催单待处理（§78）：顾客催过且商家尚未「已知晓」 */
+    urged: boolean;
+    /** 顾客最近一次催单时间（null=从未催单） */
+    urgedAt: Date | null;
     lines: MerchantBoardLine[];
 }
 
@@ -188,6 +192,8 @@ export interface MerchantBoard {
     closureNote: string | null;
     /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
     unfinishedOrders: number;
+    /** 待处理顾客催单数（§78）：顾客催过且商家未「已知晓」的活跃单数 */
+    urgedCount: number;
 }
 
 /** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
@@ -231,6 +237,8 @@ export interface KitchenTicket {
     note: string | null;
     printedAt: Date | null;
     total: number;
+    /** 顾客催单待处理（§78）：出餐屏置顶并标「顾客催单」 */
+    urged: boolean;
     lines: KitchenTicketLine[];
 }
 
@@ -239,6 +247,8 @@ export interface KitchenQueue {
     pendingCount: number;
     cookingCount: number;
     lateCount: number;
+    /** 待处理顾客催单数（§78） */
+    urgedCount: number;
     warnMinutes: number;
     lateMinutes: number;
 }
@@ -542,6 +552,8 @@ export class MerchantAdminService {
             closureNote: closure?.note ?? null,
             // 未出餐 = 待接单 + 备餐中（出餐完成即退出该计数）
             unfinishedOrders: pending.length + cooking.length,
+            // 待处理顾客催单（§78）：活跃单里催过且商家未「已知晓」的单数
+            urgedCount: dtos.filter(d => d.urged).length,
         };
     }
 
@@ -1125,6 +1137,43 @@ export class MerchantAdminService {
         return { ok: true };
     }
 
+    /** 商家确认「已知晓」顾客催单（§78）：只落小表时间戳，不改顾客侧 urged/urgedAt（骑手端仍可见催单标记） */
+    async ackUrge(ctx: RequestContext, orderId: ID) {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['channels'],
+        });
+        const inChannel = order?.channels?.some(c => String(c.id) === String(ctx.channelId));
+        if (!order || !inChannel) throw new UserInputError('订单不存在或不属于当前店铺');
+        const cf = (order.customFields ?? {}) as any;
+        if (cf.urged !== true || !cf.urgedAt) throw new UserInputError('该订单没有待处理的顾客催单');
+        await this.connection.rawConnection.query(
+            'INSERT INTO campus_urge_ack ("channelId", "orderId", "ackedAt") VALUES ($1, $2, now()) '
+            + 'ON CONFLICT ("channelId", "orderId") DO UPDATE SET "ackedAt" = now(), "updatedAt" = now()',
+            [ctx.channelId, Number(order.id)],
+        );
+        return { ok: true };
+    }
+
+    /** 批量取催单「已知晓」时间（§78）；小表缺失时按未处理兜底，不阻断工作台 */
+    private async urgeAckMap(ctx: RequestContext, orderIds: number[]): Promise<Map<string, Date>> {
+        const ids = orderIds.filter(n => Number.isFinite(n));
+        if (!ids.length) return new Map();
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT "orderId", "ackedAt" FROM campus_urge_ack WHERE "channelId" = $1 AND "orderId" = ANY($2::int[])',
+                [ctx.channelId, ids],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return new Map((Array.isArray(list) ? list : []).map((r: any) => [
+                String(r.orderId),
+                new Date(r.ackedAt),
+            ]));
+        } catch {
+            return new Map();
+        }
+    }
+
     /** 云打印一张小票（后端签名直连服务商）：成功即回写 printedAt */
     async cloudPrint(ctx: RequestContext, orderId: ID) {
         return this.cloud.printOrder(ctx, orderId, 'manual');
@@ -1161,8 +1210,10 @@ export class MerchantAdminService {
             : [];
         const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
         const now = Date.now();
+        const ackMap = await this.urgeAckMap(ctx, orders.map(o => Number(o.id)));
         const tickets: KitchenTicket[] = orders.map(o => {
             const cf = o.customFields as any;
+            const urgedAt = cf.urgedAt ? new Date(cf.urgedAt) : null;
             const waitingMinutes = Math.max(0, Math.floor((now - new Date(o.createdAt).getTime()) / 60000));
             return {
                 id: String(o.id),
@@ -1177,6 +1228,7 @@ export class MerchantAdminService {
                 note: cf.note ?? null,
                 printedAt: (cf.waimaiPrintedAt as Date | undefined) ?? null,
                 total: o.total,
+                urged: isUrgePending(cf.urged, urgedAt, ackMap.get(String(o.id)) ?? null),
                 lines: (o.lines ?? []).map(l => {
                     const addonsText = addonDisplayText((l.customFields as any)?.waimaiAddons);
                     return {
@@ -1187,11 +1239,14 @@ export class MerchantAdminService {
                 }),
             };
         });
+        // 顾客催单的票排前面（同催单状态下仍按支付先后）
+        tickets.sort((a, b) => Number(b.urged) - Number(a.urged) || +a.createdAt - +b.createdAt);
         return {
             tickets,
             pendingCount: tickets.filter(t => t.stage === 'pending').length,
             cookingCount: tickets.filter(t => t.stage === 'cooking').length,
             lateCount: tickets.filter(t => t.urgency === 'late').length,
+            urgedCount: tickets.filter(t => t.urged).length,
             warnMinutes: KDS_WARN_MINUTES,
             lateMinutes: KDS_LATE_MINUTES,
         };
@@ -1503,8 +1558,11 @@ export class MerchantAdminService {
         const riderNames = new Map(
             (customers as any[]).map(c => [String(c.id), c.customFields?.riderRealName ?? '']),
         );
+        // 催单「已知晓」时间（§78）：一次批量查，避免逐单查库
+        const ackMap = await this.urgeAckMap(ctx, orders.map(o => Number(o.id)));
         return orders.map(o => {
             const cf = o.customFields as any;
+            const urgedAt = cf.urgedAt ? new Date(cf.urgedAt) : null;
             return {
                 id: String(o.id),
                 code: o.code,
@@ -1521,6 +1579,8 @@ export class MerchantAdminService {
                 provider: cf.thirdPartyProvider || null,
                 thirdPartyNo: cf.thirdPartyNo || null,
                 handoverCode: cf.handoverCode || null,
+                urged: isUrgePending(cf.urged, urgedAt, ackMap.get(String(o.id)) ?? null),
+                urgedAt,
                 // 脱敏口径与号码保护一致：11 位保留前 3 后 4，绝不外泄明文
                 customerPhone: this.privacy.mask(o.customer?.phoneNumber ?? null),
                 lines: (o.lines ?? []).map(l => ({
@@ -1531,4 +1591,10 @@ export class MerchantAdminService {
             };
         });
     }
+}
+
+/** 催单是否仍未处理（§78）：顾客置了 urged 且「已知晓」时间早于最近一次催单（顾客再催会重新变为待处理） */
+export function isUrgePending(urged: unknown, urgedAt: Date | null, ackedAt: Date | null): boolean {
+    if (urged !== true || !urgedAt) return false;
+    return !ackedAt || ackedAt.getTime() < urgedAt.getTime();
 }

@@ -56,6 +56,7 @@ import { P11SoldOutAutoRestoreMigration } from './migrations/p11-soldout-auto-re
 import { P13AutoAcceptMigration } from './migrations/p13-auto-accept';
 import { P14ClosureCalendarMigration } from './migrations/p14-closure-calendar';
 import { P15SupportTicketAfterSalesMigration } from './migrations/p15-support-ticket-after-sales';
+import { P16MerchantUrgeAckMigration } from './migrations/p16-merchant-urge-ack';
 import { AutoAcceptJob } from './auto-accept.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
@@ -183,6 +184,7 @@ import { TelemetryService } from './telemetry.service';
         P13AutoAcceptMigration,
         P14ClosureCalendarMigration,
         P15SupportTicketAfterSalesMigration,
+        P16MerchantUrgeAckMigration,
         AutoAcceptJob,
         SoldOutAutoRestoreJob,
         AddWithdrawPayoutMigration,
@@ -363,6 +365,10 @@ import { TelemetryService } from './telemetry.service';
                     handoverCode: String
                     """顾客手机号（脱敏，号码保护同口径）；工作台检索/联系用"""
                     customerPhone: String
+                    """顾客催单待处理（§78）：顾客催过且商家未「已知晓」"""
+                    urged: Boolean!
+                    """顾客最近一次催单时间（null=从未催单）"""
+                    urgedAt: DateTime
                     lines: [MerchantBoardLine!]!
                 }
 
@@ -497,6 +503,8 @@ import { TelemetryService } from './telemetry.service';
                     closureNote: String
                     """未出餐订单数（§71）：待接单 + 备餐中"""
                     unfinishedOrders: Int!
+                    """待处理顾客催单数（§78）"""
+                    urgedCount: Int!
                 }
 
                 """KDS 出餐屏单行（含加料快照）"""
@@ -520,6 +528,8 @@ import { TelemetryService } from './telemetry.service';
                     note: String
                     printedAt: DateTime
                     total: Int!
+                    """顾客催单待处理（§78）：出餐屏置顶并标红"""
+                    urged: Boolean!
                     lines: [CampusKitchenLine!]!
                 }
 
@@ -528,6 +538,8 @@ import { TelemetryService } from './telemetry.service';
                     pendingCount: Int!
                     cookingCount: Int!
                     lateCount: Int!
+                    """待处理顾客催单数（§78）"""
+                    urgedCount: Int!
                     warnMinutes: Int!
                     lateMinutes: Int!
                 }
@@ -1696,6 +1708,8 @@ import { TelemetryService } from './telemetry.service';
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
+                    """顾客催单「已知晓」（§78）：商家确认后解除工作台/出餐屏催单提醒"""
+                    campusMerchantAckUrge(orderId: ID!): CampusMerchantOpResult!
                     """云打印一张小票（P1-4）：后端签名直连服务商，成功回写打印时间"""
                     campusMerchantCloudPrint(orderId: ID!): CampusPrintResult!
                     """云打印连通性测试（不占用订单）"""

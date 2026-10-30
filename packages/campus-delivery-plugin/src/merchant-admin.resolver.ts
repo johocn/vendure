@@ -169,6 +169,13 @@ export class MerchantAdminResolver {
         return this.merchant.markPrinted(ctx, orderId);
     }
 
+    /** 顾客催单「已知晓」（§78）：商家确认后工作台/出餐屏解除催单提醒 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAckUrge(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.ackUrge(ctx, orderId);
+    }
+
     /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)

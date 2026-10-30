@@ -55,6 +55,7 @@ const p11_soldout_auto_restore_1 = require("./migrations/p11-soldout-auto-restor
 const p13_auto_accept_1 = require("./migrations/p13-auto-accept");
 const p14_closure_calendar_1 = require("./migrations/p14-closure-calendar");
 const p15_support_ticket_after_sales_1 = require("./migrations/p15-support-ticket-after-sales");
+const p16_merchant_urge_ack_1 = require("./migrations/p16-merchant-urge-ack");
 const auto_accept_job_1 = require("./auto-accept.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
@@ -327,6 +328,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p13_auto_accept_1.P13AutoAcceptMigration,
             p14_closure_calendar_1.P14ClosureCalendarMigration,
             p15_support_ticket_after_sales_1.P15SupportTicketAfterSalesMigration,
+            p16_merchant_urge_ack_1.P16MerchantUrgeAckMigration,
             auto_accept_job_1.AutoAcceptJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
@@ -507,6 +509,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     handoverCode: String
                     """顾客手机号（脱敏，号码保护同口径）；工作台检索/联系用"""
                     customerPhone: String
+                    """顾客催单待处理（§78）：顾客催过且商家未「已知晓」"""
+                    urged: Boolean!
+                    """顾客最近一次催单时间（null=从未催单）"""
+                    urgedAt: DateTime
                     lines: [MerchantBoardLine!]!
                 }
 
@@ -641,6 +647,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     closureNote: String
                     """未出餐订单数（§71）：待接单 + 备餐中"""
                     unfinishedOrders: Int!
+                    """待处理顾客催单数（§78）"""
+                    urgedCount: Int!
                 }
 
                 """KDS 出餐屏单行（含加料快照）"""
@@ -664,6 +672,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     note: String
                     printedAt: DateTime
                     total: Int!
+                    """顾客催单待处理（§78）：出餐屏置顶并标红"""
+                    urged: Boolean!
                     lines: [CampusKitchenLine!]!
                 }
 
@@ -672,6 +682,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     pendingCount: Int!
                     cookingCount: Int!
                     lateCount: Int!
+                    """待处理顾客催单数（§78）"""
+                    urgedCount: Int!
                     warnMinutes: Int!
                     lateMinutes: Int!
                 }
@@ -1840,6 +1852,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
+                    """顾客催单「已知晓」（§78）：商家确认后解除工作台/出餐屏催单提醒"""
+                    campusMerchantAckUrge(orderId: ID!): CampusMerchantOpResult!
                     """云打印一张小票（P1-4）：后端签名直连服务商，成功回写打印时间"""
                     campusMerchantCloudPrint(orderId: ID!): CampusPrintResult!
                     """云打印连通性测试（不占用订单）"""

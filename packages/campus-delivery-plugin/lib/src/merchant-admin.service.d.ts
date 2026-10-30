@@ -32,6 +32,10 @@ export interface MerchantBoardOrder {
     handoverCode: string | null;
     /** 顾客手机号（脱敏，与号码保护同口径）：工作台检索用，不返回明文 */
     customerPhone: string | null;
+    /** 顾客催单待处理（§78）：顾客催过且商家尚未「已知晓」 */
+    urged: boolean;
+    /** 顾客最近一次催单时间（null=从未催单） */
+    urgedAt: Date | null;
     lines: MerchantBoardLine[];
 }
 /** 今日已完成订单明细（§75）：商家对账用，含退款与实收 */
@@ -153,6 +157,8 @@ export interface MerchantBoard {
     closureNote: string | null;
     /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
     unfinishedOrders: number;
+    /** 待处理顾客催单数（§78）：顾客催过且商家未「已知晓」的活跃单数 */
+    urgedCount: number;
 }
 /** 商家自助经营：门店资料（营业时间存 Channel.customFields，与 C 端展示/下单闸门同源） */
 export interface MerchantStoreProfile {
@@ -193,6 +199,8 @@ export interface KitchenTicket {
     note: string | null;
     printedAt: Date | null;
     total: number;
+    /** 顾客催单待处理（§78）：出餐屏置顶并标「顾客催单」 */
+    urged: boolean;
     lines: KitchenTicketLine[];
 }
 export interface KitchenQueue {
@@ -200,6 +208,8 @@ export interface KitchenQueue {
     pendingCount: number;
     cookingCount: number;
     lateCount: number;
+    /** 待处理顾客催单数（§78） */
+    urgedCount: number;
     warnMinutes: number;
     lateMinutes: number;
 }
@@ -382,6 +392,12 @@ export declare class MerchantAdminService {
     markPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 商家确认「已知晓」顾客催单（§78）：只落小表时间戳，不改顾客侧 urged/urgedAt（骑手端仍可见催单标记） */
+    ackUrge(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+    }>;
+    /** 批量取催单「已知晓」时间（§78）；小表缺失时按未处理兜底，不阻断工作台 */
+    private urgeAckMap;
     /** 云打印一张小票（后端签名直连服务商）：成功即回写 printedAt */
     cloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */
@@ -451,3 +467,5 @@ export declare class MerchantAdminService {
     /** 组装商家视图 DTO：楼栋名批量查、骑手名批量查，不外泄 admin 内部字段 */
     private toDto;
 }
+/** 催单是否仍未处理（§78）：顾客置了 urged 且「已知晓」时间早于最近一次催单（顾客再催会重新变为待处理） */
+export declare function isUrgePending(urged: unknown, urgedAt: Date | null, ackedAt: Date | null): boolean;
