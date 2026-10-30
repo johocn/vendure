@@ -86,6 +86,39 @@ export interface MerchantRefundResult {
     /** 处理后剩余可退（分） */
     refundable: number;
 }
+/** 退款记录行（§77 台账）：一笔退款单一行，金额单位分 */
+export interface MerchantRefundRow {
+    id: string;
+    orderId: string;
+    code: string;
+    /** 退款金额（分） */
+    amount: number;
+    /** 退款单状态（Pending/Settled/Failed…） */
+    state: string;
+    /** 退款原因（已去掉「merchant refund (单号):」留痕前缀） */
+    reason: string;
+    /** merchant=商家发起 / platform=平台处置（拒单、异常处置、无人接单等） */
+    source: string;
+    createdAt: Date;
+    building: string;
+    zone: string;
+}
+/** 退款记录台账 + 区间汇总（§77）：汇总不受分页影响 */
+export interface MerchantRefundList {
+    items: MerchantRefundRow[];
+    /** 区间退款笔数（排除 Failed） */
+    count: number;
+    /** 区间退款总额（分，排除 Failed） */
+    amount: number;
+    /** 失败笔数 / 金额（留痕排障用，不计入退款总额） */
+    failedCount: number;
+    failedAmount: number;
+    /** 区间退款单总数（含失败，用于分页） */
+    total: number;
+    /** 实际查询区间（回显给前端） */
+    start: Date;
+    end: Date;
+}
 export interface MerchantBoard {
     paused: boolean;
     /** 营业时段内且未临时休息（与 C 端 openNow 同口径，自动开关门生效依据） */
@@ -242,6 +275,17 @@ export declare class MerchantAdminService {
         take?: number | null;
         skip?: number | null;
     }): Promise<MerchantCompletedOrders>;
+    /**
+     * 退款记录台账（§77）：按渠道聚合退款单（refund → payment → order），
+     * 与 §76 口径一致——Failed 退款单单独计数留痕但不计入退款总额；
+     * reason 去掉商家退款留痕前缀（merchant refund (单号):）后再返回。
+     */
+    refunds(ctx: RequestContext, input: {
+        from?: string | null;
+        to?: string | null;
+        take?: number | null;
+        skip?: number | null;
+    }): Promise<MerchantRefundList>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;

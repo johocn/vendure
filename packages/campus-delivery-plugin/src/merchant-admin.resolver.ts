@@ -48,6 +48,19 @@ export class MerchantAdminResolver {
         return this.merchant.completedOrders(ctx, { from, to, take, skip });
     }
 
+    /** 退款记录台账（§77）：区间内本店退款单，含失败单留痕与汇总 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantRefunds(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
+        @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
+    ) {
+        return this.merchant.refunds(ctx, { from, to, take, skip });
+    }
+
     /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

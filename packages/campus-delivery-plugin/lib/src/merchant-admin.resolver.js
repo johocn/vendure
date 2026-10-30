@@ -46,6 +46,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantCompletedOrders(ctx, from, to, take, skip) {
         return this.merchant.completedOrders(ctx, { from, to, take, skip });
     }
+    /** 退款记录台账（§77）：区间内本店退款单，含失败单留痕与汇总 */
+    async campusMerchantRefunds(ctx, from, to, take, skip) {
+        return this.merchant.refunds(ctx, { from, to, take, skip });
+    }
     /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
     async campusMerchantUpdateStore(ctx, businessHours, storeNotice, storePhone) {
         return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
@@ -206,6 +210,18 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantCompletedOrders", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantRefunds", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

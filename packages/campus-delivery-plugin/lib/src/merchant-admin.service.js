@@ -429,6 +429,94 @@ let MerchantAdminService = class MerchantAdminService {
             end,
         };
     }
+    /**
+     * 退款记录台账（§77）：按渠道聚合退款单（refund → payment → order），
+     * 与 §76 口径一致——Failed 退款单单独计数留痕但不计入退款总额；
+     * reason 去掉商家退款留痕前缀（merchant refund (单号):）后再返回。
+     */
+    async refunds(ctx, input) {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        const now = Date.now();
+        const start = new Date(input.from ? String(input.from) : (0, campus_time_1.startOfCampusDay)(now));
+        const end = new Date(input.to ? String(input.to) : now);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            throw new core_1.UserInputError('时间区间格式不合法');
+        }
+        if (start.getTime() >= end.getTime())
+            throw new core_1.UserInputError('结束时间必须晚于开始时间');
+        if (end.getTime() - start.getTime() > 92 * 24 * 3600000) {
+            throw new core_1.UserInputError('查询区间不能超过 92 天');
+        }
+        const take = Math.min(Math.max(Number((_a = input.take) !== null && _a !== void 0 ? _a : 100) || 100, 1), 300);
+        const skip = Math.max(Number((_b = input.skip) !== null && _b !== void 0 ? _b : 0) || 0, 0);
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        // 店铺隔离：退款单经支付单回落到订单，再用 order_channels 关联表判定归属（EXISTS 避免重复行）
+        const scope = `r."createdAt" >= $1 AND r."createdAt" < $2
+              AND EXISTS (SELECT 1 FROM order_channels oc WHERE oc."orderId" = o.id AND oc."channelId" = $3)`;
+        const rows = await raw.query(`SELECT r.id AS "id", r.total AS "amount", r.state AS "state", r.reason AS "reason",
+                    r."createdAt" AS "createdAt", p."orderId" AS "orderId", o.code AS "code"
+               FROM refund r
+               JOIN payment p ON p.id = r."paymentId"
+               JOIN "order" o ON o.id = p."orderId"
+              WHERE ${scope}
+              ORDER BY r."createdAt" DESC
+              LIMIT $4 OFFSET $5`, [start, end, chId, take, skip]);
+        // 汇总：区分成功/失败笔数与金额（全区间，不受分页影响）
+        const agg = await raw.query(`SELECT COUNT(*) FILTER (WHERE r.state <> 'Failed') AS "count",
+                    COALESCE(SUM(r.total) FILTER (WHERE r.state <> 'Failed'), 0) AS "amount",
+                    COUNT(*) FILTER (WHERE r.state = 'Failed') AS "failedCount",
+                    COALESCE(SUM(r.total) FILTER (WHERE r.state = 'Failed'), 0) AS "failedAmount",
+                    COUNT(*) AS "total"
+               FROM refund r
+               JOIN payment p ON p.id = r."paymentId"
+               JOIN "order" o ON o.id = p."orderId"
+              WHERE ${scope}`, [start, end, chId]);
+        const sum = (_c = agg === null || agg === void 0 ? void 0 : agg[0]) !== null && _c !== void 0 ? _c : {};
+        // 楼栋/区域：自定义字段只在订单实体上，按订单 id 回查（避免猜原生列名）
+        const orderIds = [...new Set(rows.map(r => String(r.orderId)))];
+        const orders = orderIds.length
+            ? await this.connection.getRepository(ctx, core_1.Order).findByIds(orderIds)
+            : [];
+        const orderMap = new Map(orders.map(o => [String(o.id), o.customFields]));
+        const buildingIds = new Set();
+        for (const cf of orderMap.values())
+            if (cf === null || cf === void 0 ? void 0 : cf.buildingId)
+                buildingIds.add(String(cf.buildingId));
+        const buildings = buildingIds.size
+            ? await this.connection.getRepository(ctx, campus_building_entity_1.CampusBuilding).findByIds([...buildingIds])
+            : [];
+        const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
+        // 商家退款原因写入了「merchant refund (单号): 原因」留痕前缀，展示时剥掉
+        const MERCHANT_PREFIX = /^merchant refund \([^)]*\):\s*/;
+        const items = rows.map(r => {
+            var _a, _b, _c, _d, _e, _f;
+            const rawReason = String((_a = r.reason) !== null && _a !== void 0 ? _a : '');
+            const cf = orderMap.get(String(r.orderId));
+            return {
+                id: String(r.id),
+                orderId: String(r.orderId),
+                code: String((_b = r.code) !== null && _b !== void 0 ? _b : ''),
+                amount: Number((_c = r.amount) !== null && _c !== void 0 ? _c : 0),
+                state: String((_d = r.state) !== null && _d !== void 0 ? _d : ''),
+                reason: rawReason.replace(MERCHANT_PREFIX, ''),
+                source: MERCHANT_PREFIX.test(rawReason) ? 'merchant' : 'platform',
+                createdAt: new Date(r.createdAt),
+                building: (cf === null || cf === void 0 ? void 0 : cf.buildingId) ? (_e = buildingNames.get(String(cf.buildingId))) !== null && _e !== void 0 ? _e : '' : '',
+                zone: (_f = cf === null || cf === void 0 ? void 0 : cf.campusZone) !== null && _f !== void 0 ? _f : '',
+            };
+        });
+        return {
+            items,
+            count: Number((_d = sum.count) !== null && _d !== void 0 ? _d : 0),
+            amount: Number((_e = sum.amount) !== null && _e !== void 0 ? _e : 0),
+            failedCount: Number((_f = sum.failedCount) !== null && _f !== void 0 ? _f : 0),
+            failedAmount: Number((_g = sum.failedAmount) !== null && _g !== void 0 ? _g : 0),
+            total: Number((_h = sum.total) !== null && _h !== void 0 ? _h : 0),
+            start,
+            end,
+        };
+    }
     /** 商家接单确认：pending_merchant → accepted */
     async acceptOrder(ctx, orderId) {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');

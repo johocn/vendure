@@ -418,6 +418,41 @@ import { TelemetryService } from './telemetry.service';
                     refundable: Int!
                 }
 
+                """退款记录行（§77 台账）：一笔退款单一行"""
+                type CampusMerchantRefundRow {
+                    id: ID!
+                    orderId: ID!
+                    """订单号"""
+                    code: String!
+                    """退款金额（分）"""
+                    amount: Int!
+                    """退款单状态：Pending/Settled/Failed 等"""
+                    state: String!
+                    """退款原因（已去掉「merchant refund (单号):」留痕前缀）"""
+                    reason: String!
+                    """merchant=商家发起 / platform=平台处置"""
+                    source: String!
+                    createdAt: DateTime!
+                    building: String!
+                    zone: String!
+                }
+
+                """退款记录台账 + 区间汇总（§77）"""
+                type CampusMerchantRefunds {
+                    items: [CampusMerchantRefundRow!]!
+                    """区间退款笔数（排除 Failed）"""
+                    count: Int!
+                    """区间退款总额（分，排除 Failed）"""
+                    amount: Int!
+                    """失败笔数 / 金额（留痕排障，不计入退款总额）"""
+                    failedCount: Int!
+                    failedAmount: Int!
+                    """区间退款单总数（含失败，用于分页）"""
+                    total: Int!
+                    start: DateTime!
+                    end: DateTime!
+                }
+
                 """营业时间自动切换（自动开门 / 自动打烊）：inMinutes=距切换分钟数，today=是否发生在今天"""
                 type CampusBusinessTransition {
                     """open=到点自动开门，close=到点自动打烊"""
@@ -1348,6 +1383,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantRevenue: CampusMerchantRevenue!
                     """今日/区间已完成订单明细（§75 对账）：from/to 为空=今日 0 点至当前"""
                     campusMerchantCompletedOrders(from: String, to: String, take: Int, skip: Int): CampusMerchantCompletedOrders!
+                    """退款记录台账（§77）：按渠道聚合退款单，Failed 单单独留痕不计数"""
+                    campusMerchantRefunds(from: String, to: String, take: Int, skip: Int): CampusMerchantRefunds!
                     """商家侧顾客联系方式（号码保护）：开启后仅返回脱敏/虚拟号"""
                     campusMerchantCustomerContact(orderId: ID!): CampusPrivacyContact!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!

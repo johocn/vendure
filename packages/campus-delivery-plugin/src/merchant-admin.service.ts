@@ -119,6 +119,41 @@ export interface MerchantRefundResult {
     refundable: number;
 }
 
+/** 退款记录行（§77 台账）：一笔退款单一行，金额单位分 */
+export interface MerchantRefundRow {
+    id: string;
+    orderId: string;
+    code: string;
+    /** 退款金额（分） */
+    amount: number;
+    /** 退款单状态（Pending/Settled/Failed…） */
+    state: string;
+    /** 退款原因（已去掉「merchant refund (单号):」留痕前缀） */
+    reason: string;
+    /** merchant=商家发起 / platform=平台处置（拒单、异常处置、无人接单等） */
+    source: string;
+    createdAt: Date;
+    building: string;
+    zone: string;
+}
+
+/** 退款记录台账 + 区间汇总（§77）：汇总不受分页影响 */
+export interface MerchantRefundList {
+    items: MerchantRefundRow[];
+    /** 区间退款笔数（排除 Failed） */
+    count: number;
+    /** 区间退款总额（分，排除 Failed） */
+    amount: number;
+    /** 失败笔数 / 金额（留痕排障用，不计入退款总额） */
+    failedCount: number;
+    failedAmount: number;
+    /** 区间退款单总数（含失败，用于分页） */
+    total: number;
+    /** 实际查询区间（回显给前端） */
+    start: Date;
+    end: Date;
+}
+
 export interface MerchantBoard {
     paused: boolean;
     /** 营业时段内且未临时休息（与 C 端 openNow 同口径，自动开关门生效依据） */
@@ -650,6 +685,104 @@ export class MerchantAdminService {
             refundAmount,
             netAmount: totalAmount - refundAmount,
             avgTicket: total > 0 ? Math.round((totalAmount - refundAmount) / total) : 0,
+            start,
+            end,
+        };
+    }
+
+    /**
+     * 退款记录台账（§77）：按渠道聚合退款单（refund → payment → order），
+     * 与 §76 口径一致——Failed 退款单单独计数留痕但不计入退款总额；
+     * reason 去掉商家退款留痕前缀（merchant refund (单号):）后再返回。
+     */
+    async refunds(
+        ctx: RequestContext,
+        input: { from?: string | null; to?: string | null; take?: number | null; skip?: number | null },
+    ): Promise<MerchantRefundList> {
+        const now = Date.now();
+        const start = new Date(input.from ? String(input.from) : startOfCampusDay(now));
+        const end = new Date(input.to ? String(input.to) : now);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            throw new UserInputError('时间区间格式不合法');
+        }
+        if (start.getTime() >= end.getTime()) throw new UserInputError('结束时间必须晚于开始时间');
+        if (end.getTime() - start.getTime() > 92 * 24 * 3600_000) {
+            throw new UserInputError('查询区间不能超过 92 天');
+        }
+        const take = Math.min(Math.max(Number(input.take ?? 100) || 100, 1), 300);
+        const skip = Math.max(Number(input.skip ?? 0) || 0, 0);
+
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        // 店铺隔离：退款单经支付单回落到订单，再用 order_channels 关联表判定归属（EXISTS 避免重复行）
+        const scope = `r."createdAt" >= $1 AND r."createdAt" < $2
+              AND EXISTS (SELECT 1 FROM order_channels oc WHERE oc."orderId" = o.id AND oc."channelId" = $3)`;
+        const rows: any[] = await raw.query(
+            `SELECT r.id AS "id", r.total AS "amount", r.state AS "state", r.reason AS "reason",
+                    r."createdAt" AS "createdAt", p."orderId" AS "orderId", o.code AS "code"
+               FROM refund r
+               JOIN payment p ON p.id = r."paymentId"
+               JOIN "order" o ON o.id = p."orderId"
+              WHERE ${scope}
+              ORDER BY r."createdAt" DESC
+              LIMIT $4 OFFSET $5`,
+            [start, end, chId, take, skip],
+        );
+
+        // 汇总：区分成功/失败笔数与金额（全区间，不受分页影响）
+        const agg: any[] = await raw.query(
+            `SELECT COUNT(*) FILTER (WHERE r.state <> 'Failed') AS "count",
+                    COALESCE(SUM(r.total) FILTER (WHERE r.state <> 'Failed'), 0) AS "amount",
+                    COUNT(*) FILTER (WHERE r.state = 'Failed') AS "failedCount",
+                    COALESCE(SUM(r.total) FILTER (WHERE r.state = 'Failed'), 0) AS "failedAmount",
+                    COUNT(*) AS "total"
+               FROM refund r
+               JOIN payment p ON p.id = r."paymentId"
+               JOIN "order" o ON o.id = p."orderId"
+              WHERE ${scope}`,
+            [start, end, chId],
+        );
+        const sum = agg?.[0] ?? {};
+
+        // 楼栋/区域：自定义字段只在订单实体上，按订单 id 回查（避免猜原生列名）
+        const orderIds = [...new Set(rows.map(r => String(r.orderId)))];
+        const orders = orderIds.length
+            ? await this.connection.getRepository(ctx, Order).findByIds(orderIds as any)
+            : [];
+        const orderMap = new Map(orders.map(o => [String(o.id), o.customFields as any]));
+        const buildingIds = new Set<string>();
+        for (const cf of orderMap.values()) if (cf?.buildingId) buildingIds.add(String(cf.buildingId));
+        const buildings = buildingIds.size
+            ? await this.connection.getRepository(ctx, CampusBuilding).findByIds([...buildingIds] as any)
+            : [];
+        const buildingNames = new Map(buildings.map(b => [String(b.id), b.name]));
+
+        // 商家退款原因写入了「merchant refund (单号): 原因」留痕前缀，展示时剥掉
+        const MERCHANT_PREFIX = /^merchant refund \([^)]*\):\s*/;
+        const items: MerchantRefundRow[] = rows.map(r => {
+            const rawReason = String(r.reason ?? '');
+            const cf = orderMap.get(String(r.orderId));
+            return {
+                id: String(r.id),
+                orderId: String(r.orderId),
+                code: String(r.code ?? ''),
+                amount: Number(r.amount ?? 0),
+                state: String(r.state ?? ''),
+                reason: rawReason.replace(MERCHANT_PREFIX, ''),
+                source: MERCHANT_PREFIX.test(rawReason) ? 'merchant' : 'platform',
+                createdAt: new Date(r.createdAt),
+                building: cf?.buildingId ? buildingNames.get(String(cf.buildingId)) ?? '' : '',
+                zone: cf?.campusZone ?? '',
+            };
+        });
+
+        return {
+            items,
+            count: Number(sum.count ?? 0),
+            amount: Number(sum.amount ?? 0),
+            failedCount: Number(sum.failedCount ?? 0),
+            failedAmount: Number(sum.failedAmount ?? 0),
+            total: Number(sum.total ?? 0),
             start,
             end,
         };

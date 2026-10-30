@@ -9,6 +9,8 @@ export declare class MerchantAdminResolver {
     campusMerchantStoreProfile(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 今日/区间已完成订单明细（§75 对账）：送达口径与工作台「今日完成」一致 */
     campusMerchantCompletedOrders(ctx: RequestContext, from?: string | null, to?: string | null, take?: number | null, skip?: number | null): Promise<import("./merchant-admin.service").MerchantCompletedOrders>;
+    /** 退款记录台账（§77）：区间内本店退款单，含失败单留痕与汇总 */
+    campusMerchantRefunds(ctx: RequestContext, from?: string | null, to?: string | null, take?: number | null, skip?: number | null): Promise<import("./merchant-admin.service").MerchantRefundList>;
     /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
     campusMerchantUpdateStore(ctx: RequestContext, businessHours?: string | null, storeNotice?: string | null, storePhone?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
