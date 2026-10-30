@@ -19,6 +19,8 @@ function makeEnv(opts: { order?: any; rider?: any; building?: any } = {}) {
         { adjust: vi.fn() } as any,
         { backToHall: vi.fn().mockResolvedValue(undefined) } as any,
         { user: vi.fn() } as any,
+        {} as any, // privacy
+        {} as any, // feishu
     );
     return { svc, repoByEntity, rawQuery };
 }
@@ -196,6 +198,8 @@ describe('RiderTaskService.transfer', () => {
             { adjust: vi.fn() } as any,
             hall as any,
             { user: vi.fn() } as any,
+            {} as any, // privacy
+            {} as any, // feishu
         );
         return { svc, orderRepo, hall };
     }

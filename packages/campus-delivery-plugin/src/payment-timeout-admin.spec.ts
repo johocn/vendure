@@ -27,6 +27,7 @@ function makeJob(overrides: Record<string, any> = {}) {
         { createOutstandingReleasesForOrderLines: vi.fn(async () => []) } as any, // stockMovementService
         { user: vi.fn(async () => undefined) } as any, // notify
         { getConfig: vi.fn(async () => ({ h5BaseUrl: 'https://h5.test' })) } as any, // campusConfig
+        { pushEvent: vi.fn() } as any, // feishu
     ) as any;
     (job as any).taskRepo = taskRepo;
     return { job, taskRepo, tasks, notify: (job as any).notify, orderService: (job as any).orderService, queryRunner };

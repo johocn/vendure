@@ -30,6 +30,8 @@ export declare class RiderLedgerService {
     }>;
     /** 订单维度轨迹：传订单 ID 或订单号（#A1024）均可，单趟配送完整点位（升序） */
     orderTrack(ctx: RequestContext, orderId?: ID, orderCode?: string): Promise<{
+        orderId: string;
+    } & {
         riderCustomerId: string;
         orderCode: any;
         points: {

@@ -169,7 +169,7 @@ export class RiderLedgerService {
         return { ...track, riderName: (await this.riderNames(ctx, [riderId])).get(riderId) ?? '骑手' };
     }
 
-    private async toTrack(ctx: RequestContext, rows: any[], extra: Record<string, any>) {
+    private async toTrack<T extends Record<string, any>>(ctx: RequestContext, rows: any[], extra: T) {
         const points = rows.map(r => ({
             id: String(r.id),
             orderId: String(r.orderId),

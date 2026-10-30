@@ -841,7 +841,7 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         await svc.scan({ channelId: 1 } as any);
         const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'rider_pick_alert:RIDER_PICK_01');
         expect(call).toBeDefined();
-        expect(call[1]).toBe('⏱ 骑手取货超时');
+        expect(call![1]).toBe('⏱ 骑手取货超时');
     });
 
     it('pending_merchant R2 超 4min → ⚠️ 商家即将超时提前告警', async () => {
@@ -855,7 +855,7 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         await svc.scan({ channelId: 1 } as any);
         const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'accept_alert:ACCEPT_ALERT_01');
         expect(call).toBeDefined();
-        expect(call[1]).toBe('⚠️ 商家即将超时');
+        expect(call![1]).toBe('⚠️ 商家即将超时');
     });
 
     it('open+exception 超 7.5min → 🚨 异常待处置提前告警', async () => {
@@ -869,8 +869,8 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         await svc.scan({ channelId: 1 } as any);
         const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'exception_alert:EXCEPTION_ALERT_01');
         expect(call).toBeDefined();
-        expect(call[1]).toBe('🚨 异常待处置');
-        expect(call[2]).toContain('骑手联系不上');
+        expect(call![1]).toBe('🚨 异常待处置');
+        expect(call![2]).toContain('骑手联系不上');
     });
 
     it('third_party 超 17.5min → 📦 外部快递在途超时提前告警', async () => {
@@ -884,8 +884,8 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         await svc.scan({ channelId: 1 } as any);
         const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'third_party_alert:TP_ALERT_01');
         expect(call).toBeDefined();
-        expect(call[1]).toBe('📦 外部快递在途超时');
-        expect(call[2]).toContain('not_received');
+        expect(call![1]).toBe('📦 外部快递在途超时');
+        expect(call![2]).toContain('not_received');
     });
 
     // P3：拍平截断时年轻订单会被 oldest-first 长期饿死，必须让运营在飞书看到积压
@@ -901,8 +901,8 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         await svc.scan({ channelId: 1 } as any);
         const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'dispatch_backlog:1');
         expect(call).toBeDefined();
-        expect(call[1]).toBe('调度扫描积压');
-        expect(call[2]).toContain('200');
+        expect(call![1]).toBe('调度扫描积压');
+        expect(call![2]).toContain('200');
     });
 
     // P2 积压策略：open 占满窗口时，其它状态必须仍有独立配额，否则路线兜底/异常 SLA 永远不执行
@@ -929,7 +929,7 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
             expect.objectContaining({ hallStatus: 'owned_dispatched' }),
         );
         const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'dispatch_backlog:1');
-        expect(call[2]).toContain('open(200)');
+        expect(call![2]).toContain('open(200)');
     });
 
     it('预约单独立分桶：活单积压时预约单仍能按期放量', async () => {

@@ -22,6 +22,8 @@ export declare class RiderLedgerAdminResolver {
         sumTip: number;
     }>;
     campusOrderRiderTrack(ctx: RequestContext, orderId?: ID, orderCode?: string): Promise<{
+        orderId: string;
+    } & {
         riderCustomerId: string;
         orderCode: any;
         points: {
