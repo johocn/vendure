@@ -451,9 +451,10 @@ let MerchantAdminService = class MerchantAdminService {
         const skip = Math.max(Number((_b = input.skip) !== null && _b !== void 0 ? _b : 0) || 0, 0);
         const raw = this.connection.rawConnection;
         const chId = Number(ctx.channelId);
-        // 店铺隔离：退款单经支付单回落到订单，再用 order_channels 关联表判定归属（EXISTS 避免重复行）
+        // 店铺隔离：退款单经支付单回落到订单，再用订单-渠道关联表判定归属（EXISTS 避免重复行）
+        // 关联表名由 TypeORM 惯用命名生成：order_channels_channel
         const scope = `r."createdAt" >= $1 AND r."createdAt" < $2
-              AND EXISTS (SELECT 1 FROM order_channels oc WHERE oc."orderId" = o.id AND oc."channelId" = $3)`;
+              AND EXISTS (SELECT 1 FROM order_channels_channel oc WHERE oc."orderId" = o.id AND oc."channelId" = $3)`;
         const rows = await raw.query(`SELECT r.id AS "id", r.total AS "amount", r.state AS "state", r.reason AS "reason",
                     r."createdAt" AS "createdAt", p."orderId" AS "orderId", o.code AS "code"
                FROM refund r
