@@ -643,6 +643,10 @@ import { TelemetryService } from './telemetry.service';
                     overdue: Boolean!
                     """最新一条留言来自顾客且商家尚未回复"""
                     unread: Boolean!
+                    """换货运单号（§83）"""
+                    exchangeTrackingNo: String
+                    """换货承运商（§83）"""
+                    exchangeCarrier: String
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -736,6 +740,55 @@ import { TelemetryService } from './telemetry.service';
                     todayRefundAmount: Int!
                     """待商家回复的售后会话数"""
                     pendingReply: Int!
+                }
+
+                """批量售后处理逐单结果（§83）"""
+                type CampusMerchantAfterSalesBatchResult {
+                    id: ID!
+                    success: Boolean!
+                    """成功后的售后状态，失败为空串"""
+                    state: String!
+                    """失败原因（成功为空串）"""
+                    message: String!
+                }
+
+                """售后报表类型分桶（§83）"""
+                type CampusMerchantAfterSalesReportType {
+                    type: String!
+                    count: Int!
+                }
+
+                """售后报表状态分桶（§83）"""
+                type CampusMerchantAfterSalesReportState {
+                    state: String!
+                    count: Int!
+                }
+
+                """售后报表逐日趋势（§83）：date=校园日 YYYY-MM-DD"""
+                type CampusMerchantAfterSalesReportDay {
+                    date: String!
+                    """当日新建售后单数"""
+                    count: Int!
+                    """当日退款成功单数"""
+                    refunded: Int!
+                    """当日退款金额（分）"""
+                    refundAmount: Int!
+                }
+
+                """售后报表（§83）：区间内量/退款/超时与逐日趋势"""
+                type CampusMerchantAfterSalesReport {
+                    from: String!
+                    to: String!
+                    total: Int!
+                    byType: [CampusMerchantAfterSalesReportType!]!
+                    byState: [CampusMerchantAfterSalesReportState!]!
+                    """区间内退款成功单数（按退款时间归集）"""
+                    refunded: Int!
+                    """区间内退款金额（分）"""
+                    refundAmount: Int!
+                    """区间内创建且当前仍超时的待处理单数"""
+                    overdue: Int!
+                    byDay: [CampusMerchantAfterSalesReportDay!]!
                 }
 
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
@@ -1627,6 +1680,10 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
                     campusMerchantAfterSalesStats: CampusMerchantAfterSalesStats!
+                    """售后报表（§83）：区间内量/退款/超时与逐日趋势"""
+                    campusMerchantAfterSalesReport(from: String!, to: String!): CampusMerchantAfterSalesReport!
+                    """售后寄回地址（§83）：本店渠道配置"""
+                    campusMerchantAfterSalesReturnAddress: String!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -1916,6 +1973,14 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantAfterSalesConfirmReturn(id: ID!, receivedQuantity: Int, note: String): CampusMerchantAfterSalesItem!
                     """售后退款失败重试（§82）：仅 RefundFailed，30 秒内同单一次"""
                     campusMerchantAfterSalesRetryRefund(id: ID!): CampusMerchantAfterSalesItem!
+                    """换货发货（§83）：Received → ExchangeShipped，仅换货单"""
+                    campusMerchantAfterSalesExchangeShip(id: ID!, trackingNo: String!, carrier: String): CampusMerchantAfterSalesItem!
+                    """批量同意（§83）：单次最多 50 条，逐单返回结果"""
+                    campusMerchantAfterSalesBatchApprove(ids: [ID!]!): [CampusMerchantAfterSalesBatchResult!]!
+                    """批量驳回（§83）：整批共用一个原因，单次最多 50 条"""
+                    campusMerchantAfterSalesBatchReject(ids: [ID!]!, reason: String!): [CampusMerchantAfterSalesBatchResult!]!
+                    """保存售后寄回地址（§83）"""
+                    campusMerchantUpdateAfterSalesReturnAddress(address: String!): Boolean!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

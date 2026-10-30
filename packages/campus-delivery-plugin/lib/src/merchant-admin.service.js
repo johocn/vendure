@@ -1333,6 +1333,205 @@ let MerchantAdminService = class MerchantAdminService {
         }
         return this.afterSalesOne(ctx, id);
     }
+    /**
+     * 换货发货（§83）：Received → ExchangeShipped，仅 exchange 类型可走。
+     * 换货完成由顾客在本端确认收货（插件 exchangeReceive 校验归属），商家不代确认。
+     */
+    async afterSalesExchangeShip(ctx, id, trackingNo, carrier) {
+        var _a;
+        await this.assertChannelAfterSales(ctx, id, ['Received']);
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        const no = String(trackingNo !== null && trackingNo !== void 0 ? trackingNo : '').trim();
+        const cr = String(carrier !== null && carrier !== void 0 ? carrier : '').trim();
+        if (!no)
+            throw new core_2.UserInputError('请填写换货运单号');
+        if (no.length > 64 || cr.length > 64)
+            throw new core_2.UserInputError('运单号或承运商过长（最多 64 字）');
+        try {
+            await svc.exchangeShip(ctx, id, no, cr);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`换货发货失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 批量同意（§83）：仅处理本渠道售后单，单条失败不阻断整批 */
+    async afterSalesBatchApprove(ctx, ids) {
+        return this.afterSalesBatch(ctx, this.normalizeBatchIds(ids), 'approve');
+    }
+    /** 批量驳回（§83）：整批共用一个驳回原因 */
+    async afterSalesBatchReject(ctx, ids, reason) {
+        const why = String(reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!why)
+            throw new core_2.UserInputError('请填写驳回原因');
+        if (why.length > 200)
+            throw new core_2.UserInputError('驳回原因最多 200 字');
+        return this.afterSalesBatch(ctx, this.normalizeBatchIds(ids), 'reject', why);
+    }
+    /** 读本店售后寄回地址（§83）：供货主/顾客寄回页展示 */
+    async afterSalesReturnAddress(ctx) {
+        const svc = this.getAfterSales();
+        if (!svc)
+            return '';
+        return svc.getReturnAddress(ctx);
+    }
+    /** 写本店售后寄回地址（§83）：长度上限与插件字段一致 */
+    async updateAfterSalesReturnAddress(ctx, address) {
+        var _a;
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能配置退货地址');
+        const addr = String(address !== null && address !== void 0 ? address : '').trim();
+        if (addr.length > 300)
+            throw new core_2.UserInputError('退货地址最多 300 字');
+        try {
+            return await svc.updateReturnAddress(ctx, addr);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`退货地址保存失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+    }
+    /**
+     * 售后报表（§83）：按校园日（UTC+8）统计区间内创建量、退款单数与金额、当前超时数、逐日趋势。
+     * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。
+     */
+    async afterSalesReport(ctx, from, to) {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end)
+            throw new core_2.UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime())
+            throw new core_2.UserInputError('开始日期不能晚于结束日期');
+        if (end.getTime() - start.getTime() > 366 * 86400000)
+            throw new core_2.UserInputError('查询区间最长一年');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        try {
+            const typeRows = await raw.query(`SELECT a.type AS type, COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                  GROUP BY a.type`, [chId, start, end]);
+            const stateRows = await raw.query(`SELECT a.state AS state, COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                  GROUP BY a.state`, [chId, start, end]);
+            const refundRows = await raw.query(`SELECT COUNT(*)::int AS n,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0)::int AS amount
+                   FROM after_sales_request a
+                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}`, [chId, start, end]);
+            const overdueRows = await raw.query(`SELECT COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a.state = 'Pending' AND a."createdAt" >= $2 AND a."createdAt" < $3
+                    AND a."createdAt" + make_interval(hours => $4) <= now() AND ${scope}`, [chId, start, end, timeoutHours]);
+            const dayCreated = await raw.query(`SELECT to_char(a."createdAt" AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS d,
+                        COUNT(*)::int AS n
+                   FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                  GROUP BY 1`, [chId, start, end]);
+            const dayRefunded = await raw.query(`SELECT to_char(a."refundedAt" AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS d,
+                        COUNT(*)::int AS n,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0)::int AS amount
+                   FROM after_sales_request a
+                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}
+                  GROUP BY 1`, [chId, start, end]);
+            const byDay = new Map();
+            for (const r of (Array.isArray(dayCreated) ? dayCreated : [])) {
+                byDay.set(String(r.d), { count: Number(r.n) || 0, refunded: 0, refundAmount: 0 });
+            }
+            for (const r of (Array.isArray(dayRefunded) ? dayRefunded : [])) {
+                const row = (_a = byDay.get(String(r.d))) !== null && _a !== void 0 ? _a : { count: 0, refunded: 0, refundAmount: 0 };
+                row.refunded = Number(r.n) || 0;
+                row.refundAmount = Number(r.amount) || 0;
+                byDay.set(String(r.d), row);
+            }
+            const byType = (Array.isArray(typeRows) ? typeRows : [])
+                .map(r => ({ type: String(r.type), count: Number(r.n) || 0 }));
+            const byState = (Array.isArray(stateRows) ? stateRows : [])
+                .map(r => ({ state: String(r.state), count: Number(r.n) || 0 }));
+            return {
+                from: String(from),
+                to: String(to),
+                total: byState.reduce((s, r) => s + r.count, 0),
+                byType,
+                byState,
+                refunded: Number((_c = (_b = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _b === void 0 ? void 0 : _b.n) !== null && _c !== void 0 ? _c : 0),
+                refundAmount: Number((_e = (_d = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _d === void 0 ? void 0 : _d.amount) !== null && _e !== void 0 ? _e : 0),
+                overdue: Number((_g = (_f = overdueRows === null || overdueRows === void 0 ? void 0 : overdueRows[0]) === null || _f === void 0 ? void 0 : _f.n) !== null && _g !== void 0 ? _g : 0),
+                byDay: Array.from(byDay.entries())
+                    .sort(([a], [b]) => (a < b ? -1 : 1))
+                    .map(([date, v]) => (Object.assign({ date }, v))),
+            };
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`售后报表查询失败：${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`);
+        }
+    }
+    /** 批量参数归一：去重、正整数、单批上限 50 */
+    normalizeBatchIds(ids) {
+        const arr = (Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0);
+        const uniq = Array.from(new Set(arr));
+        if (!uniq.length)
+            throw new core_2.UserInputError('请选择要处理的售后单');
+        if (uniq.length > 50)
+            throw new core_2.UserInputError('单次最多处理 50 条');
+        return uniq;
+    }
+    /** 批量执行：插件批量方法不做渠道校验，必须先按本渠道过滤，防跨店操作 */
+    async afterSalesBatch(ctx, ids, mode, reason) {
+        var _a, _b, _c;
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        const ownedRows = await this.connection.rawConnection.query('SELECT a.id FROM after_sales_request a WHERE a.id = ANY($1::int[]) AND EXISTS ('
+            + 'SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $2 WHERE o.id = a."orderId")', [ids, Number(ctx.channelId)]);
+        const owned = new Set((Array.isArray(ownedRows) ? ownedRows : []).map(r => Number(r.id)));
+        const results = ids
+            .filter(id => !owned.has(id))
+            .map(id => ({ id: String(id), success: false, state: '', message: '售后单不存在或不属于当前店铺' }));
+        if (owned.size) {
+            try {
+                const pluginResults = mode === 'approve'
+                    ? await svc.batchApprove(ctx, Array.from(owned))
+                    : await svc.batchReject(ctx, Array.from(owned), reason);
+                for (const r of pluginResults) {
+                    results.push({
+                        id: String(r.id),
+                        success: Boolean(r.success),
+                        state: String((_a = r.state) !== null && _a !== void 0 ? _a : ''),
+                        message: String((_b = r.message) !== null && _b !== void 0 ? _b : ''),
+                    });
+                }
+            }
+            catch (e) {
+                throw new core_2.UserInputError(`批量处理失败：${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`);
+            }
+        }
+        const order = new Map(ids.map((id, i) => [String(id), i]));
+        return results.sort((a, b) => { var _a, _b; return ((_a = order.get(a.id)) !== null && _a !== void 0 ? _a : 0) - ((_b = order.get(b.id)) !== null && _b !== void 0 ? _b : 0); });
+    }
+    /** 校园日（UTC+8）起止：起含、止不含（to 的次日 00:00） */
+    campusDayStart(v) {
+        const s = String(v !== null && v !== void 0 ? v : '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(s))
+            return null;
+        const d = new Date(`${s}T00:00:00+08:00`);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    campusDayEnd(v) {
+        const s = String(v !== null && v !== void 0 ? v : '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(s))
+            return null;
+        const d = new Date(`${s}T00:00:00+08:00`);
+        if (Number.isNaN(d.getTime()))
+            return null;
+        return new Date(d.getTime() + 86400000);
+    }
     /** 商家协商留言（§82）：仅待处理/顾客申诉单可回复，已退款、已驳回、已关闭一律只读 */
     async afterSalesReply(ctx, id, content, images) {
         var _a;
@@ -1603,7 +1802,7 @@ let MerchantAdminService = class MerchantAdminService {
         return out;
     }
     toAfterSalesRow(row, counts, timeoutHours, now, lastSender) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const customer = row.customer;
         const order = row.order;
         return {
@@ -1628,6 +1827,8 @@ let MerchantAdminService = class MerchantAdminService {
                 && new Date(row.createdAt).getTime() + timeoutHours * 3600000 <= now,
             // 未读=最后一条留言由顾客发出（商家回完即消失），无需额外已读表
             unread: lastSender.get(Number(row.id)) === 'customer',
+            exchangeTrackingNo: (_l = row.exchangeTrackingNo) !== null && _l !== void 0 ? _l : null,
+            exchangeCarrier: (_m = row.exchangeCarrier) !== null && _m !== void 0 ? _m : null,
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

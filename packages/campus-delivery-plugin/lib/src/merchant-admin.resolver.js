@@ -128,6 +128,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesStats(ctx) {
         return this.merchant.afterSalesStats(ctx);
     }
+    /** 售后报表（§83）：区间内量/退款/超时与逐日趋势（校园日 UTC+8） */
+    async campusMerchantAfterSalesReport(ctx, from, to) {
+        return this.merchant.afterSalesReport(ctx, from, to);
+    }
+    /** 售后寄回地址（§83）：本店渠道配置 */
+    async campusMerchantAfterSalesReturnAddress(ctx) {
+        return this.merchant.afterSalesReturnAddress(ctx);
+    }
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     async campusMerchantAfterSalesApprove(ctx, id) {
         return this.merchant.afterSalesApprove(ctx, id);
@@ -147,6 +155,22 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 售后退款失败重试（§82）：仅 RefundFailed，30 秒内同单一次 */
     async campusMerchantAfterSalesRetryRefund(ctx, id) {
         return this.merchant.afterSalesRetryRefund(ctx, id);
+    }
+    /** 换货发货（§83）：Received → ExchangeShipped，仅换货单 */
+    async campusMerchantAfterSalesExchangeShip(ctx, id, trackingNo, carrier) {
+        return this.merchant.afterSalesExchangeShip(ctx, id, trackingNo, carrier);
+    }
+    /** 批量同意（§83）：单次最多 50 条，逐单返回结果 */
+    async campusMerchantAfterSalesBatchApprove(ctx, ids) {
+        return this.merchant.afterSalesBatchApprove(ctx, ids);
+    }
+    /** 批量驳回（§83）：整批共用一个原因，单次最多 50 条 */
+    async campusMerchantAfterSalesBatchReject(ctx, ids, reason) {
+        return this.merchant.afterSalesBatchReject(ctx, ids, reason);
+    }
+    /** 保存售后寄回地址（§83） */
+    async campusMerchantUpdateAfterSalesReturnAddress(ctx, address) {
+        return this.merchant.updateAfterSalesReturnAddress(ctx, address);
     }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
@@ -445,6 +469,24 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesStats", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from')),
+    __param(2, (0, graphql_1.Args)('to')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReport", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReturnAddress", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
@@ -494,6 +536,45 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRetryRefund", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('trackingNo')),
+    __param(3, (0, graphql_1.Args)({ name: 'carrier', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesExchangeShip", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesBatchApprove", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesBatchReject", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('address')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesReturnAddress", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

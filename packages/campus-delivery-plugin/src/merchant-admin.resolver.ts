@@ -230,6 +230,24 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesStats(ctx);
     }
 
+    /** 售后报表（§83）：区间内量/退款/超时与逐日趋势（校园日 UTC+8） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReport(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+    ) {
+        return this.merchant.afterSalesReport(ctx, from, to);
+    }
+
+    /** 售后寄回地址（§83）：本店渠道配置 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReturnAddress(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesReturnAddress(ctx);
+    }
+
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
@@ -277,6 +295,46 @@ export class MerchantAdminResolver {
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantAfterSalesRetryRefund(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
         return this.merchant.afterSalesRetryRefund(ctx, id);
+    }
+
+    /** 换货发货（§83）：Received → ExchangeShipped，仅换货单 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesExchangeShip(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('trackingNo') trackingNo: string,
+        @Args({ name: 'carrier', type: () => String, nullable: true }) carrier?: string | null,
+    ) {
+        return this.merchant.afterSalesExchangeShip(ctx, id, trackingNo, carrier);
+    }
+
+    /** 批量同意（§83）：单次最多 50 条，逐单返回结果 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesBatchApprove(@Ctx() ctx: RequestContext, @Args('ids') ids: ID[]) {
+        return this.merchant.afterSalesBatchApprove(ctx, ids);
+    }
+
+    /** 批量驳回（§83）：整批共用一个原因，单次最多 50 条 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesBatchReject(
+        @Ctx() ctx: RequestContext,
+        @Args('ids') ids: ID[],
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.afterSalesBatchReject(ctx, ids, reason);
+    }
+
+    /** 保存售后寄回地址（§83） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateAfterSalesReturnAddress(
+        @Ctx() ctx: RequestContext,
+        @Args('address') address: string,
+    ) {
+        return this.merchant.updateAfterSalesReturnAddress(ctx, address);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

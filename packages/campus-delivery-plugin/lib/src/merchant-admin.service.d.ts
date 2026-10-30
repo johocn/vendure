@@ -154,6 +154,47 @@ export interface MerchantAfterSalesRow {
     overdue: boolean;
     /** 最新一条留言来自顾客且商家尚未回复（工作台待回复提醒，无需单独已读表） */
     unread: boolean;
+    /** 换货运单号（§83，仅 exchange 且已发货） */
+    exchangeTrackingNo: string | null;
+    /** 换货承运商（§83） */
+    exchangeCarrier: string | null;
+}
+/** 换货发货结果复用列表行；批量处理逐单结果 */
+export interface MerchantAfterSalesBatchResult {
+    id: string;
+    success: boolean;
+    /** 成功后的售后状态，失败为空串 */
+    state: string;
+    /** 失败原因（成功为空串） */
+    message: string;
+}
+/** 售后报表：区间内的量、退款与逐日趋势（§83） */
+export interface MerchantAfterSalesReport {
+    from: string;
+    to: string;
+    /** 区间内新建售后单数 */
+    total: number;
+    byType: Array<{
+        type: string;
+        count: number;
+    }>;
+    byState: Array<{
+        state: string;
+        count: number;
+    }>;
+    /** 区间内退款成功单数（按退款时间归集） */
+    refunded: number;
+    /** 区间内退款金额（分） */
+    refundAmount: number;
+    /** 区间内创建且当前仍超时的待处理单数 */
+    overdue: number;
+    /** 逐日趋势（创建量 / 退款额），按校园日 UTC+8 切分 */
+    byDay: Array<{
+        date: string;
+        count: number;
+        refunded: number;
+        refundAmount: number;
+    }>;
 }
 /** 售后状态计数（§81）：列表筛选旁的角标 */
 export interface MerchantAfterSalesStateCount {
@@ -634,6 +675,31 @@ export declare class MerchantAdminService {
      * 30 秒内同单只放行一次，避免连点造成重复退款尝试。
      */
     afterSalesRetryRefund(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /**
+     * 换货发货（§83）：Received → ExchangeShipped，仅 exchange 类型可走。
+     * 换货完成由顾客在本端确认收货（插件 exchangeReceive 校验归属），商家不代确认。
+     */
+    afterSalesExchangeShip(ctx: RequestContext, id: ID, trackingNo: string, carrier?: string | null): Promise<MerchantAfterSalesRow>;
+    /** 批量同意（§83）：仅处理本渠道售后单，单条失败不阻断整批 */
+    afterSalesBatchApprove(ctx: RequestContext, ids: ID[]): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 批量驳回（§83）：整批共用一个驳回原因 */
+    afterSalesBatchReject(ctx: RequestContext, ids: ID[], reason: string): Promise<MerchantAfterSalesBatchResult[]>;
+    /** 读本店售后寄回地址（§83）：供货主/顾客寄回页展示 */
+    afterSalesReturnAddress(ctx: RequestContext): Promise<string>;
+    /** 写本店售后寄回地址（§83）：长度上限与插件字段一致 */
+    updateAfterSalesReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
+    /**
+     * 售后报表（§83）：按校园日（UTC+8）统计区间内创建量、退款单数与金额、当前超时数、逐日趋势。
+     * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。
+     */
+    afterSalesReport(ctx: RequestContext, from: string, to: string): Promise<MerchantAfterSalesReport>;
+    /** 批量参数归一：去重、正整数、单批上限 50 */
+    private normalizeBatchIds;
+    /** 批量执行：插件批量方法不做渠道校验，必须先按本渠道过滤，防跨店操作 */
+    private afterSalesBatch;
+    /** 校园日（UTC+8）起止：起含、止不含（to 的次日 00:00） */
+    private campusDayStart;
+    private campusDayEnd;
     /** 商家协商留言（§82）：仅待处理/顾客申诉单可回复，已退款、已驳回、已关闭一律只读 */
     afterSalesReply(ctx: RequestContext, id: ID, content: string, images?: string[] | null): Promise<MerchantAfterSalesMessage>;
     /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
