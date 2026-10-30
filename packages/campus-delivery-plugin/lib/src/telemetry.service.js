@@ -18,6 +18,11 @@ const telemetry_1 = require("./telemetry");
 const campus_time_1 = require("./campus-time");
 const TREND_DAYS = 7;
 const TOP_EVENTS = 5;
+/** 公开写入入口的进程内限流（多实例部署时每实例独立计数，仅用于抑制匿名刷写） */
+const RATE_WINDOW_MS = 60000;
+const TRACK_CALLS_PER_WINDOW = 40;
+const ERROR_CALLS_PER_WINDOW = 10;
+const RATE_MAP_MAX = 5000;
 function pageSize(take) {
     const n = Number(take !== null && take !== void 0 ? take : 20);
     if (!Number.isFinite(n) || n <= 0)
@@ -31,9 +36,15 @@ function pageStart(skip) {
 let TelemetryService = class TelemetryService {
     constructor(connection) {
         this.connection = connection;
+        /** 限流窗口：clientKey → {count, resetAt} */
+        this.rateWindows = new Map();
     }
     /** C 端批量埋点上报（匿名可用），返回实际入库条数。 */
     async trackEvents(ctx, input) {
+        var _a;
+        // 公开入口限流：超限直接丢弃（不抛错，避免影响端侧上报链路）
+        if (!this.allowRate(`track:${(_a = requestMeta(ctx).ip) !== null && _a !== void 0 ? _a : 'unknown'}`, TRACK_CALLS_PER_WINDOW))
+            return 0;
         const events = (0, telemetry_1.normalizeTrackEventBatch)(input === null || input === void 0 ? void 0 : input.events);
         if (!events.length)
             return 0;
@@ -59,6 +70,9 @@ let TelemetryService = class TelemetryService {
      * 同类错误 1 分钟内不重复落库，避免同一崩溃循环刷屏。
      */
     async reportError(ctx, input) {
+        var _a;
+        if (!this.allowRate(`error:${(_a = requestMeta(ctx).ip) !== null && _a !== void 0 ? _a : 'unknown'}`, ERROR_CALLS_PER_WINDOW))
+            return false;
         const report = (0, telemetry_1.sanitizeErrorReport)(input);
         if (!report)
             return false;
@@ -179,6 +193,26 @@ let TelemetryService = class TelemetryService {
             })),
             totalItems,
         };
+    }
+    /** 固定窗口限流：超限返回 false（丢弃本次上报，不抛错） */
+    allowRate(key, limit, now = Date.now()) {
+        if (this.rateWindows.size >= RATE_MAP_MAX)
+            this.pruneRateWindows(now);
+        const w = this.rateWindows.get(key);
+        if (!w || w.resetAt <= now) {
+            this.rateWindows.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+            return true;
+        }
+        if (w.count >= limit)
+            return false;
+        w.count += 1;
+        return true;
+    }
+    pruneRateWindows(now) {
+        for (const [key, w] of this.rateWindows) {
+            if (w.resetAt <= now)
+                this.rateWindows.delete(key);
+        }
     }
     /** 已登录顾客 id（游客返回 null）；失败不阻断上报。 */
     async resolveCustomerId(ctx) {

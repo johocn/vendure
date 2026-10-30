@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     Channel,
     ID,
+    Injector,
+    Logger,
     Order,
     OrderService,
     Product,
@@ -9,6 +12,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { AfterSalesRequest, AfterSalesService } from '@vendure/after-sales-plugin';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
@@ -156,6 +160,41 @@ export interface MerchantRefundList {
     /** 实际查询区间（回显给前端） */
     start: Date;
     end: Date;
+}
+
+/** 售后申请行（§81 商家端处理）：金额单位分，顾客可见字段原样回传给商家 */
+export interface MerchantAfterSalesRow {
+    id: string;
+    orderId: string;
+    /** 订单号（A2400xxx） */
+    orderCode: string;
+    /** 售后单状态（Pending/Approved/Rejected/Refunded/RefundFailed/Appealed/Closed…） */
+    state: string;
+    /** 售后类型（refund_only 仅退款 / return_refund 退货退款 / exchange 换货） */
+    type: string;
+    /** 顾客选择的售后原因 */
+    reason: string;
+    /** 顾客补充说明 */
+    description: string | null;
+    /** 申请退款金额（分） */
+    refundAmount: number;
+    /** 商家驳回理由（顾客可见） */
+    rejectReason: string | null;
+    evidenceImages: string[];
+    /** 协商留言条数 */
+    messageCount: number;
+    /** 顾客姓名 */
+    customerName: string | null;
+    createdAt: Date;
+    /** 退款到账时间（未退款为 null） */
+    refundedAt: Date | null;
+}
+
+/** 售后申请清单（§81）：待处理数不受列表筛选影响，供入口红点 */
+export interface MerchantAfterSalesList {
+    items: MerchantAfterSalesRow[];
+    pendingCount: number;
+    total: number;
 }
 
 export interface MerchantBoard {
@@ -367,7 +406,23 @@ export class MerchantAdminService {
         private orderService: OrderService,
         private privacy: PrivacyNumberService,
         private cloud: CloudPrintService,
+        private moduleRef?: ModuleRef,
     ) {}
+
+    /** 售后插件为可选依赖：未安装时售后清单为空，「售后申请」入口降级隐藏 */
+    private afterSalesSvc?: AfterSalesService | null;
+
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private getAfterSales(): AfterSalesService | null {
+        if (this.afterSalesSvc !== undefined) return this.afterSalesSvc ?? null;
+        try {
+            this.afterSalesSvc = this.moduleRef ? new Injector(this.moduleRef).get(AfterSalesService) : null;
+        } catch (e: any) {
+            this.afterSalesSvc = null;
+            Logger.warn(`AfterSalesService 不可用，商家端售后处理降级: ${e?.message ?? e}`, 'CampusMerchant');
+        }
+        return this.afterSalesSvc ?? null;
+    }
 
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     async storeProfile(ctx: RequestContext): Promise<MerchantStoreProfile> {
@@ -1483,6 +1538,129 @@ export class MerchantAdminService {
                 gross: Math.round(sum7Gross / 7),
                 avgTicket: sum7Orders ? Math.round(sum7Gross / sum7Orders) : 0,
             },
+        };
+    }
+
+    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
+    async afterSalesList(ctx: RequestContext, state?: string | null): Promise<MerchantAfterSalesList> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        // 渠道隔离：售后单本身挂了 channels，但其归属以订单渠道为准（售后单可能由平台代建）
+        const base = () => repo.createQueryBuilder('a')
+            .leftJoin('a.order', 'o')
+            .leftJoin('o.channels', 'c')
+            .where('c.id = :ch', { ch: ctx.channelId as any })
+            .andWhere('o.customFields.hallStatus IS NOT NULL');
+
+        const pendingCount = await base().andWhere('a.state = :st', { st: 'Pending' }).getCount();
+        const total = await base().getCount();
+
+        const wanted = String(state ?? '').trim();
+        const qb = base()
+            .leftJoinAndSelect('a.customer', 'customer')
+            .orderBy('a.createdAt', 'DESC')
+            .take(50);
+        if (wanted) qb.andWhere('a.state = :st', { st: wanted });
+        const rows = await qb.getMany();
+
+        const counts = await this.afterSalesMessageCounts(ctx, rows.map(r => Number(r.id)));
+        return { items: rows.map(r => this.toAfterSalesRow(r, counts)), pendingCount, total };
+    }
+
+    /**
+     * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
+     * 先按「本店渠道 + Pending」校验，避免越权或已处理单重复触发退款。
+     */
+    async afterSalesApprove(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow> {
+        await this.assertChannelAfterSales(ctx, id, ['Pending']);
+        const svc = this.getAfterSales();
+        if (!svc) throw new UserInputError('售后插件未安装，暂不能处理售后申请');
+        try {
+            await svc.approveRequest(ctx, id);
+        } catch (e: any) {
+            throw new UserInputError(`同意售后失败：${e?.message ?? e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+
+    /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
+    async afterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow> {
+        const text = String(reason ?? '').trim();
+        if (!text) throw new UserInputError('请填写驳回理由（顾客可见）');
+        if (text.length > 200) throw new UserInputError('驳回理由最多 200 字');
+        await this.assertChannelAfterSales(ctx, id, ['Pending']);
+        const svc = this.getAfterSales();
+        if (!svc) throw new UserInputError('售后插件未安装，暂不能处理售后申请');
+        try {
+            await svc.rejectRequest(ctx, id, text);
+        } catch (e: any) {
+            throw new UserInputError(`驳回售后失败：${e?.message ?? e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+
+    /** 售后单必须属于当前店铺，且状态在允许集合内（空集合=不校验状态） */
+    private async assertChannelAfterSales(ctx: RequestContext, id: ID, expects: string[]) {
+        const request = await this.connection.getRepository(ctx, AfterSalesRequest).findOne({
+            where: { id: id as any },
+            relations: { order: { channels: true }, channels: true } as any,
+        });
+        const inChannel = request?.channels?.some(c => String(c.id) === String(ctx.channelId))
+            || request?.order?.channels?.some?.((c: any) => String(c.id) === String(ctx.channelId));
+        if (!request || !inChannel) throw new UserInputError('售后单不存在或不属于当前店铺');
+        if (expects.length && !expects.includes(request.state)) {
+            throw new UserInputError('该售后申请已处理，不能重复操作');
+        }
+        return request;
+    }
+
+    private async afterSalesOne(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow> {
+        const row = await this.connection.getRepository(ctx, AfterSalesRequest).findOne({
+            where: { id: id as any },
+            relations: { order: true, customer: true } as any,
+        });
+        if (!row) throw new UserInputError('售后单不存在');
+        const counts = await this.afterSalesMessageCounts(ctx, [Number(row.id)]);
+        return this.toAfterSalesRow(row, counts);
+    }
+
+    /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
+    private async afterSalesMessageCounts(ctx: RequestContext, ids: number[]): Promise<Map<number, number>> {
+        const out = new Map<number, number>();
+        const list = ids.filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length) return out;
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT "requestId", COUNT(*)::int AS n FROM after_sales_message '
+                + 'WHERE "requestId" = ANY($1::int[]) GROUP BY "requestId"',
+                [list],
+            );
+            for (const r of Array.isArray(rows) ? rows : []) out.set(Number(r.requestId), Number(r.n) || 0);
+        } catch {
+            return out;
+        }
+        return out;
+    }
+
+    private toAfterSalesRow(row: AfterSalesRequest, counts: Map<number, number>): MerchantAfterSalesRow {
+        const customer = row.customer as any;
+        const order = row.order as any;
+        return {
+            id: String(row.id),
+            orderId: String(row.orderId ?? ''),
+            orderCode: order?.code ?? '',
+            state: String(row.state ?? ''),
+            type: String(row.type ?? ''),
+            reason: String(row.reason ?? ''),
+            description: row.description ?? null,
+            refundAmount: Number(row.refundAmount ?? 0),
+            rejectReason: row.rejectReason ?? null,
+            evidenceImages: Array.isArray(row.evidenceImages) ? row.evidenceImages : [],
+            messageCount: counts.get(Number(row.id)) ?? 0,
+            customerName: customer
+                ? [customer.firstName, customer.lastName].filter(Boolean).join('') || null
+                : null,
+            createdAt: row.createdAt,
+            refundedAt: row.refundedAt ?? null,
         };
     }
 

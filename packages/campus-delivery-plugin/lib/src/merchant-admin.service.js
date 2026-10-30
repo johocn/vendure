@@ -12,7 +12,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MerchantAdminService = exports.KDS_LATE_MINUTES = exports.KDS_WARN_MINUTES = void 0;
 exports.isUrgePending = isUrgePending;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
+const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_notify_service_1 = require("./campus-notify.service");
@@ -39,7 +41,7 @@ exports.KDS_LATE_MINUTES = 25;
  * campusMerchantCookingDone）→ 骑手 grabbed/delivering → delivered。
  */
 let MerchantAdminService = class MerchantAdminService {
-    constructor(connection, config, hall, notify, thirdParty, orderService, privacy, cloud) {
+    constructor(connection, config, hall, notify, thirdParty, orderService, privacy, cloud, moduleRef) {
         this.connection = connection;
         this.config = config;
         this.hall = hall;
@@ -48,20 +50,35 @@ let MerchantAdminService = class MerchantAdminService {
         this.orderService = orderService;
         this.privacy = privacy;
         this.cloud = cloud;
+        this.moduleRef = moduleRef;
+    }
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    getAfterSales() {
+        var _a, _b, _c;
+        if (this.afterSalesSvc !== undefined)
+            return (_a = this.afterSalesSvc) !== null && _a !== void 0 ? _a : null;
+        try {
+            this.afterSalesSvc = this.moduleRef ? new core_2.Injector(this.moduleRef).get(after_sales_plugin_1.AfterSalesService) : null;
+        }
+        catch (e) {
+            this.afterSalesSvc = null;
+            core_2.Logger.warn(`AfterSalesService 不可用，商家端售后处理降级: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'CampusMerchant');
+        }
+        return (_c = this.afterSalesSvc) !== null && _c !== void 0 ? _c : null;
     }
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     async storeProfile(ctx) {
         var _a, _b, _c, _d, _e;
         const cfg = await this.config.getConfig(ctx);
-        const channel = await this.connection.getRepository(ctx, core_1.Channel)
+        const channel = await this.connection.getRepository(ctx, core_2.Channel)
             .findOne({ where: { id: ctx.channelId } });
         if (!channel)
-            throw new core_1.UserInputError('当前店铺渠道不存在');
+            throw new core_2.UserInputError('当前店铺渠道不存在');
         const hours = (_b = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {}).waimaiBusinessHours) !== null && _b !== void 0 ? _b : null;
         const closureDates = (0, closure_calendar_1.safeClosureDates)(cfg.closureDates);
         const closure = (0, closure_calendar_1.closedToday)(closureDates);
         // 未出餐订单（§71）：休业日提醒商家仍有待接单/备餐中订单需处理；轮询 10s 一次，轻量计数
-        const unfinishedOrders = await this.connection.getRepository(ctx, core_1.Order)
+        const unfinishedOrders = await this.connection.getRepository(ctx, core_2.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
@@ -90,16 +107,16 @@ let MerchantAdminService = class MerchantAdminService {
             const raw = String((_a = input.businessHours) !== null && _a !== void 0 ? _a : '').trim();
             if (raw) {
                 if (raw.length > 100)
-                    throw new core_1.UserInputError('营业时间不能超过 100 个字符');
+                    throw new core_2.UserInputError('营业时间不能超过 100 个字符');
                 // 必须能被营业时段解析器读懂，否则 C 端展示/下单闸门会误判
                 if (!(0, business_hours_1.parseBusinessHours)(raw).length) {
-                    throw new core_1.UserInputError('营业时间格式不正确，示例：10:00-22:00 或 10:00-14:00,17:00-21:00');
+                    throw new core_2.UserInputError('营业时间格式不正确，示例：10:00-22:00 或 10:00-14:00,17:00-21:00');
                 }
             }
-            const repo = this.connection.getRepository(ctx, core_1.Channel);
+            const repo = this.connection.getRepository(ctx, core_2.Channel);
             const channel = await repo.findOne({ where: { id: ctx.channelId } });
             if (!channel)
-                throw new core_1.UserInputError('当前店铺渠道不存在');
+                throw new core_2.UserInputError('当前店铺渠道不存在');
             channel.customFields.waimaiBusinessHours = raw || null;
             await repo.save(channel);
         }
@@ -126,7 +143,7 @@ let MerchantAdminService = class MerchantAdminService {
         const DAYS = 30;
         const since = today0 - (DAYS - 1) * DAY_MS;
         const last7From = (0, campus_time_1.campusDayKey)(today0 - 6 * DAY_MS);
-        const orders = await this.connection.getRepository(ctx, core_1.Order)
+        const orders = await this.connection.getRepository(ctx, core_2.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
@@ -190,7 +207,7 @@ let MerchantAdminService = class MerchantAdminService {
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     async customerContact(ctx, orderId) {
         var _a, _b;
-        const order = await this.connection.getRepository(ctx, core_1.Order)
+        const order = await this.connection.getRepository(ctx, core_2.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .leftJoinAndSelect('order.customer', 'customer')
@@ -198,7 +215,7 @@ let MerchantAdminService = class MerchantAdminService {
             .andWhere('channel.id = :ch', { ch: ctx.channelId })
             .getOne();
         if (!order)
-            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('订单不存在或不属于当前店铺');
         return this.privacy.resolve(ctx, {
             channelId: ctx.channelId,
             orderCode: order.code,
@@ -216,7 +233,7 @@ let MerchantAdminService = class MerchantAdminService {
     async board(ctx) {
         var _a, _b, _c, _d, _e;
         const cfg = await this.config.getConfig(ctx);
-        const repo = this.connection.getRepository(ctx, core_1.Order);
+        const repo = this.connection.getRepository(ctx, core_2.Order);
         const orders = await repo
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -312,17 +329,17 @@ let MerchantAdminService = class MerchantAdminService {
         const start = new Date(input.from ? String(input.from) : (0, campus_time_1.startOfCampusDay)(now));
         const end = new Date(input.to ? String(input.to) : now);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-            throw new core_1.UserInputError('时间区间格式不合法');
+            throw new core_2.UserInputError('时间区间格式不合法');
         }
         if (start.getTime() >= end.getTime())
-            throw new core_1.UserInputError('结束时间必须晚于开始时间');
+            throw new core_2.UserInputError('结束时间必须晚于开始时间');
         // 明细按区间累计，防止误传超长区间把工作台拖慢（92 天足够覆盖季度对账前查看）
         if (end.getTime() - start.getTime() > 92 * 24 * 3600000) {
-            throw new core_1.UserInputError('查询区间不能超过 92 天');
+            throw new core_2.UserInputError('查询区间不能超过 92 天');
         }
         const take = Math.min(Math.max(Number((_a = input.take) !== null && _a !== void 0 ? _a : 100) || 100, 1), 300);
         const skip = Math.max(Number((_b = input.skip) !== null && _b !== void 0 ? _b : 0) || 0, 0);
-        const repo = this.connection.getRepository(ctx, core_1.Order);
+        const repo = this.connection.getRepository(ctx, core_2.Order);
         const base = () => repo
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -443,12 +460,12 @@ let MerchantAdminService = class MerchantAdminService {
         const start = new Date(input.from ? String(input.from) : (0, campus_time_1.startOfCampusDay)(now));
         const end = new Date(input.to ? String(input.to) : now);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-            throw new core_1.UserInputError('时间区间格式不合法');
+            throw new core_2.UserInputError('时间区间格式不合法');
         }
         if (start.getTime() >= end.getTime())
-            throw new core_1.UserInputError('结束时间必须晚于开始时间');
+            throw new core_2.UserInputError('结束时间必须晚于开始时间');
         if (end.getTime() - start.getTime() > 92 * 24 * 3600000) {
-            throw new core_1.UserInputError('查询区间不能超过 92 天');
+            throw new core_2.UserInputError('查询区间不能超过 92 天');
         }
         const take = Math.min(Math.max(Number((_a = input.take) !== null && _a !== void 0 ? _a : 100) || 100, 1), 300);
         const skip = Math.max(Number((_b = input.skip) !== null && _b !== void 0 ? _b : 0) || 0, 0);
@@ -480,7 +497,7 @@ let MerchantAdminService = class MerchantAdminService {
         // 楼栋/区域：自定义字段只在订单实体上，按订单 id 回查（避免猜原生列名）
         const orderIds = [...new Set(rows.map(r => String(r.orderId)))];
         const orders = orderIds.length
-            ? await this.connection.getRepository(ctx, core_1.Order).findByIds(orderIds)
+            ? await this.connection.getRepository(ctx, core_2.Order).findByIds(orderIds)
             : [];
         const orderMap = new Map(orders.map(o => [String(o.id), o.customFields]));
         const buildingIds = new Set();
@@ -526,7 +543,7 @@ let MerchantAdminService = class MerchantAdminService {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
         const moved = await this.transitionToAccepted(ctx, order.id, 'manual');
         if (!moved)
-            throw new core_1.UserInputError('订单状态已变更，请刷新');
+            throw new core_2.UserInputError('订单状态已变更，请刷新');
         return { ok: true };
     }
     /** 接单内核（手动/自动共用）：条件写防并发 + 用户通知 + 接单即出票；返回是否真正迁移成功 */
@@ -555,9 +572,9 @@ let MerchantAdminService = class MerchantAdminService {
         var _a, _b, _c, _d;
         const trimmed = (reason !== null && reason !== void 0 ? reason : '').trim();
         if (!trimmed)
-            throw new core_1.UserInputError('请填写拒单原因');
+            throw new core_2.UserInputError('请填写拒单原因');
         if (trimmed.length > 200)
-            throw new core_1.UserInputError('拒单原因不能超过 200 个字符');
+            throw new core_2.UserInputError('拒单原因不能超过 200 个字符');
         const order = await this.assertChannelOrderState(ctx, orderId, ['pending_merchant', 'accepted']);
         // 并发防重退款：拒单是「查已退总额 → 退差额 → 取消」的复合动作，
         // 与 T4/运营处置并发时无锁会双退。用 PG 会话级咨询锁按订单串行化（同连接 runner 持有/释放）。
@@ -568,15 +585,15 @@ let MerchantAdminService = class MerchantAdminService {
             const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
             const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
             if (!((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.ok))
-                throw new core_1.UserInputError('该订单正在退款处理中，请稍后重试');
+                throw new core_2.UserInputError('该订单正在退款处理中，请稍后重试');
             // 锁内复查：等待锁期间订单可能已被 T4/调度超时兜底改派或用户取消，
             // 此时再退款+取消会把已流转的单重复退款
-            const fresh = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            const fresh = await this.connection.getRepository(ctx, core_2.Order).findOne({
                 where: { id: order.id },
             });
             const freshHs = String((_c = (_b = fresh === null || fresh === void 0 ? void 0 : fresh.customFields) === null || _b === void 0 ? void 0 : _b.hallStatus) !== null && _c !== void 0 ? _c : '');
             if (!['pending_merchant', 'accepted'].includes(freshHs)) {
-                throw new core_1.UserInputError('订单状态已变更，请刷新');
+                throw new core_2.UserInputError('订单状态已变更，请刷新');
             }
             // 只退成功支付且仍有余额的支付单（避免选中 Declined/Error 重试单导致退款失败）
             for (const picked of await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id))) {
@@ -591,7 +608,7 @@ let MerchantAdminService = class MerchantAdminService {
                         reason: `merchant reject (${order.code})`,
                     });
                     if (!created || created.errorCode) {
-                        throw new core_1.UserInputError(`退款失败：${(_d = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _d !== void 0 ? _d : '未知原因'}`);
+                        throw new core_2.UserInputError(`退款失败：${(_d = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _d !== void 0 ? _d : '未知原因'}`);
                     }
                     await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, this.orderService, ctx, created.id);
                 }
@@ -626,22 +643,22 @@ let MerchantAdminService = class MerchantAdminService {
         var _a, _b, _c, _d, _e, _f;
         const trimmed = (reason !== null && reason !== void 0 ? reason : '').trim();
         if (!trimmed)
-            throw new core_1.UserInputError('请填写退款原因');
+            throw new core_2.UserInputError('请填写退款原因');
         if (trimmed.length > 200)
-            throw new core_1.UserInputError('退款原因不能超过 200 个字符');
+            throw new core_2.UserInputError('退款原因不能超过 200 个字符');
         const fen = Math.floor(Number(amount));
         if (!Number.isFinite(fen) || fen <= 0)
-            throw new core_1.UserInputError('退款金额必须大于 0');
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            throw new core_2.UserInputError('退款金额必须大于 0');
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
         });
         const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel)
-            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('订单不存在或不属于当前店铺');
         // 只对已送达单开放：在途单请走「拒单」（备餐中）或联系运营异常处置，避免配送与退款错位
         if (String((_b = order.customFields.deliveryStatus) !== null && _b !== void 0 ? _b : '') !== 'delivered') {
-            throw new core_1.UserInputError('仅已送达订单可发起退款');
+            throw new core_2.UserInputError('仅已送达订单可发起退款');
         }
         const runner = this.connection.rawConnection.createQueryRunner();
         await runner.connect();
@@ -650,14 +667,14 @@ let MerchantAdminService = class MerchantAdminService {
             const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
             const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
             if (!((_c = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _c === void 0 ? void 0 : _c.ok))
-                throw new core_1.UserInputError('该订单正在退款处理中，请稍后重试');
+                throw new core_2.UserInputError('该订单正在退款处理中，请稍后重试');
             // 锁内重新统计余额（与运营处置/拒单并发时以最新余额为准）
             const payments = await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id));
             const remaining = payments.reduce((s, p) => s + p.remaining, 0);
             if (remaining <= 0)
-                throw new core_1.UserInputError('该订单已无可退余额');
+                throw new core_2.UserInputError('该订单已无可退余额');
             if (fen > remaining) {
-                throw new core_1.UserInputError(`退款金额超过可退余额（最多可退 ¥${(remaining / 100).toFixed(2)}）`);
+                throw new core_2.UserInputError(`退款金额超过可退余额（最多可退 ¥${(remaining / 100).toFixed(2)}）`);
             }
             // 新→旧逐张退，凑够本次金额（多支付单订单按各张余额分摊）
             let rest = fen;
@@ -674,7 +691,7 @@ let MerchantAdminService = class MerchantAdminService {
                     reason: `merchant refund (${order.code}): ${trimmed}`,
                 });
                 if (!created || created.errorCode) {
-                    throw new core_1.UserInputError(`退款失败：${(_d = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _d !== void 0 ? _d : '未知原因'}`);
+                    throw new core_2.UserInputError(`退款失败：${(_d = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _d !== void 0 ? _d : '未知原因'}`);
                 }
                 await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, this.orderService, ctx, created.id);
                 rest -= part;
@@ -731,7 +748,7 @@ let MerchantAdminService = class MerchantAdminService {
         // 条件写：与用户取消/调度超时兜底并发时，已脱厅单不得被改回流转态
         const moved = await this.hall.transitionFrom(ctx, Number(order.id), ['accepted'], patch);
         if (!moved)
-            throw new core_1.UserInputError('订单状态已变更，请刷新');
+            throw new core_2.UserInputError('订单状态已变更，请刷新');
         this.notify.user(ctx, order.id, 'cookingDone');
         return { ok: true };
     }
@@ -752,7 +769,7 @@ let MerchantAdminService = class MerchantAdminService {
         }
         catch (err) {
             // 入参问题（空集合 / 超上限）属于调用方错误，直接以 UserInputError 反馈
-            throw err instanceof batch_orders_1.BatchOrderInputError ? new core_1.UserInputError(err.message) : err;
+            throw err instanceof batch_orders_1.BatchOrderInputError ? new core_2.UserInputError(err.message) : err;
         }
         let ok = 0;
         const failed = [];
@@ -840,13 +857,13 @@ let MerchantAdminService = class MerchantAdminService {
     /** 小票打印回执：工作台打印成功后回写 waimaiPrintedAt（防重打 + 补打依据），不限订单状态 */
     async markPrinted(ctx, orderId) {
         var _a;
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
         });
         const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel)
-            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('订单不存在或不属于当前店铺');
         await this.hall.updateOrder(ctx, order.id, {
             customFields: { waimaiPrintedAt: new Date() },
         });
@@ -855,16 +872,16 @@ let MerchantAdminService = class MerchantAdminService {
     /** 商家确认「已知晓」顾客催单（§78）：只落小表时间戳，不改顾客侧 urged/urgedAt（骑手端仍可见催单标记） */
     async ackUrge(ctx, orderId) {
         var _a, _b;
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
         });
         const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel)
-            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('订单不存在或不属于当前店铺');
         const cf = ((_b = order.customFields) !== null && _b !== void 0 ? _b : {});
         if (cf.urged !== true || !cf.urgedAt)
-            throw new core_1.UserInputError('该订单没有待处理的顾客催单');
+            throw new core_2.UserInputError('该订单没有待处理的顾客催单');
         await this.connection.rawConnection.query('INSERT INTO campus_urge_ack ("channelId", "orderId", "ackedAt") VALUES ($1, $2, now()) '
             + 'ON CONFLICT ("channelId", "orderId") DO UPDATE SET "ackedAt" = now(), "updatedAt" = now()', [ctx.channelId, Number(order.id)]);
         return { ok: true };
@@ -900,7 +917,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** KDS 出餐屏队列：待接单 + 备餐中（按支付先后出票，超时标红） */
     async kitchenQueue(ctx) {
-        const orders = await this.connection.getRepository(ctx, core_1.Order)
+        const orders = await this.connection.getRepository(ctx, core_2.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
@@ -969,7 +986,7 @@ let MerchantAdminService = class MerchantAdminService {
      * 口径与出餐屏/工作台一致：待做取活跃单（不落小票），已做按送达时间归今日。
      */
     async prepSummary(ctx) {
-        const repo = this.connection.getRepository(ctx, core_1.Order);
+        const repo = this.connection.getRepository(ctx, core_2.Order);
         const todoOrders = await repo
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -1035,20 +1052,20 @@ let MerchantAdminService = class MerchantAdminService {
         let day0 = today0;
         if (raw) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(new Date(raw).getTime())) {
-                throw new core_1.UserInputError('日期格式不合法（YYYY-MM-DD）');
+                throw new core_2.UserInputError('日期格式不合法（YYYY-MM-DD）');
             }
             day0 = (0, campus_time_1.startOfCampusDay)(new Date(raw).getTime());
             if (day0 > today0)
-                throw new core_1.UserInputError('不能查看未来日期的营业日报');
+                throw new core_2.UserInputError('不能查看未来日期的营业日报');
             if (day0 < today0 - 29 * DAY_MS)
-                throw new core_1.UserInputError('营业日报最多回看 30 天');
+                throw new core_2.UserInputError('营业日报最多回看 30 天');
         }
         const dayKey = (0, campus_time_1.campusDayKey)(day0);
         const prevKey = (0, campus_time_1.campusDayKey)(day0 - DAY_MS);
         const isToday = day0 === today0;
         // 一次查询覆盖「当日 + 前 7 日」，避免多次往返
         const orders = await this.connection
-            .getRepository(ctx, core_1.Order)
+            .getRepository(ctx, core_2.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
@@ -1131,6 +1148,132 @@ let MerchantAdminService = class MerchantAdminService {
             },
         };
     }
+    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
+    async afterSalesList(ctx, state) {
+        const repo = this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest);
+        // 渠道隔离：售后单本身挂了 channels，但其归属以订单渠道为准（售后单可能由平台代建）
+        const base = () => repo.createQueryBuilder('a')
+            .leftJoin('a.order', 'o')
+            .leftJoin('o.channels', 'c')
+            .where('c.id = :ch', { ch: ctx.channelId })
+            .andWhere('o.customFields.hallStatus IS NOT NULL');
+        const pendingCount = await base().andWhere('a.state = :st', { st: 'Pending' }).getCount();
+        const total = await base().getCount();
+        const wanted = String(state !== null && state !== void 0 ? state : '').trim();
+        const qb = base()
+            .leftJoinAndSelect('a.customer', 'customer')
+            .orderBy('a.createdAt', 'DESC')
+            .take(50);
+        if (wanted)
+            qb.andWhere('a.state = :st', { st: wanted });
+        const rows = await qb.getMany();
+        const counts = await this.afterSalesMessageCounts(ctx, rows.map(r => Number(r.id)));
+        return { items: rows.map(r => this.toAfterSalesRow(r, counts)), pendingCount, total };
+    }
+    /**
+     * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
+     * 先按「本店渠道 + Pending」校验，避免越权或已处理单重复触发退款。
+     */
+    async afterSalesApprove(ctx, id) {
+        var _a;
+        await this.assertChannelAfterSales(ctx, id, ['Pending']);
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        try {
+            await svc.approveRequest(ctx, id);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`同意售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
+    async afterSalesReject(ctx, id, reason) {
+        var _a;
+        const text = String(reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!text)
+            throw new core_2.UserInputError('请填写驳回理由（顾客可见）');
+        if (text.length > 200)
+            throw new core_2.UserInputError('驳回理由最多 200 字');
+        await this.assertChannelAfterSales(ctx, id, ['Pending']);
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        try {
+            await svc.rejectRequest(ctx, id, text);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`驳回售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 售后单必须属于当前店铺，且状态在允许集合内（空集合=不校验状态） */
+    async assertChannelAfterSales(ctx, id, expects) {
+        var _a, _b, _c, _d;
+        const request = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({
+            where: { id: id },
+            relations: { order: { channels: true }, channels: true },
+        });
+        const inChannel = ((_a = request === null || request === void 0 ? void 0 : request.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId)))
+            || ((_d = (_c = (_b = request === null || request === void 0 ? void 0 : request.order) === null || _b === void 0 ? void 0 : _b.channels) === null || _c === void 0 ? void 0 : _c.some) === null || _d === void 0 ? void 0 : _d.call(_c, (c) => String(c.id) === String(ctx.channelId)));
+        if (!request || !inChannel)
+            throw new core_2.UserInputError('售后单不存在或不属于当前店铺');
+        if (expects.length && !expects.includes(request.state)) {
+            throw new core_2.UserInputError('该售后申请已处理，不能重复操作');
+        }
+        return request;
+    }
+    async afterSalesOne(ctx, id) {
+        const row = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({
+            where: { id: id },
+            relations: { order: true, customer: true },
+        });
+        if (!row)
+            throw new core_2.UserInputError('售后单不存在');
+        const counts = await this.afterSalesMessageCounts(ctx, [Number(row.id)]);
+        return this.toAfterSalesRow(row, counts);
+    }
+    /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
+    async afterSalesMessageCounts(ctx, ids) {
+        const out = new Map();
+        const list = ids.filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length)
+            return out;
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT "requestId", COUNT(*)::int AS n FROM after_sales_message '
+                + 'WHERE "requestId" = ANY($1::int[]) GROUP BY "requestId"', [list]);
+            for (const r of Array.isArray(rows) ? rows : [])
+                out.set(Number(r.requestId), Number(r.n) || 0);
+        }
+        catch (_a) {
+            return out;
+        }
+        return out;
+    }
+    toAfterSalesRow(row, counts) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        const customer = row.customer;
+        const order = row.order;
+        return {
+            id: String(row.id),
+            orderId: String((_a = row.orderId) !== null && _a !== void 0 ? _a : ''),
+            orderCode: (_b = order === null || order === void 0 ? void 0 : order.code) !== null && _b !== void 0 ? _b : '',
+            state: String((_c = row.state) !== null && _c !== void 0 ? _c : ''),
+            type: String((_d = row.type) !== null && _d !== void 0 ? _d : ''),
+            reason: String((_e = row.reason) !== null && _e !== void 0 ? _e : ''),
+            description: (_f = row.description) !== null && _f !== void 0 ? _f : null,
+            refundAmount: Number((_g = row.refundAmount) !== null && _g !== void 0 ? _g : 0),
+            rejectReason: (_h = row.rejectReason) !== null && _h !== void 0 ? _h : null,
+            evidenceImages: Array.isArray(row.evidenceImages) ? row.evidenceImages : [],
+            messageCount: (_j = counts.get(Number(row.id))) !== null && _j !== void 0 ? _j : 0,
+            customerName: customer
+                ? [customer.firstName, customer.lastName].filter(Boolean).join('') || null
+                : null,
+            createdAt: row.createdAt,
+            refundedAt: (_k = row.refundedAt) !== null && _k !== void 0 ? _k : null,
+        };
+    }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
     async products(ctx, search, skip, take) {
         var _a, _b;
@@ -1186,38 +1329,45 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 沽清开关：售罄仍展示、不可加购；下单前置闸门二次校验 */
     async setProductSoldOut(ctx, productId, soldOut) {
-        const inChannel = await this.connection.getRepository(ctx, core_1.Product).createQueryBuilder('product')
+        const inChannel = await this.connection.getRepository(ctx, core_2.Product).createQueryBuilder('product')
             .leftJoin('product.channels', 'channel')
             .where('product.id = :id', { id: productId })
             .andWhere('channel.id = :ch', { ch: ctx.channelId })
             .getOne();
         if (!inChannel)
-            throw new core_1.UserInputError('商品不存在或不属于当前店铺');
-        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+            throw new core_2.UserInputError('商品不存在或不属于当前店铺');
+        await this.connection.getRepository(ctx, core_2.Product).update(productId, {
             customFields: { waimaiSoldOut: Boolean(soldOut) },
         });
         // 手动开关即代表「非全店沽清批次」：清掉批次登记，次日自动恢复不再动它
         await this.clearSoldOutBatch(ctx, { productId: productId });
         return { ok: true, soldOut: Boolean(soldOut) };
     }
-    /** 全店批量沽清 / 批量恢复：仅本渠道商品，返回实际影响条数（打烊后一键恢复用） */
+    /** 全店批量沽清 / 批量恢复：仅本渠道未删除商品，返回实际影响条数（打烊后一键恢复用） */
     async setAllProductsSoldOut(ctx, soldOut) {
         const flag = Boolean(soldOut);
-        const rows = await this.connection.rawConnection.query('UPDATE product p SET "customFieldsWaimaisoldout" = $2 '
-            + 'FROM product_channels_channel pc '
-            + 'WHERE pc."productId" = p.id AND pc."channelId" = $1 '
-            + 'RETURNING p.id', [ctx.channelId, flag]);
-        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
-        const ids = (Array.isArray(list) ? list : []).map((r) => Number(r.id));
-        if (flag) {
-            // 登记批次：仅供次日 04:00 自动恢复命中这些商品
-            await this.connection.rawConnection.query('INSERT INTO campus_soldout_batch ("channelId", "productId") '
-                + 'SELECT $1, unnest($2::int[]) '
-                + 'ON CONFLICT ("channelId", "productId") DO NOTHING', [ctx.channelId, ids]);
-        }
-        else {
-            await this.clearSoldOutBatch(ctx, {});
-        }
+        // 标识更新与批次登记必须同一事务：否则批次写入失败会留下「已沽清但次日不会被自动恢复」的商品
+        const ids = await this.connection.rawConnection.transaction(async (manager) => {
+            const rows = await manager.query('UPDATE product p SET "customFieldsWaimaisoldout" = $2 '
+                + 'FROM product_channels_channel pc '
+                + 'WHERE pc."productId" = p.id AND pc."channelId" = $1 '
+                + 'AND p."deletedAt" IS NULL '
+                + 'RETURNING p.id', [ctx.channelId, flag]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            const changed = (Array.isArray(list) ? list : []).map((r) => Number(r.id));
+            if (flag) {
+                // 登记批次：仅供次日 04:00 自动恢复命中这些商品
+                if (changed.length) {
+                    await manager.query('INSERT INTO campus_soldout_batch ("channelId", "productId") '
+                        + 'SELECT $1, unnest($2::int[]) '
+                        + 'ON CONFLICT ("channelId", "productId") DO NOTHING', [ctx.channelId, changed]);
+                }
+            }
+            else {
+                await manager.query('DELETE FROM campus_soldout_batch WHERE "channelId" = $1', [ctx.channelId]);
+            }
+            return changed;
+        });
         return { ok: true, soldOut: flag, count: ids.length };
     }
     /** 清除全店沽清批次登记（传 productId 只清该商品） */
@@ -1250,23 +1400,23 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 商品级打包费（分/件）：null 清除回落店铺配置；仅本渠道商品可改 */
     async setProductPackingFee(ctx, productId, packingFee) {
-        const inChannel = await this.connection.getRepository(ctx, core_1.Product).createQueryBuilder('product')
+        const inChannel = await this.connection.getRepository(ctx, core_2.Product).createQueryBuilder('product')
             .leftJoin('product.channels', 'channel')
             .where('product.id = :id', { id: productId })
             .andWhere('channel.id = :ch', { ch: ctx.channelId })
             .getOne();
         if (!inChannel)
-            throw new core_1.UserInputError('商品不存在或不属于当前店铺');
+            throw new core_2.UserInputError('商品不存在或不属于当前店铺');
         let value = null;
         if (packingFee != null) {
             const n = Number(packingFee);
             if (!Number.isFinite(n) || n < 0)
-                throw new core_1.UserInputError('打包费必须为不小于 0 的数字（分/件）');
+                throw new core_2.UserInputError('打包费必须为不小于 0 的数字（分/件）');
             if (n > 100000)
-                throw new core_1.UserInputError('打包费单件超出允许上限（100000 分 = 1000 元）');
+                throw new core_2.UserInputError('打包费单件超出允许上限（100000 分 = 1000 元）');
             value = Math.round(n);
         }
-        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+        await this.connection.getRepository(ctx, core_2.Product).update(productId, {
             customFields: { waimaiPackingFee: value },
         });
         return { ok: true, packingFee: value };
@@ -1279,16 +1429,16 @@ let MerchantAdminService = class MerchantAdminService {
         const perUser = (0, daily_limit_1.normalizeLimit)(perUserLimit);
         for (const v of [dailyLimit, perUserLimit]) {
             if (v != null && Number(v) > daily_limit_1.DAILY_LIMIT_MAX) {
-                throw new core_1.UserInputError(`限量最多 ${daily_limit_1.DAILY_LIMIT_MAX} 份`);
+                throw new core_2.UserInputError(`限量最多 ${daily_limit_1.DAILY_LIMIT_MAX} 份`);
             }
             if (v != null && Number(v) < 0) {
-                throw new core_1.UserInputError('限量不能为负数');
+                throw new core_2.UserInputError('限量不能为负数');
             }
         }
         if (daily != null && perUser != null && perUser > daily) {
-            throw new core_1.UserInputError('每人限购不能大于每日限量');
+            throw new core_2.UserInputError('每人限购不能大于每日限量');
         }
-        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+        await this.connection.getRepository(ctx, core_2.Product).update(productId, {
             customFields: { waimaiDailyLimit: daily, waimaiPerUserLimit: perUser },
         });
         const soldMap = await (0, daily_limit_1.queryDailySold)(this.connection.rawConnection, Number(ctx.channelId), [Number(productId)]);
@@ -1309,30 +1459,30 @@ let MerchantAdminService = class MerchantAdminService {
         // 显式上限校验：解析器会静默截断，这里对「用户确实提交了超限内容」直接报错更友好
         const inputCount = Array.isArray(rawGroups) ? rawGroups.length : 0;
         if (inputCount > addon_fee_1.ADDON_MAX_GROUPS) {
-            throw new core_1.UserInputError(`加料组最多 ${addon_fee_1.ADDON_MAX_GROUPS} 组`);
+            throw new core_2.UserInputError(`加料组最多 ${addon_fee_1.ADDON_MAX_GROUPS} 组`);
         }
         for (const g of Array.isArray(rawGroups) ? rawGroups : []) {
             const opts = Array.isArray(g === null || g === void 0 ? void 0 : g.options) ? g.options : [];
             if (opts.length > addon_fee_1.ADDON_MAX_OPTIONS_PER_GROUP) {
-                throw new core_1.UserInputError(`「${(_a = g === null || g === void 0 ? void 0 : g.name) !== null && _a !== void 0 ? _a : '加料'}」最多 ${addon_fee_1.ADDON_MAX_OPTIONS_PER_GROUP} 个选项`);
+                throw new core_2.UserInputError(`「${(_a = g === null || g === void 0 ? void 0 : g.name) !== null && _a !== void 0 ? _a : '加料'}」最多 ${addon_fee_1.ADDON_MAX_OPTIONS_PER_GROUP} 个选项`);
             }
             for (const o of opts) {
                 const n = Number((_b = o === null || o === void 0 ? void 0 : o.price) !== null && _b !== void 0 ? _b : 0);
                 if (Number.isFinite(n) && n > addon_fee_1.ADDON_MAX_PRICE_FEN) {
-                    throw new core_1.UserInputError('单个加料价格不能超过 1000 元');
+                    throw new core_2.UserInputError('单个加料价格不能超过 1000 元');
                 }
                 if (Number.isFinite(n) && n < 0) {
-                    throw new core_1.UserInputError('加料价格不能为负数');
+                    throw new core_2.UserInputError('加料价格不能为负数');
                 }
             }
             const min = Number((_c = g === null || g === void 0 ? void 0 : g.min) !== null && _c !== void 0 ? _c : 0);
             const max = Number((_d = g === null || g === void 0 ? void 0 : g.max) !== null && _d !== void 0 ? _d : 0);
             if (min > 0 && max > 0 && min > max) {
-                throw new core_1.UserInputError('「最少选」不能大于「最多选」');
+                throw new core_2.UserInputError('「最少选」不能大于「最多选」');
             }
         }
         const value = (0, addon_fee_1.serializeAddonGroups)(cleaned);
-        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+        await this.connection.getRepository(ctx, core_2.Product).update(productId, {
             customFields: { waimaiAddonGroups: value },
         });
         return { ok: true, addonGroups: value };
@@ -1342,33 +1492,33 @@ let MerchantAdminService = class MerchantAdminService {
         await this.assertProductInChannel(ctx, productId);
         const inputItems = Array.isArray(rawCombo === null || rawCombo === void 0 ? void 0 : rawCombo.items) ? rawCombo.items : [];
         if (inputItems.length > addon_fee_1.COMBO_MAX_ITEMS) {
-            throw new core_1.UserInputError(`套餐内含商品最多 ${addon_fee_1.COMBO_MAX_ITEMS} 项`);
+            throw new core_2.UserInputError(`套餐内含商品最多 ${addon_fee_1.COMBO_MAX_ITEMS} 项`);
         }
         const value = (0, addon_fee_1.serializeCombo)((0, addon_fee_1.parseCombo)(rawCombo));
-        await this.connection.getRepository(ctx, core_1.Product).update(productId, {
+        await this.connection.getRepository(ctx, core_2.Product).update(productId, {
             customFields: { waimaiCombo: value },
         });
         return { ok: true, combo: value };
     }
     /** 商品必须属于当前店铺渠道（越权防护：商家只能改本店商品） */
     async assertProductInChannel(ctx, productId) {
-        const inChannel = await this.connection.getRepository(ctx, core_1.Product).createQueryBuilder('product')
+        const inChannel = await this.connection.getRepository(ctx, core_2.Product).createQueryBuilder('product')
             .leftJoin('product.channels', 'channel')
             .where('product.id = :id', { id: productId })
             .andWhere('channel.id = :ch', { ch: ctx.channelId })
             .getOne();
         if (!inChannel)
-            throw new core_1.UserInputError('商品不存在或不属于当前店铺');
+            throw new core_2.UserInputError('商品不存在或不属于当前店铺');
     }
     async assertAnyChannelOrder(ctx, orderId) {
         var _a;
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
         });
         const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel)
-            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('订单不存在或不属于当前店铺');
         return order;
     }
     async assertChannelOrder(ctx, orderId, expect) {
@@ -1376,16 +1526,16 @@ let MerchantAdminService = class MerchantAdminService {
     }
     async assertChannelOrderState(ctx, orderId, expects) {
         var _a;
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
         });
         const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel)
-            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('订单不存在或不属于当前店铺');
         const hs = order.customFields.hallStatus;
         if (!expects.includes(hs)) {
-            throw new core_1.UserInputError('当前状态不允许该操作');
+            throw new core_2.UserInputError('当前状态不允许该操作');
         }
         return order;
     }
@@ -1449,14 +1599,15 @@ let MerchantAdminService = class MerchantAdminService {
 exports.MerchantAdminService = MerchantAdminService;
 exports.MerchantAdminService = MerchantAdminService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+    __metadata("design:paramtypes", [core_2.TransactionalConnection,
         campus_config_service_1.CampusConfigService,
         hall_service_1.HallService,
         campus_notify_service_1.CampusNotifyService,
         third_party_delivery_service_1.ThirdPartyDeliveryService,
-        core_1.OrderService,
+        core_2.OrderService,
         privacy_number_service_1.PrivacyNumberService,
-        cloud_print_service_1.CloudPrintService])
+        cloud_print_service_1.CloudPrintService,
+        core_1.ModuleRef])
 ], MerchantAdminService);
 /** 催单是否仍未处理（§78）：顾客置了 urged 且「已知晓」时间早于最近一次催单（顾客再催会重新变为待处理） */
 function isUrgePending(urged, urgedAt, ackedAt) {

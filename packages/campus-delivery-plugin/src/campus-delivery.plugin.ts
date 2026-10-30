@@ -612,6 +612,44 @@ import { TelemetryService } from './telemetry.service';
                     last7Avg: CampusDailyCompare!
                 }
 
+                """售后申请行（§81）：金额单位分"""
+                type CampusMerchantAfterSalesItem {
+                    id: ID!
+                    orderId: ID!
+                    """订单号（A2400xxx）"""
+                    orderCode: String!
+                    """售后单状态（Pending=待处理 / Refunded=已退款 / Rejected=已驳回 …）"""
+                    state: String!
+                    """售后类型（refund_only / return_refund / exchange）"""
+                    type: String!
+                    """顾客选择的售后原因"""
+                    reason: String!
+                    """顾客补充说明"""
+                    description: String
+                    """申请退款金额（分）"""
+                    refundAmount: Int!
+                    """商家驳回理由（顾客可见）"""
+                    rejectReason: String
+                    """顾客上传的凭证图片"""
+                    evidenceImages: [String!]!
+                    """协商留言条数"""
+                    messageCount: Int!
+                    """顾客姓名"""
+                    customerName: String
+                    createdAt: DateTime!
+                    """退款到账时间"""
+                    refundedAt: DateTime
+                }
+
+                """售后申请清单（§81）"""
+                type CampusMerchantAfterSalesList {
+                    items: [CampusMerchantAfterSalesItem!]!
+                    """待处理数（不受 state 筛选影响，供入口红点）"""
+                    pendingCount: Int!
+                    """本店售后单总数"""
+                    total: Int!
+                }
+
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
                 type CampusPrintResult {
                     ok: Boolean!
@@ -1495,6 +1533,8 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantPrepSummary: [CampusMerchantPrepItem!]!
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
+                    """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
+                    campusMerchantAfterSales(state: String): CampusMerchantAfterSalesList!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -1774,6 +1814,10 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
                     """商家发起退款（§76）：已送达订单整单/部分退款，amount 为分"""
                     campusMerchantRefundOrder(orderId: ID!, amount: Int!, reason: String!): CampusMerchantRefundResult!
+                    """同意售后（§81）：仅退款单直接链式退款到账"""
+                    campusMerchantAfterSalesApprove(id: ID!): CampusMerchantAfterSalesItem!
+                    """驳回售后（§81）：reason 必填，顾客 C 端可见"""
+                    campusMerchantAfterSalesReject(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

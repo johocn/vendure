@@ -1,3 +1,4 @@
+import { ModuleRef } from '@nestjs/core';
 import { ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
@@ -122,6 +123,39 @@ export interface MerchantRefundList {
     /** 实际查询区间（回显给前端） */
     start: Date;
     end: Date;
+}
+/** 售后申请行（§81 商家端处理）：金额单位分，顾客可见字段原样回传给商家 */
+export interface MerchantAfterSalesRow {
+    id: string;
+    orderId: string;
+    /** 订单号（A2400xxx） */
+    orderCode: string;
+    /** 售后单状态（Pending/Approved/Rejected/Refunded/RefundFailed/Appealed/Closed…） */
+    state: string;
+    /** 售后类型（refund_only 仅退款 / return_refund 退货退款 / exchange 换货） */
+    type: string;
+    /** 顾客选择的售后原因 */
+    reason: string;
+    /** 顾客补充说明 */
+    description: string | null;
+    /** 申请退款金额（分） */
+    refundAmount: number;
+    /** 商家驳回理由（顾客可见） */
+    rejectReason: string | null;
+    evidenceImages: string[];
+    /** 协商留言条数 */
+    messageCount: number;
+    /** 顾客姓名 */
+    customerName: string | null;
+    createdAt: Date;
+    /** 退款到账时间（未退款为 null） */
+    refundedAt: Date | null;
+}
+/** 售后申请清单（§81）：待处理数不受列表筛选影响，供入口红点 */
+export interface MerchantAfterSalesList {
+    items: MerchantAfterSalesRow[];
+    pendingCount: number;
+    total: number;
 }
 export interface MerchantBoard {
     paused: boolean;
@@ -315,7 +349,12 @@ export declare class MerchantAdminService {
     private orderService;
     private privacy;
     private cloud;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService);
+    private moduleRef?;
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService, moduleRef?: ModuleRef | undefined);
+    /** 售后插件为可选依赖：未安装时售后清单为空，「售后申请」入口降级隐藏 */
+    private afterSalesSvc?;
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private getAfterSales;
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     storeProfile(ctx: RequestContext): Promise<MerchantStoreProfile>;
     /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
@@ -476,6 +515,21 @@ export declare class MerchantAdminService {
     prepSummary(ctx: RequestContext): Promise<MerchantPrepItem[]>;
     /** 营业日报（§80）：单日经营快照 —— KPI、时段分布、商品 Top5、对比昨日与近 7 日均值 */
     dailyReport(ctx: RequestContext, date?: string | null): Promise<MerchantDailyReport>;
+    /** 售后申请清单（§81）：只列本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
+    afterSalesList(ctx: RequestContext, state?: string | null): Promise<MerchantAfterSalesList>;
+    /**
+     * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
+     * 先按「本店渠道 + Pending」校验，避免越权或已处理单重复触发退款。
+     */
+    afterSalesApprove(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
+    afterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
+    /** 售后单必须属于当前店铺，且状态在允许集合内（空集合=不校验状态） */
+    private assertChannelAfterSales;
+    private afterSalesOne;
+    /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
+    private afterSalesMessageCounts;
+    private toAfterSalesRow;
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
     products(ctx: RequestContext, search?: string, skip?: number, take?: number): Promise<{
         items: any;
@@ -486,7 +540,7 @@ export declare class MerchantAdminService {
         ok: boolean;
         soldOut: boolean;
     }>;
-    /** 全店批量沽清 / 批量恢复：仅本渠道商品，返回实际影响条数（打烊后一键恢复用） */
+    /** 全店批量沽清 / 批量恢复：仅本渠道未删除商品，返回实际影响条数（打烊后一键恢复用） */
     setAllProductsSoldOut(ctx: RequestContext, soldOut: boolean): Promise<{
         ok: boolean;
         soldOut: boolean;

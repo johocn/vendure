@@ -212,7 +212,7 @@ let SupportService = SupportService_1 = class SupportService {
         };
     }
     async createTicket(ctx, input) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const customer = await this.requireCustomer(ctx);
         const category = String((_a = input.category) !== null && _a !== void 0 ? _a : '');
         if (!exports.TICKET_CATEGORIES.includes(category))
@@ -248,7 +248,11 @@ let SupportService = SupportService_1 = class SupportService {
             `顾客：${name}${customer.phoneNumber ? `（${customer.phoneNumber}）` : ''}`,
             `内容：${content.slice(0, 120)}${content.length > 120 ? '…' : ''}`,
         ].filter(Boolean).join('\n'), orderCode, `ticket:${ticket.id}`, { channel: (_c = ctx.channel) === null || _c === void 0 ? void 0 : _c.code });
-        return Object.assign(Object.assign({}, ticket), SupportService_1.afterSalesView(afterSalesRequestId == null ? null : { id: afterSalesRequestId, state: null }));
+        // 自动关联成功时回显真实售后摘要（状态/金额），避免建单响应显示空状态
+        const summary = afterSalesRequestId == null
+            ? null
+            : (_d = (await this.loadAfterSalesSummaries(ctx, [ticket])).byId.get(Number(afterSalesRequestId))) !== null && _d !== void 0 ? _d : null;
+        return Object.assign(Object.assign({}, ticket), SupportService_1.afterSalesView(summary));
     }
     async myTickets(ctx, skip, take) {
         const customer = await this.requireCustomer(ctx);
@@ -323,6 +327,11 @@ let SupportService = SupportService_1 = class SupportService {
         const channelIds = Array.isArray(request.channels) ? request.channels.map(c => Number(c.id)) : [];
         if (channelIds.length && !channelIds.includes(Number(ctx.channelId))) {
             throw new core_2.UserInputError('售后单不属于当前店铺');
+        }
+        // 顾客一致性：工单无订单号时无法靠订单比对，必须校验售后单归属顾客，
+        // 否则可把顾客 A 的工单挂到同店铺顾客 B 的售后单，A 的工单列表会回显 B 的退款信息。
+        if (request.customerId != null && Number(request.customerId) !== Number(ticket.customerId)) {
+            throw new core_2.UserInputError('售后单与工单不属于同一顾客');
         }
         if (ticket.orderId != null && Number(ticket.orderId) !== Number(request.orderId)) {
             throw new core_2.UserInputError('售后单与工单关联订单不一致');

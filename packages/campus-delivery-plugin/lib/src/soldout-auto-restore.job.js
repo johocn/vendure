@@ -14,12 +14,13 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const periodic_fallback_1 = require("./periodic-fallback");
 const rider_shift_window_1 = require("./rider-shift-window");
+const campus_time_1 = require("./campus-time");
 const loggerCtx = 'CampusSoldOutAutoRestore';
 /** 启动后首跑延迟：等迁移建表 / DB 连接稳定 */
 const BOOT_DELAY_MS = 120000;
 /** 检查周期：每 10 分钟看一次是否到点（生产单进程自管定时器，与黑名单扫描同形态） */
 const INTERVAL_MS = 10 * 60000;
-/** 每日恢复时点（本地时间）：凌晨 4 点，早于早餐备货 */
+/** 每日恢复时点（校园本地时间 UTC+8）：凌晨 4 点，早于早餐备货 */
 const RESTORE_HOUR = 4;
 /**
  * 沽清次日自动恢复（§66）：每天 04:00 把「全店沽清」批次登记的商品恢复在售，
@@ -53,7 +54,8 @@ let SoldOutAutoRestoreJob = class SoldOutAutoRestoreJob {
     }
     async runOnce() {
         const now = new Date();
-        if (now.getHours() < RESTORE_HOUR)
+        // 与 localDateKey 保持同一时区口径（固定 UTC+8），避免非 UTC+8 服务器恢复时点漂移
+        if ((0, campus_time_1.campusHour)(now.getTime()) < RESTORE_HOUR)
             return;
         const day = (0, rider_shift_window_1.localDateKey)(now);
         if (this.lastRunDay === day)

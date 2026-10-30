@@ -21,6 +21,8 @@ export interface AdminListOptions {
 }
 export declare class TelemetryService {
     private connection;
+    /** 限流窗口：clientKey → {count, resetAt} */
+    private rateWindows;
     constructor(connection: TransactionalConnection);
     /** C 端批量埋点上报（匿名可用），返回实际入库条数。 */
     trackEvents(ctx: RequestContext, input: any): Promise<number>;
@@ -59,6 +61,9 @@ export declare class TelemetryService {
         }[];
         totalItems: number;
     }>;
+    /** 固定窗口限流：超限返回 false（丢弃本次上报，不抛错） */
+    private allowRate;
+    private pruneRateWindows;
     /** 已登录顾客 id（游客返回 null）；失败不阻断上报。 */
     private resolveCustomerId;
     private dayCounts;

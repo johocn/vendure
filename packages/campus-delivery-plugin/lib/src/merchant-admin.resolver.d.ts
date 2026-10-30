@@ -54,6 +54,12 @@ export declare class MerchantAdminResolver {
     campusMerchantPrepSummary(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantPrepItem[]>;
     /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
     campusMerchantDailyReport(ctx: RequestContext, date?: string | null): Promise<import("./merchant-admin.service").MerchantDailyReport>;
+    /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
+    campusMerchantAfterSales(ctx: RequestContext, state?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
+    /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded） */
+    campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
+    campusMerchantAfterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

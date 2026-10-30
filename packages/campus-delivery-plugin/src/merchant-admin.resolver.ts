@@ -200,6 +200,34 @@ export class MerchantAdminResolver {
         return this.merchant.dailyReport(ctx, date);
     }
 
+    /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSales(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'state', type: () => String, nullable: true }) state?: string | null,
+    ) {
+        return this.merchant.afterSalesList(ctx, state);
+    }
+
+    /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesApprove(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesApprove(ctx, id);
+    }
+
+    /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReject(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.afterSalesReject(ctx, id, reason);
+    }
+
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

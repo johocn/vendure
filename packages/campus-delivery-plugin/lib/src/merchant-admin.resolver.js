@@ -116,6 +116,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantDailyReport(ctx, date) {
         return this.merchant.dailyReport(ctx, date);
     }
+    /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
+    async campusMerchantAfterSales(ctx, state) {
+        return this.merchant.afterSalesList(ctx, state);
+    }
+    /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded） */
+    async campusMerchantAfterSalesApprove(ctx, id) {
+        return this.merchant.afterSalesApprove(ctx, id);
+    }
+    /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
+    async campusMerchantAfterSalesReject(ctx, id, reason) {
+        return this.merchant.afterSalesReject(ctx, id, reason);
+    }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
         return this.merchant.cloudPrint(ctx, orderId);
@@ -380,6 +392,34 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantDailyReport", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'state', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSales", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesApprove", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReject", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

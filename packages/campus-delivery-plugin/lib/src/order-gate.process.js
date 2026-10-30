@@ -96,8 +96,11 @@ exports.campusOrderGateProcess = {
         if (soldOut) {
             throw new core_1.UserInputError(`商品「${soldOut}」今日已售完，请重新选择`);
         }
-        // 4) 每日限量 / 每人限购（额度按 UTC+8 当日已支付订单统计，本单不计入）
-        const limitHit = await (0, daily_limit_1.findDailyLimitViolation)(conn, Number(ctx.channelId), Number(order.id));
+        // 4) 每日限量 / 每人限购（额度按 UTC+8 当日已支付订单统计，本单不计入；
+        //    同时把待付款单计入占用，并在同事务内加渠道锁，防止并发订单双双通过后超卖）
+        // 取当前事务绑定的 manager（事务上下文中 getRepository 返回事务内仓库），
+        // 让 advisory lock 与订单状态写入同事务生效；无事务时锁降级为单语句立即释放
+        const limitHit = await (0, daily_limit_1.findDailyLimitViolation)(conn, Number(ctx.channelId), Number(order.id), conn.getRepository(ctx, core_1.Order).manager);
         if (limitHit) {
             throw new core_1.UserInputError(limitHit);
         }
