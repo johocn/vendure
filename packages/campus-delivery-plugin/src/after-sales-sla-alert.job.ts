@@ -1,0 +1,117 @@
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import { Channel, EventBus, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
+import { AfterSalesMerchantNotifyEvent } from '@vendure/after-sales-plugin';
+import { PeriodicFallback } from './periodic-fallback';
+
+const loggerCtx = 'CampusAfterSalesSlaAlert';
+/** 启动后首跑延迟：等迁移建表 / DB 连接稳定 */
+const BOOT_DELAY_MS = 120_000;
+/** 扫描周期：10 分钟（临期/超时按小时级变化，无需更密） */
+const INTERVAL_MS = 10 * 60_000;
+/** 同一售后单同类提醒的冷却：24h，避免超时单反复刷屏 */
+const RENOTIFY_MS = 24 * 3600_000;
+/** 单轮最多处理条数，防止异常积压拖慢进程 */
+const MAX_PER_RUN = 200;
+/** 渠道未配置时的兜底口径（与售后插件规则默认一致） */
+const DEFAULT_TIMEOUT_HOURS = 48;
+const DEFAULT_DUE_SOON_HOURS = 12;
+
+/**
+ * 售后 SLA 自动提醒（§90）：扫描本店 Pending 售后单，
+ * 临期（剩余不足渠道阈值）与已超时各提醒一次，24h 内不重复。
+ * 经 AfterSalesMerchantNotifyEvent 解耦，未装 notification-plugin 时仅无提醒。
+ */
+@Injectable()
+export class AfterSalesSlaAlertJob implements OnApplicationShutdown {
+    private fallback: PeriodicFallback | null = null;
+
+    constructor(private connection: TransactionalConnection, private eventBus: EventBus) {}
+
+    start(): void {
+        if (this.fallback) return;
+        this.fallback = new PeriodicFallback({
+            name: 'after-sales-sla-alert',
+            intervalMs: INTERVAL_MS,
+            bootDelayMs: BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.runOnce());
+    }
+
+    stop(): void {
+        this.fallback?.stop();
+        this.fallback = null;
+    }
+
+    onApplicationShutdown(): void {
+        this.stop();
+    }
+
+    async runOnce(): Promise<void> {
+        const raw = this.connection.rawConnection;
+        let rows: any;
+        try {
+            rows = await raw.query(
+                `SELECT a.id AS "requestId", oc."channelId" AS "channelId",
+                        a."createdAt" AS "createdAt",
+                        COALESCE(ch."customFieldsAfterSalesTimeoutHours", ${DEFAULT_TIMEOUT_HOURS}) AS "timeoutHours",
+                        COALESCE(ch."customFieldsAfterSalesDueSoonHours", ${DEFAULT_DUE_SOON_HOURS}) AS "dueSoonHours"
+                   FROM after_sales_request a
+                   JOIN "order" o ON o.id = a."orderId"
+                   JOIN order_channels_channel oc ON oc."orderId" = o.id
+                   JOIN channel ch ON ch.id = oc."channelId"
+                  WHERE a.state = 'Pending' AND o."customFieldsHallstatus" IS NOT NULL
+                  ORDER BY a."createdAt" ASC
+                  LIMIT ${MAX_PER_RUN}`,
+            );
+        } catch (e: any) {
+            // 表/列缺失（迁移未跑完）时本轮跳过，不阻断后续轮次
+            Logger.warn(`query pending after-sales failed: ${String(e?.message ?? e)}`, loggerCtx);
+            return;
+        }
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        if (!Array.isArray(list) || !list.length) return;
+
+        const now = Date.now();
+        let sent = 0;
+        for (const r of list) {
+            const createdAt = new Date(r.createdAt).getTime();
+            const timeoutHours = Number(r.timeoutHours) || DEFAULT_TIMEOUT_HOURS;
+            const dueSoonHours = Number(r.dueSoonHours) || 0;
+            const deadline = createdAt + timeoutHours * 3600_000;
+            const kind = now >= deadline
+                ? 'overdue'
+                : (dueSoonHours > 0 && deadline - now <= dueSoonHours * 3600_000 ? 'dueSoon' : null);
+            if (!kind) continue;
+            try {
+                const claimed: any = await raw.query(
+                    `INSERT INTO campus_after_sales_sla_alert ("channelId", "requestId", "kind", "alertedAt")
+                     VALUES ($1, $2, $3, now())
+                     ON CONFLICT ("requestId", "kind") DO UPDATE SET "alertedAt" = now()
+                      WHERE campus_after_sales_sla_alert."alertedAt" < now() - interval '${Math.floor(RENOTIFY_MS / 3600_000)} hours'
+                     RETURNING "requestId"`,
+                    [Number(r.channelId), Number(r.requestId), kind],
+                );
+                const claimedList: any[] = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+                if (!Array.isArray(claimedList) || !claimedList.length) continue;
+                const channel = await raw.getRepository(Channel).findOne({ where: { id: Number(r.channelId) } as any });
+                if (!channel) continue;
+                const ctx = new RequestContext({
+                    apiType: 'admin',
+                    channel,
+                    isAuthorized: true,
+                    authorizedAsOwnerOnly: false,
+                });
+                const title = kind === 'overdue' ? '售后已超时' : '售后即将超时';
+                const content = kind === 'overdue'
+                    ? `售后单 #${r.requestId} 已超过处理时限（${timeoutHours} 小时），请尽快处理。`
+                    : `售后单 #${r.requestId} 即将超过处理时限（${timeoutHours} 小时），请及时处理。`;
+                this.eventBus.publish(new AfterSalesMerchantNotifyEvent(ctx, Number(r.requestId), title, content));
+                sent += 1;
+            } catch (e: any) {
+                Logger.warn(`alert request ${r.requestId} failed: ${String(e?.message ?? e)}`, loggerCtx);
+            }
+        }
+        if (sent > 0) Logger.info(`sent ${sent} after-sales SLA alert(s)`, loggerCtx);
+    }
+}

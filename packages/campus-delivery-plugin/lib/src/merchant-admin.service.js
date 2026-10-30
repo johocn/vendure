@@ -2214,6 +2214,83 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError(`解除黑名单失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
     }
+    /** 本店拉黑顾客列表（§90）：仅 active 记录，按拉黑时间倒序 */
+    async afterSalesBlacklist(ctx, opts = {}) {
+        var _a, _b;
+        const skip = Math.max(0, Math.floor(Number((_a = opts.skip) !== null && _a !== void 0 ? _a : 0)) || 0);
+        const take = Math.min(100, Math.max(1, Math.floor(Number((_b = opts.take) !== null && _b !== void 0 ? _b : 50)) || 50));
+        const rows = await this.connection.rawConnection.query('SELECT b.id, b."customerId", b.phone, b.reason, b."createdBy", b."createdAt", '
+            + 'c."firstName", c."lastName", c."phoneNumber" '
+            + 'FROM campus_blacklist b LEFT JOIN customer c ON c.id = b."customerId" '
+            + 'WHERE b."channelId" = $1 AND b.active = true '
+            + 'ORDER BY b."createdAt" DESC LIMIT $2 OFFSET $3', [Number(ctx.channelId), take, skip]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => {
+            var _a, _b, _c;
+            const name = [r.firstName, r.lastName].filter(Boolean).join('') || null;
+            const rawPhone = (_b = (_a = r.phone) !== null && _a !== void 0 ? _a : r.phoneNumber) !== null && _b !== void 0 ? _b : null;
+            return {
+                id: String(r.id),
+                customerId: r.customerId == null ? null : String(r.customerId),
+                customerName: name,
+                phone: rawPhone == null ? null : String(rawPhone).replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+                reason: r.reason == null ? null : String(r.reason),
+                createdBy: String((_c = r.createdBy) !== null && _c !== void 0 ? _c : ''),
+                createdAt: new Date(r.createdAt),
+            };
+        });
+    }
+    /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
+    async afterSalesBatchAssign(ctx, ids, userId) {
+        var _a;
+        const chId = Number(ctx.channelId);
+        const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length)
+            return [];
+        if (list.length > 50)
+            throw new core_2.UserInputError('单批最多 50 单');
+        const raw = this.connection.rawConnection;
+        let uid = null;
+        if (userId != null) {
+            uid = Number(userId);
+            const owned = await raw.query('SELECT 1 FROM administrator ad '
+                + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
+                + 'JOIN role r ON r.id = ar."roleId" '
+                + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $2 '
+                + 'WHERE ad."userId" = $1 AND ad."deletedAt" IS NULL LIMIT 1', [uid, chId]);
+            const hits = Array.isArray(owned) && Array.isArray(owned[0]) ? owned[0] : owned;
+            if (!Array.isArray(hits) || !hits.length) {
+                throw new core_2.UserInputError('处理人不存在或不属于当前店铺');
+            }
+        }
+        const ownedRows = await raw.query('SELECT a.id, a.state FROM after_sales_request a '
+            + 'JOIN "order" o ON o.id = a."orderId" '
+            + 'JOIN order_channels_channel oc ON oc."orderId" = o.id AND oc."channelId" = $1 '
+            + 'WHERE a.id = ANY($2::int[])', [chId, list]);
+        const owned = Array.isArray(ownedRows) && Array.isArray(ownedRows[0]) ? ownedRows[0] : ownedRows;
+        const ownedMap = new Map();
+        for (const r of Array.isArray(owned) ? owned : []) {
+            ownedMap.set(Number(r.id), String((_a = r.state) !== null && _a !== void 0 ? _a : ''));
+        }
+        const valid = list.filter(n => ownedMap.has(n));
+        if (valid.length) {
+            await raw.transaction(async (manager) => {
+                await manager.query('DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = ANY($2::int[])', [chId, valid]);
+                if (uid != null) {
+                    await manager.query('INSERT INTO campus_after_sales_assignee ("channelId", "requestId", "assigneeUserId") '
+                        + 'SELECT $1, unnest($2::int[]), $3 ON CONFLICT ("channelId", "requestId") DO NOTHING', [chId, valid, uid]);
+                }
+            });
+        }
+        return list.map(n => {
+            var _a;
+            return ownedMap.has(n)
+                ? { id: String(n), success: true, state: (_a = ownedMap.get(n)) !== null && _a !== void 0 ? _a : '', message: '' }
+                : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' };
+        });
+    }
     /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */
     async afterSalesStaffStats(ctx, from, to) {
         const start = this.campusDayStart(from);
@@ -2437,7 +2514,7 @@ let MerchantAdminService = class MerchantAdminService {
      * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。
      */
     async afterSalesReport(ctx, from, to) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
         const start = this.campusDayStart(from);
         const end = this.campusDayEnd(to);
         if (!start || !end)
@@ -2465,6 +2542,19 @@ let MerchantAdminService = class MerchantAdminService {
             const overdueRows = await raw.query(`SELECT COUNT(*)::int AS n FROM after_sales_request a
                   WHERE a.state = 'Pending' AND a."createdAt" >= $2 AND a."createdAt" < $3
                     AND a."createdAt" + make_interval(hours => $4) <= now() AND ${scope}`, [chId, start, end, timeoutHours]);
+            // 环比（§90）：上一周期 = 等长区间紧邻当前区间之前
+            const spanMs = end.getTime() - start.getTime();
+            const prevStart = new Date(start.getTime() - spanMs);
+            const prevEnd = new Date(start.getTime());
+            const prevTotalRows = await raw.query(`SELECT COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}`, [chId, prevStart, prevEnd]);
+            const prevRefundRows = await raw.query(`SELECT COUNT(*)::int AS n,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0)::int AS amount
+                   FROM after_sales_request a
+                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}`, [chId, prevStart, prevEnd]);
+            const prevOverdueRows = await raw.query(`SELECT COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a.state = 'Pending' AND a."createdAt" >= $2 AND a."createdAt" < $3
+                    AND a."createdAt" + make_interval(hours => $4) <= now() AND ${scope}`, [chId, prevStart, prevEnd, timeoutHours]);
             const dayCreated = await raw.query(`SELECT to_char(a."createdAt" AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS d,
                         COUNT(*)::int AS n
                    FROM after_sales_request a
@@ -2553,10 +2643,14 @@ let MerchantAdminService = class MerchantAdminService {
                 resolveOnTargetRate,
                 firstResponseOverdue: rules.firstResponseTargetHours > 0 ? Math.max(firstN - firstHit, 0) : 0,
                 resolveOverdue: rules.resolveTargetHours > 0 ? Math.max(resolveN - resolveHit, 0) : 0,
+                previousTotal: Number((_0 = (_z = prevTotalRows === null || prevTotalRows === void 0 ? void 0 : prevTotalRows[0]) === null || _z === void 0 ? void 0 : _z.n) !== null && _0 !== void 0 ? _0 : 0),
+                previousRefunded: Number((_2 = (_1 = prevRefundRows === null || prevRefundRows === void 0 ? void 0 : prevRefundRows[0]) === null || _1 === void 0 ? void 0 : _1.n) !== null && _2 !== void 0 ? _2 : 0),
+                previousRefundAmount: Number((_4 = (_3 = prevRefundRows === null || prevRefundRows === void 0 ? void 0 : prevRefundRows[0]) === null || _3 === void 0 ? void 0 : _3.amount) !== null && _4 !== void 0 ? _4 : 0),
+                previousOverdue: Number((_6 = (_5 = prevOverdueRows === null || prevOverdueRows === void 0 ? void 0 : prevOverdueRows[0]) === null || _5 === void 0 ? void 0 : _5.n) !== null && _6 !== void 0 ? _6 : 0),
             };
         }
         catch (e) {
-            throw new core_2.UserInputError(`售后报表查询失败：${(_z = e === null || e === void 0 ? void 0 : e.message) !== null && _z !== void 0 ? _z : e}`);
+            throw new core_2.UserInputError(`售后报表查询失败：${(_7 = e === null || e === void 0 ? void 0 : e.message) !== null && _7 !== void 0 ? _7 : e}`);
         }
     }
     /** 批量参数归一：去重、正整数、单批上限 50 */

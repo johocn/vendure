@@ -226,6 +226,22 @@ export interface MerchantAfterSalesReport {
     /** 超出首响目标的单数 / 超出完结目标的单数 */
     firstResponseOverdue: number;
     resolveOverdue: number;
+    /** 上一周期（同等长度）对照（§90）：新建单数 / 退款单数 / 退款金额 / 超时单数 */
+    previousTotal: number;
+    previousRefunded: number;
+    previousRefundAmount: number;
+    previousOverdue: number;
+}
+/** 本店拉黑顾客（§90）：仅商家可见 */
+export interface MerchantAfterSalesBlacklistEntry {
+    id: string;
+    customerId: string | null;
+    customerName: string | null;
+    /** 手机号（脱敏） */
+    phone: string | null;
+    reason: string | null;
+    createdBy: string;
+    createdAt: Date;
 }
 /** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
 export interface MerchantAfterSalesNote {
@@ -940,6 +956,13 @@ export declare class MerchantAdminService {
     afterSalesBatchTag(ctx: RequestContext, ids: ID[], tagIds: ID[]): Promise<MerchantAfterSalesBatchResult[]>;
     /** 解除本店拉黑（§89）：按顾客维度撤销 active 记录 */
     unblacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID): Promise<boolean>;
+    /** 本店拉黑顾客列表（§90）：仅 active 记录，按拉黑时间倒序 */
+    afterSalesBlacklist(ctx: RequestContext, opts?: {
+        skip?: number | null;
+        take?: number | null;
+    }): Promise<MerchantAfterSalesBlacklistEntry[]>;
+    /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
+    afterSalesBatchAssign(ctx: RequestContext, ids: ID[], userId: ID | null): Promise<MerchantAfterSalesBatchResult[]>;
     /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */
     afterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<MerchantAfterSalesStaffRow[]>;
     /** 售后单存在且属于本店渠道（备注等无状态限制场景复用） */

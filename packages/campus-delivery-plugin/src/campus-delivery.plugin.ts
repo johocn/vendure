@@ -60,6 +60,7 @@ import { P16MerchantUrgeAckMigration } from './migrations/p16-merchant-urge-ack'
 import { AutoAcceptJob } from './auto-accept.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
+import { AfterSalesSlaAlertJob } from './after-sales-sla-alert.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -150,6 +151,7 @@ import { P17AfterSalesNoteMigration } from './migrations/p17-after-sales-note';
 import { P18ReplyTemplateMigration } from './migrations/p18-reply-template';
 import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
 import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-assignee';
+import { P21AfterSalesSlaAlertMigration } from './migrations/p21-after-sales-sla-alert';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -187,6 +189,7 @@ import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-ass
         P18ReplyTemplateMigration,
         P19AfterSalesTagMigration,
         P20AfterSalesAssigneeMigration,
+        P21AfterSalesSlaAlertMigration,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
@@ -195,6 +198,7 @@ import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-ass
         P16MerchantUrgeAckMigration,
         AutoAcceptJob,
         SoldOutAutoRestoreJob,
+        AfterSalesSlaAlertJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -887,6 +891,23 @@ import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-ass
                     """超出首响目标单数 / 超出完结目标单数"""
                     firstResponseOverdue: Int!
                     resolveOverdue: Int!
+                    """上一周期对照（§90）：新建单数 / 退款单数 / 退款金额（分） / 超时单数"""
+                    previousTotal: Int!
+                    previousRefunded: Int!
+                    previousRefundAmount: Int!
+                    previousOverdue: Int!
+                }
+
+                """本店拉黑顾客（§90）：仅商家可见"""
+                type CampusMerchantAfterSalesBlacklistEntry {
+                    id: ID!
+                    customerId: ID
+                    customerName: String
+                    """手机号（脱敏）"""
+                    phone: String
+                    reason: String
+                    createdBy: String!
+                    createdAt: DateTime!
                 }
 
                 """商家售后内部备注（§86）：仅商家可见"""
@@ -1871,6 +1892,8 @@ import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-ass
                     campusMerchantAfterSalesAssignees: [CampusMerchantAfterSalesAssignee!]!
                     """员工处理绩效（§89）：区间内按操作人统计，区间最长一年"""
                     campusMerchantAfterSalesStaffStats(from: String!, to: String!): [CampusMerchantAfterSalesStaffRow!]!
+                    """本店黑名单列表（§90）：仅 active 记录"""
+                    campusMerchantAfterSalesBlacklist(skip: Int, take: Int): [CampusMerchantAfterSalesBlacklistEntry!]!
                     """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
@@ -2224,6 +2247,8 @@ import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-ass
                     campusMerchantAfterSalesBatchTag(ids: [ID!]!, tagIds: [ID!]!): [CampusMerchantAfterSalesBatchResult!]!
                     """解除本店顾客拉黑（§89）"""
                     campusMerchantUnblacklistAfterSalesCustomer(customerId: ID!): Boolean!
+                    """批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果"""
+                    campusMerchantAfterSalesBatchAssign(ids: [ID!]!, userId: ID): [CampusMerchantAfterSalesBatchResult!]!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
@@ -3080,6 +3105,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             .catch(e => Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         // 沽清次日自动恢复（§66）：自管定时器，每日 04:00 把「全店沽清」批次恢复在售
         this.injector.get(SoldOutAutoRestoreJob).start();
+        // 售后 SLA 主动提醒（§90）：10 分钟扫描临期/超时待处理单，向商家发站内信
+        this.injector.get(AfterSalesSlaAlertJob).start();
         // 商家自动接单（§69）：15s 扫描待接单订单，营业中且未休息时按延迟秒数自动确认
         this.injector.get(AutoAcceptJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {

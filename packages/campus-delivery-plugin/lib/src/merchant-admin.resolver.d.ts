@@ -86,6 +86,8 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesAssignees(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesAssignee[]>;
     /** 员工处理绩效（§89） */
     campusMerchantAfterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantAfterSalesStaffRow[]>;
+    /** 本店黑名单列表（§90） */
+    campusMerchantAfterSalesBlacklist(ctx: RequestContext, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesBlacklistEntry[]>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
@@ -138,6 +140,8 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesBatchTag(ctx: RequestContext, ids: ID[], tagIds: ID[]): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
     /** 解除本店顾客拉黑（§89） */
     campusMerchantUnblacklistAfterSalesCustomer(ctx: RequestContext, customerId: ID): Promise<boolean>;
+    /** 批量指派处理人（§90）：userId 为空=批量取消 */
+    campusMerchantAfterSalesBatchAssign(ctx: RequestContext, ids: ID[], userId: ID | null): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

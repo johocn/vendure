@@ -260,6 +260,23 @@ export interface MerchantAfterSalesReport {
     /** 超出首响目标的单数 / 超出完结目标的单数 */
     firstResponseOverdue: number;
     resolveOverdue: number;
+    /** 上一周期（同等长度）对照（§90）：新建单数 / 退款单数 / 退款金额 / 超时单数 */
+    previousTotal: number;
+    previousRefunded: number;
+    previousRefundAmount: number;
+    previousOverdue: number;
+}
+
+/** 本店拉黑顾客（§90）：仅商家可见 */
+export interface MerchantAfterSalesBlacklistEntry {
+    id: string;
+    customerId: string | null;
+    customerName: string | null;
+    /** 手机号（脱敏） */
+    phone: string | null;
+    reason: string | null;
+    createdBy: string;
+    createdAt: Date;
 }
 
 /** 商家售后内部备注（§86）：仅商家可见，顾客端不展示 */
@@ -3010,6 +3027,92 @@ export class MerchantAdminService {
         }
     }
 
+    /** 本店拉黑顾客列表（§90）：仅 active 记录，按拉黑时间倒序 */
+    async afterSalesBlacklist(ctx: RequestContext, opts: { skip?: number | null; take?: number | null } = {}): Promise<MerchantAfterSalesBlacklistEntry[]> {
+        const skip = Math.max(0, Math.floor(Number(opts.skip ?? 0)) || 0);
+        const take = Math.min(100, Math.max(1, Math.floor(Number(opts.take ?? 50)) || 50));
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT b.id, b."customerId", b.phone, b.reason, b."createdBy", b."createdAt", '
+            + 'c."firstName", c."lastName", c."phoneNumber" '
+            + 'FROM campus_blacklist b LEFT JOIN customer c ON c.id = b."customerId" '
+            + 'WHERE b."channelId" = $1 AND b.active = true '
+            + 'ORDER BY b."createdAt" DESC LIMIT $2 OFFSET $3',
+            [Number(ctx.channelId), take, skip],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => {
+            const name = [r.firstName, r.lastName].filter(Boolean).join('') || null;
+            const rawPhone = r.phone ?? r.phoneNumber ?? null;
+            return {
+                id: String(r.id),
+                customerId: r.customerId == null ? null : String(r.customerId),
+                customerName: name,
+                phone: rawPhone == null ? null : String(rawPhone).replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+                reason: r.reason == null ? null : String(r.reason),
+                createdBy: String(r.createdBy ?? ''),
+                createdAt: new Date(r.createdAt),
+            };
+        });
+    }
+
+    /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
+    async afterSalesBatchAssign(ctx: RequestContext, ids: ID[], userId: ID | null): Promise<MerchantAfterSalesBatchResult[]> {
+        const chId = Number(ctx.channelId);
+        const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length) return [];
+        if (list.length > 50) throw new UserInputError('单批最多 50 单');
+        const raw = this.connection.rawConnection;
+        let uid: number | null = null;
+        if (userId != null) {
+            uid = Number(userId);
+            const owned: any = await raw.query(
+                'SELECT 1 FROM administrator ad '
+                + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
+                + 'JOIN role r ON r.id = ar."roleId" '
+                + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $2 '
+                + 'WHERE ad."userId" = $1 AND ad."deletedAt" IS NULL LIMIT 1',
+                [uid, chId],
+            );
+            const hits: any[] = Array.isArray(owned) && Array.isArray(owned[0]) ? owned[0] : owned;
+            if (!Array.isArray(hits) || !hits.length) {
+                throw new UserInputError('处理人不存在或不属于当前店铺');
+            }
+        }
+        const ownedRows: any = await raw.query(
+            'SELECT a.id, a.state FROM after_sales_request a '
+            + 'JOIN "order" o ON o.id = a."orderId" '
+            + 'JOIN order_channels_channel oc ON oc."orderId" = o.id AND oc."channelId" = $1 '
+            + 'WHERE a.id = ANY($2::int[])',
+            [chId, list],
+        );
+        const owned: any[] = Array.isArray(ownedRows) && Array.isArray(ownedRows[0]) ? ownedRows[0] : ownedRows;
+        const ownedMap = new Map<number, string>();
+        for (const r of Array.isArray(owned) ? owned : []) {
+            ownedMap.set(Number(r.id), String(r.state ?? ''));
+        }
+        const valid = list.filter(n => ownedMap.has(n));
+        if (valid.length) {
+            await raw.transaction(async (manager: any) => {
+                await manager.query(
+                    'DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = ANY($2::int[])',
+                    [chId, valid],
+                );
+                if (uid != null) {
+                    await manager.query(
+                        'INSERT INTO campus_after_sales_assignee ("channelId", "requestId", "assigneeUserId") '
+                        + 'SELECT $1, unnest($2::int[]), $3 ON CONFLICT ("channelId", "requestId") DO NOTHING',
+                        [chId, valid, uid],
+                    );
+                }
+            });
+        }
+        return list.map(n => ownedMap.has(n)
+            ? { id: String(n), success: true, state: ownedMap.get(n) ?? '', message: '' }
+            : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' });
+    }
+
     /** 员工处理绩效（§89）：按操作人统计处理量、完结数与首次操作/完结耗时 */
     async afterSalesStaffStats(ctx: RequestContext, from: string, to: string): Promise<MerchantAfterSalesStaffRow[]> {
         const start = this.campusDayStart(from);
@@ -3289,6 +3392,28 @@ export class MerchantAdminService {
                     AND a."createdAt" + make_interval(hours => $4) <= now() AND ${scope}`,
                 [chId, start, end, timeoutHours],
             );
+            // 环比（§90）：上一周期 = 等长区间紧邻当前区间之前
+            const spanMs = end.getTime() - start.getTime();
+            const prevStart = new Date(start.getTime() - spanMs);
+            const prevEnd = new Date(start.getTime());
+            const prevTotalRows: any = await raw.query(
+                `SELECT COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}`,
+                [chId, prevStart, prevEnd],
+            );
+            const prevRefundRows: any = await raw.query(
+                `SELECT COUNT(*)::int AS n,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0)::int AS amount
+                   FROM after_sales_request a
+                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}`,
+                [chId, prevStart, prevEnd],
+            );
+            const prevOverdueRows: any = await raw.query(
+                `SELECT COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a.state = 'Pending' AND a."createdAt" >= $2 AND a."createdAt" < $3
+                    AND a."createdAt" + make_interval(hours => $4) <= now() AND ${scope}`,
+                [chId, prevStart, prevEnd, timeoutHours],
+            );
             const dayCreated: any = await raw.query(
                 `SELECT to_char(a."createdAt" AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS d,
                         COUNT(*)::int AS n
@@ -3395,6 +3520,10 @@ export class MerchantAdminService {
                 resolveOnTargetRate,
                 firstResponseOverdue: rules.firstResponseTargetHours > 0 ? Math.max(firstN - firstHit, 0) : 0,
                 resolveOverdue: rules.resolveTargetHours > 0 ? Math.max(resolveN - resolveHit, 0) : 0,
+                previousTotal: Number(prevTotalRows?.[0]?.n ?? 0),
+                previousRefunded: Number(prevRefundRows?.[0]?.n ?? 0),
+                previousRefundAmount: Number(prevRefundRows?.[0]?.amount ?? 0),
+                previousOverdue: Number(prevOverdueRows?.[0]?.n ?? 0),
             };
         } catch (e: any) {
             throw new UserInputError(`售后报表查询失败：${e?.message ?? e}`);

@@ -59,6 +59,7 @@ const p16_merchant_urge_ack_1 = require("./migrations/p16-merchant-urge-ack");
 const auto_accept_job_1 = require("./auto-accept.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
+const after_sales_sla_alert_job_1 = require("./after-sales-sla-alert.job");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
@@ -149,6 +150,7 @@ const p17_after_sales_note_1 = require("./migrations/p17-after-sales-note");
 const p18_reply_template_1 = require("./migrations/p18-reply-template");
 const p19_after_sales_tag_1 = require("./migrations/p19-after-sales-tag");
 const p20_after_sales_assignee_1 = require("./migrations/p20-after-sales-assignee");
+const p21_after_sales_sla_alert_1 = require("./migrations/p21-after-sales-sla-alert");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
 // 永久 PENDING、订单卡在 ArrangingPayment 11 天。改为 PaymentTimeoutJob 自管定时器
@@ -185,6 +187,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
             .catch(e => core_1.Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         // 沽清次日自动恢复（§66）：自管定时器，每日 04:00 把「全店沽清」批次恢复在售
         this.injector.get(soldout_auto_restore_job_1.SoldOutAutoRestoreJob).start();
+        // 售后 SLA 主动提醒（§90）：10 分钟扫描临期/超时待处理单，向商家发站内信
+        this.injector.get(after_sales_sla_alert_job_1.AfterSalesSlaAlertJob).start();
         // 商家自动接单（§69）：15s 扫描待接单订单，营业中且未休息时按延迟秒数自动确认
         this.injector.get(auto_accept_job_1.AutoAcceptJob).start();
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
@@ -331,6 +335,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p18_reply_template_1.P18ReplyTemplateMigration,
             p19_after_sales_tag_1.P19AfterSalesTagMigration,
             p20_after_sales_assignee_1.P20AfterSalesAssigneeMigration,
+            p21_after_sales_sla_alert_1.P21AfterSalesSlaAlertMigration,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
             p13_auto_accept_1.P13AutoAcceptMigration,
@@ -339,6 +344,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p16_merchant_urge_ack_1.P16MerchantUrgeAckMigration,
             auto_accept_job_1.AutoAcceptJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
+            after_sales_sla_alert_job_1.AfterSalesSlaAlertJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -1031,6 +1037,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """超出首响目标单数 / 超出完结目标单数"""
                     firstResponseOverdue: Int!
                     resolveOverdue: Int!
+                    """上一周期对照（§90）：新建单数 / 退款单数 / 退款金额（分） / 超时单数"""
+                    previousTotal: Int!
+                    previousRefunded: Int!
+                    previousRefundAmount: Int!
+                    previousOverdue: Int!
+                }
+
+                """本店拉黑顾客（§90）：仅商家可见"""
+                type CampusMerchantAfterSalesBlacklistEntry {
+                    id: ID!
+                    customerId: ID
+                    customerName: String
+                    """手机号（脱敏）"""
+                    phone: String
+                    reason: String
+                    createdBy: String!
+                    createdAt: DateTime!
                 }
 
                 """商家售后内部备注（§86）：仅商家可见"""
@@ -2015,6 +2038,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesAssignees: [CampusMerchantAfterSalesAssignee!]!
                     """员工处理绩效（§89）：区间内按操作人统计，区间最长一年"""
                     campusMerchantAfterSalesStaffStats(from: String!, to: String!): [CampusMerchantAfterSalesStaffRow!]!
+                    """本店黑名单列表（§90）：仅 active 记录"""
+                    campusMerchantAfterSalesBlacklist(skip: Int, take: Int): [CampusMerchantAfterSalesBlacklistEntry!]!
                     """售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕"""
                     campusMerchantAfterSalesDetail(id: ID!): CampusMerchantAfterSalesDetail!
                     """售后处理统计（§81）：待处理/超时/今日处理量/今日退款额"""
@@ -2368,6 +2393,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesBatchTag(ids: [ID!]!, tagIds: [ID!]!): [CampusMerchantAfterSalesBatchResult!]!
                     """解除本店顾客拉黑（§89）"""
                     campusMerchantUnblacklistAfterSalesCustomer(customerId: ID!): Boolean!
+                    """批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果"""
+                    campusMerchantAfterSalesBatchAssign(ids: [ID!]!, userId: ID): [CampusMerchantAfterSalesBatchResult!]!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
