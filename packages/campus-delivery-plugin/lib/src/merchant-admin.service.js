@@ -1153,7 +1153,7 @@ let MerchantAdminService = class MerchantAdminService {
         const repo = this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest);
         // 渠道隔离：售后单本身挂了 channels，但其归属以订单渠道为准（售后单可能由平台代建）
         const base = () => repo.createQueryBuilder('a')
-            .leftJoin('a.order', 'o')
+            .leftJoinAndSelect('a.order', 'o')
             .leftJoin('o.channels', 'c')
             .where('c.id = :ch', { ch: ctx.channelId })
             .andWhere('o.customFields.hallStatus IS NOT NULL');
