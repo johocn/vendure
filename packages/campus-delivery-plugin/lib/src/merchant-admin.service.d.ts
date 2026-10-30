@@ -415,6 +415,48 @@ export interface MerchantAfterSalesProductRow {
     /** 售后率（百分比）：售后单数 / 该商品区间订单数，无订单为 0 */
     requestRate: number;
 }
+/** 售后原因分布（§93）：区间内按原因聚合的单量/退款与环比 */
+export interface MerchantAfterSalesReasonRow {
+    reason: string;
+    /** 该原因售后单量 */
+    requestCount: number;
+    /** 其中已退款单量 */
+    refundCount: number;
+    /** 退款金额（分，仅已退款单） */
+    refundAmount: number;
+    /** 占比（百分比）：该原因单量 / 区间总单量 */
+    share: number;
+    /** 上一等长区间同原因单量（环比用） */
+    previousCount: number;
+    /** 环比变化（百分比，上一期为 0 时为 null） */
+    changeRate: number | null;
+}
+/** 顾客最近售后单（§93） */
+export interface MerchantAfterSalesCustomerRecent {
+    id: string;
+    orderCode: string;
+    type: string;
+    state: string;
+    /** 申请退款金额（分） */
+    amount: number;
+    createdAt: Date;
+}
+/** 顾客售后档案（§93）：本店维度聚合 */
+export interface MerchantAfterSalesCustomerProfile {
+    customerId: string;
+    name: string;
+    /** 手机号（脱敏） */
+    phone: string | null;
+    blacklisted: boolean;
+    requestCount: number;
+    refundedCount: number;
+    /** 累计退款金额（分，仅已退款单） */
+    refundAmount: number;
+    firstAt: Date | null;
+    lastAt: Date | null;
+    /** 最近 10 条售后单 */
+    recent: MerchantAfterSalesCustomerRecent[];
+}
 /** 售后详情（§81）：列表行 + 协商留言 + 状态时间线 + 退款失败留痕 */
 export interface MerchantAfterSalesDetail {
     request: MerchantAfterSalesRow;
@@ -1007,6 +1049,12 @@ export declare class MerchantAdminService {
     afterSalesBatchNote(ctx: RequestContext, ids: ID[], content: string): Promise<MerchantAfterSalesBatchResult[]>;
     /** 商品售后统计（§92）：区间内 Top 商品售后单量、退款额与售后率 */
     afterSalesProductReport(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesProductRow[]>;
+    /** 售后原因分布（§93）：区间内按原因聚合单量/退款，含占比与环比 */
+    afterSalesReasonReport(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesReasonRow[]>;
+    /** 顾客售后档案（§93）：本店维度聚合历史售后、退款与拉黑状态 */
+    afterSalesCustomerProfile(ctx: RequestContext, customerId: ID): Promise<MerchantAfterSalesCustomerProfile>;
+    /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
+    afterSalesPrintSlip(ctx: RequestContext, id: ID): Promise<string>;
     /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
     afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string>;
     /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */

@@ -260,6 +260,38 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesProductReport(ctx, from, to, limit);
     }
 
+    /** 售后原因分布（§93）：区间内按原因聚合单量/退款/占比与环比 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReasonReport(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+        @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number | null,
+    ) {
+        return this.merchant.afterSalesReasonReport(ctx, from, to, limit);
+    }
+
+    /** 顾客售后档案（§93）：本店维度历史售后、退款与拉黑状态 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesCustomerProfile(
+        @Ctx() ctx: RequestContext,
+        @Args('customerId') customerId: ID,
+    ) {
+        return this.merchant.afterSalesCustomerProfile(ctx, customerId);
+    }
+
+    /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesPrintSlip(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+    ) {
+        return this.merchant.afterSalesPrintSlip(ctx, id);
+    }
+
     /** 售后寄回地址（§83）：本店渠道配置 */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)

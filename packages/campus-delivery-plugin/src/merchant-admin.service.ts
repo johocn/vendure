@@ -469,6 +469,51 @@ export interface MerchantAfterSalesProductRow {
     requestRate: number;
 }
 
+/** 售后原因分布（§93）：区间内按原因聚合的单量/退款与环比 */
+export interface MerchantAfterSalesReasonRow {
+    reason: string;
+    /** 该原因售后单量 */
+    requestCount: number;
+    /** 其中已退款单量 */
+    refundCount: number;
+    /** 退款金额（分，仅已退款单） */
+    refundAmount: number;
+    /** 占比（百分比）：该原因单量 / 区间总单量 */
+    share: number;
+    /** 上一等长区间同原因单量（环比用） */
+    previousCount: number;
+    /** 环比变化（百分比，上一期为 0 时为 null） */
+    changeRate: number | null;
+}
+
+/** 顾客最近售后单（§93） */
+export interface MerchantAfterSalesCustomerRecent {
+    id: string;
+    orderCode: string;
+    type: string;
+    state: string;
+    /** 申请退款金额（分） */
+    amount: number;
+    createdAt: Date;
+}
+
+/** 顾客售后档案（§93）：本店维度聚合 */
+export interface MerchantAfterSalesCustomerProfile {
+    customerId: string;
+    name: string;
+    /** 手机号（脱敏） */
+    phone: string | null;
+    blacklisted: boolean;
+    requestCount: number;
+    refundedCount: number;
+    /** 累计退款金额（分，仅已退款单） */
+    refundAmount: number;
+    firstAt: Date | null;
+    lastAt: Date | null;
+    /** 最近 10 条售后单 */
+    recent: MerchantAfterSalesCustomerRecent[];
+}
+
 /** 售后详情（§81）：列表行 + 协商留言 + 状态时间线 + 退款失败留痕 */
 export interface MerchantAfterSalesDetail {
     request: MerchantAfterSalesRow;
@@ -3391,6 +3436,191 @@ export class MerchantAdminService {
         } catch (e: any) {
             throw new UserInputError(`商品售后统计查询失败：${e?.message ?? e}`);
         }
+    }
+
+    /** 售后原因分布（§93）：区间内按原因聚合单量/退款，含占比与环比 */
+    async afterSalesReasonReport(
+        ctx: RequestContext,
+        from: string,
+        to: string,
+        limit?: number | null,
+    ): Promise<MerchantAfterSalesReasonRow[]> {
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end) throw new UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime()) throw new UserInputError('开始日期不能晚于结束日期');
+        if (end.getTime() - start.getTime() > 366 * 86_400_000) throw new UserInputError('查询区间最长一年');
+        const chId = Number(ctx.channelId);
+        const take = Math.min(50, Math.max(1, Math.floor(Number(limit ?? 10)) || 10));
+        const spanMs = end.getTime() - start.getTime();
+        const prevStart = new Date(start.getTime() - spanMs);
+        const prevEnd = new Date(start.getTime());
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        const reasonExpr = `COALESCE(NULLIF(TRIM(a.reason), ''), '未填写')`;
+        try {
+            const raw = this.connection.rawConnection;
+            const curRows: any = await raw.query(
+                `SELECT ${reasonExpr} AS reason, COUNT(*)::int AS n,
+                        COUNT(*) FILTER (WHERE a.state = 'Refunded')::int AS refunded,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount"))
+                                 FILTER (WHERE a.state = 'Refunded'), 0)::int AS amount
+                   FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                  GROUP BY 1 ORDER BY n DESC, amount DESC`,
+                [chId, start, end],
+            );
+            const prevRows: any = await raw.query(
+                `SELECT ${reasonExpr} AS reason, COUNT(*)::int AS n
+                   FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                  GROUP BY 1`,
+                [chId, prevStart, prevEnd],
+            );
+            const cur: any[] = Array.isArray(curRows) ? curRows : [];
+            const prev = new Map<string, number>();
+            for (const r of Array.isArray(prevRows) ? prevRows : []) {
+                prev.set(String(r.reason ?? '未填写'), Number(r.n) || 0);
+            }
+            const total = cur.reduce((s, r) => s + (Number(r.n) || 0), 0);
+            return cur.slice(0, take).map(r => {
+                const reason = String(r.reason ?? '未填写');
+                const n = Number(r.n) || 0;
+                const p = prev.get(reason) ?? 0;
+                return {
+                    reason,
+                    requestCount: n,
+                    refundCount: Number(r.refunded) || 0,
+                    refundAmount: Number(r.amount) || 0,
+                    share: total > 0 ? Math.round((n / total) * 100) : 0,
+                    previousCount: p,
+                    changeRate: p > 0 ? Math.round(((n - p) / p) * 100) : null,
+                };
+            });
+        } catch (e: any) {
+            throw new UserInputError(`售后原因分布查询失败：${e?.message ?? e}`);
+        }
+    }
+
+    /** 顾客售后档案（§93）：本店维度聚合历史售后、退款与拉黑状态 */
+    async afterSalesCustomerProfile(ctx: RequestContext, customerId: ID): Promise<MerchantAfterSalesCustomerProfile> {
+        const cid = Number(customerId);
+        if (!Number.isFinite(cid) || cid <= 0) throw new UserInputError('顾客参数无效');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            const infoRows: any = await raw.query(
+                'SELECT c."firstName", c."lastName", c."phoneNumber" AS phone, '
+                + 'EXISTS (SELECT 1 FROM campus_blacklist b WHERE b."channelId" = $2 AND b.type = \'user\' '
+                + 'AND b."customerId" = c.id AND b.active = true) AS blacklisted '
+                + 'FROM customer c WHERE c.id = $1',
+                [cid, chId],
+            );
+            const info: any = (Array.isArray(infoRows) ? infoRows : [])[0] ?? {};
+            const aggRows: any = await raw.query(
+                `SELECT COUNT(*)::int AS n,
+                        COUNT(*) FILTER (WHERE a.state = 'Refunded')::int AS refunded,
+                        COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount"))
+                                 FILTER (WHERE a.state = 'Refunded'), 0)::int AS amount,
+                        MIN(a."createdAt") AS first_at, MAX(a."createdAt") AS last_at
+                   FROM after_sales_request a
+                  WHERE a."customerId" = $2 AND ${scope}`,
+                [chId, cid],
+            );
+            const agg: any = (Array.isArray(aggRows) ? aggRows : [])[0];
+            if (!agg || !(Number(agg.n) || 0)) throw new UserInputError('该顾客在本店没有售后记录');
+            const recentRows: any = await raw.query(
+                `SELECT a.id, a.type, a.state, a."createdAt",
+                        COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                        o.code AS "orderCode"
+                   FROM after_sales_request a
+                   LEFT JOIN "order" o ON o.id = a."orderId"
+                  WHERE a."customerId" = $2 AND ${scope}
+                  ORDER BY a."createdAt" DESC LIMIT 10`,
+                [chId, cid],
+            );
+            return {
+                customerId: String(cid),
+                name: `${String(info.lastName ?? '')}${String(info.firstName ?? '')}`.trim() || '顾客',
+                phone: info.phone ? this.maskPhone(info.phone) : null,
+                blacklisted: Boolean(info.blacklisted),
+                requestCount: Number(agg.n) || 0,
+                refundedCount: Number(agg.refunded) || 0,
+                refundAmount: Number(agg.amount) || 0,
+                firstAt: agg.first_at ? new Date(agg.first_at) : null,
+                lastAt: agg.last_at ? new Date(agg.last_at) : null,
+                recent: (Array.isArray(recentRows) ? recentRows : []).map(r => ({
+                    id: String(r.id),
+                    orderCode: String(r.orderCode ?? ''),
+                    type: String(r.type ?? ''),
+                    state: String(r.state ?? ''),
+                    amount: Number(r.amount) || 0,
+                    createdAt: new Date(r.createdAt),
+                })),
+            };
+        } catch (e: any) {
+            if (e instanceof UserInputError) throw e;
+            throw new UserInputError(`顾客售后档案查询失败：${e?.message ?? e}`);
+        }
+    }
+
+    /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
+    async afterSalesPrintSlip(ctx: RequestContext, id: ID): Promise<string> {
+        await this.assertRequestInChannel(ctx, id);
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const rows: any = await raw.query(
+            'SELECT a.id, a.type, a.state, a.reason, a.description, a."rejectReason", '
+            + 'a."refundAmount", a."actualRefundAmount", a."createdAt", a."refundedAt", '
+            + 'a."orderId", o.code AS "orderCode", c."firstName", c."lastName" '
+            + 'FROM after_sales_request a '
+            + 'LEFT JOIN "order" o ON o.id = a."orderId" '
+            + 'LEFT JOIN customer c ON c.id = a."customerId" '
+            + 'WHERE a.id = $1',
+            [Number(id)],
+        );
+        const row: any = (Array.isArray(rows) ? rows : [])[0];
+        if (!row) throw new UserInputError('售后单不存在');
+        const typeLabel: Record<string, string> = {
+            refund_only: '仅退款',
+            return_refund: '退货退款',
+            exchange: '换货',
+        };
+        const assignees = await this.afterSalesAssigneeMap(ctx, [Number(id)]);
+        const assignee = assignees.get(Number(id));
+        const items = await this.afterSalesOrderItems(Number(row.orderId));
+        const yuan = (cents: any) => `¥${((Number(cents) || 0) / 100).toFixed(2)}`;
+        const fmt = (v: any): string => {
+            if (v == null || v === '') return '—';
+            const d = new Date(v as any);
+            if (Number.isNaN(d.getTime())) return '—';
+            return new Date(d.getTime() + 8 * 3600_000).toISOString().replace('T', ' ').slice(0, 16);
+        };
+        const channelRows: any = await raw.query('SELECT code FROM channel WHERE id = $1', [chId]);
+        const code = String((Array.isArray(channelRows) ? channelRows : [])[0]?.code ?? '');
+        const lines = [
+            '【售后处理凭证】',
+            `店铺：${code || '—'}`,
+            `售后单号：#${row.id}`,
+            `订单号：${row.orderCode ?? '—'}`,
+            `申请时间：${fmt(row.createdAt)}`,
+            `顾客：${`${String(row.lastName ?? '')}${String(row.firstName ?? '')}`.trim() || '—'}`,
+            `类型：${typeLabel[String(row.type)] ?? String(row.type ?? '—')}`,
+            `原因：${row.reason ?? '—'}`,
+            `申请金额：${yuan(row.refundAmount)}`,
+            `实际退款：${row.actualRefundAmount == null ? '—' : yuan(row.actualRefundAmount)}（${fmt(row.refundedAt)}）`,
+            `状态：${row.state ?? '—'}`,
+            `处理人：${assignee?.name ?? '未指派'}`,
+        ];
+        if (items.length) {
+            lines.push(`商品：${items.map(i => `${i.name}×${i.quantity}`).join('；')}`);
+        }
+        if (row.description) lines.push(`顾客说明：${String(row.description).slice(0, 200)}`);
+        if (row.rejectReason) lines.push(`驳回理由：${String(row.rejectReason).slice(0, 200)}`);
+        lines.push('————————', `打印时间：${fmt(Date.now())}`);
+        return lines.join('\n');
     }
 
     /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */

@@ -136,6 +136,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesProductReport(ctx, from, to, limit) {
         return this.merchant.afterSalesProductReport(ctx, from, to, limit);
     }
+    /** 售后原因分布（§93）：区间内按原因聚合单量/退款/占比与环比 */
+    async campusMerchantAfterSalesReasonReport(ctx, from, to, limit) {
+        return this.merchant.afterSalesReasonReport(ctx, from, to, limit);
+    }
+    /** 顾客售后档案（§93）：本店维度历史售后、退款与拉黑状态 */
+    async campusMerchantAfterSalesCustomerProfile(ctx, customerId) {
+        return this.merchant.afterSalesCustomerProfile(ctx, customerId);
+    }
+    /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
+    async campusMerchantAfterSalesPrintSlip(ctx, id) {
+        return this.merchant.afterSalesPrintSlip(ctx, id);
+    }
     /** 售后寄回地址（§83）：本店渠道配置 */
     async campusMerchantAfterSalesReturnAddress(ctx) {
         return this.merchant.afterSalesReturnAddress(ctx);
@@ -639,6 +651,35 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesProductReport", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from')),
+    __param(2, (0, graphql_1.Args)('to')),
+    __param(3, (0, graphql_1.Args)({ name: 'limit', type: () => graphql_1.Int, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReasonReport", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('customerId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesCustomerProfile", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesPrintSlip", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

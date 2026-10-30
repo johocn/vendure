@@ -153,6 +153,9 @@ import { P19AfterSalesTagMigration } from './migrations/p19-after-sales-tag';
 import { P20AfterSalesAssigneeMigration } from './migrations/p20-after-sales-assignee';
 import { P21AfterSalesSlaAlertMigration } from './migrations/p21-after-sales-sla-alert';
 import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-assign-log';
+import { P23AfterSalesReviewMigration } from './migrations/p23-after-sales-review';
+import { AfterSalesReviewService } from './after-sales-review.service';
+import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
 // dev-config 配 runTasksInWorkerOnly: true）→ ScheduledTask 从不执行，20 条超时任务曾因此
@@ -192,6 +195,8 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
         P20AfterSalesAssigneeMigration,
         P21AfterSalesSlaAlertMigration,
         P22AfterSalesAssignLogMigration,
+        P23AfterSalesReviewMigration,
+        AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
         P13AutoAcceptMigration,
@@ -777,6 +782,80 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
                     refundAmount: Int!
                     """售后率（百分比）：售后单数 / 该商品区间订单数"""
                     requestRate: Int!
+                }
+
+                """售后原因分布（§93）：区间内按原因聚合"""
+                type CampusMerchantAfterSalesReasonRow {
+                    reason: String!
+                    requestCount: Int!
+                    refundCount: Int!
+                    """退款金额（分，仅已退款单）"""
+                    refundAmount: Int!
+                    """占比（百分比）"""
+                    share: Int!
+                    """上一等长区间同原因单量"""
+                    previousCount: Int!
+                    """环比变化（百分比，上一期为 0 时为 null）"""
+                    changeRate: Int
+                }
+
+                """顾客最近售后单（§93）"""
+                type CampusMerchantAfterSalesCustomerRecent {
+                    id: ID!
+                    orderCode: String!
+                    type: String!
+                    state: String!
+                    """申请退款金额（分）"""
+                    amount: Int!
+                    createdAt: DateTime!
+                }
+
+                """顾客售后档案（§93）：本店维度聚合"""
+                type CampusMerchantAfterSalesCustomerProfile {
+                    customerId: ID!
+                    name: String!
+                    """手机号（脱敏）"""
+                    phone: String
+                    blacklisted: Boolean!
+                    requestCount: Int!
+                    refundedCount: Int!
+                    """累计退款金额（分，仅已退款单）"""
+                    refundAmount: Int!
+                    firstAt: DateTime
+                    lastAt: DateTime
+                    """最近 10 条售后单"""
+                    recent: [CampusMerchantAfterSalesCustomerRecent!]!
+                }
+
+                """满意度分档（§93）"""
+                type CampusMerchantAfterSalesReviewBucket {
+                    score: Int!
+                    count: Int!
+                }
+
+                """低分待跟进（§93）：score <= 2"""
+                type CampusMerchantAfterSalesLowReview {
+                    id: ID!
+                    requestId: ID!
+                    orderCode: String!
+                    customerName: String
+                    score: Int!
+                    comment: String
+                    followedUp: Boolean!
+                    createdAt: DateTime!
+                }
+
+                """退款后满意度汇总（§93）"""
+                type CampusMerchantAfterSalesReviewSummary {
+                    total: Int!
+                    """平均分（保留 1 位小数，无评分为 0）"""
+                    avgScore: Float!
+                    """1-5 分档人数（固定 5 项）"""
+                    distribution: [CampusMerchantAfterSalesReviewBucket!]!
+                    """低分（<=2）条数"""
+                    lowScoreCount: Int!
+                    """低分待跟进明细（最近 20 条）"""
+                    lowScores: [CampusMerchantAfterSalesLowReview!]!
                 }
 
                 """售后处理统计（§81）：入口红点 + 今日处理量/退款额"""
@@ -1941,6 +2020,14 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
                     campusMerchantAfterSalesReport(from: String!, to: String!): CampusMerchantAfterSalesReport!
                     """商品维度售后统计（§92）：Top 商品售后单量/退款额/售后率"""
                     campusMerchantAfterSalesProductReport(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesProductRow!]!
+                    """售后原因分布（§93）：区间内按原因聚合单量/退款/占比与环比"""
+                    campusMerchantAfterSalesReasonReport(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesReasonRow!]!
+                    """顾客售后档案（§93）：本店维度历史售后、退款与拉黑状态"""
+                    campusMerchantAfterSalesCustomerProfile(customerId: ID!): CampusMerchantAfterSalesCustomerProfile!
+                    """售后处理凭证（§93）：门店留存/交接用纯文本凭条"""
+                    campusMerchantAfterSalesPrintSlip(id: ID!): String!
+                    """退款后满意度汇总（§93）：均分/分档/低分待跟进"""
+                    campusMerchantAfterSalesReviewSummary(from: String!, to: String!): CampusMerchantAfterSalesReviewSummary!
                     """售后寄回地址（§83）：本店渠道配置"""
                     campusMerchantAfterSalesReturnAddress: String!
                     """售后规则（§84）：处理时限/超时自动同意/退款自动重试"""
@@ -2272,6 +2359,8 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
                     campusMerchantAfterSalesBatchRemind(ids: [ID!]!, note: String): [CampusMerchantAfterSalesBatchResult!]!
                     """批量内部备注（§92）：上限 50 单，逐单结果"""
                     campusMerchantAfterSalesBatchNote(ids: [ID!]!, content: String!): [CampusMerchantAfterSalesBatchResult!]!
+                    """标记低分已跟进（§93）"""
+                    campusMerchantAfterSalesReviewFollowUp(id: ID!): Boolean!
                     """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
@@ -2484,7 +2573,7 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver, TelemetryAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, AfterSalesReviewAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver, TelemetryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -3040,12 +3129,19 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
                     campusCloseChat(conversationId: ID!): CampusMyChatConversation!
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
+                    """退款后满意度回访（§93）：仅本人已退款完成的售后单，1-5 分"""
+                    campusSubmitAfterSalesReview(requestId: ID!, score: Int!, comment: String): CampusAfterSalesReviewResult!
                     """P4-4 批量埋点上报（匿名可用），返回入库条数"""
                     campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
                     """P4-4 前端错误上报（匿名可用）"""
                     campusReportError(input: CampusErrorReportInput!): Boolean!
                     """待付款订单续付：校验归属后把该订单设为活跃订单，前端随后调用 addPaymentToOrder"""
                     campusResumePaymentOrder(orderId: ID!): Order!
+                }
+
+                type CampusAfterSalesReviewResult {
+                    ok: Boolean!
+                    score: Int!
                 }
 
                 input CampusTrackEventInput {
@@ -3073,7 +3169,7 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
                 }
             `;
         },
-        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver, TelemetryShopResolver, ResumePaymentShopResolver],
+        resolvers: [OrderDeliveryShopResolver, RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver, AddressChangeShopResolver, SupportShopResolver, ChatShopResolver, CampusAdShopResolver, CampusLockerShopResolver, TasteProfileShopResolver, TelemetryShopResolver, ResumePaymentShopResolver, AfterSalesReviewShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

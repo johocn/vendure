@@ -64,6 +64,12 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesReport(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantAfterSalesReport>;
     /** 商品维度售后统计（§92）：Top 商品售后单量/退款额/售后率 */
     campusMerchantAfterSalesProductReport(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesProductRow[]>;
+    /** 售后原因分布（§93）：区间内按原因聚合单量/退款/占比与环比 */
+    campusMerchantAfterSalesReasonReport(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReasonRow[]>;
+    /** 顾客售后档案（§93）：本店维度历史售后、退款与拉黑状态 */
+    campusMerchantAfterSalesCustomerProfile(ctx: RequestContext, customerId: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesCustomerProfile>;
+    /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
+    campusMerchantAfterSalesPrintSlip(ctx: RequestContext, id: ID): Promise<string>;
     /** 售后寄回地址（§83）：本店渠道配置 */
     campusMerchantAfterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */
