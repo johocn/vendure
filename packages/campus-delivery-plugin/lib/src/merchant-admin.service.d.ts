@@ -152,6 +152,8 @@ export interface MerchantAfterSalesRow {
     refundedAt: Date | null;
     /** 待处理且已超过渠道处理时限（超时阈值见售后插件 afterSalesTimeoutHours） */
     overdue: boolean;
+    /** 最新一条留言来自顾客且商家尚未回复（工作台待回复提醒，无需单独已读表） */
+    unread: boolean;
 }
 /** 售后状态计数（§81）：列表筛选旁的角标 */
 export interface MerchantAfterSalesStateCount {
@@ -198,6 +200,19 @@ export interface MerchantAfterSalesHistoryRow {
     toState: string;
     createdAt: Date;
 }
+/** 收货地址（售后详情：商家确认退货/换货时核对） */
+export interface MerchantAfterSalesAddress {
+    fullName: string;
+    phoneNumber: string;
+    address: string;
+}
+/** 订单商品行（售后详情：协商退货/部分退款核对） */
+export interface MerchantAfterSalesLine {
+    name: string;
+    quantity: number;
+    /** 行单价（含税，分） */
+    unitPrice: number;
+}
 /** 售后详情（§81）：列表行 + 协商留言 + 状态时间线 + 退款失败留痕 */
 export interface MerchantAfterSalesDetail {
     request: MerchantAfterSalesRow;
@@ -210,6 +225,14 @@ export interface MerchantAfterSalesDetail {
     actualRefundAmount: number | null;
     /** 渠道处理时限（小时），用于前端展示超时口径 */
     timeoutHours: number;
+    /** 顾客手机号（协商退货/换货联系用） */
+    customerPhone: string | null;
+    /** 订单收货地址 */
+    shippingAddress: MerchantAfterSalesAddress | null;
+    /** 订单商品行 */
+    orderItems: MerchantAfterSalesLine[];
+    /** 订单实付总额（含税，分） */
+    orderTotal: number;
 }
 /** 售后处理统计（§81）：入口红点 + 今日处理量 + 今日退款额 */
 export interface MerchantAfterSalesStats {
@@ -225,6 +248,8 @@ export interface MerchantAfterSalesStats {
     todayRefunded: number;
     /** 今日退款金额（分） */
     todayRefundAmount: number;
+    /** 待商家回复的售后会话数（最新留言来自顾客） */
+    pendingReply: number;
 }
 export interface MerchantBoard {
     paused: boolean;
@@ -422,6 +447,8 @@ export declare class MerchantAdminService {
     constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService, moduleRef?: ModuleRef | undefined);
     /** 售后插件为可选依赖：未安装时售后清单为空，「售后申请」入口降级隐藏 */
     private afterSalesSvc?;
+    /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */
+    private refundRetryAt;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private getAfterSales;
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
@@ -597,7 +624,17 @@ export declare class MerchantAdminService {
      * 渠道隔离同列表；留言表缺失时降级为空列表，不影响详情可用。
      */
     afterSalesDetail(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesDetail>;
-    /** 商家协商留言（§81）：Closed 禁言；正文/图片上限由售后插件校验，错误转成顾客可读文案 */
+    /**
+     * 商家确认收到退货（§82）：Returning → Received，退货回补与退款收紧由售后插件同事务完成。
+     * 收货备注先写留言流（失败只告警，不阻断收货）。
+     */
+    afterSalesConfirmReturn(ctx: RequestContext, id: ID, receivedQuantity?: number | null, note?: string | null): Promise<MerchantAfterSalesRow>;
+    /**
+     * 售后退款失败重试（§82）：仅 RefundFailed 可重试，复用售后插件退款核心（按剩余可退额度继续退）。
+     * 30 秒内同单只放行一次，避免连点造成重复退款尝试。
+     */
+    afterSalesRetryRefund(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /** 商家协商留言（§82）：仅待处理/顾客申诉单可回复，已退款、已驳回、已关闭一律只读 */
     afterSalesReply(ctx: RequestContext, id: ID, content: string, images?: string[] | null): Promise<MerchantAfterSalesMessage>;
     /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
     afterSalesStats(ctx: RequestContext): Promise<MerchantAfterSalesStats>;
@@ -614,6 +651,10 @@ export declare class MerchantAdminService {
     private afterSalesMessageRows;
     /** 状态流转时间线（正序，最多 50 条）：历史表缺失时降级为空 */
     private afterSalesHistoryRows;
+    /** 每单最新留言发送方（批量）：用于 unread 标记（最新为 customer 即待商家回复） */
+    private afterSalesLastSender;
+    /** 订单商品行（售后详情）：商品名优先取变体中文翻译，缺失回落商品翻译 */
+    private afterSalesOrderItems;
     /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
     private afterSalesMessageCounts;
     private toAfterSalesRow;

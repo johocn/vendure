@@ -368,6 +368,9 @@ export class NotificationService {
             } else if (e.toState === 'Returning') {
                 await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已寄回',
                     `顾客已填写退货物流（订单 ${e.orderCode ?? e.orderId}），请尽快确认收货。`);
+            } else if (e.toState === 'Appealed') {
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已申诉',
+                    `顾客对售后处理结果提出申诉（订单 ${e.orderCode ?? e.orderId}），请重新审核。`);
             }
         } catch (err: any) {
             Logger.warn(`onAfterSalesStateTransition failed: ${err?.message ?? err}`, loggerCtx);

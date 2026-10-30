@@ -31,7 +31,7 @@ import { loggerCtx, AFTER_SALES_PLUGIN_OPTIONS } from './constants';
 import { AfterSalesRequest } from './after-sales-request.entity';
 import { AfterSalesMessage, AfterSalesMessageSenderType } from './after-sales-message.entity';
 import { AfterSalesStateHistory } from './after-sales-state-history.entity';
-import { AfterSalesStateTransitionEvent } from './after-sales.events';
+import { AfterSalesMerchantNotifyEvent, AfterSalesStateTransitionEvent } from './after-sales.events';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
 import { InventoryService } from '@vendure/inventory-plugin';
 
@@ -1269,6 +1269,19 @@ export class AfterSalesService {
             `After-sales message added: request=${requestId} sender=${senderType} user=${ctx.activeUserId}`,
             loggerCtx,
         );
+        // 顾客留言 → 商家站内信提醒（notification-plugin 订阅；未装时事件无人消费，仅不提醒）
+        if (senderType === 'customer' && this.eventBus) {
+            try {
+                this.eventBus.publish(new AfterSalesMerchantNotifyEvent(
+                    ctx,
+                    Number(requestId),
+                    '售后有新留言',
+                    `顾客在售后单（订单 ${request.orderId}）发来新留言，请及时回复。`,
+                ));
+            } catch (e: any) {
+                Logger.warn(`publish AfterSalesMerchantNotifyEvent failed for #${requestId}: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
         return message;
     }
 

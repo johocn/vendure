@@ -299,7 +299,7 @@ let NotificationService = class NotificationService {
     // ---------- 售后状态通知（迭代三期，通知矩阵见三期设计 §一） ----------
     /** 售后状态迁移 → 顾客/商家站内信。任何失败仅告警，绝不阻断主流程。 */
     async onAfterSalesStateTransition(ctx, e) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         try {
             const customerLink = `/account/after-sales/${e.requestId}`;
             const cTitles = {
@@ -354,9 +354,12 @@ let NotificationService = class NotificationService {
             else if (e.toState === 'Returning') {
                 await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已寄回', `顾客已填写退货物流（订单 ${(_c = e.orderCode) !== null && _c !== void 0 ? _c : e.orderId}），请尽快确认收货。`);
             }
+            else if (e.toState === 'Appealed') {
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已申诉', `顾客对售后处理结果提出申诉（订单 ${(_d = e.orderCode) !== null && _d !== void 0 ? _d : e.orderId}），请重新审核。`);
+            }
         }
         catch (err) {
-            core_1.Logger.warn(`onAfterSalesStateTransition failed: ${(_d = err === null || err === void 0 ? void 0 : err.message) !== null && _d !== void 0 ? _d : err}`, constants_1.loggerCtx);
+            core_1.Logger.warn(`onAfterSalesStateTransition failed: ${(_e = err === null || err === void 0 ? void 0 : err.message) !== null && _e !== void 0 ? _e : err}`, constants_1.loggerCtx);
         }
     }
     /** 商家（商品归属店铺 administratorId）售后站内信；无店铺归属（自营）则不落。 */

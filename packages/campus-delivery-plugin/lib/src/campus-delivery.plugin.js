@@ -785,6 +785,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     refundedAt: DateTime
                     """待处理且已超过渠道处理时限（售后插件 afterSalesTimeoutHours）"""
                     overdue: Boolean!
+                    """最新一条留言来自顾客且商家尚未回复"""
+                    unread: Boolean!
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -824,6 +826,21 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     createdAt: DateTime!
                 }
 
+                """收货地址（售后详情核对用）"""
+                type CampusMerchantAfterSalesAddress {
+                    fullName: String!
+                    phoneNumber: String!
+                    address: String!
+                }
+
+                """订单商品行（售后详情核对用）"""
+                type CampusMerchantAfterSalesLine {
+                    name: String!
+                    quantity: Int!
+                    """行单价（含税，分）"""
+                    unitPrice: Int!
+                }
+
                 """售后详情（§81）：售后单 + 协商留言 + 状态时间线 + 退款失败留痕"""
                 type CampusMerchantAfterSalesDetail {
                     request: CampusMerchantAfterSalesItem!
@@ -837,6 +854,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     actualRefundAmount: Int
                     """渠道处理时限（小时）"""
                     timeoutHours: Int!
+                    """顾客手机号"""
+                    customerPhone: String
+                    """订单收货地址"""
+                    shippingAddress: CampusMerchantAfterSalesAddress
+                    """订单商品行"""
+                    orderItems: [CampusMerchantAfterSalesLine!]!
+                    """订单实付总额（含税，分）"""
+                    orderTotal: Int!
                 }
 
                 """售后处理统计（§81）：入口红点 + 今日处理量/退款额"""
@@ -853,6 +878,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     todayRefunded: Int!
                     """今日退款金额（分）"""
                     todayRefundAmount: Int!
+                    """待商家回复的售后会话数"""
+                    pendingReply: Int!
                 }
 
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
@@ -2029,6 +2056,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesReject(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     """商家协商留言（§81）：与顾客售后详情双向互通，Closed 后禁言"""
                     campusMerchantAfterSalesReply(id: ID!, content: String!, images: [String!]): CampusMerchantAfterSalesMessage!
+                    """商家确认收到退货（§82）：Returning → Received，可传实收数量与收货备注"""
+                    campusMerchantAfterSalesConfirmReturn(id: ID!, receivedQuantity: Int, note: String): CampusMerchantAfterSalesItem!
+                    """售后退款失败重试（§82）：仅 RefundFailed，30 秒内同单一次"""
+                    campusMerchantAfterSalesRetryRefund(id: ID!): CampusMerchantAfterSalesItem!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

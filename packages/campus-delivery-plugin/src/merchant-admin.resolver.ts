@@ -260,6 +260,25 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesReply(ctx, id, content, images);
     }
 
+    /** 商家确认收到退货（§82）：Returning → Received，可传实收数量与收货备注 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesConfirmReturn(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'receivedQuantity', type: () => Number, nullable: true }) receivedQuantity?: number | null,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+    ) {
+        return this.merchant.afterSalesConfirmReturn(ctx, id, receivedQuantity, note);
+    }
+
+    /** 售后退款失败重试（§82）：仅 RefundFailed，30 秒内同单一次 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRetryRefund(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesRetryRefund(ctx, id);
+    }
+
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

@@ -66,6 +66,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 商家协商留言（§81）：与顾客 C 端售后详情双向互通，Closed 后禁言 */
     campusMerchantAfterSalesReply(ctx: RequestContext, id: ID, content: string, images?: string[] | null): Promise<import("./merchant-admin.service").MerchantAfterSalesMessage>;
+    /** 商家确认收到退货（§82）：Returning → Received，可传实收数量与收货备注 */
+    campusMerchantAfterSalesConfirmReturn(ctx: RequestContext, id: ID, receivedQuantity?: number | null, note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 售后退款失败重试（§82）：仅 RefundFailed，30 秒内同单一次 */
+    campusMerchantAfterSalesRetryRefund(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

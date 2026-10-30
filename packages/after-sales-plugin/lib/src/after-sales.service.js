@@ -1097,6 +1097,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
      * 售后单关闭（Closed）后禁止继续留言；图片 ≤3 张、正文 ≤1000 字。
      */
     async addMessage(ctx, requestId, senderType, content, images) {
+        var _a;
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();
         }
@@ -1134,6 +1135,15 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             images: imgs.length ? imgs : null,
         }));
         core_1.Logger.info(`After-sales message added: request=${requestId} sender=${senderType} user=${ctx.activeUserId}`, constants_1.loggerCtx);
+        // 顾客留言 → 商家站内信提醒（notification-plugin 订阅；未装时事件无人消费，仅不提醒）
+        if (senderType === 'customer' && this.eventBus) {
+            try {
+                this.eventBus.publish(new after_sales_events_1.AfterSalesMerchantNotifyEvent(ctx, Number(requestId), '售后有新留言', `顾客在售后单（订单 ${request.orderId}）发来新留言，请及时回复。`));
+            }
+            catch (e) {
+                core_1.Logger.warn(`publish AfterSalesMerchantNotifyEvent failed for #${requestId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+            }
+        }
         return message;
     }
     /** 发送人显示名：管理员取 Administrator、顾客取 Customer（姓名拼接），失败兜底 'user' */

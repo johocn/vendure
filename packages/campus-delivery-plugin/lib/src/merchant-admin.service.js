@@ -53,6 +53,8 @@ let MerchantAdminService = class MerchantAdminService {
         this.privacy = privacy;
         this.cloud = cloud;
         this.moduleRef = moduleRef;
+        /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */
+        this.refundRetryAt = new Map();
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     getAfterSales() {
@@ -1204,10 +1206,11 @@ let MerchantAdminService = class MerchantAdminService {
             qb.andWhere('a.state = :st', { st: wanted });
         const rows = await qb.getMany();
         const counts = await this.afterSalesMessageCounts(ctx, rows.map(r => Number(r.id)));
+        const lastSender = await this.afterSalesLastSender(rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         return {
-            items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now)),
+            items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now, lastSender)),
             pendingCount,
             total,
             stateCounts,
@@ -1239,28 +1242,104 @@ let MerchantAdminService = class MerchantAdminService {
      * 渠道隔离同列表；留言表缺失时降级为空列表，不影响详情可用。
      */
     async afterSalesDetail(ctx, id) {
-        var _a, _b;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const request = await this.assertChannelAfterSales(ctx, id, []);
         const counts = await this.afterSalesMessageCounts(ctx, [Number(request.id)]);
+        const lastSender = await this.afterSalesLastSender([Number(request.id)]);
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const messages = await this.afterSalesMessageRows(Number(request.id));
         const stateHistory = await this.afterSalesHistoryRows(Number(request.id));
+        const order = request.order;
+        const customer = request.customer;
+        const addr = (_a = order === null || order === void 0 ? void 0 : order.shippingAddress) !== null && _a !== void 0 ? _a : null;
         return {
-            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now()),
+            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender),
             messages,
-            messageTotal: (_a = counts.get(Number(request.id))) !== null && _a !== void 0 ? _a : messages.length,
+            messageTotal: (_b = counts.get(Number(request.id))) !== null && _b !== void 0 ? _b : messages.length,
             stateHistory,
-            refundError: (_b = request.refundError) !== null && _b !== void 0 ? _b : null,
+            refundError: (_c = request.refundError) !== null && _c !== void 0 ? _c : null,
             actualRefundAmount: request.actualRefundAmount == null ? null : Number(request.actualRefundAmount),
             timeoutHours,
+            customerPhone: (_d = customer === null || customer === void 0 ? void 0 : customer.phoneNumber) !== null && _d !== void 0 ? _d : null,
+            shippingAddress: addr
+                ? {
+                    fullName: [addr.fullName, addr.company].filter(Boolean).join(' / ') || String((_e = addr.fullName) !== null && _e !== void 0 ? _e : ''),
+                    phoneNumber: String((_f = addr.phoneNumber) !== null && _f !== void 0 ? _f : ''),
+                    address: [addr.streetLine1, addr.streetLine2, addr.postalCode]
+                        .filter(Boolean)
+                        .join(' '),
+                }
+                : null,
+            orderItems: await this.afterSalesOrderItems(Number((_g = order === null || order === void 0 ? void 0 : order.id) !== null && _g !== void 0 ? _g : request.orderId)),
+            orderTotal: Number((_h = order === null || order === void 0 ? void 0 : order.totalWithTax) !== null && _h !== void 0 ? _h : 0),
         };
     }
-    /** 商家协商留言（§81）：Closed 禁言；正文/图片上限由售后插件校验，错误转成顾客可读文案 */
+    /**
+     * 商家确认收到退货（§82）：Returning → Received，退货回补与退款收紧由售后插件同事务完成。
+     * 收货备注先写留言流（失败只告警，不阻断收货）。
+     */
+    async afterSalesConfirmReturn(ctx, id, receivedQuantity, note) {
+        var _a, _b;
+        await this.assertChannelAfterSales(ctx, id, ['Returning']);
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        const qty = receivedQuantity == null ? undefined : Math.max(0, Math.floor(Number(receivedQuantity)));
+        const remark = String(note !== null && note !== void 0 ? note : '').trim();
+        try {
+            if (remark) {
+                try {
+                    await svc.addMessage(ctx, id, 'admin', remark.slice(0, 500));
+                }
+                catch (e) {
+                    core_2.Logger.warn(`确认收货备注写入留言失败: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'CampusMerchantAfterSales');
+                }
+            }
+            await svc.confirmReceive(ctx, id, qty);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`确认收货失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /**
+     * 售后退款失败重试（§82）：仅 RefundFailed 可重试，复用售后插件退款核心（按剩余可退额度继续退）。
+     * 30 秒内同单只放行一次，避免连点造成重复退款尝试。
+     */
+    async afterSalesRetryRefund(ctx, id) {
+        var _a, _b;
+        await this.assertChannelAfterSales(ctx, id, ['RefundFailed']);
+        const key = Number(id);
+        const now = Date.now();
+        if (now - ((_a = this.refundRetryAt.get(key)) !== null && _a !== void 0 ? _a : 0) < 30000) {
+            throw new core_2.UserInputError('退款重试过于频繁，请 30 秒后再试');
+        }
+        this.refundRetryAt.set(key, now);
+        // 防内存增长：清理 1 分钟前的记录
+        if (this.refundRetryAt.size > 500) {
+            for (const [k, t] of this.refundRetryAt) {
+                if (now - t > 60000)
+                    this.refundRetryAt.delete(k);
+            }
+        }
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        try {
+            await svc.retryRefund(ctx, id);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`退款重试失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 商家协商留言（§82）：仅待处理/顾客申诉单可回复，已退款、已驳回、已关闭一律只读 */
     async afterSalesReply(ctx, id, content, images) {
         var _a;
         const request = await this.assertChannelAfterSales(ctx, id, []);
-        if (request.state === 'Closed')
-            throw new core_2.UserInputError('售后单已关闭，不能再留言');
+        if (!AFTER_SALES_PENDING_STATES.includes(request.state)) {
+            throw new core_2.UserInputError('该售后已结束，不能再回复');
+        }
         const svc = this.getAfterSales();
         if (!svc)
             throw new core_2.UserInputError('售后插件未安装，暂不能留言');
@@ -1281,7 +1360,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 售后处理统计（§81）：入口红点 + 超时 + 今日处理量/退款额（今日按校园日 UTC+8 切分） */
     async afterSalesStats(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         const dayStart = new Date((0, campus_time_1.startOfCampusDay)(now));
@@ -1306,13 +1385,26 @@ let MerchantAdminService = class MerchantAdminService {
                FROM after_sales_request a
               WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3
                 AND ${scope}`, [chId, dayStart, dayEnd]);
+        // 待回复：每单最后一条留言来自顾客（与列表 unread 同口径）
+        let pendingReply = 0;
+        try {
+            const replyRows = await raw.query(`SELECT COUNT(*) AS "n" FROM after_sales_request a
+                  WHERE ${scope}
+                    AND (SELECT m."senderType" FROM after_sales_message m
+                          WHERE m."requestId" = a.id ORDER BY m."createdAt" DESC LIMIT 1) = 'customer'`, [chId]);
+            pendingReply = Number((_b = (_a = replyRows === null || replyRows === void 0 ? void 0 : replyRows[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0);
+        }
+        catch (_o) {
+            // 留言表缺失时视为无待回复
+        }
         return {
-            pending: Number((_b = (_a = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _a === void 0 ? void 0 : _a.pending) !== null && _b !== void 0 ? _b : 0),
-            overdue: Number((_d = (_c = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _c === void 0 ? void 0 : _c.overdue) !== null && _d !== void 0 ? _d : 0),
+            pending: Number((_d = (_c = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _c === void 0 ? void 0 : _c.pending) !== null && _d !== void 0 ? _d : 0),
+            overdue: Number((_f = (_e = pendingRows === null || pendingRows === void 0 ? void 0 : pendingRows[0]) === null || _e === void 0 ? void 0 : _e.overdue) !== null && _f !== void 0 ? _f : 0),
             timeoutHours,
-            todayHandled: Number((_f = (_e = handledRows === null || handledRows === void 0 ? void 0 : handledRows[0]) === null || _e === void 0 ? void 0 : _e.n) !== null && _f !== void 0 ? _f : 0),
-            todayRefunded: Number((_h = (_g = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _g === void 0 ? void 0 : _g.n) !== null && _h !== void 0 ? _h : 0),
-            todayRefundAmount: Number((_k = (_j = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _j === void 0 ? void 0 : _j.amount) !== null && _k !== void 0 ? _k : 0),
+            todayHandled: Number((_h = (_g = handledRows === null || handledRows === void 0 ? void 0 : handledRows[0]) === null || _g === void 0 ? void 0 : _g.n) !== null && _h !== void 0 ? _h : 0),
+            todayRefunded: Number((_k = (_j = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _j === void 0 ? void 0 : _j.n) !== null && _k !== void 0 ? _k : 0),
+            todayRefundAmount: Number((_m = (_l = refundRows === null || refundRows === void 0 ? void 0 : refundRows[0]) === null || _l === void 0 ? void 0 : _l.amount) !== null && _m !== void 0 ? _m : 0),
+            pendingReply,
         };
     }
     /** 申请时间区间：纯日期按校园日（UTC+8）切分，to 含当天；非法格式直接拒绝 */
@@ -1391,7 +1483,8 @@ let MerchantAdminService = class MerchantAdminService {
         if (!row)
             throw new core_2.UserInputError('售后单不存在');
         const counts = await this.afterSalesMessageCounts(ctx, [Number(row.id)]);
-        return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now());
+        const lastSender = await this.afterSalesLastSender([Number(row.id)]);
+        return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender);
     }
     /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
     async afterSalesMessageRows(requestId) {
@@ -1447,6 +1540,51 @@ let MerchantAdminService = class MerchantAdminService {
             return [];
         }
     }
+    /** 每单最新留言发送方（批量）：用于 unread 标记（最新为 customer 即待商家回复） */
+    async afterSalesLastSender(ids) {
+        var _a;
+        const out = new Map();
+        const list = ids.filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length)
+            return out;
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT DISTINCT ON ("requestId") "requestId", "senderType" FROM after_sales_message '
+                + 'WHERE "requestId" = ANY($1::int[]) ORDER BY "requestId", "createdAt" DESC', [list]);
+            for (const r of Array.isArray(rows) ? rows : []) {
+                out.set(Number(r.requestId), String((_a = r.senderType) !== null && _a !== void 0 ? _a : ''));
+            }
+        }
+        catch (_b) {
+            return out;
+        }
+        return out;
+    }
+    /** 订单商品行（售后详情）：商品名优先取变体中文翻译，缺失回落商品翻译 */
+    async afterSalesOrderItems(orderId) {
+        if (!Number.isFinite(orderId) || orderId <= 0)
+            return [];
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT COALESCE(pvt.name, pt.name, \'商品\') AS name, '
+                + 'ol."quantity"::int AS quantity, ol."unitPriceWithTax"::int AS "unitPrice" '
+                + 'FROM order_line ol '
+                + 'JOIN product_variant pv ON pv.id = ol."productVariantId" '
+                + 'LEFT JOIN product_variant_translation pvt ON pvt."baseId" = pv.id AND pvt."languageCode" = \'zh_Hans\' '
+                + 'LEFT JOIN product p ON p.id = pv."productId" '
+                + 'LEFT JOIN product_translation pt ON pt."baseId" = p.id AND pt."languageCode" = \'zh_Hans\' '
+                + 'WHERE ol."orderId" = $1 ORDER BY ol.id ASC', [orderId]);
+            return (Array.isArray(rows) ? rows : []).map(r => {
+                var _a;
+                return ({
+                    name: String((_a = r.name) !== null && _a !== void 0 ? _a : '商品'),
+                    quantity: Number(r.quantity) || 0,
+                    unitPrice: Number(r.unitPrice) || 0,
+                });
+            });
+        }
+        catch (_a) {
+            return [];
+        }
+    }
     /** 协商留言条数（批量）：插件表缺失时降级为 0，不影响清单可用 */
     async afterSalesMessageCounts(ctx, ids) {
         const out = new Map();
@@ -1464,7 +1602,7 @@ let MerchantAdminService = class MerchantAdminService {
         }
         return out;
     }
-    toAfterSalesRow(row, counts, timeoutHours, now) {
+    toAfterSalesRow(row, counts, timeoutHours, now, lastSender) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const customer = row.customer;
         const order = row.order;
@@ -1488,6 +1626,8 @@ let MerchantAdminService = class MerchantAdminService {
             // 超时口径与售后插件 PENDING_REMIND 一致：仅 Pending 按申请时间计时
             overdue: row.state === 'Pending'
                 && new Date(row.createdAt).getTime() + timeoutHours * 3600000 <= now,
+            // 未读=最后一条留言由顾客发出（商家回完即消失），无需额外已读表
+            unread: lastSender.get(Number(row.id)) === 'customer',
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

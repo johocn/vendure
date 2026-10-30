@@ -140,6 +140,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesReply(ctx, id, content, images) {
         return this.merchant.afterSalesReply(ctx, id, content, images);
     }
+    /** 商家确认收到退货（§82）：Returning → Received，可传实收数量与收货备注 */
+    async campusMerchantAfterSalesConfirmReturn(ctx, id, receivedQuantity, note) {
+        return this.merchant.afterSalesConfirmReturn(ctx, id, receivedQuantity, note);
+    }
+    /** 售后退款失败重试（§82）：仅 RefundFailed，30 秒内同单一次 */
+    async campusMerchantAfterSalesRetryRefund(ctx, id) {
+        return this.merchant.afterSalesRetryRefund(ctx, id);
+    }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
         return this.merchant.cloudPrint(ctx, orderId);
@@ -466,6 +474,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReply", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'receivedQuantity', type: () => Number, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesConfirmReturn", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRetryRefund", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
