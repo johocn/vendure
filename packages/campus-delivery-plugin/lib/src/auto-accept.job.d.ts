@@ -12,9 +12,7 @@ export declare class AutoAcceptJob implements OnApplicationShutdown {
     private connection;
     private config;
     private merchant;
-    private timer;
-    private bootTimer;
-    private running;
+    private fallback;
     constructor(connection: TransactionalConnection, config: CampusConfigService, merchant: MerchantAdminService);
     start(): void;
     stop(): void;

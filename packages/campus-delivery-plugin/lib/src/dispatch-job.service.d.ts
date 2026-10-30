@@ -16,7 +16,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private moduleRef;
     private thirdParty?;
     private feishu?;
-    private timer;
+    /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
+    private fallback;
     private running;
     private orderSvc?;
     private couponSvc?;
@@ -24,6 +25,13 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private compensationWarnAt;
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt;
+    /**
+     * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
+     * - open：量最大，T2 强派 / T4 退款；
+     * - scheduled：预约单必须独立配额，否则永远排在活单之后拿不到放量；
+     * - inflight：已接单/待商家/外部快递/自营，负责取货超时、异常 SLA、外部对账。
+     */
+    private static readonly SCAN_BUCKETS;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();

@@ -32,6 +32,14 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusSupportTicket.prototype, "orderCode", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], CampusSupportTicket.prototype, "orderId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], CampusSupportTicket.prototype, "afterSalesRequestId", void 0);
+__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
 ], CampusSupportTicket.prototype, "category", void 0);

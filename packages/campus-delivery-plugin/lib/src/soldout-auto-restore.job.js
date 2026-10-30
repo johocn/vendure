@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SoldOutAutoRestoreJob = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const periodic_fallback_1 = require("./periodic-fallback");
 const rider_shift_window_1 = require("./rider-shift-window");
 const loggerCtx = 'CampusSoldOutAutoRestore';
 /** 启动后首跑延迟：等迁移建表 / DB 连接稳定 */
@@ -28,32 +29,24 @@ const RESTORE_HOUR = 4;
 let SoldOutAutoRestoreJob = class SoldOutAutoRestoreJob {
     constructor(connection) {
         this.connection = connection;
-        this.timer = null;
-        this.bootTimer = null;
-        this.running = false;
+        this.fallback = null;
         this.lastRunDay = null;
     }
     start() {
-        if (this.timer)
+        if (this.fallback)
             return;
-        const tick = () => {
-            if (this.running)
-                return;
-            this.running = true;
-            this.runOnce()
-                .catch(e => { var _a; return core_1.Logger.warn(`sold-out auto restore failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, loggerCtx); })
-                .finally(() => { this.running = false; });
-        };
-        this.bootTimer = setTimeout(tick, BOOT_DELAY_MS);
-        this.timer = setInterval(tick, INTERVAL_MS);
+        this.fallback = new periodic_fallback_1.PeriodicFallback({
+            name: 'soldout-auto-restore',
+            intervalMs: INTERVAL_MS,
+            bootDelayMs: BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.runOnce());
     }
     stop() {
-        if (this.bootTimer)
-            clearTimeout(this.bootTimer);
-        if (this.timer)
-            clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        var _a;
+        (_a = this.fallback) === null || _a === void 0 ? void 0 : _a.stop();
+        this.fallback = null;
     }
     onApplicationShutdown() {
         this.stop();

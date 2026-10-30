@@ -13,6 +13,7 @@ exports.BlacklistAutoScanJob = exports.BLACKLIST_CANCEL_WINDOW_DAYS = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
+const periodic_fallback_1 = require("./periodic-fallback");
 const rider_shift_window_1 = require("./rider-shift-window");
 const loggerCtx = 'CampusBlacklistScan';
 /** 启动后首跑延迟：等迁移补列 / DB 连接稳定 */
@@ -36,32 +37,24 @@ let BlacklistAutoScanJob = class BlacklistAutoScanJob {
     constructor(connection, feishu) {
         this.connection = connection;
         this.feishu = feishu;
-        this.timer = null;
-        this.bootTimer = null;
-        this.running = false;
+        this.fallback = null;
         this.lastRunDay = null;
     }
     start() {
-        if (this.timer)
+        if (this.fallback)
             return;
-        const tick = () => {
-            if (this.running)
-                return;
-            this.running = true;
-            this.runOnce()
-                .catch(e => { var _a; return core_1.Logger.warn(`blacklist auto scan failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, loggerCtx); })
-                .finally(() => { this.running = false; });
-        };
-        this.bootTimer = setTimeout(tick, BOOT_DELAY_MS);
-        this.timer = setInterval(tick, INTERVAL_MS);
+        this.fallback = new periodic_fallback_1.PeriodicFallback({
+            name: 'blacklist-auto-scan',
+            intervalMs: INTERVAL_MS,
+            bootDelayMs: BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.runOnce());
     }
     stop() {
-        if (this.bootTimer)
-            clearTimeout(this.bootTimer);
-        if (this.timer)
-            clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        var _a;
+        (_a = this.fallback) === null || _a === void 0 ? void 0 : _a.stop();
+        this.fallback = null;
     }
     onApplicationShutdown() {
         this.stop();

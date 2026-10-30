@@ -8,10 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var SupportService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SupportService = exports.APPEAL_STATUSES = exports.TICKET_STATUSES = exports.TICKET_CATEGORIES = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
+const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
+const typeorm_1 = require("typeorm");
 const support_entities_1 = require("./support.entities");
 const rider_credit_service_1 = require("./rider-credit.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
@@ -33,26 +37,41 @@ function clampTake(v) {
 function normalizeImages(images) {
     const list = (images !== null && images !== void 0 ? images : []).map(v => String(v !== null && v !== void 0 ? v : '').trim()).filter(Boolean);
     if (list.length > MAX_IMAGES)
-        throw new core_1.UserInputError(`最多上传 ${MAX_IMAGES} 张图片`);
+        throw new core_2.UserInputError(`最多上传 ${MAX_IMAGES} 张图片`);
     return list;
 }
 /**
  * 客服工单 + 骑手申诉 + 下单黑名单（站内留言制，非实时 IM）。
  * C 端（shop-api）只操作自己的记录；后台（admin-api）按当前渠道隔离处理。
  */
-let SupportService = class SupportService {
-    constructor(connection, customerService, credit, feishu) {
+let SupportService = SupportService_1 = class SupportService {
+    constructor(connection, customerService, credit, feishu, moduleRef) {
         this.connection = connection;
         this.customerService = customerService;
         this.credit = credit;
         this.feishu = feishu;
+        this.moduleRef = moduleRef;
+    }
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    getAfterSales() {
+        var _a, _b, _c;
+        if (this.afterSalesSvc !== undefined)
+            return (_a = this.afterSalesSvc) !== null && _a !== void 0 ? _a : null;
+        try {
+            this.afterSalesSvc = this.moduleRef ? new core_2.Injector(this.moduleRef).get(after_sales_plugin_1.AfterSalesService) : null;
+        }
+        catch (e) {
+            this.afterSalesSvc = null;
+            core_2.Logger.warn(`AfterSalesService 不可用，工单与售后联动降级: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, loggerCtx);
+        }
+        return (_c = this.afterSalesSvc) !== null && _c !== void 0 ? _c : null;
     }
     async requireCustomer(ctx) {
         if (!ctx.activeUserId)
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         if (!customer)
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         return customer;
     }
     /** 飞书提醒：仅记录日志、绝不阻塞主流程（未启用时 pushEvent 直接返回 true） */
@@ -62,7 +81,7 @@ let SupportService = class SupportService {
             await this.feishu.pushEvent(scene, title, content, orderCode !== null && orderCode !== void 0 ? orderCode : undefined, dedupeKey, target);
         }
         catch (e) {
-            core_1.Logger.warn(`飞书提醒失败 scene=${scene}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            core_2.Logger.warn(`飞书提醒失败 scene=${scene}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
         }
     }
     /**
@@ -92,26 +111,125 @@ let SupportService = class SupportService {
             }));
         }
         catch (e) {
-            core_1.Logger.warn(`站内信发送失败 customer=${customerId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            core_2.Logger.warn(`站内信发送失败 customer=${customerId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
         }
     }
     // ---------------- 客服工单 ----------------
+    /**
+     * 工单→售后打通：按订单号解析订单（校验归属与本店渠道）并挂接该订单在途售后单。
+     * 订单号解析不到时保持宽松（工单仍可提交，仅不关联），避免顾客写错一位订单号就投诉无门；
+     * 但订单存在且不属于本人时明确拒绝，防止工单被挂到他人订单上造成误处理。
+     */
+    async resolveOrderLink(ctx, customerId, orderCode) {
+        var _a;
+        if (!orderCode)
+            return { orderId: null, afterSalesRequestId: null };
+        let order = null;
+        try {
+            order = await this.connection.getRepository(ctx, core_2.Order).findOne({
+                where: { code: orderCode },
+                relations: ['customer', 'channels'],
+            });
+        }
+        catch (e) {
+            core_2.Logger.warn(`工单关联订单解析失败 code=${orderCode}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            return { orderId: null, afterSalesRequestId: null };
+        }
+        if (!order)
+            return { orderId: null, afterSalesRequestId: null };
+        const channelIds = Array.isArray(order.channels) ? order.channels.map((c) => Number(c.id)) : [];
+        const owned = order.customer != null && String(order.customer.id) === String(customerId);
+        if (!owned || (channelIds.length > 0 && !channelIds.includes(Number(ctx.channelId)))) {
+            throw new core_2.UserInputError('订单号不存在或不属于本人');
+        }
+        return {
+            orderId: Number(order.id),
+            afterSalesRequestId: await this.findActiveAfterSalesId(ctx, Number(order.id)),
+        };
+    }
+    /** 该订单最新一条未关闭售后单（未装售后插件/实体未注册时返回 null，绝不阻断工单） */
+    async findActiveAfterSalesId(ctx, orderId) {
+        var _a;
+        try {
+            const row = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({
+                where: { orderId: orderId, state: (0, typeorm_1.Not)('Closed') },
+                order: { id: 'DESC' },
+            });
+            return row ? Number(row.id) : null;
+        }
+        catch (e) {
+            core_2.Logger.warn(`售后单关联查询失败 order=${orderId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+            return null;
+        }
+    }
+    /** 批量取售后单摘要（工单列表回显用）：按工单已关联 id ∪ 订单号反查，返回 [售后单 id, 订单 id] 两级索引 */
+    async loadAfterSalesSummaries(ctx, tickets) {
+        var _a;
+        const byId = new Map();
+        const latestByOrderId = new Map();
+        const ids = tickets.map(t => t.afterSalesRequestId).filter((v) => v != null).map(Number);
+        const orderIds = tickets.map(t => t.orderId).filter((v) => v != null).map(Number);
+        if (!ids.length && !orderIds.length)
+            return { byId, latestByOrderId };
+        try {
+            const rows = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).find({
+                where: [
+                    ...(ids.length ? [{ id: (0, typeorm_1.In)(ids) }] : []),
+                    ...(orderIds.length ? [{ orderId: (0, typeorm_1.In)(orderIds) }] : []),
+                ],
+                order: { id: 'DESC' },
+            });
+            for (const row of rows) {
+                byId.set(Number(row.id), row);
+                const orderKey = Number(row.orderId);
+                // rows 按 id 倒序：首次出现即该订单最新一单
+                if (!latestByOrderId.has(orderKey))
+                    latestByOrderId.set(orderKey, row);
+            }
+        }
+        catch (e) {
+            core_2.Logger.warn(`售后单批量查询失败: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+        }
+        return { byId, latestByOrderId };
+    }
+    static afterSalesView(row) {
+        var _a, _b;
+        if (!row) {
+            return {
+                afterSalesRequestId: null,
+                afterSalesState: null,
+                afterSalesType: null,
+                afterSalesRefundAmount: null,
+                afterSalesActualRefundAmount: null,
+            };
+        }
+        return {
+            afterSalesRequestId: Number(row.id),
+            afterSalesState: (_a = row.state) !== null && _a !== void 0 ? _a : null,
+            afterSalesType: (_b = row.type) !== null && _b !== void 0 ? _b : null,
+            afterSalesRefundAmount: row.refundAmount == null ? null : Number(row.refundAmount),
+            afterSalesActualRefundAmount: row.actualRefundAmount == null ? null : Number(row.actualRefundAmount),
+        };
+    }
     async createTicket(ctx, input) {
         var _a, _b, _c;
         const customer = await this.requireCustomer(ctx);
         const category = String((_a = input.category) !== null && _a !== void 0 ? _a : '');
         if (!exports.TICKET_CATEGORIES.includes(category))
-            throw new core_1.UserInputError('工单类型不合法');
+            throw new core_2.UserInputError('工单类型不合法');
         const content = String((_b = input.content) !== null && _b !== void 0 ? _b : '').trim();
         if (!content)
-            throw new core_1.UserInputError('请填写问题描述');
+            throw new core_2.UserInputError('请填写问题描述');
         if (content.length > MAX_CONTENT)
-            throw new core_1.UserInputError(`问题描述不能超过 ${MAX_CONTENT} 个字符`);
+            throw new core_2.UserInputError(`问题描述不能超过 ${MAX_CONTENT} 个字符`);
         const orderCode = input.orderCode == null ? null : String(input.orderCode).trim() || null;
+        const { orderId, afterSalesRequestId } = await this.resolveOrderLink(ctx, customer.id, orderCode);
         const ticket = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).save({
             channelId: ctx.channelId,
             customerId: customer.id,
             orderCode,
+            orderId,
+            afterSalesRequestId,
             category,
             content,
             images: normalizeImages(input.images),
@@ -122,25 +240,45 @@ let SupportService = class SupportService {
         void this.pushFeishu('support_ticket', '新客服工单', [
             `类型：${category}`,
             orderCode ? `订单：${orderCode}` : '',
+            afterSalesRequestId
+                ? `售后单：#${afterSalesRequestId}（已自动关联）`
+                : category === 'refund'
+                    ? '售后单：未关联（顾客尚未发起售后申请）'
+                    : '',
             `顾客：${name}${customer.phoneNumber ? `（${customer.phoneNumber}）` : ''}`,
             `内容：${content.slice(0, 120)}${content.length > 120 ? '…' : ''}`,
         ].filter(Boolean).join('\n'), orderCode, `ticket:${ticket.id}`, { channel: (_c = ctx.channel) === null || _c === void 0 ? void 0 : _c.code });
-        return ticket;
+        return Object.assign(Object.assign({}, ticket), SupportService_1.afterSalesView(afterSalesRequestId == null ? null : { id: afterSalesRequestId, state: null }));
     }
     async myTickets(ctx, skip, take) {
         const customer = await this.requireCustomer(ctx);
-        return this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).find({
+        const items = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).find({
             where: { customerId: customer.id, channelId: ctx.channelId },
             order: { createdAt: 'DESC' },
             skip: clampSkip(skip),
             take: clampTake(take),
         });
+        if (!items.length)
+            return items;
+        // 售后进度回显：顾客在工单列表即可看到关联售后单当前状态，不必跳转售后中心
+        const { byId, latestByOrderId } = await this.loadAfterSalesSummaries(ctx, items);
+        return items.map(t => {
+            var _a;
+            return this.withAfterSalesView(t, (_a = byId.get(Number(t.afterSalesRequestId))) !== null && _a !== void 0 ? _a : (t.orderId != null ? latestByOrderId.get(Number(t.orderId)) : null));
+        });
+    }
+    /** 工单行 + 售后摘要（无关联时各字段为 null） */
+    withAfterSalesView(ticket, row) {
+        var _a;
+        return Object.assign(Object.assign(Object.assign({}, ticket), SupportService_1.afterSalesView(row)), { 
+            // 无显式关联但按订单反查到售后单时，回显解析出的 id，便于前端跳转
+            afterSalesRequestId: (_a = ticket.afterSalesRequestId) !== null && _a !== void 0 ? _a : (row ? Number(row.id) : null) });
     }
     async adminTickets(ctx, status, skip, take) {
         const where = { channelId: ctx.channelId };
         if (status) {
             if (!exports.TICKET_STATUSES.includes(status))
-                throw new core_1.UserInputError('工单状态不合法');
+                throw new core_2.UserInputError('工单状态不合法');
             where.status = status;
         }
         const [items, total] = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).findAndCount({
@@ -150,34 +288,95 @@ let SupportService = class SupportService {
             take: clampTake(take),
         });
         const customers = items.length
-            ? await this.connection.getRepository(ctx, core_1.Customer).findByIds(items.map(i => String(i.customerId)))
+            ? await this.connection.getRepository(ctx, core_2.Customer).findByIds(items.map(i => String(i.customerId)))
             : [];
         const byId = new Map(customers.map(c => [String(c.id), c]));
+        // 工单与售后打通：列表直接回显关联售后单状态/金额，运营无需另开售后列表对照
+        const { byId: asById, latestByOrderId } = await this.loadAfterSalesSummaries(ctx, items);
         return {
             items: items.map(t => {
-                var _a;
+                var _a, _b;
                 const c = byId.get(String(t.customerId));
-                return Object.assign(Object.assign({}, t), { customerName: [c === null || c === void 0 ? void 0 : c.firstName, c === null || c === void 0 ? void 0 : c.lastName].filter(Boolean).join(' ') || '-', customerPhone: (_a = c === null || c === void 0 ? void 0 : c.phoneNumber) !== null && _a !== void 0 ? _a : null });
+                const view = this.withAfterSalesView(t, (_a = asById.get(Number(t.afterSalesRequestId))) !== null && _a !== void 0 ? _a : (t.orderId != null ? latestByOrderId.get(Number(t.orderId)) : null));
+                return Object.assign(Object.assign({}, view), { customerName: [c === null || c === void 0 ? void 0 : c.firstName, c === null || c === void 0 ? void 0 : c.lastName].filter(Boolean).join(' ') || '-', customerPhone: (_b = c === null || c === void 0 ? void 0 : c.phoneNumber) !== null && _b !== void 0 ? _b : null });
             }),
             total,
         };
+    }
+    /**
+     * 运营手工关联售后单（建单自动关联未命中时使用，如售后单在工单之后才发起）。
+     * 校验同一店铺、同一订单，防止把工单挂到无关售后单。
+     */
+    async linkTicketAfterSales(ctx, id, afterSalesRequestId) {
+        var _a, _b;
+        const ticket = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).findOne({
+            where: { id: id, channelId: ctx.channelId },
+        });
+        if (!ticket)
+            throw new core_2.UserInputError('工单不存在或不属于当前店铺');
+        const request = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({
+            where: { id: (Number(afterSalesRequestId) || afterSalesRequestId) },
+            relations: ['channels'],
+        });
+        if (!request)
+            throw new core_2.UserInputError('售后单不存在');
+        const channelIds = Array.isArray(request.channels) ? request.channels.map(c => Number(c.id)) : [];
+        if (channelIds.length && !channelIds.includes(Number(ctx.channelId))) {
+            throw new core_2.UserInputError('售后单不属于当前店铺');
+        }
+        if (ticket.orderId != null && Number(ticket.orderId) !== Number(request.orderId)) {
+            throw new core_2.UserInputError('售后单与工单关联订单不一致');
+        }
+        await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).update(ticket.id, {
+            afterSalesRequestId: Number(request.id),
+            // 工单未关联订单时以售后单订单补齐，便于列表按订单追溯
+            orderId: (_a = ticket.orderId) !== null && _a !== void 0 ? _a : Number(request.orderId),
+        });
+        return this.withAfterSalesView(Object.assign(Object.assign({}, ticket), { orderId: (_b = ticket.orderId) !== null && _b !== void 0 ? _b : Number(request.orderId), afterSalesRequestId: Number(request.id) }), request);
+    }
+    /**
+     * 售后状态联动：售后单退款到账后自动关闭关联工单（回复留痕），
+     * 避免工单长期 open、运营重复联系顾客。仅处理 Refunded，其余状态工单保持原状交给运营跟。
+     */
+    async onAfterSalesStateChange(ctx, requestId, toState) {
+        var _a;
+        if (toState !== 'Refunded')
+            return;
+        try {
+            const repo = this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket);
+            const open = await repo.find({
+                where: { afterSalesRequestId: requestId, status: (0, typeorm_1.Not)('closed') },
+            });
+            for (const t of open) {
+                const note = '售后退款已到账，工单自动关闭';
+                await repo.update(t.id, {
+                    status: 'closed',
+                    reply: t.reply ? `${t.reply}；${note}` : note,
+                    repliedBy: 'system',
+                    repliedAt: new Date(),
+                });
+            }
+        }
+        catch (e) {
+            core_2.Logger.warn(`工单售后联动关单失败 request=${requestId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+        }
     }
     /** 运营回复（replied）/ 关闭（closed）；回复内容必填（关闭时可选沿用原回复） */
     async replyTicket(ctx, id, reply, status) {
         var _a;
         const target = String(status !== null && status !== void 0 ? status : 'replied');
         if (!['replied', 'closed'].includes(target))
-            throw new core_1.UserInputError('工单状态不合法');
+            throw new core_2.UserInputError('工单状态不合法');
         const ticket = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).findOne({
             where: { id: id, channelId: ctx.channelId },
         });
         if (!ticket)
-            throw new core_1.UserInputError('工单不存在或不属于当前店铺');
+            throw new core_2.UserInputError('工单不存在或不属于当前店铺');
         const text = String(reply !== null && reply !== void 0 ? reply : '').trim();
         if (target === 'replied' && !text)
-            throw new core_1.UserInputError('请填写回复内容');
+            throw new core_2.UserInputError('请填写回复内容');
         if (text.length > MAX_REPLY)
-            throw new core_1.UserInputError(`回复不能超过 ${MAX_REPLY} 个字符`);
+            throw new core_2.UserInputError(`回复不能超过 ${MAX_REPLY} 个字符`);
         await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).update(ticket.id, {
             status: target,
             reply: text || ticket.reply,
@@ -190,28 +389,45 @@ let SupportService = class SupportService {
             ? `工单 #${ticket.id} 已关闭${text ? `：${text}` : ''}`
             : `工单 #${ticket.id} 回复：${text}`;
         await this.sendInAppMessage(ctx, ticket.customerId, title, body);
+        // 工单与售后打通：已关联售后单时，回复同时写入售后协商留言，顾客在售后单里也能看到同一结论
+        if (ticket.afterSalesRequestId != null) {
+            await this.forwardReplyToAfterSales(ctx, Number(ticket.afterSalesRequestId), text || body);
+        }
         return Object.assign(Object.assign({}, ticket), { status: target, reply: text || ticket.reply });
+    }
+    /** 回复同步到售后协商留言（售后单已关闭/插件未装时仅告警，不影响工单处理） */
+    async forwardReplyToAfterSales(ctx, requestId, content) {
+        var _a;
+        const svc = this.getAfterSales();
+        if (!svc)
+            return;
+        try {
+            await svc.addMessage(ctx, requestId, 'admin', content.slice(0, 1000));
+        }
+        catch (e) {
+            core_2.Logger.warn(`工单回复同步售后留言失败 request=${requestId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+        }
     }
     // ---------------- 骑手申诉 ----------------
     async createAppeal(ctx, input) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const customer = await this.requireCustomer(ctx);
         if (String((_b = (_a = customer.customFields) === null || _a === void 0 ? void 0 : _a.riderStatus) !== null && _b !== void 0 ? _b : '') !== 'approved')
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         const reason = String((_c = input.reason) !== null && _c !== void 0 ? _c : '').trim();
         if (!reason)
-            throw new core_1.UserInputError('请填写申诉理由');
+            throw new core_2.UserInputError('请填写申诉理由');
         if (reason.length > MAX_CONTENT)
-            throw new core_1.UserInputError(`申诉理由不能超过 ${MAX_CONTENT} 个字符`);
+            throw new core_2.UserInputError(`申诉理由不能超过 ${MAX_CONTENT} 个字符`);
         let orderId = null;
         let orderCode = null;
         if (input.orderId != null && input.orderId !== '') {
-            const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
                 where: { id: input.orderId },
             });
             // 只允许对本人配送过的订单申诉（防越权查看/关联他人订单）
             if (!order || String((_e = (_d = order.customFields) === null || _d === void 0 ? void 0 : _d.deliveryStaffId) !== null && _e !== void 0 ? _e : '') !== String(customer.id)) {
-                throw new core_1.UserInputError('订单不存在或不属于本人配送');
+                throw new core_2.UserInputError('订单不存在或不属于本人配送');
             }
             orderId = Number(order.id);
             orderCode = order.code;
@@ -220,7 +436,7 @@ let SupportService = class SupportService {
             where: { riderCustomerId: customer.id, status: 'pending' },
         });
         if (pending)
-            throw new core_1.UserInputError('已有待审核的申诉，请等待处理');
+            throw new core_2.UserInputError('已有待审核的申诉，请等待处理');
         const appeal = await this.connection.getRepository(ctx, support_entities_1.CampusRiderAppeal).save({
             channelId: ctx.channelId,
             riderCustomerId: customer.id,
@@ -253,7 +469,7 @@ let SupportService = class SupportService {
         const where = { channelId: ctx.channelId };
         if (status) {
             if (!exports.APPEAL_STATUSES.includes(status))
-                throw new core_1.UserInputError('申诉状态不合法');
+                throw new core_2.UserInputError('申诉状态不合法');
             where.status = status;
         }
         const [items, total] = await this.connection.getRepository(ctx, support_entities_1.CampusRiderAppeal).findAndCount({
@@ -263,7 +479,7 @@ let SupportService = class SupportService {
             take: clampTake(take),
         });
         const customers = items.length
-            ? await this.connection.getRepository(ctx, core_1.Customer).findByIds(items.map(i => String(i.riderCustomerId)))
+            ? await this.connection.getRepository(ctx, core_2.Customer).findByIds(items.map(i => String(i.riderCustomerId)))
             : [];
         const byId = new Map(customers.map(c => [String(c.id), c]));
         return {
@@ -282,9 +498,9 @@ let SupportService = class SupportService {
             where: { id: id, channelId: ctx.channelId },
         });
         if (!appeal)
-            throw new core_1.UserInputError('申诉不存在或不属于当前店铺');
+            throw new core_2.UserInputError('申诉不存在或不属于当前店铺');
         if (appeal.status !== 'pending')
-            throw new core_1.UserInputError('该申诉已处理');
+            throw new core_2.UserInputError('该申诉已处理');
         const delta = approve ? Math.min(20, Math.max(1, Number(creditDelta !== null && creditDelta !== void 0 ? creditDelta : 10) || 10)) : 0;
         await this.connection.getRepository(ctx, support_entities_1.CampusRiderAppeal).update(appeal.id, {
             status: approve ? 'approved' : 'rejected',
@@ -317,35 +533,35 @@ let SupportService = class SupportService {
         var _a, _b, _c, _d, _e;
         const type = String((_a = input.type) !== null && _a !== void 0 ? _a : '');
         if (!['user', 'phone'].includes(type))
-            throw new core_1.UserInputError('黑名单类型不合法');
+            throw new core_2.UserInputError('黑名单类型不合法');
         const raw = String((_b = input.value) !== null && _b !== void 0 ? _b : '').trim();
         if (!raw)
-            throw new core_1.UserInputError('请填写用户 ID 或手机号');
+            throw new core_2.UserInputError('请填写用户 ID 或手机号');
         let customerId = null;
         let phone = null;
         if (type === 'user') {
             customerId = Number(raw);
             if (!Number.isFinite(customerId) || customerId <= 0)
-                throw new core_1.UserInputError('用户 ID 不合法');
-            const inChannel = await this.connection.getRepository(ctx, core_1.Customer).createQueryBuilder('customer')
+                throw new core_2.UserInputError('用户 ID 不合法');
+            const inChannel = await this.connection.getRepository(ctx, core_2.Customer).createQueryBuilder('customer')
                 .leftJoin('customer.channels', 'channel')
                 .where('customer.id = :id', { id: customerId })
                 .andWhere('channel.id = :ch', { ch: ctx.channelId })
                 .getOne();
             if (!inChannel)
-                throw new core_1.UserInputError('用户不存在或不属于当前店铺');
+                throw new core_2.UserInputError('用户不存在或不属于当前店铺');
         }
         else {
             phone = raw.replace(/[^\d+]/g, '');
             if (phone.length < 6 || phone.length > 20)
-                throw new core_1.UserInputError('手机号不合法');
+                throw new core_2.UserInputError('手机号不合法');
         }
         const exists = await this.connection.getRepository(ctx, support_entities_1.CampusBlacklist).findOne({
             where: Object.assign({ channelId: ctx.channelId, type }, (type === 'user' ? { customerId: customerId } : { phone: phone })),
         });
         if (exists) {
             if (exists.active)
-                throw new core_1.UserInputError('该用户/手机号已在黑名单');
+                throw new core_2.UserInputError('该用户/手机号已在黑名单');
             await this.connection.getRepository(ctx, support_entities_1.CampusBlacklist).update(exists.id, {
                 active: true,
                 reason: String((_c = input.reason) !== null && _c !== void 0 ? _c : '').trim() || null,
@@ -371,12 +587,12 @@ let SupportService = class SupportService {
         var _a, _b;
         const t = String(type !== null && type !== void 0 ? type : '');
         if (!['user', 'phone'].includes(t))
-            throw new core_1.UserInputError('黑名单类型不合法');
+            throw new core_2.UserInputError('黑名单类型不合法');
         const raw = (values !== null && values !== void 0 ? values : []).map(v => String(v !== null && v !== void 0 ? v : '').trim()).filter(Boolean);
         if (!raw.length)
-            throw new core_1.UserInputError('请粘贴要导入的用户 ID 或手机号');
+            throw new core_2.UserInputError('请粘贴要导入的用户 ID 或手机号');
         if (raw.length > 500)
-            throw new core_1.UserInputError('单次最多导入 500 条');
+            throw new core_2.UserInputError('单次最多导入 500 条');
         const lines = Array.from(new Set(raw));
         const reasonText = String(reason !== null && reason !== void 0 ? reason : '').trim() || '批量导入';
         const repo = this.connection.getRepository(ctx, support_entities_1.CampusBlacklist);
@@ -388,7 +604,7 @@ let SupportService = class SupportService {
             invalid += lines.length - ids.length;
             const valid = new Set();
             if (ids.length) {
-                const rows = await this.connection.getRepository(ctx, core_1.Customer).createQueryBuilder('customer')
+                const rows = await this.connection.getRepository(ctx, core_2.Customer).createQueryBuilder('customer')
                     .leftJoin('customer.channels', 'channel')
                     .where('customer.id IN (:...ids)', { ids })
                     .andWhere('channel.id = :ch', { ch: ctx.channelId })
@@ -459,17 +675,18 @@ let SupportService = class SupportService {
             where: { id: id, channelId: ctx.channelId },
         });
         if (!row)
-            throw new core_1.UserInputError('记录不存在或不属于当前店铺');
+            throw new core_2.UserInputError('记录不存在或不属于当前店铺');
         await this.connection.getRepository(ctx, support_entities_1.CampusBlacklist).delete(row.id);
         return { ok: true };
     }
 };
 exports.SupportService = SupportService;
-exports.SupportService = SupportService = __decorate([
+exports.SupportService = SupportService = SupportService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.CustomerService,
+    __metadata("design:paramtypes", [core_2.TransactionalConnection,
+        core_2.CustomerService,
         rider_credit_service_1.RiderCreditService,
-        feishu_notify_service_1.FeishuNotifyService])
+        feishu_notify_service_1.FeishuNotifyService,
+        core_1.ModuleRef])
 ], SupportService);
 //# sourceMappingURL=support.service.js.map

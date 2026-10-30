@@ -24,7 +24,7 @@ let R2MarkService = class R2MarkService {
     }
     /** R2: 学生确认快递已到校 → leg1Status='arrived_gate' + handoverAt */
     async markArrived(ctx, orderId) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f;
         if (!ctx.activeUserId)
             throw new core_1.ForbiddenError();
         const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
@@ -40,8 +40,15 @@ let R2MarkService = class R2MarkService {
             return { leg1Status: 'arrived_gate' }; // 幂等：不重复写 handoverAt
         if (leg1 != null && leg1 !== 'preparing')
             throw new core_1.UserInputError('当前状态不支持到校确认');
-        // 条件写：与取消/并发重复提交竞争时只允许一次成功，且不复活已取消单
-        const out = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsLeg1status" = $2, "customFieldsHandoverat" = $3 '
+        // 外部运单已取消：不允许学生端再标到校（否则会出现"运单取消但显示已到校"的假状态）
+        if (String((_f = (_e = order.customFields) === null || _e === void 0 ? void 0 : _e.thirdPartyState) !== null && _f !== void 0 ? _f : '') === 'cancelled') {
+            throw new core_1.UserInputError('外部运单已取消，请重新下单');
+        }
+        // 条件写：与取消/并发重复提交竞争时只允许一次成功，且不复活已取消单；
+        // handoverAt 用 COALESCE 保留外部回调已写入的到校时间（第一段唯一事实源），
+        // 避免学生端后点确认把权威时间覆盖成更晚的时间，影响超时/时效口径。
+        const out = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsLeg1status" = $2, '
+            + '"customFieldsHandoverat" = COALESCE("customFieldsHandoverat", $3) '
             + 'WHERE id = $1 AND COALESCE("customFieldsLeg1status", \'\') IN (\'\', \'preparing\') '
             + 'AND "state" <> \'Cancelled\' RETURNING id', [order.id, 'arrived_gate', new Date()]);
         const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;

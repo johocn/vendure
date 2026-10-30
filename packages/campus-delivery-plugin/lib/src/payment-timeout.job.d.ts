@@ -31,9 +31,7 @@ export declare class PaymentTimeoutJob implements OnApplicationShutdown {
     private feishu;
     private jobQueue;
     private taskRepo;
-    private compensationTimer;
-    private compensationBootTimer;
-    private compensationRunning;
+    private compensation;
     /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
     private alertedFailed;
     constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService, stockMovementService: StockMovementService, notify: CampusNotifyService, campusConfig: CampusConfigService, feishu: FeishuNotifyService);

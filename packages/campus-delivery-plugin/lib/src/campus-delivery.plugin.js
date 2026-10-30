@@ -688,6 +688,27 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     lateMinutes: Int!
                 }
 
+                """备餐汇总（§79）：今日待做/已做份数，供后厨备料"""
+                type CampusMerchantPrepAddon {
+                    name: String!
+                    quantity: Int!
+                }
+
+                type CampusMerchantPrepItem {
+                    name: String!
+                    """待接单份数"""
+                    pendingQty: Int!
+                    """备餐中份数"""
+                    cookingQty: Int!
+                    """今日已出餐（已送达）份数"""
+                    doneQty: Int!
+                    """待做合计 = 待接单 + 备餐中"""
+                    todoQty: Int!
+                    """今日合计 = 待做 + 已做"""
+                    totalQty: Int!
+                    addons: [CampusMerchantPrepAddon!]!
+                }
+
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
                 type CampusPrintResult {
                     ok: Boolean!
@@ -1567,6 +1588,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantProducts(search: String, skip: Int, take: Int): CampusMerchantProductList!
                     """KDS 出餐屏（P1-4）：待接单/备餐中队列"""
                     campusMerchantKitchenQueue: CampusKitchenQueue!
+                    """备餐汇总（§79）：今日待接单/备餐中/已出餐商品份数 + 加料份数"""
+                    campusMerchantPrepSummary: [CampusMerchantPrepItem!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""

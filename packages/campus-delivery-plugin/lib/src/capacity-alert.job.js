@@ -15,6 +15,7 @@ exports.capacityOpsLink = capacityOpsLink;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
+const periodic_fallback_1 = require("./periodic-fallback");
 function num(env, key, def, min = 0) {
     const raw = env[key];
     if (raw == null || String(raw).trim() === '')
@@ -59,7 +60,7 @@ function capacityOpsLink(env = process.env) {
     return `${base}/#/pages/campus/ops`;
 }
 /**
- * 运力预警定时器（生产单进程，自管 setInterval；与 PaymentTimeoutJob / DispatchJobService 同形态）：
+ * 运力预警定时器（生产单进程无 worker，统一走 PeriodicFallback 进程内兜底，与其它后台任务同形态）：
  * 1) 关闭心跳超时的骑手在线会话（在线时长统计收口）；
  * 2) 按渠道统计「待抢大厅单量 vs 5min 内在线骑手数」，分级告警推飞书（严格项 @所有人），
  *    恢复健康后补一条「运力已恢复」，避免运营只看到告警看不到恢复。
@@ -71,9 +72,7 @@ let CapacityAlertJob = class CapacityAlertJob {
     constructor(connection, feishu) {
         this.connection = connection;
         this.feishu = feishu;
-        this.timer = null;
-        this.bootTimer = null;
-        this.running = false;
+        this.fallback = null;
         /** channelId → 上次告警时间（冷却用） */
         this.alerted = new Map();
         /** channelId → 当前级别（用于升级立即推 / 恢复通知） */
@@ -85,35 +84,29 @@ let CapacityAlertJob = class CapacityAlertJob {
         this.settings = Object.assign(Object.assign({}, this.settings), partial);
     }
     start(overrides) {
-        if (this.timer)
+        if (this.fallback)
             return;
         this.settings = Object.assign(Object.assign({}, readCapacityAlertSettings()), (overrides !== null && overrides !== void 0 ? overrides : {}));
         if (!this.settings.enabled) {
             core_1.Logger.info('运力预警已关闭（CAPACITY_ALERT_ENABLED=false）', 'CampusCapacity');
             return;
         }
-        const tick = () => {
-            if (this.running)
-                return;
-            this.running = true;
-            this.run()
-                .catch(e => { var _a; return core_1.Logger.warn(`capacity alert tick failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusCapacity'); })
-                .finally(() => { this.running = false; });
-        };
-        this.bootTimer = setTimeout(tick, this.settings.bootDelayMs);
-        this.timer = setInterval(tick, this.settings.intervalMs);
+        this.fallback = new periodic_fallback_1.PeriodicFallback({
+            name: 'capacity-alert',
+            intervalMs: this.settings.intervalMs,
+            bootDelayMs: this.settings.bootDelayMs,
+            loggerCtx: 'CampusCapacity',
+        });
+        this.fallback.start(() => this.run());
         core_1.Logger.info(`运力预警已启动：每 ${Math.round(this.settings.intervalMs / 60000)} 分钟扫描，`
             + `冷却 ${Math.round(this.settings.cooldownMs / 60000)} 分钟，`
             + `阈值 无骑手≥${this.settings.noRiderBacklog} 单 / 紧张≥${this.settings.tightBacklog} 单且≤${this.settings.tightRiders} 人，`
             + `渠道 ${this.settings.channels.length ? this.settings.channels.join(',') : '全部'}`, 'CampusCapacity');
     }
     stop() {
-        if (this.bootTimer)
-            clearTimeout(this.bootTimer);
-        if (this.timer)
-            clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        var _a;
+        (_a = this.fallback) === null || _a === void 0 ? void 0 : _a.stop();
+        this.fallback = null;
     }
     onApplicationShutdown() {
         this.stop();

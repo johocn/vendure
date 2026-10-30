@@ -33,7 +33,7 @@ export interface BacklogStat {
     oldestMinutes: number;
 }
 /**
- * 运力预警定时器（生产单进程，自管 setInterval；与 PaymentTimeoutJob / DispatchJobService 同形态）：
+ * 运力预警定时器（生产单进程无 worker，统一走 PeriodicFallback 进程内兜底，与其它后台任务同形态）：
  * 1) 关闭心跳超时的骑手在线会话（在线时长统计收口）；
  * 2) 按渠道统计「待抢大厅单量 vs 5min 内在线骑手数」，分级告警推飞书（严格项 @所有人），
  *    恢复健康后补一条「运力已恢复」，避免运营只看到告警看不到恢复。
@@ -44,9 +44,7 @@ export interface BacklogStat {
 export declare class CapacityAlertJob implements OnApplicationShutdown {
     private connection;
     private feishu;
-    private timer;
-    private bootTimer;
-    private running;
+    private fallback;
     /** channelId → 上次告警时间（冷却用） */
     private alerted;
     /** channelId → 当前级别（用于升级立即推 / 恢复通知） */

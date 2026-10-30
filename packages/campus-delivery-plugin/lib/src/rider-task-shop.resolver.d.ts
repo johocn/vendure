@@ -28,6 +28,8 @@ export declare class RiderTaskShopResolver {
         etaMinutes: number | null;
         deliveryStatus: any;
     } | null>;
+    /** 交接码：仅本单骑手可查（R1/R2 第二段起送必填），未指派/已送达返回 null */
+    campusTaskHandoverCode(ctx: RequestContext, orderId: ID): Promise<string | null>;
     /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
     campusStartTask(ctx: RequestContext, orderId: ID, code?: string): Promise<import("@vendure/core").Order>;
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */

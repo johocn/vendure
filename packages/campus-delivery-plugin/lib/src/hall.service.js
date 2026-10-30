@@ -18,6 +18,7 @@ const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-mes
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
+const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const slot_lock_service_1 = require("./slot-lock.service");
 const route_matrix_1 = require("./route-matrix");
 /** 仍在履约链路上的大厅状态（取消脱厅/回厅/条件状态迁移共用）。
@@ -35,11 +36,12 @@ const orderColumn = (field) => `"customFields${field.charAt(0).toUpperCase()}${f
  * 支付闸门：由插件订阅 PaymentStateTransitionEvent（Authorized/Settled）触发，未支付订单不进大厅、不可被抢。
  */
 let HallService = HallService_1 = class HallService {
-    constructor(connection, slotLock, moduleRef, capacity) {
+    constructor(connection, slotLock, moduleRef, capacity, feishu) {
         this.connection = connection;
         this.slotLock = slotLock;
         this.moduleRef = moduleRef;
         this.capacity = capacity;
+        this.feishu = feishu;
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     get injector() {
@@ -59,14 +61,15 @@ let HallService = HallService_1 = class HallService {
             return null;
         return { lat: Number(b.lat), lng: Number(b.lng) };
     }
-    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null */
+    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null。
+     *  支持跨天时段（如 '23:30-00:10'）：结束时间不大于开始时间时视为次日。 */
     static slotSpanMinutes(text) {
         const m = /(\d{1,2}):(\d{2})\s*[-–~至]\s*(\d{1,2}):(\d{2})/.exec(text);
         if (!m)
             return null;
         const start = Number(m[1]) * 60 + Number(m[2]);
         const end = Number(m[3]) * 60 + Number(m[4]);
-        const span = end - start;
+        const span = (end <= start ? end + 24 * 60 : end) - start;
         return span > 0 && span <= 12 * 60 ? span : null;
     }
     /**
@@ -85,7 +88,7 @@ let HallService = HallService_1 = class HallService {
         return { at: new Date(Date.now() + minutes * 60000), source: 'store_minutes' };
     }
     async onOrderPlaced(ctx, orderInput) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         // 支付事件（Authorized → Settled）可能连发两次：以 DB 当前值为准做幂等闸，
         // 事件里的实体快照不含上一次订阅写入的 customFields。
         // 读不到时退回事件实体（正常流程订单必然存在，兜底避免事件对象为空导致漏入厅）。
@@ -117,6 +120,11 @@ let HallService = HallService_1 = class HallService {
         const promise = this.resolvePromise(cf, cfg);
         // 履约快照：下单时冻结，后续配置变更不影响在途单
         const snapshot = Object.assign({ deliveryPlan: degrade ? 'campus_rider' : ((_b = plan === null || plan === void 0 ? void 0 : plan.leg1) !== null && _b !== void 0 ? _b : 'campus_rider'), handoverMode: degrade ? '' : ((_c = plan === null || plan === void 0 ? void 0 : plan.handover) !== null && _c !== void 0 ? _c : ''), thirdPartyProvider: '', handoverPointName: (_d = point === null || point === void 0 ? void 0 : point.name) !== null && _d !== void 0 ? _d : '', handoverPointAddress: (_e = point === null || point === void 0 ? void 0 : point.address) !== null && _e !== void 0 ? _e : '', handoverPointLat: (_f = point === null || point === void 0 ? void 0 : point.lat) !== null && _f !== void 0 ? _f : null, handoverPointLng: (_g = point === null || point === void 0 ? void 0 : point.lng) !== null && _g !== void 0 ? _g : null, promisedAt: promise.at, promiseSource: promise.source }, (degrade ? { campusCause: 'no_handover_point' } : {}));
+        // 降级不能静默（P1）：运费按 R1/R2 收、实际按 campus_rider 直送，必须让运营可见并人工兜底。
+        if (degrade) {
+            core_2.Logger.error(`Order ${order.code} ${route} degraded to campus_rider: no usable handover point`, 'CampusHall');
+            void ((_h = this.feishu) === null || _h === void 0 ? void 0 : _h.pushEvent('alert', '交接点缺失，订单已降级', `订单 ${order.code}（${route}）缺少 ${route} 校园交接点，已降级为传信者到店直送。请补齐交接点配置，并视情况退还运费差价。`, order.code, `degrade:${order.code}`));
+        }
         const locked = await this.slotLock.lock(ctx, order);
         const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
         const deferred = !Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService_1.SCHEDULE_RELEASE_MIN * 60000;
@@ -319,6 +327,7 @@ exports.HallService = HallService = HallService_1 = __decorate([
     __metadata("design:paramtypes", [core_2.TransactionalConnection,
         slot_lock_service_1.SlotLockService,
         core_1.ModuleRef,
-        capacity_service_1.CapacityService])
+        capacity_service_1.CapacityService,
+        feishu_notify_service_1.FeishuNotifyService])
 ], HallService);
 //# sourceMappingURL=hall.service.js.map

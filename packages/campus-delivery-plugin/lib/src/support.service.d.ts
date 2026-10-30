@@ -1,3 +1,4 @@
+import { ModuleRef } from '@nestjs/core';
 import { CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusRiderAppeal, CampusBlacklist, CampusSupportTicket } from './support.entities';
 import { RiderCreditService } from './rider-credit.service';
@@ -14,7 +15,12 @@ export declare class SupportService {
     private customerService;
     private credit;
     private feishu;
-    constructor(connection: TransactionalConnection, customerService: CustomerService, credit: RiderCreditService, feishu: FeishuNotifyService);
+    private moduleRef?;
+    /** 售后插件为可选依赖：未安装时工单仍可用，仅“工单↔售后”联动降级 */
+    private afterSalesSvc?;
+    constructor(connection: TransactionalConnection, customerService: CustomerService, credit: RiderCreditService, feishu: FeishuNotifyService, moduleRef?: ModuleRef | undefined);
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private getAfterSales;
     private requireCustomer;
     /** 飞书提醒：仅记录日志、绝不阻塞主流程（未启用时 pushEvent 直接返回 true） */
     private pushFeishu;
@@ -23,20 +29,79 @@ export declare class SupportService {
      * 未装 message-plugin 时实体不存在，静默跳过，绝不阻塞工单/申诉主流程。
      */
     private sendInAppMessage;
+    /**
+     * 工单→售后打通：按订单号解析订单（校验归属与本店渠道）并挂接该订单在途售后单。
+     * 订单号解析不到时保持宽松（工单仍可提交，仅不关联），避免顾客写错一位订单号就投诉无门；
+     * 但订单存在且不属于本人时明确拒绝，防止工单被挂到他人订单上造成误处理。
+     */
+    private resolveOrderLink;
+    /** 该订单最新一条未关闭售后单（未装售后插件/实体未注册时返回 null，绝不阻断工单） */
+    private findActiveAfterSalesId;
+    /** 批量取售后单摘要（工单列表回显用）：按工单已关联 id ∪ 订单号反查，返回 [售后单 id, 订单 id] 两级索引 */
+    private loadAfterSalesSummaries;
+    private static afterSalesView;
     createTicket(ctx: RequestContext, input: {
         category: string;
         content: string;
         images?: string[] | null;
         orderCode?: string | null;
     }): Promise<any>;
-    myTickets(ctx: RequestContext, skip?: number, take?: number): Promise<CampusSupportTicket[]>;
+    myTickets(ctx: RequestContext, skip?: number, take?: number): Promise<CampusSupportTicket[] | ({
+        afterSalesRequestId: number | null;
+        afterSalesState: null;
+        afterSalesType: null;
+        afterSalesRefundAmount: null;
+        afterSalesActualRefundAmount: null;
+        channelId: ID;
+        customerId: ID;
+        orderCode: string | null;
+        orderId: number | null;
+        category: string;
+        content: string;
+        images: string[] | null;
+        status: string;
+        reply: string | null;
+        repliedBy: string | null;
+        repliedAt: Date | null;
+        id: ID;
+        createdAt: Date;
+        updatedAt: Date;
+    } | {
+        afterSalesRequestId: number | null;
+        afterSalesState: any;
+        afterSalesType: any;
+        afterSalesRefundAmount: number | null;
+        afterSalesActualRefundAmount: number | null;
+        channelId: ID;
+        customerId: ID;
+        orderCode: string | null;
+        orderId: number | null;
+        category: string;
+        content: string;
+        images: string[] | null;
+        status: string;
+        reply: string | null;
+        repliedBy: string | null;
+        repliedAt: Date | null;
+        id: ID;
+        createdAt: Date;
+        updatedAt: Date;
+    })[]>;
+    /** 工单行 + 售后摘要（无关联时各字段为 null） */
+    private withAfterSalesView;
     adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<{
-        items: {
+        items: ({
             customerName: string;
             customerPhone: string | null;
+            afterSalesRequestId: number | null;
+            afterSalesState: null;
+            afterSalesType: null;
+            afterSalesRefundAmount: null;
+            afterSalesActualRefundAmount: null;
             channelId: ID;
             customerId: ID;
             orderCode: string | null;
+            orderId: number | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -47,9 +112,81 @@ export declare class SupportService {
             id: ID;
             createdAt: Date;
             updatedAt: Date;
-        }[];
+        } | {
+            customerName: string;
+            customerPhone: string | null;
+            afterSalesRequestId: number | null;
+            afterSalesState: any;
+            afterSalesType: any;
+            afterSalesRefundAmount: number | null;
+            afterSalesActualRefundAmount: number | null;
+            channelId: ID;
+            customerId: ID;
+            orderCode: string | null;
+            orderId: number | null;
+            category: string;
+            content: string;
+            images: string[] | null;
+            status: string;
+            reply: string | null;
+            repliedBy: string | null;
+            repliedAt: Date | null;
+            id: ID;
+            createdAt: Date;
+            updatedAt: Date;
+        })[];
         total: number;
     }>;
+    /**
+     * 运营手工关联售后单（建单自动关联未命中时使用，如售后单在工单之后才发起）。
+     * 校验同一店铺、同一订单，防止把工单挂到无关售后单。
+     */
+    linkTicketAfterSales(ctx: RequestContext, id: ID, afterSalesRequestId: ID): Promise<{
+        afterSalesRequestId: number | null;
+        afterSalesState: null;
+        afterSalesType: null;
+        afterSalesRefundAmount: null;
+        afterSalesActualRefundAmount: null;
+        channelId: ID;
+        customerId: ID;
+        orderCode: string | null;
+        orderId: number | null;
+        category: string;
+        content: string;
+        images: string[] | null;
+        status: string;
+        reply: string | null;
+        repliedBy: string | null;
+        repliedAt: Date | null;
+        id: ID;
+        createdAt: Date;
+        updatedAt: Date;
+    } | {
+        afterSalesRequestId: number | null;
+        afterSalesState: any;
+        afterSalesType: any;
+        afterSalesRefundAmount: number | null;
+        afterSalesActualRefundAmount: number | null;
+        channelId: ID;
+        customerId: ID;
+        orderCode: string | null;
+        orderId: number | null;
+        category: string;
+        content: string;
+        images: string[] | null;
+        status: string;
+        reply: string | null;
+        repliedBy: string | null;
+        repliedAt: Date | null;
+        id: ID;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
+    /**
+     * 售后状态联动：售后单退款到账后自动关闭关联工单（回复留痕），
+     * 避免工单长期 open、运营重复联系顾客。仅处理 Refunded，其余状态工单保持原状交给运营跟。
+     */
+    onAfterSalesStateChange(ctx: RequestContext, requestId: number, toState: string): Promise<void>;
     /** 运营回复（replied）/ 关闭（closed）；回复内容必填（关闭时可选沿用原回复） */
     replyTicket(ctx: RequestContext, id: ID, reply: string | undefined, status?: string): Promise<{
         status: string;
@@ -57,6 +194,8 @@ export declare class SupportService {
         channelId: ID;
         customerId: ID;
         orderCode: string | null;
+        orderId: number | null;
+        afterSalesRequestId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -66,6 +205,8 @@ export declare class SupportService {
         createdAt: Date;
         updatedAt: Date;
     }>;
+    /** 回复同步到售后协商留言（售后单已关闭/插件未装时仅告警，不影响工单处理） */
+    private forwardReplyToAfterSales;
     createAppeal(ctx: RequestContext, input: {
         orderId?: ID | null;
         reason: string;

@@ -50,6 +50,8 @@ export declare class MerchantAdminResolver {
     }>;
     /** KDS 出餐屏（P1-4）：待接单/备餐中队列，按等待时长分级 */
     campusMerchantKitchenQueue(ctx: RequestContext): Promise<import("./merchant-admin.service").KitchenQueue>;
+    /** 备餐汇总（§79）：今日商品份数聚合，后厨按份备料/核对出餐 */
+    campusMerchantPrepSummary(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantPrepItem[]>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

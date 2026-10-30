@@ -17,6 +17,7 @@ const campus_config_service_1 = require("./campus-config.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const payment_timeout_entity_1 = require("./payment-timeout.entity");
+const periodic_fallback_1 = require("./periodic-fallback");
 /** 待付款提醒 / 超时取消（时长常量，不做配置，spec §4.3） */
 exports.PAYMENT_REMIND_MS = 10 * 60 * 1000;
 exports.PAYMENT_CANCEL_MS = 15 * 60 * 1000;
@@ -51,9 +52,7 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         this.notify = notify;
         this.campusConfig = campusConfig;
         this.feishu = feishu;
-        this.compensationTimer = null;
-        this.compensationBootTimer = null;
-        this.compensationRunning = false;
+        this.compensation = null;
         /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
         this.alertedFailed = new Map();
         this.taskRepo = this.connection.rawConnection.getRepository(payment_timeout_entity_1.PaymentTimeoutTask);
@@ -69,26 +68,20 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
      * 必须晚于 init()（runCompensation 依赖 jobQueue）。
      */
     startCompensationLoop(intervalMs = COMPENSATION_INTERVAL_MS) {
-        if (this.compensationTimer)
+        if (this.compensation)
             return;
-        const tick = () => {
-            if (this.compensationRunning)
-                return; // 上一轮未结束跳过，避免堆积
-            this.compensationRunning = true;
-            this.runCompensation()
-                .catch(e => { var _a; return core_1.Logger.warn(`payment timeout compensation failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, loggerCtx); })
-                .finally(() => { this.compensationRunning = false; });
-        };
-        this.compensationBootTimer = setTimeout(tick, COMPENSATION_BOOT_DELAY_MS);
-        this.compensationTimer = setInterval(tick, intervalMs);
+        this.compensation = new periodic_fallback_1.PeriodicFallback({
+            name: 'payment-timeout-compensation',
+            intervalMs,
+            bootDelayMs: COMPENSATION_BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.compensation.start(() => this.runCompensation());
     }
     stopCompensationLoop() {
-        if (this.compensationBootTimer)
-            clearTimeout(this.compensationBootTimer);
-        if (this.compensationTimer)
-            clearInterval(this.compensationTimer);
-        this.compensationBootTimer = null;
-        this.compensationTimer = null;
+        var _a;
+        (_a = this.compensation) === null || _a === void 0 ? void 0 : _a.stop();
+        this.compensation = null;
     }
     onApplicationShutdown() {
         this.stopCompensationLoop();

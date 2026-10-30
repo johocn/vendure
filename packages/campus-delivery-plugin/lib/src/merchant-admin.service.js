@@ -963,6 +963,68 @@ let MerchantAdminService = class MerchantAdminService {
             lateMinutes: exports.KDS_LATE_MINUTES,
         };
     }
+    /**
+     * 备餐汇总（§79）：今日「待接单 + 备餐中」按商品聚合待做份数，
+     * 叠加今日已送达份数，供后厨按份备料；加料/口味按同一商品合并计数。
+     * 口径与出餐屏/工作台一致：待做取活跃单（不落小票），已做按送达时间归今日。
+     */
+    async prepSummary(ctx) {
+        const repo = this.connection.getRepository(ctx, core_1.Order);
+        const todoOrders = await repo
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere("order.customFields.hallStatus IN ('pending_merchant','accepted')")
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .getMany();
+        const startOfDay = new Date((0, campus_time_1.startOfCampusDay)(Date.now()));
+        const doneOrders = await repo
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere("order.customFields.deliveryStatus = 'delivered'")
+            .andWhere('order.customFields.deliveredAt >= :start', { start: startOfDay })
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .getMany();
+        const acc = new Map();
+        const bump = (o, field) => {
+            var _a, _b, _c, _d, _e, _f;
+            for (const l of (_a = o.lines) !== null && _a !== void 0 ? _a : []) {
+                const name = (_c = (_b = l.productVariant) === null || _b === void 0 ? void 0 : _b.name) !== null && _c !== void 0 ? _c : '';
+                if (!name)
+                    continue;
+                const cur = (_d = acc.get(name)) !== null && _d !== void 0 ? _d : { pending: 0, cooking: 0, done: 0, addons: new Map() };
+                cur[field] += l.quantity;
+                const addonsText = (0, addon_fee_1.addonDisplayText)((_e = l.customFields) === null || _e === void 0 ? void 0 : _e.waimaiAddons);
+                if (addonsText) {
+                    for (const opt of addonsText.split(' / ')) {
+                        if (!opt)
+                            continue;
+                        cur.addons.set(opt, ((_f = cur.addons.get(opt)) !== null && _f !== void 0 ? _f : 0) + l.quantity);
+                    }
+                }
+                acc.set(name, cur);
+            }
+        };
+        for (const o of todoOrders)
+            bump(o, o.customFields.hallStatus === 'accepted' ? 'cooking' : 'pending');
+        for (const o of doneOrders)
+            bump(o, 'done');
+        return [...acc.entries()]
+            .map(([name, v]) => ({
+            name,
+            pendingQty: v.pending,
+            cookingQty: v.cooking,
+            doneQty: v.done,
+            todoQty: v.pending + v.cooking,
+            totalQty: v.pending + v.cooking + v.done,
+            addons: [...v.addons.entries()].map(([n, q]) => ({ name: n, quantity: q })),
+        }))
+            // 待做多的排前面（后厨优先看今天还要做多少），其次按今日总量、名称
+            .sort((a, b) => b.todoQty - a.todoQty || b.totalQty - a.totalQty || a.name.localeCompare(b.name));
+    }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
     async products(ctx, search, skip, take) {
         var _a, _b;

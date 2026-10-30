@@ -56,6 +56,9 @@ export declare class RiderTaskService {
     /** 开始配送：assigned → in_progress。
      * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
     start(ctx: RequestContext, orderId: ID, code?: string): Promise<Order>;
+    /** 交接码读取（R1/R2 第二段起送必填）：仅本单骑手、assigned/in_progress 可读。
+     *  原实现交接码只写入不暴露，骑手只能线下向交接点口头索取，取不到就卡在 grabbed 直到超时回厅。 */
+    handoverCode(ctx: RequestContext, orderId: ID): Promise<string | null>;
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     deliver(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
     /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */

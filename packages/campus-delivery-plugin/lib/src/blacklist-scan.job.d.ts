@@ -15,9 +15,7 @@ export declare const BLACKLIST_CANCEL_WINDOW_DAYS = 30;
 export declare class BlacklistAutoScanJob implements OnApplicationShutdown {
     private connection;
     private feishu;
-    private timer;
-    private bootTimer;
-    private running;
+    private fallback;
     private lastRunDay;
     constructor(connection: TransactionalConnection, feishu: FeishuNotifyService);
     start(): void;

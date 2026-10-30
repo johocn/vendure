@@ -2,6 +2,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CapacityService } from './capacity.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { SlotLockService } from './slot-lock.service';
 /** 仍在履约链路上的大厅状态（取消脱厅/回厅/条件状态迁移共用）。
  * 终态（delivered/cancelled/no_rider_final/exception_final）不在其中，任何写入都不应把终态单改回流转态。 */
@@ -16,14 +17,16 @@ export declare class HallService {
     private slotLock;
     private moduleRef;
     private capacity;
+    private feishu?;
     /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
     static readonly SCHEDULE_RELEASE_MIN = 30;
-    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService);
+    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService, feishu?: FeishuNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */
     private resolveDestPoint;
-    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null */
+    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null。
+     *  支持跨天时段（如 '23:30-00:10'）：结束时间不大于开始时间时视为次日。 */
     static slotSpanMinutes(text: string): number | null;
     /**
      * 承诺送达时间（支付时固化，超时赔付判定基准）：

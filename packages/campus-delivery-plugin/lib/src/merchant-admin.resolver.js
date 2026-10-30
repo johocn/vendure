@@ -108,6 +108,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantKitchenQueue(ctx) {
         return this.merchant.kitchenQueue(ctx);
     }
+    /** 备餐汇总（§79）：今日商品份数聚合，后厨按份备料/核对出餐 */
+    async campusMerchantPrepSummary(ctx) {
+        return this.merchant.prepSummary(ctx);
+    }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
         return this.merchant.cloudPrint(ctx, orderId);
@@ -355,6 +359,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantKitchenQueue", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantPrepSummary", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

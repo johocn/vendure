@@ -15,7 +15,9 @@ export declare class FeishuDigestService implements OnApplicationShutdown {
     private client;
     private connection;
     private command;
-    private timer?;
+    /** 汇总与心跳各自一条兜底循环：互不阻塞（汇总推送慢时不拖住心跳） */
+    private digestLoop;
+    private heartbeatLoop;
     private running;
     /** 进程内兜底（webhook 模式无法回读消息时防同进程重复发送，不落库） */
     private sent;

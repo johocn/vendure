@@ -30,6 +30,9 @@ let SupportAdminResolver = class SupportAdminResolver {
     async campusReplySupportTicket(ctx, id, reply, status) {
         return this.support.replyTicket(ctx, id, reply, status);
     }
+    async campusLinkSupportTicketAfterSales(ctx, id, afterSalesRequestId) {
+        return this.support.linkTicketAfterSales(ctx, id, afterSalesRequestId);
+    }
     async campusRiderAppeals(ctx, status, skip, take) {
         return this.support.adminAppeals(ctx, status, skip, take);
     }
@@ -90,6 +93,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String]),
     __metadata("design:returntype", Promise)
 ], SupportAdminResolver.prototype, "campusReplySupportTicket", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'afterSalesRequestId', type: () => graphql_1.ID })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], SupportAdminResolver.prototype, "campusLinkSupportTicketAfterSales", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),

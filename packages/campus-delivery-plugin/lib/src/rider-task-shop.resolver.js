@@ -34,6 +34,10 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusOrderRider(ctx, orderId) {
         return this.riderTaskService.orderRider(ctx, orderId);
     }
+    /** 交接码：仅本单骑手可查（R1/R2 第二段起送必填），未指派/已送达返回 null */
+    async campusTaskHandoverCode(ctx, orderId) {
+        return this.riderTaskService.handoverCode(ctx, orderId);
+    }
     /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
     async campusStartTask(ctx, orderId, code) {
         return this.riderTaskService.start(ctx, orderId, code);
@@ -89,6 +93,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusOrderRider", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusTaskHandoverCode", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

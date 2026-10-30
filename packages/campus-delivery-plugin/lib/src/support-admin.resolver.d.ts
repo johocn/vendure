@@ -7,12 +7,18 @@ export declare class SupportAdminResolver {
     private riderOps;
     constructor(support: SupportService, riderOps: RiderOpsService);
     campusSupportTickets(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<{
-        items: {
+        items: ({
             customerName: string;
             customerPhone: string | null;
+            afterSalesRequestId: number | null;
+            afterSalesState: null;
+            afterSalesType: null;
+            afterSalesRefundAmount: null;
+            afterSalesActualRefundAmount: null;
             channelId: ID;
             customerId: ID;
             orderCode: string | null;
+            orderId: number | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -23,7 +29,29 @@ export declare class SupportAdminResolver {
             id: ID;
             createdAt: Date;
             updatedAt: Date;
-        }[];
+        } | {
+            customerName: string;
+            customerPhone: string | null;
+            afterSalesRequestId: number | null;
+            afterSalesState: any;
+            afterSalesType: any;
+            afterSalesRefundAmount: number | null;
+            afterSalesActualRefundAmount: number | null;
+            channelId: ID;
+            customerId: ID;
+            orderCode: string | null;
+            orderId: number | null;
+            category: string;
+            content: string;
+            images: string[] | null;
+            status: string;
+            reply: string | null;
+            repliedBy: string | null;
+            repliedAt: Date | null;
+            id: ID;
+            createdAt: Date;
+            updatedAt: Date;
+        })[];
         total: number;
     }>;
     campusReplySupportTicket(ctx: RequestContext, id: ID, reply?: string, status?: string): Promise<{
@@ -32,9 +60,52 @@ export declare class SupportAdminResolver {
         channelId: ID;
         customerId: ID;
         orderCode: string | null;
+        orderId: number | null;
+        afterSalesRequestId: number | null;
         category: string;
         content: string;
         images: string[] | null;
+        repliedBy: string | null;
+        repliedAt: Date | null;
+        id: ID;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
+    campusLinkSupportTicketAfterSales(ctx: RequestContext, id: ID, afterSalesRequestId: ID): Promise<{
+        afterSalesRequestId: number | null;
+        afterSalesState: null;
+        afterSalesType: null;
+        afterSalesRefundAmount: null;
+        afterSalesActualRefundAmount: null;
+        channelId: ID;
+        customerId: ID;
+        orderCode: string | null;
+        orderId: number | null;
+        category: string;
+        content: string;
+        images: string[] | null;
+        status: string;
+        reply: string | null;
+        repliedBy: string | null;
+        repliedAt: Date | null;
+        id: ID;
+        createdAt: Date;
+        updatedAt: Date;
+    } | {
+        afterSalesRequestId: number | null;
+        afterSalesState: any;
+        afterSalesType: any;
+        afterSalesRefundAmount: number | null;
+        afterSalesActualRefundAmount: number | null;
+        channelId: ID;
+        customerId: ID;
+        orderCode: string | null;
+        orderId: number | null;
+        category: string;
+        content: string;
+        images: string[] | null;
+        status: string;
+        reply: string | null;
         repliedBy: string | null;
         repliedAt: Date | null;
         id: ID;

@@ -22,6 +22,7 @@ const hall_service_1 = require("./hall.service");
 const refund_payment_1 = require("./refund-payment");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const rider_credit_service_1 = require("./rider-credit.service");
+const periodic_fallback_1 = require("./periodic-fallback");
 const NOT_PICKED_TIMEOUT_MIN = 15;
 /** 外部运单轮询对账间隔（防平台回调丢失）：每单 5min 一次主动查询 */
 const EXTERNAL_SYNC_INTERVAL_MIN = 5;
@@ -30,8 +31,10 @@ const TIMEOUT_COMPENSATION_WINDOW_H = 24;
 const TIMEOUT_COMPENSATION_LIMIT = 200;
 /** 赔付闸过期回收：认领后 15min 仍未写入券 id（发券后落库失败/进程中断）视为僵死认领，允许重新赔付 */
 const TIMEOUT_COMPENSATION_CLAIM_STALE_MIN = 15;
-// F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
+// F6 单渠道单轮扫描上限：按各状态桶的计时锚升序截断（最老的最紧急），超限告警暴露积压
 const SCAN_LIMIT = 200;
+/** 预约单桶上限：预约单永远排在活单之后，积压时若与活单共享窗口会被长期饿死（放量/兜底不执行） */
+const SCHEDULED_SCAN_LIMIT = 100;
 /** 骑手轨迹保留天数（P8-4）：后台轨迹页按同一口径提示运营 */
 const LOCATION_RETENTION_DAYS = 30;
 /** 轨迹清理频率：每 6h 最多一次（DELETE 跨渠道，无需每轮都跑） */
@@ -46,7 +49,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         this.moduleRef = moduleRef;
         this.thirdParty = thirdParty;
         this.feishu = feishu;
-        this.timer = null;
+        /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
+        this.fallback = null;
         this.running = false;
         /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
         this.compensationWarnAt = 0;
@@ -58,16 +62,15 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         return new core_2.Injector(this.moduleRef);
     }
     start(intervalMs = 60000) {
-        if (this.timer)
+        if (this.fallback)
             return;
-        this.timer = setInterval(() => {
-            this.tick().catch(e => core_2.Logger.error(`dispatch tick: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch'));
-        }, intervalMs);
+        this.fallback = new periodic_fallback_1.PeriodicFallback({ name: 'dispatch', intervalMs, loggerCtx: 'CampusDispatch' });
+        this.fallback.start(() => this.tick());
     }
     onApplicationShutdown() {
-        if (this.timer)
-            clearInterval(this.timer);
-        this.timer = null;
+        var _a;
+        (_a = this.fallback) === null || _a === void 0 ? void 0 : _a.stop();
+        this.fallback = null;
     }
     async tick() {
         if (this.running)
@@ -156,26 +159,36 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     async scan(ctx) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const repo = this.connection.getRepository(ctx, core_2.Order);
-        const orders = await repo.createQueryBuilder('order')
-            .leftJoin('order.channels', 'channel')
-            .where('channel.id = :ch', { ch: ctx.channelId })
-            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled', 'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering')")
-            // 已取消单即使 hallStatus 未及时清也绝不参与扫描：所有兜底写都必须落在活单上
-            .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
-            // 预约单排序靠后（P2-8）：它们与活单混排时不得挤占 take 窗口，
-            // 否则大量未到点的预约单会把 open 强派/T4 退款扫出窗口。预约单内部按 scheduledFor 升序。
-            .orderBy("CASE WHEN order.customFields.hallStatus = 'scheduled' THEN 1 ELSE 0 END", 'ASC')
-            .addOrderBy("CASE WHEN order.customFields.hallStatus = 'scheduled' "
-            + 'THEN order.customFields.scheduledFor ELSE order.createdAt END', 'ASC')
-            // 用 limit 而非 take：take + join 会走 TypeORM 的 distinct 分页（子查询），
-            // 该路径把 CASE 表达式里的 "CASE WHEN order" 当成别名解析 → 每轮扫描全渠道报错。
-            // 本查询已按 channel.id 过滤（一单只命中一行），limit 不会产生重复行。
-            .limit(SCAN_LIMIT)
-            .getMany();
-        if (orders.length >= SCAN_LIMIT) {
-            core_2.Logger.warn(`channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`, 'CampusDispatch');
-            // P3：积压时年轻订单可能被 oldest-first 长期饿死，日志之外必须让运营看到
-            void ((_a = this.feishu) === null || _a === void 0 ? void 0 : _a.pushEvent('alert', '调度扫描积压', `渠道 ${ctx.channelId} 在途订单已达 ${SCAN_LIMIT} 上限，本轮只处理最老订单，请及时增派运力/清理异常单。`, undefined, `dispatch_backlog:${ctx.channelId}`));
+        // 积压策略：按状态分桶独立取数、独立限额，而不是全状态共享一个最老 200 窗口。
+        // 旧实现里大量「刚进大厅、还没到强派/退款时间」的 open 单会占满窗口，
+        // 同一渠道的 pending_merchant / third_party / exception 兜底与预约单放量全部被饿死，
+        // 造成「越积压越卡死」。分桶后每个状态组都保证有扫描配额，且各组仍按紧急度锚点升序。
+        const orders = [];
+        const truncated = [];
+        for (const bucket of DispatchJobService_1.SCAN_BUCKETS) {
+            const rows = await repo.createQueryBuilder('order')
+                .leftJoin('order.channels', 'channel')
+                .where('channel.id = :ch', { ch: ctx.channelId })
+                .andWhere('order.customFields.hallStatus IN (:...statuses)', { statuses: bucket.statuses })
+                // 已取消单即使 hallStatus 未及时清也绝不参与扫描：所有兜底写都必须落在活单上
+                .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
+                // 排序锚 = 该状态下真正计时的那一列：预约单看 scheduledFor（空值排后），
+                // open 看入厅时间，在途单优先看接单时间（骑手取货/送达超时从 assignedAt 起算）。
+                // 用 limit 而非 take：take + join 会走 TypeORM 的 distinct 性分页（子查询），
+                // 该路径把表达式里的 "order" 当成别名解析导致整轮报错；本查询已按 channel 过滤不会重复行。
+                .orderBy(bucket.key === 'scheduled'
+                ? `${bucket.orderBy} ASC NULLS LAST`
+                : `${bucket.orderBy} ASC`)
+                .limit(bucket.limit)
+                .getMany();
+            if (rows.length >= bucket.limit)
+                truncated.push(`${bucket.key}(${bucket.limit})`);
+            orders.push(...rows);
+        }
+        if (truncated.length) {
+            core_2.Logger.warn(`channel ${ctx.channelId} dispatch backlog: ${truncated.join(',')} reached bucket limit, scan truncated (oldest-first per bucket)`, 'CampusDispatch');
+            // 积压时年轻订单可能被 oldest-first 长期饿死，日志之外必须让运营看到
+            void ((_a = this.feishu) === null || _a === void 0 ? void 0 : _a.pushEvent('alert', '调度扫描积压', `渠道 ${ctx.channelId} 在途订单分桶已达上限（${truncated.join('、')}），本轮只处理各桶最老订单，请及时增派运力/清理异常单。`, undefined, `dispatch_backlog:${ctx.channelId}`));
         }
         const now = Date.now();
         // P1 骑手超时提前告警阈值：兜底前 1.5min 先告警（原值 3min，缩短一倍）
@@ -1016,6 +1029,27 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     }
 };
 exports.DispatchJobService = DispatchJobService;
+/**
+ * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
+ * - open：量最大，T2 强派 / T4 退款；
+ * - scheduled：预约单必须独立配额，否则永远排在活单之后拿不到放量；
+ * - inflight：已接单/待商家/外部快递/自营，负责取货超时、异常 SLA、外部对账。
+ */
+DispatchJobService.SCAN_BUCKETS = [
+    {
+        key: 'open',
+        statuses: ['open'],
+        limit: SCAN_LIMIT,
+        orderBy: 'COALESCE(order.customFields.hallEnteredAt, order.createdAt)',
+    },
+    { key: 'scheduled', statuses: ['scheduled'], limit: SCHEDULED_SCAN_LIMIT, orderBy: 'order.customFields.scheduledFor' },
+    {
+        key: 'inflight',
+        statuses: ['grabbed', 'pending_merchant', 'accepted', 'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering'],
+        limit: SCAN_LIMIT,
+        orderBy: 'COALESCE(order.customFields.assignedAt, order.customFields.hallEnteredAt, order.createdAt)',
+    },
+];
 /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */
 DispatchJobService.ROUTE_IMM_WINDOW_MIN = 10;
 exports.DispatchJobService = DispatchJobService = DispatchJobService_1 = __decorate([

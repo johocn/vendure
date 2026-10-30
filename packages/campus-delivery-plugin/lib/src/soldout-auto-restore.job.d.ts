@@ -7,9 +7,7 @@ import { TransactionalConnection } from '@vendure/core';
  */
 export declare class SoldOutAutoRestoreJob implements OnApplicationShutdown {
     private connection;
-    private timer;
-    private bootTimer;
-    private running;
+    private fallback;
     private lastRunDay;
     constructor(connection: TransactionalConnection);
     start(): void;

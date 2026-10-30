@@ -133,7 +133,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     async listStores(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2;
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
@@ -184,12 +184,12 @@ let WaimaiStoreService = class WaimaiStoreService {
                 foodSafetyGrade: (_v = cfg.foodSafetyGrade) !== null && _v !== void 0 ? _v : null,
                 foodSafetyCommitmentImage: (_w = cfg.foodSafetyCommitmentImage) !== null && _w !== void 0 ? _w : null,
                 kitchenLiveUrl: cfg.kitchenLiveEnabled ? (_x = cfg.kitchenLiveUrl) !== null && _x !== void 0 ? _x : null : null,
-                kitchenLiveEnabled: cfg.kitchenLiveEnabled,
-                packingFeeEnabled: (_y = cfg.packingFeeEnabled) !== null && _y !== void 0 ? _y : false,
+                kitchenLiveEnabled: (_y = cfg.kitchenLiveEnabled) !== null && _y !== void 0 ? _y : false,
+                packingFeeEnabled: (_z = cfg.packingFeeEnabled) !== null && _z !== void 0 ? _z : false,
                 packingFeeMode: (0, packing_fee_1.normalizePackingFeeMode)(cfg.packingFeeMode),
-                packingFeeAmount: (_z = cfg.packingFeeAmount) !== null && _z !== void 0 ? _z : 0,
-                packingFeeCap: (_0 = cfg.packingFeeCap) !== null && _0 !== void 0 ? _0 : null,
-                packingFeeLabel: (_1 = cfg.packingFeeLabel) !== null && _1 !== void 0 ? _1 : null,
+                packingFeeAmount: (_0 = cfg.packingFeeAmount) !== null && _0 !== void 0 ? _0 : 0,
+                packingFeeCap: (_1 = cfg.packingFeeCap) !== null && _1 !== void 0 ? _1 : null,
+                packingFeeLabel: (_2 = cfg.packingFeeLabel) !== null && _2 !== void 0 ? _2 : null,
             });
         }
         return stores;
@@ -210,7 +210,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16;
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
         const routes = Array.from(new Set(((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).map(r => String(r))));
         const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
@@ -333,7 +333,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                     try {
                         raw = JSON.parse(text);
                     }
-                    catch (_16) {
+                    catch (_17) {
                         throw new core_1.UserInputError('配送费阶梯不是合法 JSON');
                     }
                 }
@@ -377,7 +377,9 @@ let WaimaiStoreService = class WaimaiStoreService {
             }
             cfg.printCopies = copies;
         }
-        if (cfg.printProvider !== 'local' && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
+        // 未配置时与运行侧（cloud-print / merchant-admin）保持同一默认值 local，避免旧配置/裸对象被误判为云通道
+        if (String((_4 = cfg.printProvider) !== null && _4 !== void 0 ? _4 : 'local') !== 'local'
+            && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
             throw new core_1.UserInputError('选择云打印时请填写服务商账号、设备编号与密钥');
         }
         // 超时赔付：未传即保留（旧表单不会清空已配值）
@@ -432,7 +434,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_17) {
+                catch (_18) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -458,18 +460,18 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.privacyNumberTtlMinutes = ttl;
         }
         if (input.privacyNumberPrefix !== undefined) {
-            cfg.privacyNumberPrefix = String((_4 = input.privacyNumberPrefix) !== null && _4 !== void 0 ? _4 : '').trim() || null;
+            cfg.privacyNumberPrefix = String((_5 = input.privacyNumberPrefix) !== null && _5 !== void 0 ? _5 : '').trim() || null;
         }
         // 食安公示：空串归一为 null（未配置即 C 端不渲染）；等级/到期日做格式校验
         if (input.foodLicenseNo !== undefined)
-            cfg.foodLicenseNo = (_5 = nullableText(input.foodLicenseNo)) !== null && _5 !== void 0 ? _5 : null;
+            cfg.foodLicenseNo = (_6 = nullableText(input.foodLicenseNo)) !== null && _6 !== void 0 ? _6 : null;
         if (input.foodLicenseImage !== undefined)
-            cfg.foodLicenseImage = (_6 = nullableText(input.foodLicenseImage)) !== null && _6 !== void 0 ? _6 : null;
+            cfg.foodLicenseImage = (_7 = nullableText(input.foodLicenseImage)) !== null && _7 !== void 0 ? _7 : null;
         if (input.foodSafetyCommitmentImage !== undefined) {
-            cfg.foodSafetyCommitmentImage = (_7 = nullableText(input.foodSafetyCommitmentImage)) !== null && _7 !== void 0 ? _7 : null;
+            cfg.foodSafetyCommitmentImage = (_8 = nullableText(input.foodSafetyCommitmentImage)) !== null && _8 !== void 0 ? _8 : null;
         }
         if (input.kitchenLiveUrl !== undefined)
-            cfg.kitchenLiveUrl = (_8 = nullableText(input.kitchenLiveUrl)) !== null && _8 !== void 0 ? _8 : null;
+            cfg.kitchenLiveUrl = (_9 = nullableText(input.kitchenLiveUrl)) !== null && _9 !== void 0 ? _9 : null;
         if (input.foodLicenseExpiry !== undefined) {
             const expiry = nullableText(input.foodLicenseExpiry);
             if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
@@ -501,12 +503,12 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.packingFeeMode = mode;
         }
         if (input.packingFeeAmount !== undefined)
-            cfg.packingFeeAmount = (_9 = nums.packingFeeAmount) !== null && _9 !== void 0 ? _9 : 0;
+            cfg.packingFeeAmount = (_10 = nums.packingFeeAmount) !== null && _10 !== void 0 ? _10 : 0;
         if (input.packingFeeCap !== undefined)
-            cfg.packingFeeCap = (_10 = nums.packingFeeCap) !== null && _10 !== void 0 ? _10 : null;
+            cfg.packingFeeCap = (_11 = nums.packingFeeCap) !== null && _11 !== void 0 ? _11 : null;
         if (input.packingFeeLabel !== undefined)
-            cfg.packingFeeLabel = (_11 = nullableText(input.packingFeeLabel)) !== null && _11 !== void 0 ? _11 : null;
-        if (cfg.packingFeeEnabled && ((_12 = cfg.packingFeeAmount) !== null && _12 !== void 0 ? _12 : 0) <= 0) {
+            cfg.packingFeeLabel = (_12 = nullableText(input.packingFeeLabel)) !== null && _12 !== void 0 ? _12 : null;
+        if (cfg.packingFeeEnabled && ((_13 = cfg.packingFeeAmount) !== null && _13 !== void 0 ? _13 : 0) <= 0) {
             throw new core_1.UserInputError('开启打包费时请填写大于 0 的金额');
         }
         if (cfg.packingFeeCap != null && cfg.packingFeeAmount != null && cfg.packingFeeCap < cfg.packingFeeAmount) {
@@ -564,7 +566,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         for (const [field, label] of [['voiceSearchProvider', '语音搜索'], ['imageSearchProvider', '拍照搜索']]) {
             if (input[field] === undefined)
                 continue;
-            const provider = String((_13 = input[field]) !== null && _13 !== void 0 ? _13 : '').trim();
+            const provider = String((_14 = input[field]) !== null && _14 !== void 0 ? _14 : '').trim();
             if (!search_assist_1.SEARCH_ASSIST_PROVIDER_NAMES.includes(provider)) {
                 throw new core_1.UserInputError(`不支持的${label}服务商: ${provider || '(空)'}（仅接受 ${search_assist_1.SEARCH_ASSIST_PROVIDER_NAMES.join('/')}）`);
             }
@@ -583,10 +585,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_14 = input.storeAddress) !== null && _14 !== void 0 ? _14 : '').trim();
+        const address = ((_15 = input.storeAddress) !== null && _15 !== void 0 ? _15 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_15 = input.storePhone) !== null && _15 !== void 0 ? _15 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_16 = input.storePhone) !== null && _16 !== void 0 ? _16 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }

@@ -14,6 +14,7 @@ exports.campusHhmm = campusHhmm;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_time_1 = require("../campus-time");
+const periodic_fallback_1 = require("../periodic-fallback");
 const feishu_config_1 = require("./feishu.config");
 const feishu_client_1 = require("./feishu.client");
 const feishu_command_service_1 = require("./feishu.command.service");
@@ -35,6 +36,9 @@ let FeishuDigestService = class FeishuDigestService {
         this.client = client;
         this.connection = connection;
         this.command = command;
+        /** 汇总与心跳各自一条兜底循环：互不阻塞（汇总推送慢时不拖住心跳） */
+        this.digestLoop = null;
+        this.heartbeatLoop = null;
         this.running = false;
         /** 进程内兜底（webhook 模式无法回读消息时防同进程重复发送，不落库） */
         this.sent = new Map();
@@ -44,18 +48,20 @@ let FeishuDigestService = class FeishuDigestService {
         this.sentHeartbeat = new Map();
     }
     start(intervalMs = 60000) {
-        if (this.timer || !this.client.enabled)
+        if (this.digestLoop || !this.client.enabled)
             return;
-        this.timer = setInterval(() => {
-            void this.tick().catch(e => { var _a; return core_1.Logger.error(`digest tick: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx); });
-            void this.heartbeatTick().catch(e => { var _a; return core_1.Logger.error(`heartbeat tick: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx); });
-        }, intervalMs);
+        this.digestLoop = new periodic_fallback_1.PeriodicFallback({ name: 'feishu-digest', intervalMs, loggerCtx });
+        this.heartbeatLoop = new periodic_fallback_1.PeriodicFallback({ name: 'feishu-heartbeat', intervalMs, loggerCtx });
+        this.digestLoop.start(() => this.tick());
+        this.heartbeatLoop.start(() => this.heartbeatTick());
         core_1.Logger.info(`每日汇总 + 心跳已启用，汇总 ${this.cfg.settings.digestAt}（UTC+8），心跳 1h（UTC+8）`, loggerCtx);
     }
     onApplicationShutdown() {
-        if (this.timer)
-            clearInterval(this.timer);
-        this.timer = undefined;
+        var _a, _b;
+        (_a = this.digestLoop) === null || _a === void 0 ? void 0 : _a.stop();
+        (_b = this.heartbeatLoop) === null || _b === void 0 ? void 0 : _b.stop();
+        this.digestLoop = null;
+        this.heartbeatLoop = null;
     }
     async tick() {
         if (!this.cfg.enabled || this.running)

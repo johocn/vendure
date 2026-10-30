@@ -17,6 +17,7 @@ const business_hours_1 = require("./business-hours");
 const closure_calendar_1 = require("./closure-calendar");
 const auto_accept_1 = require("./auto-accept");
 const merchant_admin_service_1 = require("./merchant-admin.service");
+const periodic_fallback_1 = require("./periodic-fallback");
 const loggerCtx = 'CampusAutoAccept';
 /** 启动后首跑延迟：等迁移补列（p13）与 DB 连接稳定 */
 const BOOT_DELAY_MS = 45000;
@@ -35,33 +36,23 @@ let AutoAcceptJob = class AutoAcceptJob {
         this.connection = connection;
         this.config = config;
         this.merchant = merchant;
-        this.timer = null;
-        this.bootTimer = null;
-        this.running = false;
+        this.fallback = null;
     }
     start() {
-        if (this.timer)
+        if (this.fallback)
             return;
-        const tick = () => {
-            if (this.running)
-                return;
-            this.running = true;
-            this.run()
-                .catch(e => { var _a; return core_1.Logger.warn(`auto accept tick failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, loggerCtx); })
-                .finally(() => {
-                this.running = false;
-            });
-        };
-        this.bootTimer = setTimeout(tick, BOOT_DELAY_MS);
-        this.timer = setInterval(tick, INTERVAL_MS);
+        this.fallback = new periodic_fallback_1.PeriodicFallback({
+            name: 'auto-accept',
+            intervalMs: INTERVAL_MS,
+            bootDelayMs: BOOT_DELAY_MS,
+            loggerCtx,
+        });
+        this.fallback.start(() => this.run());
     }
     stop() {
-        if (this.bootTimer)
-            clearTimeout(this.bootTimer);
-        if (this.timer)
-            clearInterval(this.timer);
-        this.bootTimer = null;
-        this.timer = null;
+        var _a;
+        (_a = this.fallback) === null || _a === void 0 ? void 0 : _a.stop();
+        this.fallback = null;
     }
     onApplicationShutdown() {
         this.stop();

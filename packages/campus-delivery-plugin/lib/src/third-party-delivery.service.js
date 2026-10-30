@@ -327,7 +327,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
     }
     /** 网关回调（由 DeliveryStatusSink 调用） */
     async onDeliveryStatus(ctx, update) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const order = await this.orderRepo(ctx).findOne({
             where: { id: update.orderId },
             relations: ['channels', 'customer'],
@@ -380,7 +380,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             if (next.hallStatus === 'open') {
                 // R1/R2：送达交接点 → 进大厅接力。条件写（仅 third_party）：
                 // 与用户取消并发时不得把已退款单拉回大厅（否则可被抢、被送达、领分成）。
-                const code = await this.hall.enterHallForHandover(oCtx, orderIdNum, 'external_handover', ['third_party'], Object.assign(Object.assign({}, patch), { handoverAt: new Date() }));
+                const code = await this.hall.enterHallForHandover(oCtx, orderIdNum, 'external_handover', ['third_party'], Object.assign(Object.assign(Object.assign({}, patch), { handoverAt: new Date() }), (String((_g = cf.fulfillmentRoute) !== null && _g !== void 0 ? _g : '') === 'R2' ? { leg1Status: 'arrived_gate' } : {})));
                 if (!code) {
                     core_2.Logger.warn(`订单 ${order.code} 外部送达回调未入厅（订单已取消或状态已变更）`, loggerCtx);
                 }
@@ -398,7 +398,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             return;
         }
         if (update.status === 'cancelled' || update.status === 'exception') {
-            const route = String((_g = cf.fulfillmentRoute) !== null && _g !== void 0 ? _g : '');
+            const route = String((_h = cf.fulfillmentRoute) !== null && _h !== void 0 ? _h : '');
             if (route === 'R2') {
                 // R2 回到待推送，由运营中心换一家外部快递
                 patch.hallStatus = 'pending_dispatch';
@@ -431,7 +431,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             // 外部快递接单/取货顾客通知：复用「骑手已接单」模板，
             // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
             const cfg = await this.cfgRepo.findOne({ where: { channelId: channelId } });
-            this.notify.user(oCtx, order.id, 'riderAssigned', undefined, (_h = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _h !== void 0 ? _h : undefined, `external_${update.status}`);
+            this.notify.user(oCtx, order.id, 'riderAssigned', undefined, (_j = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _j !== void 0 ? _j : undefined, `external_${update.status}`);
         }
     }
     /** 自营快递接单（R1 商户超时转自营 / R3 自营快递池） */
