@@ -10,7 +10,7 @@ import {
     VendurePlugin,
 } from '@vendure/core';
 
-import { AfterSalesMerchantNotifyEvent, AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
+import { AfterSalesCustomerRemindEvent, AfterSalesMerchantNotifyEvent, AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { CouponExpireRemindEvent } from '@vendure/coupon-plugin';
 import { NOTIFICATION_PLUGIN_OPTIONS } from './constants';
 import { InboxMessage } from './inbox-message.entity';
@@ -127,6 +127,16 @@ export class NotificationPlugin implements OnApplicationBootstrap {
         // 售后超时自动化等内部触发的商家提醒（after-sales-plugin 经事件解耦发布）
         this.eventBus.ofType(AfterSalesMerchantNotifyEvent).subscribe((event) => {
             void this.notificationService.notifyAfterSalesMerchant(event.ctx, event.requestId, event.title, event.content);
+        });
+
+        // 商家主动催办顾客（§84）：事件解耦，未装本插件时售后插件仍可独立运行
+        this.eventBus.ofType(AfterSalesCustomerRemindEvent).subscribe((event) => {
+            void this.notificationService.onAfterSalesCustomerRemind(event.ctx, {
+                requestId: event.requestId,
+                customerId: event.customerId,
+                title: event.title,
+                content: event.content,
+            });
         });
 
         // 券过期提醒（FR-A2）：coupon-plugin 定时扫描发布，此处统一触达 + R4 防骚扰去重

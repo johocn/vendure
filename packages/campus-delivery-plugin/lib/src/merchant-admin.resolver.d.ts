@@ -64,6 +64,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesReport(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantAfterSalesReport>;
     /** 售后寄回地址（§83）：本店渠道配置 */
     campusMerchantAfterSalesReturnAddress(ctx: RequestContext): Promise<string>;
+    /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */
+    campusMerchantAfterSalesRules(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
+    /** 退款流水（§84）：按退款时间倒序分页 */
+    campusMerchantAfterSalesRefunds(ctx: RequestContext, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRefundList>;
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     campusMerchantAfterSalesApprove(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 驳回售后（§81）：reason 必填，顾客在 C 端可见并可在售后详情里申诉 */
@@ -82,6 +86,12 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesBatchReject(ctx: RequestContext, ids: ID[], reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
     /** 保存售后寄回地址（§83） */
     campusMerchantUpdateAfterSalesReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
+    /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
+    campusMerchantUpdateAfterSalesRules(ctx: RequestContext, timeoutHours?: number | null, autoApproveHours?: number | null, refundAutoRetry?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
+    /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
+    campusMerchantAfterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 商家催办顾客（§84）：60 秒内同单一次 */
+    campusMerchantAfterSalesRemind(ctx: RequestContext, id: ID, note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     campusMerchantCloudPrint(ctx: RequestContext, orderId: ID): Promise<import("./cloud-print.service").CloudPrintResult>;
     /** 云打印连通性测试（不占用订单） */

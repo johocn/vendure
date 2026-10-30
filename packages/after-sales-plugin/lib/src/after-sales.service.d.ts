@@ -56,6 +56,16 @@ export declare class AfterSalesService {
     private assertCustomerOwnership;
     cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     /**
+     * 商家/平台关闭待处理售后（Pending → Closed）：用于顾客重复提交/误申请。
+     * 原因落 rejectReason 留痕（顾客 C 端可见），不触发退款与库存回补。
+     */
+    adminCancelRequest(ctx: RequestContext, id: ID, reason?: string): Promise<AfterSalesRequest>;
+    /**
+     * 商家催办顾客：仅进行中单可催（Pending/Approved/Returning/Appealed）。
+     * 经事件交由 notification-plugin 落顾客站内信；未装时仅无提醒，不影响返回。
+     */
+    remindCustomer(ctx: RequestContext, id: ID, note?: string): Promise<AfterSalesRequest>;
+    /**
      * 退款完成结案：Refunded → Closed。
      * 退款到账后售后单若一直停在 Refunded，该订单/行会被查重逻辑永久占用、后台列表持续堆积，
      * 因此提供显式结案出口（其余终局态如 ExchangeShipped 已有各自关闭路径）。

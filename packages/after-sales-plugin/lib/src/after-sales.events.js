@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AfterSalesMerchantNotifyEvent = exports.AfterSalesStateTransitionEvent = void 0;
+exports.AfterSalesCustomerRemindEvent = exports.AfterSalesMerchantNotifyEvent = exports.AfterSalesStateTransitionEvent = void 0;
 const core_1 = require("@vendure/core");
 /**
  * 售后单状态流转事件（AfterSalesService.commitState 统一出口发布）。
@@ -35,4 +35,19 @@ class AfterSalesMerchantNotifyEvent extends core_1.VendureEvent {
     }
 }
 exports.AfterSalesMerchantNotifyEvent = AfterSalesMerchantNotifyEvent;
+/**
+ * 售后催办顾客事件（商家主动提醒，notification-plugin 订阅落顾客站内信）。
+ * 未装 notification-plugin 时无人订阅，仅无提醒，不影响接口返回。
+ */
+class AfterSalesCustomerRemindEvent extends core_1.VendureEvent {
+    constructor(ctx, requestId, customerId, title, content) {
+        super();
+        this.ctx = ctx;
+        this.requestId = requestId;
+        this.customerId = customerId;
+        this.title = title;
+        this.content = content;
+    }
+}
+exports.AfterSalesCustomerRemindEvent = AfterSalesCustomerRemindEvent;
 //# sourceMappingURL=after-sales.events.js.map

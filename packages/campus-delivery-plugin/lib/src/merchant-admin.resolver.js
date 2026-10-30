@@ -136,6 +136,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesReturnAddress(ctx) {
         return this.merchant.afterSalesReturnAddress(ctx);
     }
+    /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */
+    async campusMerchantAfterSalesRules(ctx) {
+        return this.merchant.afterSalesRules(ctx);
+    }
+    /** 退款流水（§84）：按退款时间倒序分页 */
+    async campusMerchantAfterSalesRefunds(ctx, from, to, skip, take) {
+        return this.merchant.afterSalesRefunds(ctx, { from, to, skip, take });
+    }
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     async campusMerchantAfterSalesApprove(ctx, id) {
         return this.merchant.afterSalesApprove(ctx, id);
@@ -171,6 +179,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 保存售后寄回地址（§83） */
     async campusMerchantUpdateAfterSalesReturnAddress(ctx, address) {
         return this.merchant.updateAfterSalesReturnAddress(ctx, address);
+    }
+    /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
+    async campusMerchantUpdateAfterSalesRules(ctx, timeoutHours, autoApproveHours, refundAutoRetry) {
+        return this.merchant.updateAfterSalesRules(ctx, { timeoutHours, autoApproveHours, refundAutoRetry });
+    }
+    /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
+    async campusMerchantAfterSalesClose(ctx, id, reason) {
+        return this.merchant.afterSalesClose(ctx, id, reason);
+    }
+    /** 商家催办顾客（§84）：60 秒内同单一次 */
+    async campusMerchantAfterSalesRemind(ctx, id, note) {
+        return this.merchant.afterSalesRemind(ctx, id, note);
     }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
@@ -487,6 +507,26 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReturnAddress", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRules", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRefunds", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
@@ -575,6 +615,37 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesReturnAddress", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'timeoutHours', type: () => Number, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'autoApproveHours', type: () => Number, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'refundAutoRetry', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesRules", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesClose", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRemind", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

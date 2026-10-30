@@ -248,6 +248,26 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesReturnAddress(ctx);
     }
 
+    /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRules(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesRules(ctx);
+    }
+
+    /** 退款流水（§84）：按退款时间倒序分页 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRefunds(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
+        @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
+        @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
+        @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
+    ) {
+        return this.merchant.afterSalesRefunds(ctx, { from, to, skip, take });
+    }
+
     /** 同意售后（§81）：仅退款单直接退款到账（链式 Received → Refunded）；顾客申诉单同样适用 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
@@ -335,6 +355,40 @@ export class MerchantAdminResolver {
         @Args('address') address: string,
     ) {
         return this.merchant.updateAfterSalesReturnAddress(ctx, address);
+    }
+
+    /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateAfterSalesRules(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'timeoutHours', type: () => Number, nullable: true }) timeoutHours?: number | null,
+        @Args({ name: 'autoApproveHours', type: () => Number, nullable: true }) autoApproveHours?: number | null,
+        @Args({ name: 'refundAutoRetry', type: () => Number, nullable: true }) refundAutoRetry?: number | null,
+    ) {
+        return this.merchant.updateAfterSalesRules(ctx, { timeoutHours, autoApproveHours, refundAutoRetry });
+    }
+
+    /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesClose(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.afterSalesClose(ctx, id, reason);
+    }
+
+    /** 商家催办顾客（§84）：60 秒内同单一次 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRemind(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+    ) {
+        return this.merchant.afterSalesRemind(ctx, id, note);
     }
 
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */

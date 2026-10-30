@@ -195,6 +195,40 @@ export interface MerchantAfterSalesReport {
         refunded: number;
         refundAmount: number;
     }>;
+    /** 顾客申请原因 Top5（按区间内创建单聚合） */
+    reasons: Array<{
+        reason: string;
+        count: number;
+    }>;
+    /** 商家驳回原因 Top5（区间内创建单中已填驳回原因的部分） */
+    rejectReasons: Array<{
+        reason: string;
+        count: number;
+    }>;
+}
+/** 售后规则配置（§84）：渠道自定义字段，0 表示关闭自动化 */
+export interface MerchantAfterSalesRules {
+    /** 待处理超时提醒小时 */
+    timeoutHours: number;
+    /** 超时自动同意小时（0=关闭） */
+    autoApproveHours: number;
+    /** 退款失败自动重试次数（0=关闭） */
+    refundAutoRetry: number;
+}
+/** 退款流水（§84）：按退款时间倒序 */
+export interface MerchantAfterSalesRefundRow {
+    id: string;
+    orderCode: string | null;
+    type: string;
+    reason: string;
+    /** 实际退款金额（分） */
+    amount: number;
+    refundedAt: Date | null;
+    refundTransactionId: string | null;
+}
+export interface MerchantAfterSalesRefundList {
+    items: MerchantAfterSalesRefundRow[];
+    total: number;
 }
 /** 售后状态计数（§81）：列表筛选旁的角标 */
 export interface MerchantAfterSalesStateCount {
@@ -490,6 +524,8 @@ export declare class MerchantAdminService {
     private afterSalesSvc?;
     /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */
     private refundRetryAt;
+    /** 催办顾客冷却（§84）：同单 60 秒内只发一次站内信，防对顾客骚扰 */
+    private remindAt;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private getAfterSales;
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
@@ -688,6 +724,28 @@ export declare class MerchantAdminService {
     afterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     /** 写本店售后寄回地址（§83）：长度上限与插件字段一致 */
     updateAfterSalesReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
+    /** 售后规则（§84）：渠道字段，缺省与售后插件默认一致（48h / 0 / 1） */
+    afterSalesRules(ctx: RequestContext): Promise<MerchantAfterSalesRules>;
+    /**
+     * 保存售后规则（§84）：只写传入项，保留渠道其它自定义字段。
+     * 超时提醒 1-168h；自动同意 0-168h（0=关闭）；自动重试 0-5 次（0=关闭）。
+     */
+    updateAfterSalesRules(ctx: RequestContext, input: {
+        timeoutHours?: number | null;
+        autoApproveHours?: number | null;
+        refundAutoRetry?: number | null;
+    }): Promise<MerchantAfterSalesRules>;
+    /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
+    afterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
+    /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
+    afterSalesRemind(ctx: RequestContext, id: ID, note?: string | null): Promise<MerchantAfterSalesRow>;
+    /** 退款流水（§84）：按退款时间倒序分页，日期为校园日（UTC+8），可省略不限 */
+    afterSalesRefunds(ctx: RequestContext, opts?: {
+        from?: string | null;
+        to?: string | null;
+        skip?: number | null;
+        take?: number | null;
+    }): Promise<MerchantAfterSalesRefundList>;
     /**
      * 售后报表（§83）：按校园日（UTC+8）统计区间内创建量、退款单数与金额、当前超时数、逐日趋势。
      * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。

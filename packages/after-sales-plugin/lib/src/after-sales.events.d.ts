@@ -26,3 +26,15 @@ export declare class AfterSalesMerchantNotifyEvent extends VendureEvent {
     readonly content: string;
     constructor(ctx: RequestContext, requestId: number, title: string, content: string);
 }
+/**
+ * 售后催办顾客事件（商家主动提醒，notification-plugin 订阅落顾客站内信）。
+ * 未装 notification-plugin 时无人订阅，仅无提醒，不影响接口返回。
+ */
+export declare class AfterSalesCustomerRemindEvent extends VendureEvent {
+    readonly ctx: RequestContext;
+    readonly requestId: number;
+    readonly customerId: number | null;
+    readonly title: string;
+    readonly content: string;
+    constructor(ctx: RequestContext, requestId: number, customerId: number | null, title: string, content: string);
+}

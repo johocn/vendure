@@ -70,5 +70,12 @@ export declare class NotificationService {
     }): Promise<void>;
     /** 商家（商品归属店铺 administratorId）售后站内信；无店铺归属（自营）则不落。 */
     notifyAfterSalesMerchant(ctx: RequestContext, requestId: number, title: string, content: string): Promise<void>;
+    /** 商家催办顾客（§84）：站内信提醒顾客处理售后事项（商家主动触发，非状态变更） */
+    onAfterSalesCustomerRemind(ctx: RequestContext, e: {
+        requestId: number;
+        customerId: number | null;
+        title: string;
+        content: string;
+    }): Promise<void>;
     private afterSalesRequestRow;
 }

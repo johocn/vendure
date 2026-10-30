@@ -34,3 +34,19 @@ export class AfterSalesMerchantNotifyEvent extends VendureEvent {
         super();
     }
 }
+
+/**
+ * 售后催办顾客事件（商家主动提醒，notification-plugin 订阅落顾客站内信）。
+ * 未装 notification-plugin 时无人订阅，仅无提醒，不影响接口返回。
+ */
+export class AfterSalesCustomerRemindEvent extends VendureEvent {
+    constructor(
+        public readonly ctx: RequestContext,
+        public readonly requestId: number,
+        public readonly customerId: number | null,
+        public readonly title: string,
+        public readonly content: string,
+    ) {
+        super();
+    }
+}

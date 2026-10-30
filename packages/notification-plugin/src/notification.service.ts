@@ -354,6 +354,15 @@ export class NotificationService {
                         content: '换货已完成，感谢您的耐心等待。',
                         recipientType: 'customer', customerId: e.customerId, link: customerLink,
                     });
+                } else if (e.toState === 'Closed' && e.fromState === 'Pending') {
+                    // 商家关闭重复/误申请（adminCancelRequest）：告知原因，避免顾客反复追问
+                    const req = await this.afterSalesRequestRow(e.requestId);
+                    const reason = (req?.rejectReason ?? '').slice(0, 50);
+                    await this.deliver(ctx, {
+                        scene: 'after_sales', title: '售后申请已关闭',
+                        content: `您的售后申请已关闭${reason ? '：' + reason : '。'}`,
+                        recipientType: 'customer', customerId: e.customerId, link: customerLink,
+                    });
                 } else if (cTitles[e.toState]) {
                     await this.deliver(ctx, {
                         scene: 'after_sales', title: cTitles[e.toState], content: cContents[e.toState],
@@ -404,6 +413,28 @@ export class NotificationService {
             }
         } catch (err: any) {
             Logger.warn(`notifyAfterSalesMerchant failed: ${err?.message ?? err}`, loggerCtx);
+        }
+    }
+
+    /** 商家催办顾客（§84）：站内信提醒顾客处理售后事项（商家主动触发，非状态变更） */
+    async onAfterSalesCustomerRemind(ctx: RequestContext, e: {
+        requestId: number;
+        customerId: number | null;
+        title: string;
+        content: string;
+    }): Promise<void> {
+        if (e.customerId == null) return;
+        try {
+            await this.deliver(ctx, {
+                scene: 'after_sales',
+                title: e.title,
+                content: e.content,
+                recipientType: 'customer',
+                customerId: e.customerId,
+                link: `/account/after-sales/${e.requestId}`,
+            });
+        } catch (err: any) {
+            Logger.warn(`onAfterSalesCustomerRemind failed: ${err?.message ?? err}`, loggerCtx);
         }
     }
 

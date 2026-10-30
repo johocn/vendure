@@ -299,7 +299,7 @@ let NotificationService = class NotificationService {
     // ---------- 售后状态通知（迭代三期，通知矩阵见三期设计 §一） ----------
     /** 售后状态迁移 → 顾客/商家站内信。任何失败仅告警，绝不阻断主流程。 */
     async onAfterSalesStateTransition(ctx, e) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         try {
             const customerLink = `/account/after-sales/${e.requestId}`;
             const cTitles = {
@@ -340,6 +340,16 @@ let NotificationService = class NotificationService {
                         recipientType: 'customer', customerId: e.customerId, link: customerLink,
                     });
                 }
+                else if (e.toState === 'Closed' && e.fromState === 'Pending') {
+                    // 商家关闭重复/误申请（adminCancelRequest）：告知原因，避免顾客反复追问
+                    const req = await this.afterSalesRequestRow(e.requestId);
+                    const reason = ((_b = req === null || req === void 0 ? void 0 : req.rejectReason) !== null && _b !== void 0 ? _b : '').slice(0, 50);
+                    await this.deliver(ctx, {
+                        scene: 'after_sales', title: '售后申请已关闭',
+                        content: `您的售后申请已关闭${reason ? '：' + reason : '。'}`,
+                        recipientType: 'customer', customerId: e.customerId, link: customerLink,
+                    });
+                }
                 else if (cTitles[e.toState]) {
                     await this.deliver(ctx, {
                         scene: 'after_sales', title: cTitles[e.toState], content: cContents[e.toState],
@@ -349,17 +359,17 @@ let NotificationService = class NotificationService {
             }
             // ---- 商家侧（商品归属店铺管理员）----
             if (e.toState === 'Pending' && e.fromState === null) {
-                await this.notifyAfterSalesMerchant(ctx, e.requestId, '新售后待处理', `您有一笔新的售后申请（订单 ${(_b = e.orderCode) !== null && _b !== void 0 ? _b : e.orderId}），请及时处理。`);
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '新售后待处理', `您有一笔新的售后申请（订单 ${(_c = e.orderCode) !== null && _c !== void 0 ? _c : e.orderId}），请及时处理。`);
             }
             else if (e.toState === 'Returning') {
-                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已寄回', `顾客已填写退货物流（订单 ${(_c = e.orderCode) !== null && _c !== void 0 ? _c : e.orderId}），请尽快确认收货。`);
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已寄回', `顾客已填写退货物流（订单 ${(_d = e.orderCode) !== null && _d !== void 0 ? _d : e.orderId}），请尽快确认收货。`);
             }
             else if (e.toState === 'Appealed') {
-                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已申诉', `顾客对售后处理结果提出申诉（订单 ${(_d = e.orderCode) !== null && _d !== void 0 ? _d : e.orderId}），请重新审核。`);
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已申诉', `顾客对售后处理结果提出申诉（订单 ${(_e = e.orderCode) !== null && _e !== void 0 ? _e : e.orderId}），请重新审核。`);
             }
         }
         catch (err) {
-            core_1.Logger.warn(`onAfterSalesStateTransition failed: ${(_e = err === null || err === void 0 ? void 0 : err.message) !== null && _e !== void 0 ? _e : err}`, constants_1.loggerCtx);
+            core_1.Logger.warn(`onAfterSalesStateTransition failed: ${(_f = err === null || err === void 0 ? void 0 : err.message) !== null && _f !== void 0 ? _f : err}`, constants_1.loggerCtx);
         }
     }
     /** 商家（商品归属店铺 administratorId）售后站内信；无店铺归属（自营）则不落。 */
@@ -393,6 +403,25 @@ let NotificationService = class NotificationService {
         }
         catch (err) {
             core_1.Logger.warn(`notifyAfterSalesMerchant failed: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx);
+        }
+    }
+    /** 商家催办顾客（§84）：站内信提醒顾客处理售后事项（商家主动触发，非状态变更） */
+    async onAfterSalesCustomerRemind(ctx, e) {
+        var _a;
+        if (e.customerId == null)
+            return;
+        try {
+            await this.deliver(ctx, {
+                scene: 'after_sales',
+                title: e.title,
+                content: e.content,
+                recipientType: 'customer',
+                customerId: e.customerId,
+                link: `/account/after-sales/${e.requestId}`,
+            });
+        }
+        catch (err) {
+            core_1.Logger.warn(`onAfterSalesCustomerRemind failed: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx);
         }
     }
     async afterSalesRequestRow(id) {

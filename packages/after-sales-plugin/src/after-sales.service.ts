@@ -31,7 +31,7 @@ import { loggerCtx, AFTER_SALES_PLUGIN_OPTIONS } from './constants';
 import { AfterSalesRequest } from './after-sales-request.entity';
 import { AfterSalesMessage, AfterSalesMessageSenderType } from './after-sales-message.entity';
 import { AfterSalesStateHistory } from './after-sales-state-history.entity';
-import { AfterSalesMerchantNotifyEvent, AfterSalesStateTransitionEvent } from './after-sales.events';
+import { AfterSalesCustomerRemindEvent, AfterSalesMerchantNotifyEvent, AfterSalesStateTransitionEvent } from './after-sales.events';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
 import { InventoryService } from '@vendure/inventory-plugin';
 
@@ -421,6 +421,51 @@ export class AfterSalesService {
         const fromState = request.state;
         const saved = await this.commitState(ctx, request, fromState, 'Closed');
         return this.hydrate(ctx, saved.id);
+    }
+
+    /**
+     * 商家/平台关闭待处理售后（Pending → Closed）：用于顾客重复提交/误申请。
+     * 原因落 rejectReason 留痕（顾客 C 端可见），不触发退款与库存回补。
+     */
+    async adminCancelRequest(ctx: RequestContext, id: ID, reason?: string): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new UserInputError(`After-sales request ${id} not found`);
+        if (request.state !== 'Pending') {
+            throw new UserInputError(`Cannot close request in state: ${request.state}`);
+        }
+        const why = String(reason ?? '').trim();
+        if (why) request.rejectReason = why.slice(0, 200);
+        // commitState 统一出口：落历史 + 发布事件（顾客收「售后已关闭」站内信）
+        return this.commitState(ctx, request, 'Pending', 'Closed');
+    }
+
+    /**
+     * 商家催办顾客：仅进行中单可催（Pending/Approved/Returning/Appealed）。
+     * 经事件交由 notification-plugin 落顾客站内信；未装时仅无提醒，不影响返回。
+     */
+    async remindCustomer(ctx: RequestContext, id: ID, note?: string): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new UserInputError(`After-sales request ${id} not found`);
+        if (!['Pending', 'Approved', 'Returning', 'Appealed'].includes(request.state)) {
+            throw new UserInputError(`Cannot remind in state: ${request.state}`);
+        }
+        const extra = String(note ?? '').trim();
+        try {
+            await this.eventBus?.publish(new AfterSalesCustomerRemindEvent(
+                ctx,
+                Number(request.id),
+                request.customerId == null ? null : Number(request.customerId),
+                '售后处理提醒',
+                extra
+                    ? extra.slice(0, 200)
+                    : '商家提醒您及时处理售后事项（如寄回商品、确认收货），可在售后详情查看最新进展。',
+            ));
+        } catch (e: any) {
+            Logger.warn(`publish AfterSalesCustomerRemindEvent failed for #${id}: ${e?.message ?? e}`, loggerCtx);
+        }
+        return request;
     }
 
     /**

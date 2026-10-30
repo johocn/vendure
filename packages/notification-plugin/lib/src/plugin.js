@@ -109,6 +109,15 @@ let NotificationPlugin = NotificationPlugin_1 = class NotificationPlugin {
         this.eventBus.ofType(after_sales_plugin_1.AfterSalesMerchantNotifyEvent).subscribe((event) => {
             void this.notificationService.notifyAfterSalesMerchant(event.ctx, event.requestId, event.title, event.content);
         });
+        // 商家主动催办顾客（§84）：事件解耦，未装本插件时售后插件仍可独立运行
+        this.eventBus.ofType(after_sales_plugin_1.AfterSalesCustomerRemindEvent).subscribe((event) => {
+            void this.notificationService.onAfterSalesCustomerRemind(event.ctx, {
+                requestId: event.requestId,
+                customerId: event.customerId,
+                title: event.title,
+                content: event.content,
+            });
+        });
         // 券过期提醒（FR-A2）：coupon-plugin 定时扫描发布，此处统一触达 + R4 防骚扰去重
         this.eventBus.ofType(coupon_plugin_1.CouponExpireRemindEvent).subscribe((event) => {
             void this.notificationService.onCouponExpireRemind(event);

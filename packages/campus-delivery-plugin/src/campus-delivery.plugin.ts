@@ -789,6 +789,43 @@ import { TelemetryService } from './telemetry.service';
                     """区间内创建且当前仍超时的待处理单数"""
                     overdue: Int!
                     byDay: [CampusMerchantAfterSalesReportDay!]!
+                    """顾客申请原因 Top5"""
+                    reasons: [CampusMerchantAfterSalesReportReason!]!
+                    """商家驳回原因 Top5"""
+                    rejectReasons: [CampusMerchantAfterSalesReportReason!]!
+                }
+
+                """售后原因分桶（§84）"""
+                type CampusMerchantAfterSalesReportReason {
+                    reason: String!
+                    count: Int!
+                }
+
+                """售后规则配置（§84）：0 表示关闭对应自动化"""
+                type CampusMerchantAfterSalesRules {
+                    """待处理超时提醒（小时）"""
+                    timeoutHours: Int!
+                    """超时自动同意（小时，0=关闭）"""
+                    autoApproveHours: Int!
+                    """退款失败自动重试次数（0=关闭）"""
+                    refundAutoRetry: Int!
+                }
+
+                """退款流水（§84）：按退款时间倒序"""
+                type CampusMerchantAfterSalesRefund {
+                    id: ID!
+                    orderCode: String
+                    type: String!
+                    reason: String!
+                    """实际退款金额（分）"""
+                    amount: Int!
+                    refundedAt: DateTime
+                    refundTransactionId: String
+                }
+
+                type CampusMerchantAfterSalesRefundList {
+                    items: [CampusMerchantAfterSalesRefund!]!
+                    total: Int!
                 }
 
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
@@ -1684,6 +1721,10 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantAfterSalesReport(from: String!, to: String!): CampusMerchantAfterSalesReport!
                     """售后寄回地址（§83）：本店渠道配置"""
                     campusMerchantAfterSalesReturnAddress: String!
+                    """售后规则（§84）：处理时限/超时自动同意/退款自动重试"""
+                    campusMerchantAfterSalesRules: CampusMerchantAfterSalesRules!
+                    """退款流水（§84）：按退款时间倒序分页"""
+                    campusMerchantAfterSalesRefunds(from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesRefundList!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -1981,6 +2022,12 @@ import { TelemetryService } from './telemetry.service';
                     campusMerchantAfterSalesBatchReject(ids: [ID!]!, reason: String!): [CampusMerchantAfterSalesBatchResult!]!
                     """保存售后寄回地址（§83）"""
                     campusMerchantUpdateAfterSalesReturnAddress(address: String!): Boolean!
+                    """保存售后规则（§84）：超时提醒 1-168h，自动同意 0-168h，自动重试 0-5 次"""
+                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int): CampusMerchantAfterSalesRules!
+                    """商家关闭待处理售后（§84）：Pending → Closed，原因必填"""
+                    campusMerchantAfterSalesClose(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
+                    """商家催办顾客（§84）：60 秒内同单一次，站内信提醒"""
+                    campusMerchantAfterSalesRemind(id: ID!, note: String): CampusMerchantAfterSalesItem!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!

@@ -55,6 +55,8 @@ let MerchantAdminService = class MerchantAdminService {
         this.moduleRef = moduleRef;
         /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */
         this.refundRetryAt = new Map();
+        /** 催办顾客冷却（§84）：同单 60 秒内只发一次站内信，防对顾客骚扰 */
+        this.remindAt = new Map();
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     getAfterSales() {
@@ -1393,6 +1395,158 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError(`退货地址保存失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
     }
+    /** 售后规则（§84）：渠道字段，缺省与售后插件默认一致（48h / 0 / 1） */
+    async afterSalesRules(ctx) {
+        var _a, _b, _c, _d;
+        const repo = this.connection.getRepository(ctx, core_2.Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId } });
+        if (!channel)
+            throw new core_2.UserInputError('当前店铺渠道不存在');
+        const cf = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {});
+        return {
+            timeoutHours: Number((_b = cf.afterSalesTimeoutHours) !== null && _b !== void 0 ? _b : 48),
+            autoApproveHours: Number((_c = cf.afterSalesAutoApproveHours) !== null && _c !== void 0 ? _c : 0),
+            refundAutoRetry: Number((_d = cf.afterSalesRefundAutoRetry) !== null && _d !== void 0 ? _d : 1),
+        };
+    }
+    /**
+     * 保存售后规则（§84）：只写传入项，保留渠道其它自定义字段。
+     * 超时提醒 1-168h；自动同意 0-168h（0=关闭）；自动重试 0-5 次（0=关闭）。
+     */
+    async updateAfterSalesRules(ctx, input) {
+        var _a;
+        const repo = this.connection.getRepository(ctx, core_2.Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId } });
+        if (!channel)
+            throw new core_2.UserInputError('当前店铺渠道不存在');
+        const cf = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {});
+        if (input.timeoutHours !== undefined) {
+            const n = Math.floor(Number(input.timeoutHours));
+            if (input.timeoutHours == null || !Number.isFinite(n) || n < 1 || n > 168) {
+                throw new core_2.UserInputError('处理时限应为 1-168 小时');
+            }
+            cf.afterSalesTimeoutHours = n;
+        }
+        if (input.autoApproveHours !== undefined) {
+            const n = Math.floor(Number(input.autoApproveHours));
+            if (input.autoApproveHours == null || !Number.isFinite(n) || n < 0 || n > 168) {
+                throw new core_2.UserInputError('自动同意时限应为 0-168 小时（0=关闭）');
+            }
+            cf.afterSalesAutoApproveHours = n;
+        }
+        if (input.refundAutoRetry !== undefined) {
+            const n = Math.floor(Number(input.refundAutoRetry));
+            if (input.refundAutoRetry == null || !Number.isFinite(n) || n < 0 || n > 5) {
+                throw new core_2.UserInputError('自动重试次数应为 0-5（0=关闭）');
+            }
+            cf.afterSalesRefundAutoRetry = n;
+        }
+        channel.customFields = cf;
+        await repo.save(channel);
+        return this.afterSalesRules(ctx);
+    }
+    /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
+    async afterSalesClose(ctx, id, reason) {
+        var _a;
+        await this.assertChannelAfterSales(ctx, id, ['Pending']);
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        const why = String(reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!why)
+            throw new core_2.UserInputError('请填写关闭原因');
+        if (why.length > 200)
+            throw new core_2.UserInputError('关闭原因最多 200 字');
+        try {
+            await svc.adminCancelRequest(ctx, id, why);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`关闭售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
+    async afterSalesRemind(ctx, id, note) {
+        var _a, _b;
+        await this.assertChannelAfterSales(ctx, id, ['Pending', 'Approved', 'Returning', 'Appealed']);
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
+        const key = Number(id);
+        const now = Date.now();
+        if (now - ((_a = this.remindAt.get(key)) !== null && _a !== void 0 ? _a : 0) < 60000) {
+            throw new core_2.UserInputError('催办过于频繁，请 1 分钟后再试');
+        }
+        const extra = String(note !== null && note !== void 0 ? note : '').trim();
+        if (extra.length > 200)
+            throw new core_2.UserInputError('催办内容最多 200 字');
+        this.remindAt.set(key, now);
+        if (this.remindAt.size > 500) {
+            for (const [k, t] of this.remindAt) {
+                if (now - t > 120000)
+                    this.remindAt.delete(k);
+            }
+        }
+        try {
+            await svc.remindCustomer(ctx, id, extra || undefined);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`催办失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`);
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 退款流水（§84）：按退款时间倒序分页，日期为校园日（UTC+8），可省略不限 */
+    async afterSalesRefunds(ctx, opts = {}) {
+        var _a, _b, _c, _d, _e;
+        const start = opts.from ? this.campusDayStart(opts.from) : null;
+        const end = opts.to ? this.campusDayEnd(opts.to) : null;
+        if (opts.from && !start)
+            throw new core_2.UserInputError('开始日期格式无效，应为 YYYY-MM-DD');
+        if (opts.to && !end)
+            throw new core_2.UserInputError('结束日期格式无效，应为 YYYY-MM-DD');
+        if (start && end && start.getTime() > end.getTime())
+            throw new core_2.UserInputError('开始日期不能晚于结束日期');
+        const skip = Math.max(0, Math.floor(Number((_a = opts.skip) !== null && _a !== void 0 ? _a : 0)) || 0);
+        const take = Math.min(100, Math.max(1, Math.floor(Number((_b = opts.take) !== null && _b !== void 0 ? _b : 20)) || 20));
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        try {
+            const rows = await raw.query(`SELECT a.id, a.type, a.reason, a."refundTransactionId",
+                        COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
+                        a."refundedAt", o.code AS "orderCode"
+                   FROM after_sales_request a
+                   LEFT JOIN "order" o ON o.id = a."orderId"
+                  WHERE a.state = 'Refunded' AND ${scope}
+                    AND ($2::timestamptz IS NULL OR a."refundedAt" >= $2)
+                    AND ($3::timestamptz IS NULL OR a."refundedAt" < $3)
+                  ORDER BY a."refundedAt" DESC NULLS LAST, a.id DESC
+                  LIMIT $4 OFFSET $5`, [chId, start, end, take, skip]);
+            const totalRows = await raw.query(`SELECT COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a.state = 'Refunded' AND ${scope}
+                    AND ($2::timestamptz IS NULL OR a."refundedAt" >= $2)
+                    AND ($3::timestamptz IS NULL OR a."refundedAt" < $3)`, [chId, start, end]);
+            return {
+                items: (Array.isArray(rows) ? rows : []).map(r => {
+                    var _a;
+                    return ({
+                        id: String(r.id),
+                        orderCode: r.orderCode == null ? null : String(r.orderCode),
+                        type: String(r.type),
+                        reason: String((_a = r.reason) !== null && _a !== void 0 ? _a : ''),
+                        amount: Number(r.amount) || 0,
+                        refundedAt: r.refundedAt ? new Date(r.refundedAt) : null,
+                        refundTransactionId: r.refundTransactionId == null ? null : String(r.refundTransactionId),
+                    });
+                }),
+                total: Number((_d = (_c = totalRows === null || totalRows === void 0 ? void 0 : totalRows[0]) === null || _c === void 0 ? void 0 : _c.n) !== null && _d !== void 0 ? _d : 0),
+            };
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`退款流水查询失败：${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`);
+        }
+    }
     /**
      * 售后报表（§83）：按校园日（UTC+8）统计区间内创建量、退款单数与金额、当前超时数、逐日趋势。
      * 渠道隔离沿用「订单渠道」口径；退款按 refundedAt 归集，避免跨区间错位。
@@ -1437,6 +1591,14 @@ let MerchantAdminService = class MerchantAdminService {
                    FROM after_sales_request a
                   WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}
                   GROUP BY 1`, [chId, start, end]);
+            const reasonRows = await raw.query(`SELECT a.reason AS reason, COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                    AND a.reason IS NOT NULL AND a.reason <> ''
+                  GROUP BY a.reason ORDER BY n DESC LIMIT 5`, [chId, start, end]);
+            const rejectRows = await raw.query(`SELECT a."rejectReason" AS reason, COUNT(*)::int AS n FROM after_sales_request a
+                  WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
+                    AND a."rejectReason" IS NOT NULL AND a."rejectReason" <> ''
+                  GROUP BY a."rejectReason" ORDER BY n DESC LIMIT 5`, [chId, start, end]);
             const byDay = new Map();
             for (const r of (Array.isArray(dayCreated) ? dayCreated : [])) {
                 byDay.set(String(r.d), { count: Number(r.n) || 0, refunded: 0, refundAmount: 0 });
@@ -1463,6 +1625,10 @@ let MerchantAdminService = class MerchantAdminService {
                 byDay: Array.from(byDay.entries())
                     .sort(([a], [b]) => (a < b ? -1 : 1))
                     .map(([date, v]) => (Object.assign({ date }, v))),
+                reasons: (Array.isArray(reasonRows) ? reasonRows : [])
+                    .map(r => ({ reason: String(r.reason), count: Number(r.n) || 0 })),
+                rejectReasons: (Array.isArray(rejectRows) ? rejectRows : [])
+                    .map(r => ({ reason: String(r.reason), count: Number(r.n) || 0 })),
             };
         }
         catch (e) {

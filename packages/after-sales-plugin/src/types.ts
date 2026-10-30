@@ -33,7 +33,7 @@ export type AfterSalesState =
     | 'Closed';
 
 export const STATE_TRANSITIONS: Record<AfterSalesState, AfterSalesState[]> = {
-    Pending: ['Approved', 'Rejected'],
+    Pending: ['Approved', 'Rejected', 'Closed'], // +Closed：商家关闭重复/误申请
     Approved: ['Returning', 'Received', 'Closed'], // +Received：refund_only 免退货直达退款
     Rejected: ['Appealed', 'Closed'], // +Appealed：用户申诉入口
     Appealed: ['Approved', 'Closed'], // 仲裁：同意退款 / 维持拒绝
