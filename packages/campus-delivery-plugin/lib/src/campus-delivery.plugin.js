@@ -709,6 +709,53 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     addons: [CampusMerchantPrepAddon!]!
                 }
 
+                """营业日报（§80）：单日时段分布"""
+                type CampusDailyHourPoint {
+                    hour: Int!
+                    orders: Int!
+                    gross: Int!
+                }
+
+                """营业日报（§80）：单日商品销量行"""
+                type CampusDailyProductRow {
+                    name: String!
+                    """销量（份）"""
+                    qty: Int!
+                    """商品金额（分，折后行小计汇总）"""
+                    amount: Int!
+                }
+
+                """营业日报（§80）：对比口径（昨日 / 近 7 日均值）"""
+                type CampusDailyCompare {
+                    orders: Int!
+                    gross: Int!
+                    avgTicket: Int!
+                }
+
+                """营业日报（§80）：单日经营快照"""
+                type CampusMerchantDailyReport {
+                    """校园日 key（YYYY-MM-DD）"""
+                    date: String!
+                    """当日已完成（已送达）单量"""
+                    orders: Int!
+                    """当日营业额（分）"""
+                    gross: Int!
+                    """客单价（分）"""
+                    avgTicket: Int!
+                    """当日取消单量（按下单日归日）"""
+                    cancelled: Int!
+                    """当日取消退款金额（分）"""
+                    cancelledAmount: Int!
+                    """时段分布：今天只出到当前小时，历史日 24 点全出"""
+                    hourly: [CampusDailyHourPoint!]!
+                    """销量 Top5"""
+                    topProducts: [CampusDailyProductRow!]!
+                    """前一日同口径"""
+                    prev: CampusDailyCompare!
+                    """前 7 日（不含当日）日均"""
+                    last7Avg: CampusDailyCompare!
+                }
+
                 """云打印结果：dryRun 保留给未接真实设备的联调场景"""
                 type CampusPrintResult {
                     ok: Boolean!
@@ -1590,6 +1637,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantKitchenQueue: CampusKitchenQueue!
                     """备餐汇总（§79）：今日待接单/备餐中/已出餐商品份数 + 加料份数"""
                     campusMerchantPrepSummary: [CampusMerchantPrepItem!]!
+                    """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
+                    campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""

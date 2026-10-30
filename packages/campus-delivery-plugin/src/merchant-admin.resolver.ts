@@ -190,6 +190,16 @@ export class MerchantAdminResolver {
         return this.merchant.prepSummary(ctx);
     }
 
+    /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantDailyReport(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'date', type: () => String, nullable: true }) date?: string | null,
+    ) {
+        return this.merchant.dailyReport(ctx, date);
+    }
+
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

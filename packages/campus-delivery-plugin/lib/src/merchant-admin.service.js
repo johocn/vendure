@@ -1025,6 +1025,112 @@ let MerchantAdminService = class MerchantAdminService {
             // 待做多的排前面（后厨优先看今天还要做多少），其次按今日总量、名称
             .sort((a, b) => b.todoQty - a.todoQty || b.totalQty - a.totalQty || a.name.localeCompare(b.name));
     }
+    /** 营业日报（§80）：单日经营快照 —— KPI、时段分布、商品 Top5、对比昨日与近 7 日均值 */
+    async dailyReport(ctx, date) {
+        var _a, _b, _c, _d, _e, _f;
+        const DAY_MS = 24 * 3600000;
+        const now = Date.now();
+        const today0 = (0, campus_time_1.startOfCampusDay)(now);
+        const raw = String(date !== null && date !== void 0 ? date : '').trim();
+        let day0 = today0;
+        if (raw) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(new Date(raw).getTime())) {
+                throw new core_1.UserInputError('日期格式不合法（YYYY-MM-DD）');
+            }
+            day0 = (0, campus_time_1.startOfCampusDay)(new Date(raw).getTime());
+            if (day0 > today0)
+                throw new core_1.UserInputError('不能查看未来日期的营业日报');
+            if (day0 < today0 - 29 * DAY_MS)
+                throw new core_1.UserInputError('营业日报最多回看 30 天');
+        }
+        const dayKey = (0, campus_time_1.campusDayKey)(day0);
+        const prevKey = (0, campus_time_1.campusDayKey)(day0 - DAY_MS);
+        const isToday = day0 === today0;
+        // 一次查询覆盖「当日 + 前 7 日」，避免多次往返
+        const orders = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere('order.customFields.hallStatus IS NOT NULL')
+            .andWhere('order.createdAt >= :since', { since: new Date(day0 - 7 * DAY_MS) })
+            .leftJoinAndSelect('order.lines', 'lines')
+            .leftJoinAndSelect('lines.productVariant', 'variant')
+            .getMany();
+        const hourCount = isToday ? (0, campus_time_1.campusHour)(now) + 1 : 24;
+        const hourly = Array.from({ length: hourCount }, (_, h) => ({ hour: h, orders: 0, gross: 0 }));
+        const products = new Map();
+        let ordersCur = 0;
+        let grossCur = 0;
+        let cancelled = 0;
+        let cancelledAmount = 0;
+        const prev = { orders: 0, gross: 0, avgTicket: 0 };
+        let sum7Orders = 0;
+        let sum7Gross = 0;
+        for (const o of orders) {
+            const cf = o.customFields;
+            const total = (_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0;
+            if (o.state === 'Cancelled') {
+                // 取消单按下单日归日（与经营设置页营收口径一致）
+                if ((0, campus_time_1.campusDayKey)(new Date(o.createdAt).getTime()) === dayKey) {
+                    cancelled += 1;
+                    cancelledAmount += total;
+                }
+                continue;
+            }
+            if (cf.deliveryStatus !== 'delivered' || !cf.deliveredAt)
+                continue;
+            // 营业额按送达时间归日：跨零点订单计入实际送达当天
+            const doneAt = new Date(cf.deliveredAt).getTime();
+            const doneKey = (0, campus_time_1.campusDayKey)(doneAt);
+            if (doneKey === dayKey) {
+                ordersCur += 1;
+                grossCur += total;
+                const h = (0, campus_time_1.campusHour)(doneAt);
+                if (h < hourly.length) {
+                    hourly[h].orders += 1;
+                    hourly[h].gross += total;
+                }
+                for (const l of (_b = o.lines) !== null && _b !== void 0 ? _b : []) {
+                    const name = (_d = (_c = l.productVariant) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : '';
+                    if (!name)
+                        continue;
+                    const cur = (_e = products.get(name)) !== null && _e !== void 0 ? _e : { name, qty: 0, amount: 0 };
+                    cur.qty += l.quantity;
+                    cur.amount += (_f = l.linePriceWithTax) !== null && _f !== void 0 ? _f : 0;
+                    products.set(name, cur);
+                }
+            }
+            else if (doneKey === prevKey) {
+                prev.orders += 1;
+                prev.gross += total;
+            }
+            if (doneAt >= day0 - 7 * DAY_MS && doneAt < day0) {
+                sum7Orders += 1;
+                sum7Gross += total;
+            }
+        }
+        prev.avgTicket = prev.orders ? Math.round(prev.gross / prev.orders) : 0;
+        return {
+            date: dayKey,
+            orders: ordersCur,
+            gross: grossCur,
+            avgTicket: ordersCur ? Math.round(grossCur / ordersCur) : 0,
+            cancelled,
+            cancelledAmount,
+            hourly,
+            topProducts: [...products.values()]
+                .sort((a, b) => b.qty - a.qty || b.amount - a.amount || a.name.localeCompare(b.name))
+                .slice(0, 5),
+            prev,
+            // 近 7 日均值：单量/营业额按 7 天均摊，客单价用 7 日整体客单价
+            last7Avg: {
+                orders: Math.round(sum7Orders / 7),
+                gross: Math.round(sum7Gross / 7),
+                avgTicket: sum7Orders ? Math.round(sum7Gross / sum7Orders) : 0,
+            },
+        };
+    }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
     async products(ctx, search, skip, take) {
         var _a, _b;

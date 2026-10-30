@@ -112,6 +112,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantPrepSummary(ctx) {
         return this.merchant.prepSummary(ctx);
     }
+    /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
+    async campusMerchantDailyReport(ctx, date) {
+        return this.merchant.dailyReport(ctx, date);
+    }
     /** 云打印：后端签名直连服务商，成功后回写小票打印时间 */
     async campusMerchantCloudPrint(ctx, orderId) {
         return this.merchant.cloudPrint(ctx, orderId);
@@ -367,6 +371,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantPrepSummary", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'date', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantDailyReport", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

@@ -234,6 +234,47 @@ export interface MerchantPrepItem {
     /** 加料/口味份数（如「加辣 ×3」），按待做 + 已做合并统计 */
     addons: MerchantPrepAddon[];
 }
+/** 营业日报（§80）：单日时段分布（校园时区 0-23 点） */
+export interface MerchantDailyHour {
+    hour: number;
+    orders: number;
+    gross: number;
+}
+/** 营业日报（§80）：单日商品销量行（销量按份数、金额按折后行小计） */
+export interface MerchantDailyProduct {
+    name: string;
+    qty: number;
+    amount: number;
+}
+/** 营业日报（§80）：对比口径（昨日 / 近 7 日均值） */
+export interface MerchantDailyCompare {
+    orders: number;
+    gross: number;
+    avgTicket: number;
+}
+/** 营业日报（§80）：单日经营快照 */
+export interface MerchantDailyReport {
+    /** 校园日 key（YYYY-MM-DD） */
+    date: string;
+    /** 当日已完成（已送达）单量 */
+    orders: number;
+    /** 当日营业额（分，订单实收总额） */
+    gross: number;
+    /** 客单价（分） */
+    avgTicket: number;
+    /** 当日取消单量（按下单日归日，与经营设置页同口径） */
+    cancelled: number;
+    /** 当日取消退款金额（分，取消单全额） */
+    cancelledAmount: number;
+    /** 时段分布：今天只出到当前小时，历史日 24 点全出 */
+    hourly: MerchantDailyHour[];
+    /** 销量 Top5（按份数降序，同份数按金额降序） */
+    topProducts: MerchantDailyProduct[];
+    /** 前一日同口径 */
+    prev: MerchantDailyCompare;
+    /** 前 7 日（不含当日）日均 */
+    last7Avg: MerchantDailyCompare;
+}
 /** 出餐屏超时阈值（分钟）：15 分钟预警、25 分钟催单 */
 export declare const KDS_WARN_MINUTES = 15;
 export declare const KDS_LATE_MINUTES = 25;
@@ -433,6 +474,8 @@ export declare class MerchantAdminService {
      * 口径与出餐屏/工作台一致：待做取活跃单（不落小票），已做按送达时间归今日。
      */
     prepSummary(ctx: RequestContext): Promise<MerchantPrepItem[]>;
+    /** 营业日报（§80）：单日经营快照 —— KPI、时段分布、商品 Top5、对比昨日与近 7 日均值 */
+    dailyReport(ctx: RequestContext, date?: string | null): Promise<MerchantDailyReport>;
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */
     products(ctx: RequestContext, search?: string, skip?: number, take?: number): Promise<{
         items: any;
