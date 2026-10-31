@@ -99,6 +99,26 @@ export class ErrandService {
         if (fromText.length > 100 || toText.length > 100) throw new UserInputError('起点/终点不能超过 100 个字符');
         if (note && note.length > 200) throw new UserInputError('备注不能超过 200 个字符');
         if (errandFrom && errandFrom.length > 64) throw new UserInputError('来源单号不合法');
+        // R2 原单第二段由入厅后的校园骑手自动接力，学生再发跑腿代取会造成同一包裹双配送/双计费。
+        // errandFrom 命中本渠道订单时：必须归属本人，且来源单不能是平台已接管的 R2 单。
+        if (errandFrom) {
+            const source = await this.connection
+                .getRepository(ctx, Order)
+                .createQueryBuilder('o')
+                .leftJoin('o.channels', 'ch')
+                .leftJoinAndSelect('o.customer', 'c')
+                .leftJoinAndSelect('c.user', 'u')
+                .where('ch.id = :chId', { chId: ctx.channelId as any })
+                .andWhere('o.code = :code', { code: errandFrom })
+                .getOne();
+            if (source) {
+                const ownerId = (source.customer as any)?.user?.id;
+                if (ownerId && Number(ownerId) !== Number(ctx.activeUserId)) throw new ForbiddenError();
+                if (String((source.customFields as any)?.fulfillmentRoute ?? '') === 'R2') {
+                    throw new UserInputError('该订单由平台配送到校，无需再发跑腿代取');
+                }
+            }
+        }
         if (!Number.isFinite(input.tip) || input.tip < 0) throw new UserInputError('小费金额不合法');
         const tip = Math.floor(input.tip);
         if (tip > 100_000_00) throw new UserInputError('小费金额过大');

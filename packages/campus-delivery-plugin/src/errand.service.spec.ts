@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ErrandService } from './errand.service';
 
-function makeEnv(opts: { variant?: any; surcharges?: any[]; zone?: any; building?: any } = {}) {
+function makeEnv(opts: { variant?: any; surcharges?: any[]; zone?: any; building?: any; sourceOrder?: any } = {}) {
     const orderSvc = {
         updateCustomFields: vi.fn().mockResolvedValue({ id: 5 }),
         addSurchargeToOrder: vi.fn().mockResolvedValue({ id: 5 }),
@@ -13,7 +13,17 @@ function makeEnv(opts: { variant?: any; surcharges?: any[]; zone?: any; building
         get: vi.fn((t: any) => (t.name === 'ProductService' ? productService : variantService)),
     };
     const variantRepo = { findOne: vi.fn().mockResolvedValue(opts.variant ?? null) };
-    const orderRepo = { findOne: vi.fn().mockResolvedValue({ id: 5, surcharges: opts.surcharges ?? [] }) };
+    const orderRepo: any = {
+        findOne: vi.fn().mockResolvedValue({ id: 5, surcharges: opts.surcharges ?? [] }),
+        // errandFrom 来源单校验（R2 原单禁止再发跑腿代取）
+        createQueryBuilder: vi.fn(() => ({
+            leftJoin: vi.fn().mockReturnThis(),
+            leftJoinAndSelect: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            getOne: vi.fn().mockResolvedValue(opts.sourceOrder ?? null),
+        })),
+    };
     // 分区/楼栋归属校验：默认落在本渠道（zone id=3 / building id=12 归属 zone 3）；显式传 null 表示查无
     const zoneRepo = { findOne: vi.fn().mockResolvedValue(opts.zone === null ? null : (opts.zone ?? { id: 3, name: 'A区', channelId: 1 })) };
     const buildingRepo = { findOne: vi.fn().mockResolvedValue(opts.building === null ? null : (opts.building ?? { id: 12, zoneId: 3, channelId: 1 })) };
@@ -134,6 +144,23 @@ describe('ErrandService.setErrandInfo 二期字段', () => {
         expect(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(
             ctx, 5, expect.objectContaining({ errandFrom: '东门取件' }),
         );
+    });
+
+    it('errandFrom 命中本人 R2 原单 → 拒绝（第二段由校园骑手自动接力，避免双配送/双计费）', async () => {
+        const env = makeEnv({
+            sourceOrder: { id: 7, customFields: { fulfillmentRoute: 'R2' }, customer: { user: { id: 9 } } },
+        });
+        await expect(env.svc.setErrandInfo(ctx, { ...baseInput, errandFrom: 'A100' }))
+            .rejects.toThrow('该订单由平台配送到校，无需再发跑腿代取');
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
+    });
+
+    it('errandFrom 命中他人订单 → ForbiddenError', async () => {
+        const env = makeEnv({
+            sourceOrder: { id: 7, customFields: { fulfillmentRoute: 'R2' }, customer: { user: { id: 8 } } },
+        });
+        await expect(env.svc.setErrandInfo(ctx, { ...baseInput, errandFrom: 'A100' })).rejects.toThrow();
+        expect(env.orderSvc.updateCustomFields).not.toHaveBeenCalled();
     });
 });
 

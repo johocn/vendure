@@ -19,9 +19,9 @@ function makeEnv(opts: { order?: any; relay?: any; casRows?: any[] } = {}) {
 }
 
 describe('R2MarkService.markArrived', () => {
-    it('本人 R2 单可标记到校（leg1Status=arrived_gate + handoverAt）', async () => {
+    it('本人 R2 单可标记到校（thirdPartyState=pickup + leg1Status 空 → arrived_gate）', async () => {
         const env = makeEnv({
-            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'preparing' }, customer: { user: { id: 9 } } },
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: null, thirdPartyState: 'pickup' }, customer: { user: { id: 9 } } },
         });
         const res = await env.svc.markArrived({ activeUserId: 9 } as any, 6);
         expect(env.rawQuery).toHaveBeenCalledWith(
@@ -56,11 +56,27 @@ describe('R2MarkService.markArrived', () => {
         expect(env.rawQuery).not.toHaveBeenCalled();
     });
 
-    it('leg1Status 非 preparing/arrived_gate 拒绝', async () => {
+    it('leg1Status 已写入（非 arrived_gate）拒绝', async () => {
         const env = makeEnv({
-            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'picked' }, customer: { user: { id: 9 } } },
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'picked', thirdPartyState: 'pickup' }, customer: { user: { id: 9 } } },
         });
         await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('当前状态不支持到校确认');
+        expect(env.rawQuery).not.toHaveBeenCalled();
+    });
+
+    it('外部运单尚未取件（pending_dispatch）→ 拒绝标记到校', async () => {
+        const env = makeEnv({
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: null, thirdPartyState: 'pending_dispatch' }, customer: { user: { id: 9 } } },
+        });
+        await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('外部运单尚未取件');
+        expect(env.rawQuery).not.toHaveBeenCalled();
+    });
+
+    it('外部运单异常（exception）→ 拒绝标记到校', async () => {
+        const env = makeEnv({
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: null, thirdPartyState: 'exception' }, customer: { user: { id: 9 } } },
+        });
+        await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('外部运单异常');
         expect(env.rawQuery).not.toHaveBeenCalled();
     });
 
@@ -82,7 +98,7 @@ describe('R2MarkService.markArrived', () => {
 
     it('CAS 未命中（并发改状态/已取消）→ 报状态已变更', async () => {
         const env = makeEnv({
-            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: 'preparing' }, customer: { user: { id: 9 } } },
+            order: { id: 6, customFields: { fulfillmentRoute: 'R2', leg1Status: null, thirdPartyState: 'pickup' }, customer: { user: { id: 9 } } },
             casRows: [],
         });
         await expect(env.svc.markArrived({ activeUserId: 9 } as any, 6)).rejects.toThrow('订单状态已变更，请刷新');

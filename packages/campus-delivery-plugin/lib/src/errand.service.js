@@ -73,7 +73,7 @@ let ErrandService = class ErrandService {
      * tip>0 时给订单加小费 surcharge（listPrice=tip，含税口径）。
      */
     async setErrandInfo(ctx, input) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         if (!ctx.activeUserId)
             throw new core_2.ForbiddenError();
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
@@ -96,6 +96,27 @@ let ErrandService = class ErrandService {
             throw new core_2.UserInputError('备注不能超过 200 个字符');
         if (errandFrom && errandFrom.length > 64)
             throw new core_2.UserInputError('来源单号不合法');
+        // R2 原单第二段由入厅后的校园骑手自动接力，学生再发跑腿代取会造成同一包裹双配送/双计费。
+        // errandFrom 命中本渠道订单时：必须归属本人，且来源单不能是平台已接管的 R2 单。
+        if (errandFrom) {
+            const source = await this.connection
+                .getRepository(ctx, core_2.Order)
+                .createQueryBuilder('o')
+                .leftJoin('o.channels', 'ch')
+                .leftJoinAndSelect('o.customer', 'c')
+                .leftJoinAndSelect('c.user', 'u')
+                .where('ch.id = :chId', { chId: ctx.channelId })
+                .andWhere('o.code = :code', { code: errandFrom })
+                .getOne();
+            if (source) {
+                const ownerId = (_f = (_e = source.customer) === null || _e === void 0 ? void 0 : _e.user) === null || _f === void 0 ? void 0 : _f.id;
+                if (ownerId && Number(ownerId) !== Number(ctx.activeUserId))
+                    throw new core_2.ForbiddenError();
+                if (String((_h = (_g = source.customFields) === null || _g === void 0 ? void 0 : _g.fulfillmentRoute) !== null && _h !== void 0 ? _h : '') === 'R2') {
+                    throw new core_2.UserInputError('该订单由平台配送到校，无需再发跑腿代取');
+                }
+            }
+        }
         if (!Number.isFinite(input.tip) || input.tip < 0)
             throw new core_2.UserInputError('小费金额不合法');
         const tip = Math.floor(input.tip);
@@ -129,7 +150,7 @@ let ErrandService = class ErrandService {
                 const buildingZone = await this.connection.getRepository(ctx, campus_zone_entity_1.CampusZone).findOne({
                     where: { id: building.zoneId, channelId: ctx.channelId },
                 });
-                campusZone = (_e = buildingZone === null || buildingZone === void 0 ? void 0 : buildingZone.name) !== null && _e !== void 0 ? _e : null;
+                campusZone = (_j = buildingZone === null || buildingZone === void 0 ? void 0 : buildingZone.name) !== null && _j !== void 0 ? _j : null;
             }
         }
         const order = await this.orderService.updateCustomFields(ctx, orderId, {
@@ -150,7 +171,7 @@ let ErrandService = class ErrandService {
             where: { id: orderId },
             relations: ['surcharges'],
         });
-        const oldTips = ((_f = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _f !== void 0 ? _f : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC);
+        const oldTips = ((_k = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _k !== void 0 ? _k : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC);
         for (const s of oldTips) {
             await this.orderService.removeSurchargeFromOrder(ctx, orderId, s.id);
         }
@@ -168,7 +189,7 @@ let ErrandService = class ErrandService {
                 for (const s of oldTips) {
                     await this.orderService.addSurchargeToOrder(ctx, orderId, {
                         description: exports.ERRAND_TIP_SURCHARGE_DESC,
-                        listPrice: Number((_g = s.listPrice) !== null && _g !== void 0 ? _g : 0),
+                        listPrice: Number((_l = s.listPrice) !== null && _l !== void 0 ? _l : 0),
                         listPriceIncludesTax: true,
                     }).catch(() => undefined);
                 }
