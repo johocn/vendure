@@ -75,7 +75,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     async storeProfile(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
         const cfg = await this.config.getConfig(ctx);
         const channel = await this.connection.getRepository(ctx, core_2.Channel)
             .findOne({ where: { id: ctx.channelId } });
@@ -111,6 +111,12 @@ let MerchantAdminService = class MerchantAdminService {
             monthlyPushEnabled: !!((_h = channel.customFields) !== null && _h !== void 0 ? _h : {}).waimaiAfterSalesMonthlyPushEnabled,
             monthlyPushDay: Number((_k = ((_j = channel.customFields) !== null && _j !== void 0 ? _j : {}).waimaiAfterSalesMonthlyPushDay) !== null && _k !== void 0 ? _k : 1) || 1,
             monthlyPushTime: ((_l = channel.customFields) !== null && _l !== void 0 ? _l : {}).waimaiAfterSalesMonthlyPushTime || '21:30',
+            // 售后自动化（§96）：自动分配 + 异常预警，阈值 0=关闭该项
+            autoAssignEnabled: !!((_m = channel.customFields) !== null && _m !== void 0 ? _m : {}).waimaiAfterSalesAutoAssignEnabled,
+            autoAssignMax: Math.max(0, Number((_p = ((_o = channel.customFields) !== null && _o !== void 0 ? _o : {}).waimaiAfterSalesAutoAssignMax) !== null && _p !== void 0 ? _p : 0) || 0),
+            alertEnabled: !!((_q = channel.customFields) !== null && _q !== void 0 ? _q : {}).waimaiAfterSalesAlertEnabled,
+            alertRefundRate: Math.max(0, Number((_s = ((_r = channel.customFields) !== null && _r !== void 0 ? _r : {}).waimaiAfterSalesAlertRefundRate) !== null && _s !== void 0 ? _s : 0) || 0),
+            alertOverdueCount: Math.max(0, Number((_u = ((_t = channel.customFields) !== null && _t !== void 0 ? _t : {}).waimaiAfterSalesAlertOverdueCount) !== null && _u !== void 0 ? _u : 0) || 0),
         };
     }
     /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
@@ -189,6 +195,42 @@ let MerchantAdminService = class MerchantAdminService {
         await repo.save(channel);
         return this.storeProfile(ctx);
     }
+    /**
+     * 售后自动化设置（§96）：自动分配 + 异常预警。
+     * - 仅更新显式传入的项（null/undefined 保持原值），阈值传 0 表示关闭该项。
+     * - autoAssignMax=0 不限制单人未完结单量；refundRate/overdueCount 为 0 时对应预警不触发。
+     */
+    async updateAfterSalesAutomation(ctx, input) {
+        var _a;
+        const intOrThrow = (v, name, max) => {
+            if (v == null)
+                return null;
+            const n = Math.floor(Number(v));
+            if (!Number.isFinite(n) || n < 0 || n > max)
+                throw new core_2.UserInputError(`${name}应为 0-${max}`);
+            return n;
+        };
+        const maxAssign = intOrThrow(input.autoAssignMax, '单人未完结上限', 100);
+        const refundRate = intOrThrow(input.alertRefundRate, '退款率阈值（百分比）', 100);
+        const overdueCount = intOrThrow(input.alertOverdueCount, '超时待处理阈值（单）', 999);
+        const repo = this.connection.getRepository(ctx, core_2.Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId } });
+        if (!channel)
+            throw new core_2.UserInputError('当前店铺渠道不存在');
+        const cf = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {});
+        if (input.autoAssignEnabled != null)
+            cf.waimaiAfterSalesAutoAssignEnabled = !!input.autoAssignEnabled;
+        if (maxAssign != null)
+            cf.waimaiAfterSalesAutoAssignMax = maxAssign;
+        if (input.alertEnabled != null)
+            cf.waimaiAfterSalesAlertEnabled = !!input.alertEnabled;
+        if (refundRate != null)
+            cf.waimaiAfterSalesAlertRefundRate = refundRate;
+        if (overdueCount != null)
+            cf.waimaiAfterSalesAlertOverdueCount = overdueCount;
+        await repo.save(channel);
+        return this.storeProfile(ctx);
+    }
     /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
     async updateClosureDates(ctx, dates) {
         const list = (dates !== null && dates !== void 0 ? dates : []).map(d => { var _a, _b; return ({ date: String((_a = d === null || d === void 0 ? void 0 : d.date) !== null && _a !== void 0 ? _a : '').trim(), note: String((_b = d === null || d === void 0 ? void 0 : d.note) !== null && _b !== void 0 ? _b : '').trim() }); });
@@ -214,7 +256,7 @@ let MerchantAdminService = class MerchantAdminService {
         const dayMap = new Map();
         for (let i = DAYS - 1; i >= 0; i--) {
             const key = (0, campus_time_1.campusDayKey)(today0 - i * DAY_MS);
-            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
+            dayMap.set(key, { date: key.slice(5), dateFull: key, orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
         }
         const todayKey = (0, campus_time_1.campusDayKey)(now);
         const empty = () => ({ orders: 0, gross: 0, avgTicket: 0, cancelled: 0, cancelledAmount: 0 });
@@ -264,6 +306,68 @@ let MerchantAdminService = class MerchantAdminService {
         last7.avgTicket = last7.orders ? Math.round(last7.gross / last7.orders) : 0;
         const allDays = [...dayMap.values()];
         return { today, last7, days: allDays.slice(-7), days30: allDays };
+    }
+    /**
+     * 自定义区间逐日经营数据（§89 导出）：含起止两日，最多 366 天。
+     * 口径与 revenue() 的 days30 完全一致（送达按 deliveredAt 归日、取消按下单日归日）。
+     */
+    async revenueRange(ctx, from, to) {
+        var _a;
+        const DAY_MS = 24 * 3600000;
+        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+        const rawFrom = String(from !== null && from !== void 0 ? from : '').trim();
+        const rawTo = String(to !== null && to !== void 0 ? to : '').trim();
+        if (!DATE_RE.test(rawFrom) || !DATE_RE.test(rawTo)) {
+            throw new core_2.UserInputError('日期格式须为 YYYY-MM-DD');
+        }
+        const fromDay0 = (0, campus_time_1.startOfCampusDay)(Date.parse(`${rawFrom}T00:00:00+08:00`));
+        const toDay0 = (0, campus_time_1.startOfCampusDay)(Date.parse(`${rawTo}T00:00:00+08:00`));
+        if (Number.isNaN(fromDay0) || Number.isNaN(toDay0))
+            throw new core_2.UserInputError('日期格式不合法');
+        if (toDay0 < fromDay0)
+            throw new core_2.UserInputError('结束日期不能早于开始日期');
+        const DAY_COUNT = Math.round((toDay0 - fromDay0) / DAY_MS) + 1;
+        if (DAY_COUNT > 366)
+            throw new core_2.UserInputError('导出区间不能超过 366 天');
+        // 结束日 0 点 + 1 天 = 开区间上界
+        const start = new Date(fromDay0);
+        const end = new Date(toDay0 + DAY_MS);
+        const orders = await this.connection.getRepository(ctx, core_2.Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere('order.customFields.hallStatus IS NOT NULL')
+            // 取消单按下单时间、已送达单按送达时间归日，两者都要覆盖（送达可能跨零点）
+            .andWhere(new typeorm_1.Brackets(qb => {
+            qb.where('order.createdAt >= :start AND order.createdAt < :end', { start, end })
+                .orWhere('order.customFields.deliveredAt >= :start AND order.customFields.deliveredAt < :end', { start, end });
+        }))
+            .getMany();
+        const dayMap = new Map();
+        for (let i = 0; i < DAY_COUNT; i++) {
+            const key = (0, campus_time_1.campusDayKey)(fromDay0 + i * DAY_MS);
+            dayMap.set(key, { date: key.slice(5), dateFull: key, orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
+        }
+        for (const o of orders) {
+            const cf = o.customFields;
+            const total = (_a = o.totalWithTax) !== null && _a !== void 0 ? _a : 0;
+            if (o.state === 'Cancelled') {
+                const day = dayMap.get((0, campus_time_1.campusDayKey)(new Date(o.createdAt).getTime()));
+                if (day) {
+                    day.cancelled += 1;
+                    day.cancelledAmount += total;
+                }
+                continue;
+            }
+            if (cf.deliveryStatus !== 'delivered' || !cf.deliveredAt)
+                continue;
+            const day = dayMap.get((0, campus_time_1.campusDayKey)(new Date(cf.deliveredAt).getTime()));
+            if (day) {
+                day.orders += 1;
+                day.gross += total;
+            }
+        }
+        return [...dayMap.values()];
     }
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
     async customerContact(ctx, orderId) {
@@ -1380,6 +1484,7 @@ let MerchantAdminService = class MerchantAdminService {
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, rows.map(r => Number(r.id)));
         const riskMap = await this.afterSalesRiskReasons(ctx, rows.map(r => Number(r.id)));
         const slaPauseMap = await this.afterSalesSlaPauses(rows.map(r => Number(r.id)));
+        const escalatedMap = await this.afterSalesEscalatedMap(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         return {
@@ -1389,6 +1494,7 @@ let MerchantAdminService = class MerchantAdminService {
                 assignees: assigneeMap,
                 risks: riskMap,
                 slaPauses: slaPauseMap,
+                escalated: escalatedMap,
             })),
             pendingCount,
             total,
@@ -1433,10 +1539,12 @@ let MerchantAdminService = class MerchantAdminService {
         const addr = (_a = order === null || order === void 0 ? void 0 : order.shippingAddress) !== null && _a !== void 0 ? _a : null;
         const riskMap = await this.afterSalesRiskReasons(ctx, [Number(request.id)]);
         const slaPauseMap = await this.afterSalesSlaPauses([Number(request.id)]);
+        const escalatedMap = await this.afterSalesEscalatedMap(ctx, [Number(request.id)]);
         return {
             request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender, {
                 risks: riskMap,
                 slaPauses: slaPauseMap,
+                escalated: escalatedMap,
             }),
             messages,
             messageTotal: (_b = counts.get(Number(request.id))) !== null && _b !== void 0 ? _b : messages.length,
@@ -1458,6 +1566,8 @@ let MerchantAdminService = class MerchantAdminService {
             orderTotal: Number((_h = order === null || order === void 0 ? void 0 : order.totalWithTax) !== null && _h !== void 0 ? _h : 0),
             assignHistory: await this.afterSalesAssignLogs(Number(request.id)),
             followUps: await this.afterSalesFollowUps(Number(request.id)),
+            slaPauses: await this.afterSalesSlaPauseLogs(Number(request.id)),
+            escalations: await this.afterSalesEscalations(Number(request.id)),
         };
     }
     /**
@@ -1680,23 +1790,63 @@ let MerchantAdminService = class MerchantAdminService {
         return this.afterSalesOne(ctx, id);
     }
     /**
-     * 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄等场景，暂停期间不判超时与临期。
-     * 幂等：已暂停时重复调用直接返回当前行。
+     * 暂停售后 SLA 计时（§95/§96）：等待顾客补充资料/回寄等场景，暂停期间不判超时与临期。
+     * §96 起暂停原因必填，并写入暂停记录表供详情页时间线展示。
+     * 幂等：已暂停时重复调用直接返回当前行（不重复记暂停记录）。
      */
-    async afterSalesPauseSla(ctx, id) {
+    async afterSalesPauseSla(ctx, id, reason) {
+        var _a;
         await this.assertChannelAfterSales(ctx, id, ['Pending', 'Appealed', 'Approved', 'Returning']);
-        await this.connection.rawConnection.query('UPDATE after_sales_request SET "slaPausedAt" = now() WHERE id = $1 AND "slaPausedAt" IS NULL', [Number(id)]);
+        const text = String(reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!text)
+            throw new core_2.UserInputError('请填写暂停原因（如等待顾客补充资料/回寄商品）');
+        if (text.length > 200)
+            throw new core_2.UserInputError('暂停原因最多 200 字');
+        const chId = Number(ctx.channelId);
+        const nid = Number(id);
+        const raw = this.connection.rawConnection;
+        const claimed = await raw.query('UPDATE after_sales_request SET "slaPausedAt" = now(), "slaPausedReason" = $2 '
+            + 'WHERE id = $1 AND "slaPausedAt" IS NULL RETURNING id', [nid, text]);
+        const list = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+        if (Array.isArray(list) && list.length) {
+            try {
+                await raw.query('INSERT INTO campus_after_sales_sla_pause ("channelId", "requestId", reason, "pausedAt") '
+                    + 'VALUES ($1, $2, $3, now())', [chId, nid, text]);
+            }
+            catch (e) {
+                // 记录表缺失（迁移未跑完）不影响暂停本身
+                core_2.Logger.warn(`sla pause log failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales');
+            }
+        }
         return this.afterSalesOne(ctx, id);
     }
     /**
-     * 恢复售后 SLA 计时（§95）：把本次暂停时长累计进 slaPausedMs，截止时间随之后移。
-     * 幂等：未暂停时重复调用无副作用。
+     * 恢复售后 SLA 计时（§95/§96）：把本次暂停时长累计进 slaPausedMs，截止时间随之后移，
+     * 并回填暂停记录表的结束时间与本次时长。幂等：未暂停时重复调用无副作用。
      */
     async afterSalesResumeSla(ctx, id) {
+        var _a;
         await this.assertChannelAfterSales(ctx, id, ['Pending', 'Appealed', 'Approved', 'Returning']);
-        await this.connection.rawConnection.query('UPDATE after_sales_request SET "slaPausedMs" = COALESCE("slaPausedMs", 0) '
-            + '+ GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - "slaPausedAt")) * 1000))::bigint, '
-            + '"slaPausedAt" = NULL WHERE id = $1 AND "slaPausedAt" IS NOT NULL', [Number(id)]);
+        const nid = Number(id);
+        const raw = this.connection.rawConnection;
+        const openRows = await raw.query('SELECT "slaPausedAt" FROM after_sales_request WHERE id = $1 AND "slaPausedAt" IS NOT NULL', [nid]);
+        const openList = Array.isArray(openRows) && Array.isArray(openRows[0]) ? openRows[0] : openRows;
+        if (!Array.isArray(openList) || !openList.length)
+            return this.afterSalesOne(ctx, id);
+        const pausedAt = new Date(openList[0].slaPausedAt);
+        const ms = Number.isNaN(pausedAt.getTime()) ? 0 : Math.max(0, Date.now() - pausedAt.getTime());
+        await raw.query('UPDATE after_sales_request SET "slaPausedMs" = COALESCE("slaPausedMs", 0) + $2::bigint, '
+            + '"slaPausedAt" = NULL, "slaPausedReason" = NULL '
+            + 'WHERE id = $1 AND "slaPausedAt" IS NOT NULL', [nid, ms]);
+        try {
+            await raw.query('UPDATE campus_after_sales_sla_pause SET "resumedAt" = now(), "pausedMs" = $2::bigint '
+                + 'WHERE id = (SELECT id FROM campus_after_sales_sla_pause '
+                + 'WHERE "channelId" = $1 AND "requestId" = $3 AND "resumedAt" IS NULL '
+                + 'ORDER BY "pausedAt" DESC LIMIT 1)', [Number(ctx.channelId), ms, nid]);
+        }
+        catch (e) {
+            core_2.Logger.warn(`sla resume log failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales');
+        }
         return this.afterSalesOne(ctx, id);
     }
     /** 批量关闭待处理售后（§95）：单批上限 50，逐单返回结果 */
@@ -1719,6 +1869,109 @@ let MerchantAdminService = class MerchantAdminService {
             }
         }
         return results;
+    }
+    /** 升级平台仲裁（§96）：商家无法自行处理时转平台客服；同一单仅保留一条未关闭工单 */
+    async afterSalesEscalate(ctx, id, reason, priority) {
+        await this.assertRequestInChannel(ctx, id);
+        const text = String(reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!text)
+            throw new core_2.UserInputError('请填写升级原因');
+        if (text.length > 200)
+            throw new core_2.UserInputError('升级原因最多 200 字');
+        const p = String(priority !== null && priority !== void 0 ? priority : '').trim() || 'normal';
+        if (!['normal', 'urgent'].includes(p))
+            throw new core_2.UserInputError('优先级只能是 normal 或 urgent');
+        const chId = Number(ctx.channelId);
+        const nid = Number(id);
+        const raw = this.connection.rawConnection;
+        const openRows = await raw.query('SELECT id FROM campus_after_sales_escalation WHERE "requestId" = $1 AND status = \'Open\' LIMIT 1', [nid]);
+        const openList = Array.isArray(openRows) && Array.isArray(openRows[0]) ? openRows[0] : openRows;
+        if (Array.isArray(openList) && openList.length) {
+            await raw.query('UPDATE campus_after_sales_escalation SET reason = $2, priority = $3, "updatedAt" = now() WHERE id = $1', [Number(openList[0].id), text, p]);
+        }
+        else {
+            await raw.query('INSERT INTO campus_after_sales_escalation '
+                + '("channelId", "requestId", reason, priority, "createdBy") '
+                + 'VALUES ($1, $2, $3, $4, $5)', [chId, nid, text, p, ctx.activeUserId ? Number(ctx.activeUserId) : null]);
+        }
+        return this.afterSalesEscalations(nid);
+    }
+    /** 关闭平台仲裁工单（§96）：平台/商家填写处理结论后置为 Resolved */
+    async afterSalesEscalationResolve(ctx, id, resolution) {
+        const text = String(resolution !== null && resolution !== void 0 ? resolution : '').trim();
+        if (text.length > 300)
+            throw new core_2.UserInputError('处理结论最多 300 字');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const escRows = await raw.query('SELECT "requestId" FROM campus_after_sales_escalation WHERE id = $1 AND "channelId" = $2', [Number(id), chId]);
+        const escList = Array.isArray(escRows) && Array.isArray(escRows[0]) ? escRows[0] : escRows;
+        if (!Array.isArray(escList) || !escList.length)
+            throw new core_2.UserInputError('升级工单不存在');
+        await raw.query('UPDATE campus_after_sales_escalation SET status = \'Resolved\', "resolvedAt" = now(), '
+            + 'resolution = $3, "updatedAt" = now() WHERE id = $1 AND "channelId" = $2', [Number(id), chId, text || null]);
+        return this.afterSalesEscalations(Number(escList[0].requestId));
+    }
+    /**
+     * 售后自动分配（§96）：渠道开启后，把未指派的未完结售后单指派给当前未完结量最少的处理人。
+     * - 只处理本店渠道订单对应、未结案且尚无指派的售后单，按申请时间先到先得。
+     * - autoAssignMax>0 时，最空闲处理人也已达上限则本轮停止，避免压垮个人。
+     * - 返回本轮实际指派单数，供定时任务日志。
+     */
+    async afterSalesAutoAssign(ctx) {
+        var _a, _b, _c, _d;
+        const cf = ((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
+        if (!cf.waimaiAfterSalesAutoAssignEnabled)
+            return 0;
+        const max = Math.max(0, Number((_c = cf.waimaiAfterSalesAutoAssignMax) !== null && _c !== void 0 ? _c : 0) || 0);
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const assignees = await this.afterSalesAssignees(ctx);
+        if (!assignees.length)
+            return 0;
+        const loadRows = await raw.query(`SELECT l."assigneeUserId" AS uid, COUNT(*)::int AS n
+               FROM campus_after_sales_assignee l
+               JOIN after_sales_request a ON a.id = l."requestId"
+              WHERE l."channelId" = $1 AND a.state NOT IN ('Refunded', 'Rejected', 'Closed')
+              GROUP BY 1`, [chId]);
+        const loadList = Array.isArray(loadRows) && Array.isArray(loadRows[0]) ? loadRows[0] : loadRows;
+        const load = new Map();
+        for (const r of Array.isArray(loadList) ? loadList : []) {
+            load.set(Number(r.uid), Number(r.n) || 0);
+        }
+        const reqRows = await raw.query(`SELECT a.id FROM after_sales_request a
+              WHERE a.state NOT IN ('Refunded', 'Rejected', 'Closed')
+                AND EXISTS (SELECT 1 FROM "order" o
+                            JOIN order_channels_channel oc ON oc."orderId" = o.id
+                            WHERE o.id = a."orderId" AND oc."channelId" = $1)
+                AND NOT EXISTS (SELECT 1 FROM campus_after_sales_assignee l
+                                WHERE l."channelId" = $1 AND l."requestId" = a.id)
+              ORDER BY a."createdAt" ASC
+              LIMIT 50`, [chId]);
+        const reqList = Array.isArray(reqRows) && Array.isArray(reqRows[0]) ? reqRows[0] : reqRows;
+        let assigned = 0;
+        for (const r of Array.isArray(reqList) ? reqList : []) {
+            let best = null;
+            let bestLoad = Number.POSITIVE_INFINITY;
+            for (const a of assignees) {
+                const uid = Number(a.id);
+                const n = (_d = load.get(uid)) !== null && _d !== void 0 ? _d : 0;
+                if (n < bestLoad) {
+                    bestLoad = n;
+                    best = uid;
+                }
+            }
+            if (best == null)
+                break;
+            if (max > 0 && bestLoad >= max)
+                break;
+            await raw.query('INSERT INTO campus_after_sales_assignee ("channelId", "requestId", "assigneeUserId") '
+                + 'VALUES ($1, $2, $3) '
+                + 'ON CONFLICT ("channelId", "requestId") DO NOTHING', [chId, Number(r.id), best]);
+            await this.recordAssignChange(chId, Number(r.id), null, best);
+            load.set(best, bestLoad + 1);
+            assigned += 1;
+        }
+        return assigned;
     }
     /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
     async afterSalesRemind(ctx, id, note) {
@@ -2975,19 +3228,93 @@ let MerchantAdminService = class MerchantAdminService {
         }
         return out;
     }
-    /** SLA 暂停状态映射（§95）：Key=requestId，pausedMs 为已累计暂停毫秒 */
+    /** SLA 暂停状态映射（§95/§96）：Key=requestId，pausedMs 为已累计暂停毫秒，reason 为当前暂停原因 */
     async afterSalesSlaPauses(ids) {
         const out = new Map();
         const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
         if (!list.length)
             return out;
         try {
-            const rows = await this.connection.rawConnection.query('SELECT id, ("slaPausedAt" IS NOT NULL) AS paused, COALESCE("slaPausedMs", 0) AS "pausedMs" '
+            const rows = await this.connection.rawConnection.query('SELECT id, ("slaPausedAt" IS NOT NULL) AS paused, COALESCE("slaPausedMs", 0) AS "pausedMs", '
+                + '"slaPausedReason" AS reason '
                 + 'FROM after_sales_request WHERE id = ANY($1::int[])', [list]);
             const raw = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
             for (const r of Array.isArray(raw) ? raw : []) {
-                out.set(Number(r.id), { paused: Boolean(r.paused), pausedMs: Number(r.pausedMs) || 0 });
+                out.set(Number(r.id), {
+                    paused: Boolean(r.paused),
+                    pausedMs: Number(r.pausedMs) || 0,
+                    reason: r.reason == null ? null : String(r.reason),
+                });
             }
+        }
+        catch (_a) {
+            return out;
+        }
+        return out;
+    }
+    /** SLA 暂停记录（§96）：按暂停时间倒序；表缺失时降级为空 */
+    async afterSalesSlaPauseLogs(requestId) {
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT id, reason, "pausedAt", "resumedAt", COALESCE("pausedMs", 0) AS "pausedMs" '
+                + 'FROM campus_after_sales_sla_pause WHERE "requestId" = $1 '
+                + 'ORDER BY "pausedAt" DESC LIMIT 50', [requestId]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => {
+                var _a;
+                return ({
+                    id: String(r.id),
+                    reason: String((_a = r.reason) !== null && _a !== void 0 ? _a : ''),
+                    pausedAt: new Date(r.pausedAt),
+                    resumedAt: r.resumedAt ? new Date(r.resumedAt) : null,
+                    pausedMs: Number(r.pausedMs) || 0,
+                });
+            });
+        }
+        catch (_a) {
+            return [];
+        }
+    }
+    /** 平台仲裁升级记录（§96）：按时间倒序；表缺失时降级为空 */
+    async afterSalesEscalations(requestId) {
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT e.id, e."requestId", e.reason, e.priority, e.status, e."createdBy", '
+                + 'e."createdAt", e."resolvedAt", e.resolution, ad."firstName", ad."lastName" '
+                + 'FROM campus_after_sales_escalation e '
+                + 'LEFT JOIN administrator ad ON ad."userId" = e."createdBy" '
+                + 'WHERE e."requestId" = $1 ORDER BY e."createdAt" DESC LIMIT 20', [requestId]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => {
+                var _a, _b, _c;
+                return ({
+                    id: String(r.id),
+                    requestId: String(r.requestId),
+                    reason: String((_a = r.reason) !== null && _a !== void 0 ? _a : ''),
+                    priority: String((_b = r.priority) !== null && _b !== void 0 ? _b : 'normal'),
+                    status: String((_c = r.status) !== null && _c !== void 0 ? _c : 'Open'),
+                    createdBy: r.createdBy == null ? null : String(r.createdBy),
+                    creatorName: [r.firstName, r.lastName].filter(Boolean).join('') || null,
+                    createdAt: new Date(r.createdAt),
+                    resolvedAt: r.resolvedAt ? new Date(r.resolvedAt) : null,
+                    resolution: r.resolution == null ? null : String(r.resolution),
+                });
+            });
+        }
+        catch (_a) {
+            return [];
+        }
+    }
+    /** 已升级单映射（§96）：Key=requestId，存在未关闭工单为 true；表缺失时降级为空 */
+    async afterSalesEscalatedMap(ctx, ids) {
+        const out = new Map();
+        const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length)
+            return out;
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT DISTINCT "requestId" FROM campus_after_sales_escalation '
+                + 'WHERE "channelId" = $1 AND "requestId" = ANY($2::int[]) AND status = \'Open\'', [Number(ctx.channelId), list]);
+            const raw = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            for (const r of Array.isArray(raw) ? raw : [])
+                out.set(Number(r.requestId), true);
         }
         catch (_a) {
             return out;
@@ -3612,7 +3939,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
     async afterSalesWorkbench(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const stats = await this.afterSalesStats(ctx);
         const raw = this.connection.rawConnection;
         const chId = Number(ctx.channelId);
@@ -3642,18 +3969,30 @@ let MerchantAdminService = class MerchantAdminService {
             const list = Array.isArray(fuRows) && Array.isArray(fuRows[0]) ? fuRows[0] : fuRows;
             followUpDue = Number((_d = (_c = list === null || list === void 0 ? void 0 : list[0]) === null || _c === void 0 ? void 0 : _c.n) !== null && _d !== void 0 ? _d : 0);
         }
-        catch (_j) {
+        catch (_l) {
             followUpDue = 0;
         }
+        // 已升级平台仲裁且未关闭（§96）
+        let escalated = 0;
+        try {
+            const escRows = await raw.query(`SELECT COUNT(*)::int AS "n" FROM campus_after_sales_escalation e
+                  WHERE e."channelId" = $1 AND e.status = 'Open'`, [chId]);
+            const list = Array.isArray(escRows) && Array.isArray(escRows[0]) ? escRows[0] : escRows;
+            escalated = Number((_f = (_e = list === null || list === void 0 ? void 0 : list[0]) === null || _e === void 0 ? void 0 : _e.n) !== null && _f !== void 0 ? _f : 0);
+        }
+        catch (_m) {
+            escalated = 0;
+        }
         return {
-            toApprove: Number((_e = r.toApprove) !== null && _e !== void 0 ? _e : 0),
-            toReceive: Number((_f = r.toReceive) !== null && _f !== void 0 ? _f : 0),
-            refundFailed: Number((_g = r.refundFailed) !== null && _g !== void 0 ? _g : 0),
+            toApprove: Number((_g = r.toApprove) !== null && _g !== void 0 ? _g : 0),
+            toReceive: Number((_h = r.toReceive) !== null && _h !== void 0 ? _h : 0),
+            refundFailed: Number((_j = r.refundFailed) !== null && _j !== void 0 ? _j : 0),
             pendingReply: stats.pendingReply,
             overdue: stats.overdue,
             dueSoon: stats.dueSoon,
-            slaPaused: Number((_h = r.slaPaused) !== null && _h !== void 0 ? _h : 0),
+            slaPaused: Number((_k = r.slaPaused) !== null && _k !== void 0 ? _k : 0),
             followUpDue,
+            escalated,
             oldestPendingAt: oldest,
             oldestPendingHours: oldest == null
                 ? 0
@@ -3741,6 +4080,7 @@ let MerchantAdminService = class MerchantAdminService {
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, [Number(row.id)]);
         const riskMap = await this.afterSalesRiskReasons(ctx, [Number(row.id)]);
         const slaPauseMap = await this.afterSalesSlaPauses([Number(row.id)]);
+        const escalatedMap = await this.afterSalesEscalatedMap(ctx, [Number(row.id)]);
         const rules = await this.afterSalesRules(ctx);
         return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender, {
             tags: tagMap,
@@ -3748,6 +4088,7 @@ let MerchantAdminService = class MerchantAdminService {
             assignees: assigneeMap,
             risks: riskMap,
             slaPauses: slaPauseMap,
+            escalated: escalatedMap,
         });
     }
     /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
@@ -3874,7 +4215,7 @@ let MerchantAdminService = class MerchantAdminService {
         return out;
     }
     toAfterSalesRow(row, counts, timeoutHours, now, lastSender, opts = {}) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
         const customer = row.customer;
         const order = row.order;
         const dueSoonHours = Number((_a = opts.dueSoonHours) !== null && _a !== void 0 ? _a : 0);
@@ -3914,6 +4255,8 @@ let MerchantAdminService = class MerchantAdminService {
             assigneeName: (_v = assignee === null || assignee === void 0 ? void 0 : assignee.name) !== null && _v !== void 0 ? _v : null,
             riskReason: (_x = (_w = opts.risks) === null || _w === void 0 ? void 0 : _w.get(Number(row.id))) !== null && _x !== void 0 ? _x : null,
             slaPaused,
+            slaPausedReason: slaPaused ? ((_y = sla === null || sla === void 0 ? void 0 : sla.reason) !== null && _y !== void 0 ? _y : null) : null,
+            escalated: Boolean((_z = opts.escalated) === null || _z === void 0 ? void 0 : _z.get(Number(row.id))),
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

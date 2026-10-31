@@ -65,6 +65,8 @@ import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
 import { AfterSalesSlaAlertJob } from './after-sales-sla-alert.job';
 import { AfterSalesFollowUpRemindJob } from './after-sales-followup-remind.job';
 import { AfterSalesMonthlyPushJob } from './after-sales-monthly-push.job';
+import { AfterSalesAutoAssignJob } from './after-sales-auto-assign.job';
+import { AfterSalesAnomalyAlertJob } from './after-sales-anomaly-alert.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -160,6 +162,7 @@ import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-as
 import { P23AfterSalesReviewMigration } from './migrations/p23-after-sales-review';
 import { P24AfterSalesRiskFollowupMigration } from './migrations/p24-after-sales-risk-followup';
 import { P25AfterSalesSlaFollowupMonthlyMigration } from './migrations/p25-after-sales-sla-followup-monthly';
+import { P26AfterSalesEscalationAutomationMigration } from './migrations/p26-after-sales-escalation-automation';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -204,6 +207,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P23AfterSalesReviewMigration,
         P24AfterSalesRiskFollowupMigration,
         P25AfterSalesSlaFollowupMonthlyMigration,
+        P26AfterSalesEscalationAutomationMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -218,6 +222,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         AfterSalesSlaAlertJob,
         AfterSalesFollowUpRemindJob,
         AfterSalesMonthlyPushJob,
+        AfterSalesAutoAssignJob,
+        AfterSalesAnomalyAlertJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -696,6 +702,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     riskReason: String
                     """SLA 计时已暂停（§95）：等待顾客配合期间不判超时/临期"""
                     slaPaused: Boolean!
+                    """当前暂停原因（§96）：未暂停为空"""
+                    slaPausedReason: String
+                    """已升级平台仲裁且工单未关闭（§96）"""
+                    escalated: Boolean!
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -779,6 +789,37 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     assignHistory: [CampusMerchantAfterSalesAssignLog!]!
                     """顾客回访记录（§94），按时间倒序"""
                     followUps: [CampusMerchantAfterSalesFollowUp!]!
+                    """SLA 暂停历史（§96），按暂停时间倒序"""
+                    slaPauses: [CampusMerchantAfterSalesSlaPause!]!
+                    """平台仲裁升级记录（§96），按时间倒序"""
+                    escalations: [CampusMerchantAfterSalesEscalation!]!
+                }
+
+                """SLA 暂停记录（§96）：起止时间与原因"""
+                type CampusMerchantAfterSalesSlaPause {
+                    id: ID!
+                    reason: String!
+                    pausedAt: DateTime!
+                    """恢复时间（仍在暂停为空）"""
+                    resumedAt: DateTime
+                    """本次暂停时长（毫秒，未恢复为 0）"""
+                    pausedMs: Int!
+                }
+
+                """平台仲裁升级工单（§96）"""
+                type CampusMerchantAfterSalesEscalation {
+                    id: ID!
+                    requestId: ID!
+                    reason: String!
+                    """normal / urgent"""
+                    priority: String!
+                    """Open / Resolved"""
+                    status: String!
+                    createdBy: ID
+                    creatorName: String
+                    createdAt: DateTime!
+                    resolvedAt: DateTime
+                    resolution: String
                 }
 
                 """顾客回访记录（§94）：电话/线上沟通留痕"""
@@ -970,6 +1011,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     slaPaused: Int!
                     """回访到期未跟进单数（§95）"""
                     followUpDue: Int!
+                    """已升级平台仲裁且未关闭的单数（§96）"""
+                    escalated: Int!
                     """最早一笔待处理单申请时间"""
                     oldestPendingAt: DateTime
                     """最老待处理单已等待小时数"""
@@ -1211,6 +1254,16 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     monthlyPushDay: Int!
                     """月度推送时间 HH:MM（默认 21:30）"""
                     monthlyPushTime: String!
+                    """售后自动分配开关（§96）"""
+                    autoAssignEnabled: Boolean!
+                    """自动分配单人未完结上限（0=不限）"""
+                    autoAssignMax: Int!
+                    """售后异常预警推送开关（§96）"""
+                    alertEnabled: Boolean!
+                    """退款率预警阈值（百分比，0=关闭该项）"""
+                    alertRefundRate: Int!
+                    """超时待处理预警阈值（单，0=关闭该项）"""
+                    alertOverdueCount: Int!
                 }
 
                 """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
@@ -1230,6 +1283,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
 
                 type CampusMerchantRevenueDay {
                     date: String!
+                    """完整日期 YYYY-MM-DD（自定义区间导出跨年可区分）"""
+                    dateFull: String!
                     orders: Int!
                     gross: Int!
                     cancelled: Int!
@@ -2017,6 +2072,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantStoreProfile: MerchantStoreProfile!
                     """商家自助经营数据：今日/近 7 日单量、营业额、客单价、取消退款"""
                     campusMerchantRevenue: CampusMerchantRevenue!
+                    """自定义区间逐日经营数据（§89 导出）：from/to 为 YYYY-MM-DD，含起止两日，最多 366 天"""
+                    campusMerchantRevenueRange(from: String!, to: String!): [CampusMerchantRevenueDay!]!
                     """今日/区间已完成订单明细（§75 对账）：from/to 为空=今日 0 点至当前"""
                     campusMerchantCompletedOrders(from: String, to: String, take: Int, skip: Int): CampusMerchantCompletedOrders!
                     """退款记录台账（§77）：按渠道聚合退款单，Failed 单单独留痕不计数"""
@@ -2426,10 +2483,14 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantAfterSalesRiskClear(id: ID!): CampusMerchantAfterSalesItem!
                     """新增顾客回访记录（§94）：method=phone/wechat/onsite/other，result=reached/unreached/refused/other"""
                     campusMerchantAfterSalesAddFollowUp(id: ID!, method: String!, result: String!, note: String, nextAt: String): [CampusMerchantAfterSalesFollowUp!]!
-                    """暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期"""
-                    campusMerchantAfterSalesPauseSla(id: ID!): CampusMerchantAfterSalesItem!
+                    """暂停售后 SLA 计时（§95/§96）：等待顾客补充资料/回寄期间不计超时/临期，原因必填"""
+                    campusMerchantAfterSalesPauseSla(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     """恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间"""
                     campusMerchantAfterSalesResumeSla(id: ID!): CampusMerchantAfterSalesItem!
+                    """升级平台仲裁（§96）：商家无法自行处理时转平台客服，priority=normal/urgent"""
+                    campusMerchantAfterSalesEscalate(id: ID!, reason: String!, priority: String): [CampusMerchantAfterSalesEscalation!]!
+                    """关闭平台仲裁工单（§96）：填写处理结论后置为 Resolved"""
+                    campusMerchantAfterSalesEscalationResolve(id: ID!, resolution: String): [CampusMerchantAfterSalesEscalation!]!
                     """批量关闭售后单（§95）：单批上限 50，逐单返回结果"""
                     campusMerchantAfterSalesBatchClose(ids: [ID!]!, reason: String!): [CampusMerchantAfterSalesBatchResult!]!
                     """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
@@ -2459,6 +2520,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantUpdateDailyPush(enabled: Boolean!, time: String): MerchantStoreProfile!
                     """售后月度摘要推送（§95）：每月指定日（1-28）把上月售后汇总推到店铺群"""
                     campusMerchantUpdateAfterSalesMonthlyPush(enabled: Boolean!, day: Int, time: String): MerchantStoreProfile!
+                    """售后自动化设置（§96）：自动分配 + 异常预警；仅传需要修改的项，阈值 0=关闭该项"""
+                    campusMerchantUpdateAfterSalesAutomation(autoAssignEnabled: Boolean, autoAssignMax: Int, alertEnabled: Boolean, alertRefundRate: Int, alertOverdueCount: Int): MerchantStoreProfile!
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
@@ -3329,6 +3392,10 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(AfterSalesFollowUpRemindJob).start();
         // 售后月度摘要推送（§95）：每月指定日把上月售后汇总推到店铺群（同月只推一条）
         this.injector.get(AfterSalesMonthlyPushJob).start();
+        // 售后自动分配（§96）：5 分钟把未指派售后单派给未完结量最少的处理人
+        this.injector.get(AfterSalesAutoAssignJob).start();
+        // 售后异常预警推送（§96）：30 分钟检查近 7 日退款率/超时待处理，超阈值推店铺群
+        this.injector.get(AfterSalesAnomalyAlertJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));

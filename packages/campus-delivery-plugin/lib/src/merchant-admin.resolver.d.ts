@@ -17,11 +17,15 @@ export declare class MerchantAdminResolver {
     campusMerchantUpdateDailyPush(ctx: RequestContext, enabled: boolean, time?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 售后月度摘要推送设置（§95）：每月指定日（1-28）把上月售后汇总推到店铺群 */
     campusMerchantUpdateAfterSalesMonthlyPush(ctx: RequestContext, enabled: boolean, day?: number | null, time?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
+    /** 售后自动化设置（§96）：自动分配 + 异常预警；仅传需要修改的项，阈值 0=关闭该项 */
+    campusMerchantUpdateAfterSalesAutomation(ctx: RequestContext, autoAssignEnabled?: boolean | null, autoAssignMax?: number | null, alertEnabled?: boolean | null, alertRefundRate?: number | null, alertOverdueCount?: number | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     campusMerchantSetClosureDates(ctx: RequestContext, dates?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
     campusMerchantRevenue(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantRevenue>;
+    /** 自定义区间逐日经营数据（§89 导出）：from/to 为 YYYY-MM-DD，含起止两日，最多 366 天 */
+    campusMerchantRevenueRange(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantRevenueDay[]>;
     campusMerchantAcceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
@@ -84,12 +88,16 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesRiskClear(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
     campusMerchantAfterSalesAddFollowUp(ctx: RequestContext, id: ID, method: string, result: string, note?: string | null, nextAt?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesFollowUpRow[]>;
-    /** 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期 */
-    campusMerchantAfterSalesPauseSla(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 暂停售后 SLA 计时（§95/§96）：等待顾客补充资料/回寄期间不计超时/临期，原因必填 */
+    campusMerchantAfterSalesPauseSla(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间 */
     campusMerchantAfterSalesResumeSla(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 批量关闭售后单（§95）：单批上限 50，逐单返回结果 */
     campusMerchantAfterSalesBatchClose(ctx: RequestContext, ids: ID[], reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
+    /** 升级平台仲裁（§96）：商家无法自行处理时转平台客服，priority=normal/urgent */
+    campusMerchantAfterSalesEscalate(ctx: RequestContext, id: ID, reason: string, priority?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesEscalation[]>;
+    /** 关闭平台仲裁工单（§96）：填写处理结论，置为 Resolved */
+    campusMerchantAfterSalesEscalationResolve(ctx: RequestContext, id: ID, resolution?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesEscalation[]>;
     /** 售后寄回地址（§83）：本店渠道配置 */
     campusMerchantAfterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { In } from 'typeorm';
+import { Brackets, In } from 'typeorm';
 import {
     Channel,
     ID,
@@ -219,6 +219,10 @@ export interface MerchantAfterSalesRow {
     riskReason: string | null;
     /** SLA 计时已暂停（§95）：等待顾客配合期间不判超时/临期 */
     slaPaused: boolean;
+    /** 当前暂停原因（§96）：未暂停为 null */
+    slaPausedReason: string | null;
+    /** 已升级平台仲裁且工单未关闭（§96） */
+    escalated: boolean;
 }
 
 /** 换货发货结果复用列表行；批量处理逐单结果 */
@@ -544,6 +548,10 @@ export interface MerchantAfterSalesDetail {
     assignHistory: MerchantAfterSalesAssignLogRow[];
     /** 顾客回访记录（§94），按时间倒序 */
     followUps: MerchantAfterSalesFollowUpRow[];
+    /** SLA 暂停历史（§96），按暂停时间倒序 */
+    slaPauses: MerchantAfterSalesSlaPauseRow[];
+    /** 平台仲裁升级记录（§96），按时间倒序 */
+    escalations: MerchantAfterSalesEscalation[];
 }
 
 /** 顾客回访记录（§94）：电话/线上沟通留痕 */
@@ -558,6 +566,33 @@ export interface MerchantAfterSalesFollowUpRow {
     nextAt: Date | null;
     operatorName: string | null;
     createdAt: Date;
+}
+
+/** SLA 暂停记录（§96）：起止时间与原因，详情页时间线展示 */
+export interface MerchantAfterSalesSlaPauseRow {
+    id: string;
+    reason: string;
+    pausedAt: Date;
+    /** 恢复时间（仍在暂停为 null） */
+    resumedAt: Date | null;
+    /** 本次暂停时长（毫秒，未恢复为 0） */
+    pausedMs: number;
+}
+
+/** 平台仲裁升级工单（§96）：商家无法自行处理时转平台客服 */
+export interface MerchantAfterSalesEscalation {
+    id: string;
+    requestId: string;
+    reason: string;
+    /** normal / urgent */
+    priority: string;
+    /** Open / Resolved */
+    status: string;
+    createdBy: string | null;
+    creatorName: string | null;
+    createdAt: Date;
+    resolvedAt: Date | null;
+    resolution: string | null;
 }
 
 /** 线下退款登记回执（§94）：不触发支付网关，直接置为已退款 */
@@ -641,6 +676,8 @@ export interface MerchantAfterSalesWorkbench {
     slaPaused: number;
     /** 回访到期未跟进单数（§95） */
     followUpDue: number;
+    /** 已升级平台仲裁且未关闭的单数（§96） */
+    escalated: number;
     /** 最早一笔待处理单的申请时间（无待处理为 null） */
     oldestPendingAt: Date | null;
     /** 最老待处理单已等待小时数 */
@@ -719,6 +756,16 @@ export interface MerchantStoreProfile {
     monthlyPushDay: number;
     /** 月度推送时间 'HH:MM'，默认 21:30 */
     monthlyPushTime: string;
+    /** 售后自动分配开关（§96） */
+    autoAssignEnabled: boolean;
+    /** 自动分配单人未完结上限（0=不限） */
+    autoAssignMax: number;
+    /** 售后异常预警推送开关（§96） */
+    alertEnabled: boolean;
+    /** 退款率预警阈值（百分比，0=关闭该项） */
+    alertRefundRate: number;
+    /** 超时待处理预警阈值（单，0=关闭该项） */
+    alertOverdueCount: number;
 }
 
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
@@ -841,6 +888,8 @@ export interface MerchantRevenueBucket {
 
 export interface MerchantRevenueDay {
     date: string; // MM-DD
+    /** 完整日期 YYYY-MM-DD（自定义导出区间跨年时区分年份） */
+    dateFull: string;
     orders: number;
     gross: number;
     cancelled: number;
@@ -932,6 +981,12 @@ export class MerchantAdminService {
             monthlyPushEnabled: !!((channel.customFields ?? {}) as any).waimaiAfterSalesMonthlyPushEnabled,
             monthlyPushDay: Number(((channel.customFields ?? {}) as any).waimaiAfterSalesMonthlyPushDay ?? 1) || 1,
             monthlyPushTime: ((channel.customFields ?? {}) as any).waimaiAfterSalesMonthlyPushTime || '21:30',
+            // 售后自动化（§96）：自动分配 + 异常预警，阈值 0=关闭该项
+            autoAssignEnabled: !!((channel.customFields ?? {}) as any).waimaiAfterSalesAutoAssignEnabled,
+            autoAssignMax: Math.max(0, Number(((channel.customFields ?? {}) as any).waimaiAfterSalesAutoAssignMax ?? 0) || 0),
+            alertEnabled: !!((channel.customFields ?? {}) as any).waimaiAfterSalesAlertEnabled,
+            alertRefundRate: Math.max(0, Number(((channel.customFields ?? {}) as any).waimaiAfterSalesAlertRefundRate ?? 0) || 0),
+            alertOverdueCount: Math.max(0, Number(((channel.customFields ?? {}) as any).waimaiAfterSalesAlertOverdueCount ?? 0) || 0),
         };
     }
 
@@ -1016,6 +1071,43 @@ export class MerchantAdminService {
         return this.storeProfile(ctx);
     }
 
+    /**
+     * 售后自动化设置（§96）：自动分配 + 异常预警。
+     * - 仅更新显式传入的项（null/undefined 保持原值），阈值传 0 表示关闭该项。
+     * - autoAssignMax=0 不限制单人未完结单量；refundRate/overdueCount 为 0 时对应预警不触发。
+     */
+    async updateAfterSalesAutomation(
+        ctx: RequestContext,
+        input: {
+            autoAssignEnabled?: boolean | null;
+            autoAssignMax?: number | null;
+            alertEnabled?: boolean | null;
+            alertRefundRate?: number | null;
+            alertOverdueCount?: number | null;
+        },
+    ): Promise<MerchantStoreProfile> {
+        const intOrThrow = (v: number | null | undefined, name: string, max: number) => {
+            if (v == null) return null;
+            const n = Math.floor(Number(v));
+            if (!Number.isFinite(n) || n < 0 || n > max) throw new UserInputError(`${name}应为 0-${max}`);
+            return n;
+        };
+        const maxAssign = intOrThrow(input.autoAssignMax, '单人未完结上限', 100);
+        const refundRate = intOrThrow(input.alertRefundRate, '退款率阈值（百分比）', 100);
+        const overdueCount = intOrThrow(input.alertOverdueCount, '超时待处理阈值（单）', 999);
+        const repo = this.connection.getRepository(ctx, Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId as any } });
+        if (!channel) throw new UserInputError('当前店铺渠道不存在');
+        const cf = (channel.customFields ?? {}) as any;
+        if (input.autoAssignEnabled != null) cf.waimaiAfterSalesAutoAssignEnabled = !!input.autoAssignEnabled;
+        if (maxAssign != null) cf.waimaiAfterSalesAutoAssignMax = maxAssign;
+        if (input.alertEnabled != null) cf.waimaiAfterSalesAlertEnabled = !!input.alertEnabled;
+        if (refundRate != null) cf.waimaiAfterSalesAlertRefundRate = refundRate;
+        if (overdueCount != null) cf.waimaiAfterSalesAlertOverdueCount = overdueCount;
+        await repo.save(channel);
+        return this.storeProfile(ctx);
+    }
+
     /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
     async updateClosureDates(
         ctx: RequestContext,
@@ -1044,7 +1136,7 @@ export class MerchantAdminService {
         const dayMap = new Map<string, MerchantRevenueDay>();
         for (let i = DAYS - 1; i >= 0; i--) {
             const key = campusDayKey(today0 - i * DAY_MS);
-            dayMap.set(key, { date: key.slice(5), orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
+            dayMap.set(key, { date: key.slice(5), dateFull: key, orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
         }
         const todayKey = campusDayKey(now);
         const empty = (): MerchantRevenueBucket => ({ orders: 0, gross: 0, avgTicket: 0, cancelled: 0, cancelledAmount: 0 });
@@ -1093,6 +1185,66 @@ export class MerchantAdminService {
         last7.avgTicket = last7.orders ? Math.round(last7.gross / last7.orders) : 0;
         const allDays = [...dayMap.values()];
         return { today, last7, days: allDays.slice(-7), days30: allDays };
+    }
+
+    /**
+     * 自定义区间逐日经营数据（§89 导出）：含起止两日，最多 366 天。
+     * 口径与 revenue() 的 days30 完全一致（送达按 deliveredAt 归日、取消按下单日归日）。
+     */
+    async revenueRange(ctx: RequestContext, from: string, to: string): Promise<MerchantRevenueDay[]> {
+        const DAY_MS = 24 * 3600_000;
+        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+        const rawFrom = String(from ?? '').trim();
+        const rawTo = String(to ?? '').trim();
+        if (!DATE_RE.test(rawFrom) || !DATE_RE.test(rawTo)) {
+            throw new UserInputError('日期格式须为 YYYY-MM-DD');
+        }
+        const fromDay0 = startOfCampusDay(Date.parse(`${rawFrom}T00:00:00+08:00`));
+        const toDay0 = startOfCampusDay(Date.parse(`${rawTo}T00:00:00+08:00`));
+        if (Number.isNaN(fromDay0) || Number.isNaN(toDay0)) throw new UserInputError('日期格式不合法');
+        if (toDay0 < fromDay0) throw new UserInputError('结束日期不能早于开始日期');
+        const DAY_COUNT = Math.round((toDay0 - fromDay0) / DAY_MS) + 1;
+        if (DAY_COUNT > 366) throw new UserInputError('导出区间不能超过 366 天');
+        // 结束日 0 点 + 1 天 = 开区间上界
+        const start = new Date(fromDay0);
+        const end = new Date(toDay0 + DAY_MS);
+
+        const orders = await this.connection.getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere('order.customFields.hallStatus IS NOT NULL')
+            // 取消单按下单时间、已送达单按送达时间归日，两者都要覆盖（送达可能跨零点）
+            .andWhere(new Brackets(qb => {
+                qb.where('order.createdAt >= :start AND order.createdAt < :end', { start, end })
+                    .orWhere('order.customFields.deliveredAt >= :start AND order.customFields.deliveredAt < :end', { start, end });
+            }))
+            .getMany();
+
+        const dayMap = new Map<string, MerchantRevenueDay>();
+        for (let i = 0; i < DAY_COUNT; i++) {
+            const key = campusDayKey(fromDay0 + i * DAY_MS);
+            dayMap.set(key, { date: key.slice(5), dateFull: key, orders: 0, gross: 0, cancelled: 0, cancelledAmount: 0 });
+        }
+        for (const o of orders) {
+            const cf = o.customFields as any;
+            const total = o.totalWithTax ?? 0;
+            if (o.state === 'Cancelled') {
+                const day = dayMap.get(campusDayKey(new Date(o.createdAt).getTime()));
+                if (day) {
+                    day.cancelled += 1;
+                    day.cancelledAmount += total;
+                }
+                continue;
+            }
+            if (cf.deliveryStatus !== 'delivered' || !cf.deliveredAt) continue;
+            const day = dayMap.get(campusDayKey(new Date(cf.deliveredAt).getTime()));
+            if (day) {
+                day.orders += 1;
+                day.gross += total;
+            }
+        }
+        return [...dayMap.values()];
     }
 
     /** 商家侧顾客联系方式（号码保护）：本渠道订单可查，开启后只返回脱敏/虚拟号 */
@@ -2266,6 +2418,7 @@ export class MerchantAdminService {
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, rows.map(r => Number(r.id)));
         const riskMap = await this.afterSalesRiskReasons(ctx, rows.map(r => Number(r.id)));
         const slaPauseMap = await this.afterSalesSlaPauses(rows.map(r => Number(r.id)));
+        const escalatedMap = await this.afterSalesEscalatedMap(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         return {
@@ -2275,6 +2428,7 @@ export class MerchantAdminService {
                 assignees: assigneeMap,
                 risks: riskMap,
                 slaPauses: slaPauseMap,
+                escalated: escalatedMap,
             })),
             pendingCount,
             total,
@@ -2317,10 +2471,12 @@ export class MerchantAdminService {
         const addr = order?.shippingAddress ?? null;
         const riskMap = await this.afterSalesRiskReasons(ctx, [Number(request.id)]);
         const slaPauseMap = await this.afterSalesSlaPauses([Number(request.id)]);
+        const escalatedMap = await this.afterSalesEscalatedMap(ctx, [Number(request.id)]);
         return {
             request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender, {
                 risks: riskMap,
                 slaPauses: slaPauseMap,
+                escalated: escalatedMap,
             }),
             messages,
             messageTotal: counts.get(Number(request.id)) ?? messages.length,
@@ -2342,6 +2498,8 @@ export class MerchantAdminService {
             orderTotal: Number(order?.totalWithTax ?? 0),
             assignHistory: await this.afterSalesAssignLogs(Number(request.id)),
             followUps: await this.afterSalesFollowUps(Number(request.id)),
+            slaPauses: await this.afterSalesSlaPauseLogs(Number(request.id)),
+            escalations: await this.afterSalesEscalations(Number(request.id)),
         };
     }
 
@@ -2570,30 +2728,76 @@ export class MerchantAdminService {
     }
 
     /**
-     * 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄等场景，暂停期间不判超时与临期。
-     * 幂等：已暂停时重复调用直接返回当前行。
+     * 暂停售后 SLA 计时（§95/§96）：等待顾客补充资料/回寄等场景，暂停期间不判超时与临期。
+     * §96 起暂停原因必填，并写入暂停记录表供详情页时间线展示。
+     * 幂等：已暂停时重复调用直接返回当前行（不重复记暂停记录）。
      */
-    async afterSalesPauseSla(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow> {
+    async afterSalesPauseSla(
+        ctx: RequestContext,
+        id: ID,
+        reason?: string | null,
+    ): Promise<MerchantAfterSalesRow> {
         await this.assertChannelAfterSales(ctx, id, ['Pending', 'Appealed', 'Approved', 'Returning']);
-        await this.connection.rawConnection.query(
-            'UPDATE after_sales_request SET "slaPausedAt" = now() WHERE id = $1 AND "slaPausedAt" IS NULL',
-            [Number(id)],
+        const text = String(reason ?? '').trim();
+        if (!text) throw new UserInputError('请填写暂停原因（如等待顾客补充资料/回寄商品）');
+        if (text.length > 200) throw new UserInputError('暂停原因最多 200 字');
+        const chId = Number(ctx.channelId);
+        const nid = Number(id);
+        const raw = this.connection.rawConnection;
+        const claimed: any = await raw.query(
+            'UPDATE after_sales_request SET "slaPausedAt" = now(), "slaPausedReason" = $2 '
+            + 'WHERE id = $1 AND "slaPausedAt" IS NULL RETURNING id',
+            [nid, text],
         );
+        const list: any[] = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+        if (Array.isArray(list) && list.length) {
+            try {
+                await raw.query(
+                    'INSERT INTO campus_after_sales_sla_pause ("channelId", "requestId", reason, "pausedAt") '
+                    + 'VALUES ($1, $2, $3, now())',
+                    [chId, nid, text],
+                );
+            } catch (e: any) {
+                // 记录表缺失（迁移未跑完）不影响暂停本身
+                Logger.warn(`sla pause log failed: ${String(e?.message ?? e)}`, 'CampusMerchantAfterSales');
+            }
+        }
         return this.afterSalesOne(ctx, id);
     }
 
     /**
-     * 恢复售后 SLA 计时（§95）：把本次暂停时长累计进 slaPausedMs，截止时间随之后移。
-     * 幂等：未暂停时重复调用无副作用。
+     * 恢复售后 SLA 计时（§95/§96）：把本次暂停时长累计进 slaPausedMs，截止时间随之后移，
+     * 并回填暂停记录表的结束时间与本次时长。幂等：未暂停时重复调用无副作用。
      */
     async afterSalesResumeSla(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow> {
         await this.assertChannelAfterSales(ctx, id, ['Pending', 'Appealed', 'Approved', 'Returning']);
-        await this.connection.rawConnection.query(
-            'UPDATE after_sales_request SET "slaPausedMs" = COALESCE("slaPausedMs", 0) '
-            + '+ GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - "slaPausedAt")) * 1000))::bigint, '
-            + '"slaPausedAt" = NULL WHERE id = $1 AND "slaPausedAt" IS NOT NULL',
-            [Number(id)],
+        const nid = Number(id);
+        const raw = this.connection.rawConnection;
+        const openRows: any = await raw.query(
+            'SELECT "slaPausedAt" FROM after_sales_request WHERE id = $1 AND "slaPausedAt" IS NOT NULL',
+            [nid],
         );
+        const openList: any[] = Array.isArray(openRows) && Array.isArray(openRows[0]) ? openRows[0] : openRows;
+        if (!Array.isArray(openList) || !openList.length) return this.afterSalesOne(ctx, id);
+        const pausedAt = new Date(openList[0].slaPausedAt);
+        const ms = Number.isNaN(pausedAt.getTime()) ? 0 : Math.max(0, Date.now() - pausedAt.getTime());
+        await raw.query(
+            'UPDATE after_sales_request SET "slaPausedMs" = COALESCE("slaPausedMs", 0) + $2::bigint, '
+            + '"slaPausedAt" = NULL, "slaPausedReason" = NULL '
+            + 'WHERE id = $1 AND "slaPausedAt" IS NOT NULL',
+            [nid, ms],
+        );
+        try {
+            await raw.query(
+                'UPDATE campus_after_sales_sla_pause SET "resumedAt" = now(), "pausedMs" = $2::bigint '
+                + 'WHERE id = (SELECT id FROM campus_after_sales_sla_pause '
+                + 'WHERE "channelId" = $1 AND "requestId" = $3 AND "resumedAt" IS NULL '
+                + 'ORDER BY "pausedAt" DESC LIMIT 1)',
+                [Number(ctx.channelId), ms, nid],
+            );
+        } catch (e: any) {
+            Logger.warn(`sla resume log failed: ${String(e?.message ?? e)}`, 'CampusMerchantAfterSales');
+        }
         return this.afterSalesOne(ctx, id);
     }
 
@@ -2617,6 +2821,134 @@ export class MerchantAdminService {
             }
         }
         return results;
+    }
+
+    /** 升级平台仲裁（§96）：商家无法自行处理时转平台客服；同一单仅保留一条未关闭工单 */
+    async afterSalesEscalate(
+        ctx: RequestContext,
+        id: ID,
+        reason: string,
+        priority?: string | null,
+    ): Promise<MerchantAfterSalesEscalation[]> {
+        await this.assertRequestInChannel(ctx, id);
+        const text = String(reason ?? '').trim();
+        if (!text) throw new UserInputError('请填写升级原因');
+        if (text.length > 200) throw new UserInputError('升级原因最多 200 字');
+        const p = String(priority ?? '').trim() || 'normal';
+        if (!['normal', 'urgent'].includes(p)) throw new UserInputError('优先级只能是 normal 或 urgent');
+        const chId = Number(ctx.channelId);
+        const nid = Number(id);
+        const raw = this.connection.rawConnection;
+        const openRows: any = await raw.query(
+            'SELECT id FROM campus_after_sales_escalation WHERE "requestId" = $1 AND status = \'Open\' LIMIT 1',
+            [nid],
+        );
+        const openList: any[] = Array.isArray(openRows) && Array.isArray(openRows[0]) ? openRows[0] : openRows;
+        if (Array.isArray(openList) && openList.length) {
+            await raw.query(
+                'UPDATE campus_after_sales_escalation SET reason = $2, priority = $3, "updatedAt" = now() WHERE id = $1',
+                [Number(openList[0].id), text, p],
+            );
+        } else {
+            await raw.query(
+                'INSERT INTO campus_after_sales_escalation '
+                + '("channelId", "requestId", reason, priority, "createdBy") '
+                + 'VALUES ($1, $2, $3, $4, $5)',
+                [chId, nid, text, p, ctx.activeUserId ? Number(ctx.activeUserId) : null],
+            );
+        }
+        return this.afterSalesEscalations(nid);
+    }
+
+    /** 关闭平台仲裁工单（§96）：平台/商家填写处理结论后置为 Resolved */
+    async afterSalesEscalationResolve(
+        ctx: RequestContext,
+        id: ID,
+        resolution?: string | null,
+    ): Promise<MerchantAfterSalesEscalation[]> {
+        const text = String(resolution ?? '').trim();
+        if (text.length > 300) throw new UserInputError('处理结论最多 300 字');
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const escRows: any = await raw.query(
+            'SELECT "requestId" FROM campus_after_sales_escalation WHERE id = $1 AND "channelId" = $2',
+            [Number(id), chId],
+        );
+        const escList: any[] = Array.isArray(escRows) && Array.isArray(escRows[0]) ? escRows[0] : escRows;
+        if (!Array.isArray(escList) || !escList.length) throw new UserInputError('升级工单不存在');
+        await raw.query(
+            'UPDATE campus_after_sales_escalation SET status = \'Resolved\', "resolvedAt" = now(), '
+            + 'resolution = $3, "updatedAt" = now() WHERE id = $1 AND "channelId" = $2',
+            [Number(id), chId, text || null],
+        );
+        return this.afterSalesEscalations(Number(escList[0].requestId));
+    }
+
+    /**
+     * 售后自动分配（§96）：渠道开启后，把未指派的未完结售后单指派给当前未完结量最少的处理人。
+     * - 只处理本店渠道订单对应、未结案且尚无指派的售后单，按申请时间先到先得。
+     * - autoAssignMax>0 时，最空闲处理人也已达上限则本轮停止，避免压垮个人。
+     * - 返回本轮实际指派单数，供定时任务日志。
+     */
+    async afterSalesAutoAssign(ctx: RequestContext): Promise<number> {
+        const cf = ((ctx.channel as any)?.customFields ?? {}) as any;
+        if (!cf.waimaiAfterSalesAutoAssignEnabled) return 0;
+        const max = Math.max(0, Number(cf.waimaiAfterSalesAutoAssignMax ?? 0) || 0);
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const assignees = await this.afterSalesAssignees(ctx);
+        if (!assignees.length) return 0;
+        const loadRows: any = await raw.query(
+            `SELECT l."assigneeUserId" AS uid, COUNT(*)::int AS n
+               FROM campus_after_sales_assignee l
+               JOIN after_sales_request a ON a.id = l."requestId"
+              WHERE l."channelId" = $1 AND a.state NOT IN ('Refunded', 'Rejected', 'Closed')
+              GROUP BY 1`,
+            [chId],
+        );
+        const loadList: any[] = Array.isArray(loadRows) && Array.isArray(loadRows[0]) ? loadRows[0] : loadRows;
+        const load = new Map<number, number>();
+        for (const r of Array.isArray(loadList) ? loadList : []) {
+            load.set(Number(r.uid), Number(r.n) || 0);
+        }
+        const reqRows: any = await raw.query(
+            `SELECT a.id FROM after_sales_request a
+              WHERE a.state NOT IN ('Refunded', 'Rejected', 'Closed')
+                AND EXISTS (SELECT 1 FROM "order" o
+                            JOIN order_channels_channel oc ON oc."orderId" = o.id
+                            WHERE o.id = a."orderId" AND oc."channelId" = $1)
+                AND NOT EXISTS (SELECT 1 FROM campus_after_sales_assignee l
+                                WHERE l."channelId" = $1 AND l."requestId" = a.id)
+              ORDER BY a."createdAt" ASC
+              LIMIT 50`,
+            [chId],
+        );
+        const reqList: any[] = Array.isArray(reqRows) && Array.isArray(reqRows[0]) ? reqRows[0] : reqRows;
+        let assigned = 0;
+        for (const r of Array.isArray(reqList) ? reqList : []) {
+            let best: number | null = null;
+            let bestLoad = Number.POSITIVE_INFINITY;
+            for (const a of assignees) {
+                const uid = Number(a.id);
+                const n = load.get(uid) ?? 0;
+                if (n < bestLoad) {
+                    bestLoad = n;
+                    best = uid;
+                }
+            }
+            if (best == null) break;
+            if (max > 0 && bestLoad >= max) break;
+            await raw.query(
+                'INSERT INTO campus_after_sales_assignee ("channelId", "requestId", "assigneeUserId") '
+                + 'VALUES ($1, $2, $3) '
+                + 'ON CONFLICT ("channelId", "requestId") DO NOTHING',
+                [chId, Number(r.id), best],
+            );
+            await this.recordAssignChange(chId, Number(r.id), null, best);
+            load.set(best, bestLoad + 1);
+            assigned += 1;
+        }
+        return assigned;
     }
 
     /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
@@ -3999,23 +4331,98 @@ export class MerchantAdminService {
         return out;
     }
 
-    /** SLA 暂停状态映射（§95）：Key=requestId，pausedMs 为已累计暂停毫秒 */
+    /** SLA 暂停状态映射（§95/§96）：Key=requestId，pausedMs 为已累计暂停毫秒，reason 为当前暂停原因 */
     private async afterSalesSlaPauses(
         ids: number[],
-    ): Promise<Map<number, { paused: boolean; pausedMs: number }>> {
-        const out = new Map<number, { paused: boolean; pausedMs: number }>();
+    ): Promise<Map<number, { paused: boolean; pausedMs: number; reason: string | null }>> {
+        const out = new Map<number, { paused: boolean; pausedMs: number; reason: string | null }>();
         const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
         if (!list.length) return out;
         try {
             const rows: any = await this.connection.rawConnection.query(
-                'SELECT id, ("slaPausedAt" IS NOT NULL) AS paused, COALESCE("slaPausedMs", 0) AS "pausedMs" '
+                'SELECT id, ("slaPausedAt" IS NOT NULL) AS paused, COALESCE("slaPausedMs", 0) AS "pausedMs", '
+                + '"slaPausedReason" AS reason '
                 + 'FROM after_sales_request WHERE id = ANY($1::int[])',
                 [list],
             );
             const raw: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
             for (const r of Array.isArray(raw) ? raw : []) {
-                out.set(Number(r.id), { paused: Boolean(r.paused), pausedMs: Number(r.pausedMs) || 0 });
+                out.set(Number(r.id), {
+                    paused: Boolean(r.paused),
+                    pausedMs: Number(r.pausedMs) || 0,
+                    reason: r.reason == null ? null : String(r.reason),
+                });
             }
+        } catch {
+            return out;
+        }
+        return out;
+    }
+
+    /** SLA 暂停记录（§96）：按暂停时间倒序；表缺失时降级为空 */
+    private async afterSalesSlaPauseLogs(requestId: number): Promise<MerchantAfterSalesSlaPauseRow[]> {
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT id, reason, "pausedAt", "resumedAt", COALESCE("pausedMs", 0) AS "pausedMs" '
+                + 'FROM campus_after_sales_sla_pause WHERE "requestId" = $1 '
+                + 'ORDER BY "pausedAt" DESC LIMIT 50',
+                [requestId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => ({
+                id: String(r.id),
+                reason: String(r.reason ?? ''),
+                pausedAt: new Date(r.pausedAt),
+                resumedAt: r.resumedAt ? new Date(r.resumedAt) : null,
+                pausedMs: Number(r.pausedMs) || 0,
+            }));
+        } catch {
+            return [];
+        }
+    }
+
+    /** 平台仲裁升级记录（§96）：按时间倒序；表缺失时降级为空 */
+    private async afterSalesEscalations(requestId: number): Promise<MerchantAfterSalesEscalation[]> {
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT e.id, e."requestId", e.reason, e.priority, e.status, e."createdBy", '
+                + 'e."createdAt", e."resolvedAt", e.resolution, ad."firstName", ad."lastName" '
+                + 'FROM campus_after_sales_escalation e '
+                + 'LEFT JOIN administrator ad ON ad."userId" = e."createdBy" '
+                + 'WHERE e."requestId" = $1 ORDER BY e."createdAt" DESC LIMIT 20',
+                [requestId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => ({
+                id: String(r.id),
+                requestId: String(r.requestId),
+                reason: String(r.reason ?? ''),
+                priority: String(r.priority ?? 'normal'),
+                status: String(r.status ?? 'Open'),
+                createdBy: r.createdBy == null ? null : String(r.createdBy),
+                creatorName: [r.firstName, r.lastName].filter(Boolean).join('') || null,
+                createdAt: new Date(r.createdAt),
+                resolvedAt: r.resolvedAt ? new Date(r.resolvedAt) : null,
+                resolution: r.resolution == null ? null : String(r.resolution),
+            }));
+        } catch {
+            return [];
+        }
+    }
+
+    /** 已升级单映射（§96）：Key=requestId，存在未关闭工单为 true；表缺失时降级为空 */
+    private async afterSalesEscalatedMap(ctx: RequestContext, ids: number[]): Promise<Map<number, boolean>> {
+        const out = new Map<number, boolean>();
+        const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length) return out;
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT DISTINCT "requestId" FROM campus_after_sales_escalation '
+                + 'WHERE "channelId" = $1 AND "requestId" = ANY($2::int[]) AND status = \'Open\'',
+                [Number(ctx.channelId), list],
+            );
+            const raw: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            for (const r of Array.isArray(raw) ? raw : []) out.set(Number(r.requestId), true);
         } catch {
             return out;
         }
@@ -4758,6 +5165,19 @@ export class MerchantAdminService {
         } catch {
             followUpDue = 0;
         }
+        // 已升级平台仲裁且未关闭（§96）
+        let escalated = 0;
+        try {
+            const escRows: any = await raw.query(
+                `SELECT COUNT(*)::int AS "n" FROM campus_after_sales_escalation e
+                  WHERE e."channelId" = $1 AND e.status = 'Open'`,
+                [chId],
+            );
+            const list: any[] = Array.isArray(escRows) && Array.isArray(escRows[0]) ? escRows[0] : escRows;
+            escalated = Number(list?.[0]?.n ?? 0);
+        } catch {
+            escalated = 0;
+        }
         return {
             toApprove: Number(r.toApprove ?? 0),
             toReceive: Number(r.toReceive ?? 0),
@@ -4767,6 +5187,7 @@ export class MerchantAdminService {
             dueSoon: stats.dueSoon,
             slaPaused: Number(r.slaPaused ?? 0),
             followUpDue,
+            escalated,
             oldestPendingAt: oldest,
             oldestPendingHours: oldest == null
                 ? 0
@@ -4845,6 +5266,7 @@ export class MerchantAdminService {
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, [Number(row.id)]);
         const riskMap = await this.afterSalesRiskReasons(ctx, [Number(row.id)]);
         const slaPauseMap = await this.afterSalesSlaPauses([Number(row.id)]);
+        const escalatedMap = await this.afterSalesEscalatedMap(ctx, [Number(row.id)]);
         const rules = await this.afterSalesRules(ctx);
         return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender, {
             tags: tagMap,
@@ -4852,6 +5274,7 @@ export class MerchantAdminService {
             assignees: assigneeMap,
             risks: riskMap,
             slaPauses: slaPauseMap,
+            escalated: escalatedMap,
         });
     }
 
@@ -4984,7 +5407,7 @@ export class MerchantAdminService {
         timeoutHours: number,
         now: number,
         lastSender: Map<number, string>,
-        opts: { tags?: Map<number, string[]>; dueSoonHours?: number; assignees?: Map<number, { userId: string; name: string | null }>; risks?: Map<number, string>; slaPauses?: Map<number, { paused: boolean; pausedMs: number }> } = {},
+        opts: { tags?: Map<number, string[]>; dueSoonHours?: number; assignees?: Map<number, { userId: string; name: string | null }>; risks?: Map<number, string>; slaPauses?: Map<number, { paused: boolean; pausedMs: number; reason: string | null }>; escalated?: Map<number, boolean> } = {},
     ): MerchantAfterSalesRow {
         const customer = row.customer as any;
         const order = row.order as any;
@@ -5025,6 +5448,8 @@ export class MerchantAdminService {
             assigneeName: assignee?.name ?? null,
             riskReason: opts.risks?.get(Number(row.id)) ?? null,
             slaPaused,
+            slaPausedReason: slaPaused ? (sla?.reason ?? null) : null,
+            escalated: Boolean(opts.escalated?.get(Number(row.id))),
         };
     }
 

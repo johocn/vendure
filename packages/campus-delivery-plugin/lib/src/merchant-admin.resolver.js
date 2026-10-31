@@ -62,6 +62,16 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantUpdateAfterSalesMonthlyPush(ctx, enabled, day, time) {
         return this.merchant.updateAfterSalesMonthlyPush(ctx, !!enabled, day, time);
     }
+    /** 售后自动化设置（§96）：自动分配 + 异常预警；仅传需要修改的项，阈值 0=关闭该项 */
+    async campusMerchantUpdateAfterSalesAutomation(ctx, autoAssignEnabled, autoAssignMax, alertEnabled, alertRefundRate, alertOverdueCount) {
+        return this.merchant.updateAfterSalesAutomation(ctx, {
+            autoAssignEnabled,
+            autoAssignMax,
+            alertEnabled,
+            alertRefundRate,
+            alertOverdueCount,
+        });
+    }
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     async campusMerchantSetClosureDates(ctx, dates) {
@@ -73,6 +83,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 经营数据：今日/近 7 日单量、营业额、客单价、取消退款 */
     async campusMerchantRevenue(ctx) {
         return this.merchant.revenue(ctx);
+    }
+    /** 自定义区间逐日经营数据（§89 导出）：from/to 为 YYYY-MM-DD，含起止两日，最多 366 天 */
+    async campusMerchantRevenueRange(ctx, from, to) {
+        return this.merchant.revenueRange(ctx, from, to);
     }
     async campusMerchantAcceptOrder(ctx, orderId) {
         return this.merchant.acceptOrder(ctx, orderId);
@@ -176,9 +190,9 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesAddFollowUp(ctx, id, method, result, note, nextAt) {
         return this.merchant.afterSalesAddFollowUp(ctx, id, method, result, note, nextAt);
     }
-    /** 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期 */
-    async campusMerchantAfterSalesPauseSla(ctx, id) {
-        return this.merchant.afterSalesPauseSla(ctx, id);
+    /** 暂停售后 SLA 计时（§95/§96）：等待顾客补充资料/回寄期间不计超时/临期，原因必填 */
+    async campusMerchantAfterSalesPauseSla(ctx, id, reason) {
+        return this.merchant.afterSalesPauseSla(ctx, id, reason);
     }
     /** 恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间 */
     async campusMerchantAfterSalesResumeSla(ctx, id) {
@@ -187,6 +201,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 批量关闭售后单（§95）：单批上限 50，逐单返回结果 */
     async campusMerchantAfterSalesBatchClose(ctx, ids, reason) {
         return this.merchant.afterSalesBatchClose(ctx, ids, reason);
+    }
+    /** 升级平台仲裁（§96）：商家无法自行处理时转平台客服，priority=normal/urgent */
+    async campusMerchantAfterSalesEscalate(ctx, id, reason, priority) {
+        return this.merchant.afterSalesEscalate(ctx, id, reason, priority);
+    }
+    /** 关闭平台仲裁工单（§96）：填写处理结论，置为 Resolved */
+    async campusMerchantAfterSalesEscalationResolve(ctx, id, resolution) {
+        return this.merchant.afterSalesEscalationResolve(ctx, id, resolution);
     }
     /** 售后寄回地址（§83）：本店渠道配置 */
     async campusMerchantAfterSalesReturnAddress(ctx) {
@@ -521,6 +543,19 @@ __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'autoAssignEnabled', type: () => Boolean, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'autoAssignMax', type: () => graphql_1.Int, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'alertEnabled', type: () => Boolean, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'alertRefundRate', type: () => graphql_1.Int, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'alertOverdueCount', type: () => graphql_1.Int, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesAutomation", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'dates', type: () => String, nullable: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
@@ -534,6 +569,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantRevenue", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from')),
+    __param(2, (0, graphql_1.Args)('to')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantRevenueRange", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
@@ -800,8 +845,9 @@ __decorate([
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reason')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesPauseSla", null);
 __decorate([
@@ -823,6 +869,27 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Array, String]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesBatchClose", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __param(3, (0, graphql_1.Args)({ name: 'priority', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesEscalate", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'resolution', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesEscalationResolve", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

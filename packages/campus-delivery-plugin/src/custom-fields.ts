@@ -85,6 +85,14 @@ export const campusCustomFields: CustomFields = {
         { name: 'waimaiAfterSalesMonthlyPushDay', type: 'int', nullable: true }, // 1-28，空=1
         { name: 'waimaiAfterSalesMonthlyPushTime', type: 'string', nullable: true }, // 'HH:MM'，空=21:30
         { name: 'waimaiAfterSalesMonthlyPushLastMonth', type: 'string', nullable: true }, // 幂等键：已推送的月份 'YYYY-MM'
+        // 售后自动分配（§96）：按处理人未完结单量把新售后单指派给最空闲的人
+        { name: 'waimaiAfterSalesAutoAssignEnabled', type: 'boolean', nullable: true, defaultValue: false },
+        { name: 'waimaiAfterSalesAutoAssignMax', type: 'int', nullable: true }, // 单人未完结上限，0/空=不限
+        // 售后异常预警推送（§96）：近 7 日退款率 / 超时待处理超过阈值时向店铺群推送
+        { name: 'waimaiAfterSalesAlertEnabled', type: 'boolean', nullable: true, defaultValue: false },
+        { name: 'waimaiAfterSalesAlertRefundRate', type: 'int', nullable: true }, // 退款率阈值（百分比），0/空=关闭该项
+        { name: 'waimaiAfterSalesAlertOverdueCount', type: 'int', nullable: true }, // 超时待处理阈值（单），0/空=关闭该项
+        { name: 'waimaiAfterSalesAlertLastDay', type: 'string', nullable: true }, // 幂等键：已预警的校园日 'YYYY-MM-DD'
     ],
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0

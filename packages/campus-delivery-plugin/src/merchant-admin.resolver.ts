@@ -96,6 +96,26 @@ export class MerchantAdminResolver {
         return this.merchant.updateAfterSalesMonthlyPush(ctx, !!enabled, day, time);
     }
 
+    /** 售后自动化设置（§96）：自动分配 + 异常预警；仅传需要修改的项，阈值 0=关闭该项 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateAfterSalesAutomation(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'autoAssignEnabled', type: () => Boolean, nullable: true }) autoAssignEnabled?: boolean | null,
+        @Args({ name: 'autoAssignMax', type: () => Int, nullable: true }) autoAssignMax?: number | null,
+        @Args({ name: 'alertEnabled', type: () => Boolean, nullable: true }) alertEnabled?: boolean | null,
+        @Args({ name: 'alertRefundRate', type: () => Int, nullable: true }) alertRefundRate?: number | null,
+        @Args({ name: 'alertOverdueCount', type: () => Int, nullable: true }) alertOverdueCount?: number | null,
+    ) {
+        return this.merchant.updateAfterSalesAutomation(ctx, {
+            autoAssignEnabled,
+            autoAssignMax,
+            alertEnabled,
+            alertRefundRate,
+            alertOverdueCount,
+        });
+    }
+
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     @Mutation()
@@ -114,6 +134,17 @@ export class MerchantAdminResolver {
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantRevenue(@Ctx() ctx: RequestContext) {
         return this.merchant.revenue(ctx);
+    }
+
+    /** 自定义区间逐日经营数据（§89 导出）：from/to 为 YYYY-MM-DD，含起止两日，最多 366 天 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantRevenueRange(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+    ) {
+        return this.merchant.revenueRange(ctx, from, to);
     }
 
     @Mutation()
@@ -374,11 +405,15 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesAddFollowUp(ctx, id, method, result, note, nextAt);
     }
 
-    /** 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期 */
+    /** 暂停售后 SLA 计时（§95/§96）：等待顾客补充资料/回寄期间不计超时/临期，原因必填 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
-    async campusMerchantAfterSalesPauseSla(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
-        return this.merchant.afterSalesPauseSla(ctx, id);
+    async campusMerchantAfterSalesPauseSla(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.afterSalesPauseSla(ctx, id, reason);
     }
 
     /** 恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间 */
@@ -397,6 +432,29 @@ export class MerchantAdminResolver {
         @Args('reason') reason: string,
     ) {
         return this.merchant.afterSalesBatchClose(ctx, ids, reason);
+    }
+
+    /** 升级平台仲裁（§96）：商家无法自行处理时转平台客服，priority=normal/urgent */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesEscalate(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('reason') reason: string,
+        @Args({ name: 'priority', type: () => String, nullable: true }) priority?: string | null,
+    ) {
+        return this.merchant.afterSalesEscalate(ctx, id, reason, priority);
+    }
+
+    /** 关闭平台仲裁工单（§96）：填写处理结论，置为 Resolved */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesEscalationResolve(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'resolution', type: () => String, nullable: true }) resolution?: string | null,
+    ) {
+        return this.merchant.afterSalesEscalationResolve(ctx, id, resolution);
     }
 
     /** 售后寄回地址（§83）：本店渠道配置 */
