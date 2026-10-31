@@ -33,6 +33,7 @@ const addon_fee_1 = require("./addon-fee");
 const daily_limit_1 = require("./daily-limit");
 const auto_accept_1 = require("./auto-accept");
 const closure_calendar_1 = require("./closure-calendar");
+const after_sales_duty_1 = require("./after-sales-duty");
 const batch_orders_1 = require("./batch-orders");
 /** 需商家处理的状态：Pending=待审批 / Appealed=顾客申诉（商家可再次同意） */
 const AFTER_SALES_PENDING_STATES = ['Pending', 'Appealed'];
@@ -61,6 +62,8 @@ let MerchantAdminService = class MerchantAdminService {
         this.refundRetryAt = new Map();
         /** 催办顾客冷却（§84）：同单 60 秒内只发一次站内信，防对顾客骚扰 */
         this.remindAt = new Map();
+        /** 无人值班预警去重（§100）：channelId:校园日，同一天只预警一次 */
+        this.dutyWarnAt = new Map();
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     getAfterSales() {
@@ -75,6 +78,24 @@ let MerchantAdminService = class MerchantAdminService {
             core_2.Logger.warn(`AfterSalesService 不可用，商家端售后处理降级: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'CampusMerchant');
         }
         return (_c = this.afterSalesSvc) !== null && _c !== void 0 ? _c : null;
+    }
+    /** 补偿券服务（§100）：coupon-plugin 未安装/未启用时返回 null，发券失败降级为仅退款 */
+    getCouponService() {
+        var _a, _b, _c;
+        if (this.couponSvc !== undefined)
+            return (_a = this.couponSvc) !== null && _a !== void 0 ? _a : null;
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const mod = require('@vendure/coupon-plugin');
+            this.couponSvc = (mod === null || mod === void 0 ? void 0 : mod.CouponService) && this.moduleRef
+                ? new core_2.Injector(this.moduleRef).get(mod.CouponService)
+                : null;
+        }
+        catch (e) {
+            this.couponSvc = null;
+            core_2.Logger.warn(`CouponService 不可用，补偿挽留降级为仅退款: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'CampusMerchant');
+        }
+        return (_c = this.couponSvc) !== null && _c !== void 0 ? _c : null;
     }
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     async storeProfile(ctx) {
@@ -399,6 +420,18 @@ let MerchantAdminService = class MerchantAdminService {
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         const hours = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.hours;
         return hours == null || hours === '' ? null : String(hours);
+    }
+    /** 本渠道休业日列表（§100 SLA 口径）：含历史日期，供 businessDeadline 整天跳过 */
+    async channelClosureDateKeys(ctx) {
+        var _a;
+        try {
+            const cfg = await this.config.getConfig(ctx);
+            return (0, closure_calendar_1.closureDateKeys)(cfg === null || cfg === void 0 ? void 0 : cfg.closureDates);
+        }
+        catch (e) {
+            core_2.Logger.warn(`读取休业日历失败，SLA 按正常营业计算: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales');
+            return [];
+        }
     }
     async board(ctx) {
         var _a, _b, _c, _d, _e;
@@ -1536,6 +1569,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             throw new core_2.UserInputError(`同意售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
+        await this.auditAfterSales(ctx, Number(id), 'approve');
         return this.afterSalesOne(ctx, id);
     }
     /**
@@ -1641,6 +1675,7 @@ let MerchantAdminService = class MerchantAdminService {
         }
         await raw.query('UPDATE campus_after_sales_refund_review SET status = $2, "reviewedBy" = $3, "reviewedAt" = now(), '
             + 'note = $4, "updatedAt" = now() WHERE id = $1 AND status = \'Pending\'', [Number(id), approve ? 'Approved' : 'Rejected', ctx.activeUserId ? Number(ctx.activeUserId) : null, text || null]);
+        await this.auditAfterSales(ctx, requestId, approve ? 'refundReviewApprove' : 'refundReviewReject', text ? `复核备注：${text}` : null);
         const one = await this.refundReviewOne(ctx, Number(id));
         if (!one)
             throw new core_2.UserInputError('复核记录读取失败');
@@ -1779,6 +1814,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             throw new core_2.UserInputError(`确认收货失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`);
         }
+        await this.auditAfterSales(ctx, Number(id), 'confirmReturn', `收货数量：${qty == null ? '未填' : qty}${remark ? `，备注：${remark}` : ''}`);
         return this.afterSalesOne(ctx, id);
     }
     /**
@@ -1810,6 +1846,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             throw new core_2.UserInputError(`退款重试失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`);
         }
+        await this.auditAfterSales(ctx, Number(id), 'retryRefund');
         return this.afterSalesOne(ctx, id);
     }
     /**
@@ -1834,6 +1871,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             throw new core_2.UserInputError(`换货发货失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
+        await this.auditAfterSales(ctx, Number(id), 'exchangeShip', `运单号 ${no}${cr ? `，承运商 ${cr}` : ''}`);
         return this.afterSalesOne(ctx, id);
     }
     /** 批量同意（§83）：仅处理本渠道售后单，单条失败不阻断整批 */
@@ -1981,6 +2019,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             throw new core_2.UserInputError(`关闭售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
+        await this.auditAfterSales(ctx, Number(id), 'close', `关闭原因：${why}`);
         return this.afterSalesOne(ctx, id);
     }
     /**
@@ -2012,6 +2051,7 @@ let MerchantAdminService = class MerchantAdminService {
                 core_2.Logger.warn(`sla pause log failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales');
             }
         }
+        await this.auditAfterSales(ctx, nid, 'pauseSla', `暂停原因：${text}`);
         return this.afterSalesOne(ctx, id);
     }
     /**
@@ -2043,6 +2083,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             core_2.Logger.warn(`sla resume log failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales');
         }
+        await this.auditAfterSales(ctx, nid, 'resumeSla', `暂停时长 ${Math.round(ms / 60000)} 分钟`);
         return this.afterSalesOne(ctx, id);
     }
     /** 批量关闭待处理售后（§95）：单批上限 50，逐单返回结果 */
@@ -2095,6 +2136,7 @@ let MerchantAdminService = class MerchantAdminService {
         if ((req === null || req === void 0 ? void 0 : req.orderId) != null) {
             this.notify.user(ctx, req.orderId, 'afterSales', p === 'urgent' ? '售后已升级平台紧急仲裁' : '售后已升级平台仲裁', undefined, `escalate_${nid}_${Date.now()}`);
         }
+        await this.auditAfterSales(ctx, nid, 'escalate', `原因：${text}，优先级：${p}`);
         return this.afterSalesEscalations(nid);
     }
     /** 关闭平台仲裁工单（§96）：平台/商家填写处理结论后置为 Resolved */
@@ -2116,6 +2158,7 @@ let MerchantAdminService = class MerchantAdminService {
         if ((req === null || req === void 0 ? void 0 : req.orderId) != null) {
             this.notify.user(ctx, req.orderId, 'afterSales', '平台已处理您升级的售后问题', undefined, `resolve_${Number(id)}_${Date.now()}`);
         }
+        await this.auditAfterSales(ctx, rid, 'escalationResolve', text || '关闭平台仲裁工单');
         return this.afterSalesEscalations(rid);
     }
     /**
@@ -2125,13 +2168,25 @@ let MerchantAdminService = class MerchantAdminService {
      * - 返回本轮实际指派单数，供定时任务日志。
      */
     async afterSalesAutoAssign(ctx) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const cf = ((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
         if (!cf.waimaiAfterSalesAutoAssignEnabled)
             return 0;
         const max = Math.max(0, Number((_c = cf.waimaiAfterSalesAutoAssignMax) !== null && _c !== void 0 ? _c : 0) || 0);
         const chId = Number(ctx.channelId);
         const raw = this.connection.rawConnection;
+        // §100 值班排班：当前时段有值班人时优先指派给值班人，无人值班时预警（每天一次）
+        const rosterRows = await raw.query('SELECT weekday, "startMin", "endMin", "userId" FROM campus_after_sales_duty WHERE "channelId" = $1', [chId]);
+        const rosterList = Array.isArray(rosterRows) && Array.isArray(rosterRows[0]) ? rosterRows[0] : rosterRows;
+        const roster = (Array.isArray(rosterList) ? rosterList : []).map(r => ({
+            weekday: Number(r.weekday),
+            startMin: Number(r.startMin),
+            endMin: Number(r.endMin),
+            userId: Number(r.userId),
+        }));
+        const duty = (0, after_sales_duty_1.dutyAssigneeAt)(roster, Date.now());
+        if (roster.length && duty == null)
+            this.warnNoDuty(ctx, chId);
         const assignees = await this.afterSalesAssignees(ctx);
         if (!assignees.length)
             return 0;
@@ -2159,12 +2214,19 @@ let MerchantAdminService = class MerchantAdminService {
         for (const r of Array.isArray(reqList) ? reqList : []) {
             let best = null;
             let bestLoad = Number.POSITIVE_INFINITY;
-            for (const a of assignees) {
-                const uid = Number(a.id);
-                const n = (_d = load.get(uid)) !== null && _d !== void 0 ? _d : 0;
-                if (n < bestLoad) {
-                    bestLoad = n;
-                    best = uid;
+            if (duty != null) {
+                // 值班优先：未指派未结案单全部交给值班人
+                best = duty;
+                bestLoad = (_d = load.get(duty)) !== null && _d !== void 0 ? _d : 0;
+            }
+            else {
+                for (const a of assignees) {
+                    const uid = Number(a.id);
+                    const n = (_e = load.get(uid)) !== null && _e !== void 0 ? _e : 0;
+                    if (n < bestLoad) {
+                        bestLoad = n;
+                        best = uid;
+                    }
                 }
             }
             if (best == null)
@@ -2174,11 +2236,31 @@ let MerchantAdminService = class MerchantAdminService {
             await raw.query('INSERT INTO campus_after_sales_assignee ("channelId", "requestId", "assigneeUserId") '
                 + 'VALUES ($1, $2, $3) '
                 + 'ON CONFLICT ("channelId", "requestId") DO NOTHING', [chId, Number(r.id), best]);
-            await this.recordAssignChange(chId, Number(r.id), null, best);
+            await this.recordAssignChange(chId, Number(r.id), null, best, duty != null ? '值班自动指派' : undefined);
             load.set(best, bestLoad + 1);
             assigned += 1;
         }
         return assigned;
+    }
+    /** 无人值班预警（§100）：值班表非空但当前时段无人，飞书群提醒，同一校园日只发一次 */
+    warnNoDuty(ctx, chId) {
+        var _a, _b;
+        const day = (0, campus_time_1.campusDayKey)(Date.now());
+        const key = `${chId}:${day}`;
+        if (this.dutyWarnAt.has(key))
+            return;
+        this.dutyWarnAt.set(key, day);
+        if (this.dutyWarnAt.size > 500) {
+            for (const [k, d] of this.dutyWarnAt) {
+                if (d !== day)
+                    this.dutyWarnAt.delete(k);
+            }
+        }
+        if (!this.feishu.enabled)
+            return;
+        const code = String((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.code) !== null && _b !== void 0 ? _b : '');
+        this.feishu.broadcast('【售后值班预警】当前时段无人值班，售后单将按处理人负载自动分配，请及时安排值班', { channel: code })
+            .catch(e => { var _a; return core_2.Logger.warn(`duty warn failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales'); });
     }
     /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
     async afterSalesRemind(ctx, id, note) {
@@ -3089,6 +3171,8 @@ let MerchantAdminService = class MerchantAdminService {
             await raw.query('DELETE FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = $2', [chId, Number(id)]);
             if (fromId != null)
                 await this.recordAssignChange(chId, Number(id), fromId, null);
+            if (fromId != null)
+                await this.auditAfterSales(ctx, Number(id), 'unassign', `解除处理人 #${fromId}`);
             return this.afterSalesOne(ctx, id);
         }
         const uid = Number(userId);
@@ -3107,6 +3191,8 @@ let MerchantAdminService = class MerchantAdminService {
             + 'SET "assigneeUserId" = EXCLUDED."assigneeUserId", "updatedAt" = now()', [chId, Number(id), uid]);
         if (fromId !== uid)
             await this.recordAssignChange(chId, Number(id), fromId, uid);
+        if (fromId !== uid)
+            await this.auditAfterSales(ctx, Number(id), 'assign', `指派给处理人 #${uid}`);
         return this.afterSalesOne(ctx, id);
     }
     /**
@@ -3150,6 +3236,7 @@ let MerchantAdminService = class MerchantAdminService {
             const code = String((_c = (_b = ctx.channel) === null || _b === void 0 ? void 0 : _b.code) !== null && _c !== void 0 ? _c : '');
             this.feishu.broadcast(`【售后转交】售后单 #${nid} 转交给 ${toName || `操作人 #${uid}`}，原因：${why}`, { channel: code }).catch(e => { var _a; return core_2.Logger.warn(`transfer notify failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales'); });
         }
+        await this.auditAfterSales(ctx, nid, 'transfer', `转交给 ${toName || `操作人 #${uid}`}，原因：${why}`);
         return this.afterSalesOne(ctx, id);
     }
     /** 管理员显示名（§99）：firstName + lastName，取不到回退为 null */
@@ -3766,6 +3853,7 @@ let MerchantAdminService = class MerchantAdminService {
             + 'VALUES ($1, $2, \'Refunded\', $3)', [Number(id), state, uid]).catch(() => undefined);
         await raw.query('INSERT INTO campus_after_sales_note ("channelId", "requestId", "content", "createdBy") '
             + 'VALUES ($1, $2, $3, \'merchant\')', [Number(ctx.channelId), Number(id), auditNote.slice(0, 500)]).catch(() => undefined);
+        await this.auditAfterSales(ctx, Number(id), 'offlineRefund', `方式 ${methodText}，金额 ¥${(fen / 100).toFixed(2)}${remark ? `，备注：${remark}` : ''}`);
         try {
             this.notify.user(ctx, request.orderId, 'afterSales', `商家已线下退款 ¥${(fen / 100).toFixed(2)}（${methodText}）`);
         }
@@ -3788,6 +3876,7 @@ let MerchantAdminService = class MerchantAdminService {
         await this.connection.rawConnection.query('INSERT INTO campus_after_sales_risk ("channelId", "requestId", reason, active) '
             + 'VALUES ($1, $2, $3, true) '
             + 'ON CONFLICT ("requestId") DO UPDATE SET reason = EXCLUDED.reason, active = true, "updatedAt" = now()', [Number(ctx.channelId), Number(id), text]);
+        await this.auditAfterSales(ctx, Number(id), 'riskFlag', text);
         return this.afterSalesOne(ctx, id);
     }
     /** 解除售后风险标记（§94） */
@@ -3795,6 +3884,7 @@ let MerchantAdminService = class MerchantAdminService {
         await this.assertRequestInChannel(ctx, id);
         await this.connection.rawConnection.query('UPDATE campus_after_sales_risk SET active = false, "updatedAt" = now() '
             + 'WHERE "channelId" = $1 AND "requestId" = $2', [Number(ctx.channelId), Number(id)]);
+        await this.auditAfterSales(ctx, Number(id), 'riskClear');
         return this.afterSalesOne(ctx, id);
     }
     /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
@@ -4751,6 +4841,286 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError('结束时间必须晚于开始时间');
         return { from: fromT == null ? null : new Date(fromT), to: toT == null ? null : new Date(toT) };
     }
+    /** 售后操作审计留痕（§100）：统一记录处理人/动作/详情，失败不阻断业务操作 */
+    async auditAfterSales(ctx, requestId, action, detail) {
+        var _a;
+        try {
+            const uid = ctx.activeUserId ? Number(ctx.activeUserId) : null;
+            const name = uid ? await this.adminDisplayName(uid) : null;
+            await this.connection.rawConnection.query('INSERT INTO campus_after_sales_audit_log ("channelId", "requestId", action, "actorUserId", "actorName", detail) '
+                + 'VALUES ($1, $2, $3, $4, $5, $6)', [
+                Number(ctx.channelId),
+                requestId,
+                String(action !== null && action !== void 0 ? action : '').slice(0, 32),
+                uid,
+                name ? name.slice(0, 100) : null,
+                detail ? String(detail).slice(0, 500) : null,
+            ]);
+        }
+        catch (e) {
+            core_2.Logger.warn(`audit after-sales failed: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, 'CampusMerchantAfterSales');
+        }
+    }
+    /** 售后操作审计检索（§100）：按时间/动作/处理人筛选，带订单号 */
+    async afterSalesAuditLogs(ctx, opts = {}) {
+        const rows = await this.queryAuditRows(ctx, opts, 200);
+        return rows.map(r => this.toAuditRow(r));
+    }
+    /** 售后操作审计导出（§100）：CSV，最多 5000 条 */
+    async afterSalesAuditExport(ctx, opts = {}) {
+        const rows = await this.queryAuditRows(ctx, opts, 5000);
+        const header = ['售后单号', '订单号', '操作', '处理人', '处理人ID', '详情', '操作时间'];
+        const lines = rows.map(r => [
+            r.requestId, r.orderCode, r.action, r.actorName, r.actorUserId, r.detail,
+            this.campusDateTime(r.createdAt),
+        ]);
+        return this.toCsv(header, lines);
+    }
+    /** 审计查询（§100）：统一拼条件，导出与列表共用 */
+    async queryAuditRows(ctx, opts, maxTake) {
+        var _a, _b, _c, _d, _e;
+        const chId = Number(ctx.channelId);
+        const params = [chId];
+        const conds = ['l."channelId" = $1'];
+        const from = String((_a = opts.from) !== null && _a !== void 0 ? _a : '').trim();
+        const to = String((_b = opts.to) !== null && _b !== void 0 ? _b : '').trim();
+        if (from) {
+            const start = this.campusDayStart(from);
+            if (!start)
+                throw new core_2.UserInputError('开始日期格式无效，应为 YYYY-MM-DD');
+            params.push(start);
+            conds.push(`l."createdAt" >= $${params.length}`);
+        }
+        if (to) {
+            const end = this.campusDayEnd(to);
+            if (!end)
+                throw new core_2.UserInputError('结束日期格式无效，应为 YYYY-MM-DD');
+            params.push(end);
+            conds.push(`l."createdAt" < $${params.length}`);
+        }
+        const action = String((_c = opts.action) !== null && _c !== void 0 ? _c : '').trim();
+        if (action) {
+            params.push(action);
+            conds.push(`l.action = $${params.length}`);
+        }
+        const actor = String((_d = opts.actorUserId) !== null && _d !== void 0 ? _d : '').trim();
+        if (actor) {
+            if (!Number.isFinite(Number(actor)))
+                throw new core_2.UserInputError('处理人参数无效');
+            params.push(Number(actor));
+            conds.push(`l."actorUserId" = $${params.length}::int`);
+        }
+        const take = Math.min(maxTake, Math.max(1, Math.floor(Number(opts.take) || maxTake)));
+        const skip = Math.max(0, Math.floor(Number(opts.skip) || 0));
+        try {
+            const rows = await this.connection.rawConnection.query(`SELECT l.id, l."requestId", l.action, l."actorUserId", l."actorName", l.detail, l."createdAt",
+                        o.code AS "orderCode"
+                   FROM campus_after_sales_audit_log l
+                   LEFT JOIN after_sales_request a ON a.id = l."requestId"
+                   LEFT JOIN "order" o ON o.id = a."orderId"
+                  WHERE ${conds.join(' AND ')}
+                  ORDER BY l."createdAt" DESC LIMIT ${take} OFFSET ${skip}`, params);
+            return Array.isArray(rows) ? rows : [];
+        }
+        catch (e) {
+            if (e instanceof core_2.UserInputError)
+                throw e;
+            throw new core_2.UserInputError(`审计日志查询失败：${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`);
+        }
+    }
+    toAuditRow(r) {
+        var _a;
+        return {
+            id: String(r.id),
+            requestId: String(r.requestId),
+            orderCode: r.orderCode == null ? null : String(r.orderCode),
+            action: String((_a = r.action) !== null && _a !== void 0 ? _a : ''),
+            actorUserId: r.actorUserId == null ? null : String(r.actorUserId),
+            actorName: r.actorName == null ? null : String(r.actorName),
+            detail: r.detail == null ? null : String(r.detail),
+            createdAt: new Date(r.createdAt),
+        };
+    }
+    /** 值班表（§100）：本店全部排班，带值班人姓名 */
+    async afterSalesDutyRoster(ctx) {
+        const rows = await this.connection.rawConnection.query(`SELECT d.weekday, d."startMin", d."endMin", d."userId",
+                    TRIM(COALESCE(ad."firstName", '') || COALESCE(ad."lastName", '')) AS "userName"
+               FROM campus_after_sales_duty d
+               LEFT JOIN administrator ad ON ad."userId" = d."userId"
+              WHERE d."channelId" = $1
+              ORDER BY d.weekday, d."startMin", d."userId"`, [Number(ctx.channelId)]);
+        const list = Array.isArray(rows) ? rows : [];
+        return list.map(r => ({
+            weekday: Number(r.weekday),
+            startMin: Number(r.startMin),
+            endMin: Number(r.endMin),
+            userId: String(r.userId),
+            userName: r.userName ? String(r.userName) : null,
+        }));
+    }
+    /** 整体替换值班表（§100）：校验值班人均属本店，事务内先删后插 */
+    async setAfterSalesDutyRoster(ctx, entries) {
+        var _a;
+        const chId = Number(ctx.channelId);
+        const list = (0, after_sales_duty_1.normalizeDutyEntries)(entries);
+        if (list.length > 50)
+            throw new core_2.UserInputError('值班表最多 50 条');
+        const uids = Array.from(new Set(list.map(e => e.userId)));
+        if (uids.length) {
+            const owned = await this.connection.rawConnection.query('SELECT DISTINCT ad."userId" FROM administrator ad '
+                + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
+                + 'JOIN role r ON r.id = ar."roleId" '
+                + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $1 '
+                + 'WHERE ad."userId" = ANY($2::int[]) AND ad."deletedAt" IS NULL', [chId, uids]);
+            const ownedList = Array.isArray(owned) ? owned : [];
+            const found = new Set(ownedList.map(r => Number(r.userId)));
+            for (const uid of uids) {
+                if (!found.has(uid))
+                    throw new core_2.UserInputError(`值班人不存在或不属于当前店铺：${uid}`);
+            }
+        }
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        await runner.startTransaction();
+        try {
+            await runner.query('DELETE FROM campus_after_sales_duty WHERE "channelId" = $1', [chId]);
+            for (const e of list) {
+                await runner.query('INSERT INTO campus_after_sales_duty ("channelId", weekday, "startMin", "endMin", "userId") '
+                    + 'VALUES ($1, $2, $3, $4, $5)', [chId, e.weekday, e.startMin, e.endMin, e.userId]);
+            }
+            await runner.commitTransaction();
+        }
+        catch (e) {
+            await runner.rollbackTransaction().catch(() => undefined);
+            throw new core_2.UserInputError(`保存值班表失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
+        finally {
+            await runner.release();
+        }
+        return this.afterSalesDutyRoster(ctx);
+    }
+    /** 补偿挽留方案列表（§100） */
+    async afterSalesCompensationPlans(ctx) {
+        const rows = await this.connection.rawConnection.query('SELECT id, name, "refundAmount", "couponTemplateId", note, enabled, "createdAt" '
+            + 'FROM campus_after_sales_compensation_plan WHERE "channelId" = $1 ORDER BY "createdAt" DESC', [Number(ctx.channelId)]);
+        const list = Array.isArray(rows) ? rows : [];
+        return list.map(r => this.toCompensationPlan(r));
+    }
+    /** 保存补偿方案（§100）：id 为空新建，否则更新；退款金额单位分 */
+    async saveAfterSalesCompensationPlan(ctx, input) {
+        var _a, _b, _c, _d;
+        const chId = Number(ctx.channelId);
+        const name = String((_a = input === null || input === void 0 ? void 0 : input.name) !== null && _a !== void 0 ? _a : '').trim();
+        if (!name)
+            throw new core_2.UserInputError('请填写方案名称');
+        if (name.length > 100)
+            throw new core_2.UserInputError('方案名称最多 100 字');
+        const amount = Math.floor(Number((_b = input === null || input === void 0 ? void 0 : input.refundAmount) !== null && _b !== void 0 ? _b : 0));
+        if (!Number.isFinite(amount) || amount < 0)
+            throw new core_2.UserInputError('退款金额不能为负');
+        const tpl = String((_c = input === null || input === void 0 ? void 0 : input.couponTemplateId) !== null && _c !== void 0 ? _c : '').trim();
+        if (tpl.length > 255)
+            throw new core_2.UserInputError('优惠券模板 id 过长');
+        const note = String((_d = input === null || input === void 0 ? void 0 : input.note) !== null && _d !== void 0 ? _d : '').trim();
+        if (note.length > 200)
+            throw new core_2.UserInputError('方案备注最多 200 字');
+        const enabled = (input === null || input === void 0 ? void 0 : input.enabled) === undefined || (input === null || input === void 0 ? void 0 : input.enabled) === null ? true : Boolean(input.enabled);
+        const raw = this.connection.rawConnection;
+        const id = (input === null || input === void 0 ? void 0 : input.id) == null || String(input.id) === '' ? null : Number(input.id);
+        if (id == null) {
+            await raw.query('INSERT INTO campus_after_sales_compensation_plan '
+                + '("channelId", name, "refundAmount", "couponTemplateId", note, enabled) '
+                + 'VALUES ($1, $2, $3, $4, $5, $6)', [chId, name, amount, tpl || null, note || null, enabled]);
+        }
+        else {
+            if (!Number.isFinite(id) || id <= 0)
+                throw new core_2.UserInputError('方案 id 无效');
+            const updRows = await raw.query('UPDATE campus_after_sales_compensation_plan SET name = $1, "refundAmount" = $2, '
+                + '"couponTemplateId" = $3, note = $4, enabled = $5, "updatedAt" = now() '
+                + 'WHERE id = $6 AND "channelId" = $7 RETURNING id', [name, amount, tpl || null, note || null, enabled, id, chId]);
+            const updList = Array.isArray(updRows) && Array.isArray(updRows[0]) ? updRows[0] : updRows;
+            if (!Array.isArray(updList) || !updList.length)
+                throw new core_2.UserInputError('方案不存在或不属于当前店铺');
+        }
+        return this.afterSalesCompensationPlans(ctx);
+    }
+    /** 删除补偿方案（§100） */
+    async deleteAfterSalesCompensationPlan(ctx, id) {
+        await this.connection.rawConnection.query('DELETE FROM campus_after_sales_compensation_plan WHERE id = $1 AND "channelId" = $2', [Number(id), Number(ctx.channelId)]);
+        return this.afterSalesCompensationPlans(ctx);
+    }
+    toCompensationPlan(r) {
+        var _a;
+        return {
+            id: String(r.id),
+            name: String((_a = r.name) !== null && _a !== void 0 ? _a : ''),
+            refundAmount: Number(r.refundAmount) || 0,
+            couponTemplateId: r.couponTemplateId == null ? null : String(r.couponTemplateId),
+            note: r.note == null ? null : String(r.note),
+            enabled: Boolean(r.enabled),
+            createdAt: new Date(r.createdAt),
+        };
+    }
+    /**
+     * 一键发放补偿挽留（§100）：部分退款（可 0）+ 优惠券补偿，随后关闭售后单并通知顾客。
+     * 退款失败直接抛错（不吞金额），发券失败降级为仅退款并回写原因。
+     */
+    async afterSalesApplyCompensation(ctx, id, planId) {
+        var _a, _b, _c, _d;
+        const request = await this.assertChannelAfterSales(ctx, id, AFTER_SALES_PENDING_STATES);
+        const rows = await this.connection.rawConnection.query('SELECT id, name, "refundAmount", "couponTemplateId", enabled '
+            + 'FROM campus_after_sales_compensation_plan WHERE id = $1 AND "channelId" = $2', [Number(planId), Number(ctx.channelId)]);
+        const list = Array.isArray(rows) ? rows : [];
+        const plan = list[0];
+        if (!plan)
+            throw new core_2.UserInputError('补偿方案不存在或不属于当前店铺');
+        if (!plan.enabled)
+            throw new core_2.UserInputError('该补偿方案已停用');
+        const planName = String((_a = plan.name) !== null && _a !== void 0 ? _a : '');
+        const amount = Math.max(0, Math.floor(Number(plan.refundAmount) || 0));
+        const tpl = plan.couponTemplateId == null ? '' : String(plan.couponTemplateId).trim();
+        const nid = Number(id);
+        if (amount > 0) {
+            await this.merchantRefund(ctx, request.orderId, amount, `补偿挽留：${planName}`);
+        }
+        let couponGranted = false;
+        let message = '';
+        if (tpl && request.customerId != null) {
+            const coupon = this.getCouponService();
+            if (!coupon) {
+                message = '优惠券服务不可用，已仅执行退款';
+            }
+            else {
+                try {
+                    await coupon.grantCoupon(ctx, tpl, [Number(request.customerId)]);
+                    couponGranted = true;
+                }
+                catch (e) {
+                    message = `发券失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`;
+                    core_2.Logger.warn(`grant compensation coupon failed: ${message}`, 'CampusMerchantAfterSales');
+                }
+            }
+        }
+        const svc = this.getAfterSales();
+        if (!svc)
+            throw new core_2.UserInputError('售后插件未安装，暂不能关闭售后单');
+        try {
+            await svc.adminCancelRequest(ctx, id, `补偿挽留：${planName}`);
+        }
+        catch (e) {
+            throw new core_2.UserInputError(`补偿已发放，但关闭售后单失败：${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`);
+        }
+        try {
+            this.notify.user(ctx, request.orderId, 'afterSales', amount > 0
+                ? `商家已补偿 ¥${(amount / 100).toFixed(2)}${couponGranted ? '，并发放优惠券' : ''}，售后单已关闭`
+                : `${couponGranted ? '商家已发放补偿优惠券' : '商家已关闭售后单'}`);
+        }
+        catch (e) {
+            core_2.Logger.warn(`compensation notify failed: ${String((_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e)}`, 'CampusMerchantAfterSales');
+        }
+        await this.auditAfterSales(ctx, nid, 'compensate', `方案：${planName}，退款 ¥${(amount / 100).toFixed(2)}${couponGranted ? '，已发券' : ''}${message ? `（${message}）` : ''}`);
+        return { ok: true, refundAmount: amount, couponGranted, message };
+    }
     /** 渠道售后处理时限（小时）：afterSalesTimeoutHours，未配置按售后插件默认 48 */
     afterSalesTimeoutHours(ctx) {
         var _a, _b, _c;
@@ -4765,6 +5135,7 @@ let MerchantAdminService = class MerchantAdminService {
     async recomputeSlaDeadlines(ctx) {
         const chId = Number(ctx.channelId);
         const businessHours = await this.channelBusinessHours(ctx);
+        const closureDates = await this.channelClosureDateKeys(ctx);
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const raw = this.connection.rawConnection;
         const rows = await raw.query(`SELECT a.id, a."createdAt", COALESCE(a."slaPausedMs", 0) AS paused
@@ -4775,7 +5146,7 @@ let MerchantAdminService = class MerchantAdminService {
                             WHERE o.id = a."orderId" AND oc."channelId" = $1)`, [chId]);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         for (const r of Array.isArray(list) ? list : []) {
-            const deadline = (0, after_sales_sla_1.businessDeadline)(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused));
+            const deadline = (0, after_sales_sla_1.businessDeadline)(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused), closureDates);
             await raw.query('UPDATE after_sales_request SET "slaDeadlineAt" = to_timestamp($2 / 1000.0) WHERE id = $1', [Number(r.id), deadline]);
         }
     }
@@ -4786,7 +5157,7 @@ let MerchantAdminService = class MerchantAdminService {
         const r = Array.isArray(list) ? list[0] : null;
         if (!r)
             return;
-        const deadline = (0, after_sales_sla_1.businessDeadline)(new Date(r.createdAt), this.afterSalesTimeoutHours(ctx), await this.channelBusinessHours(ctx), Number(r.paused));
+        const deadline = (0, after_sales_sla_1.businessDeadline)(new Date(r.createdAt), this.afterSalesTimeoutHours(ctx), await this.channelBusinessHours(ctx), Number(r.paused), await this.channelClosureDateKeys(ctx));
         await this.connection.rawConnection.query('UPDATE after_sales_request SET "slaDeadlineAt" = to_timestamp($2 / 1000.0) WHERE id = $1', [requestId, deadline]);
     }
     /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
@@ -4807,6 +5178,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             throw new core_2.UserInputError(`驳回售后失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
+        await this.auditAfterSales(ctx, Number(id), 'reject', `驳回理由：${text}`);
         return this.afterSalesOne(ctx, id);
     }
     /** 分流规则行映射（§98）：DB 原始行 → 接口结构 */

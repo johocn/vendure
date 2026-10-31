@@ -5,6 +5,7 @@ exports.campusToday = campusToday;
 exports.normalizeClosureDates = normalizeClosureDates;
 exports.safeClosureDates = safeClosureDates;
 exports.closedToday = closedToday;
+exports.closureDateKeys = closureDateKeys;
 exports.nextClosure = nextClosure;
 /**
  * 营业日历：指定日期休业（§70）。
@@ -102,6 +103,32 @@ function closedToday(dates, now = Date.now()) {
     var _a;
     const today = campusToday(now);
     return (_a = (dates !== null && dates !== void 0 ? dates : []).find(d => d.date === today)) !== null && _a !== void 0 ? _a : null;
+}
+/**
+ * SLA 口径（§100）：取配置中全部合法休业日期（含已过去的日期）。
+ * safeClosureDates 会丢弃过去日期（面向「今日营业状态」），但售后 SLA 重算需要覆盖
+ * 申请时点至今的历史休业日，否则跨假期的工单会被误判超时。
+ */
+function closureDateKeys(raw) {
+    var _a;
+    let list = raw;
+    if (typeof raw === 'string') {
+        try {
+            list = JSON.parse(raw);
+        }
+        catch (_b) {
+            return [];
+        }
+    }
+    if (!Array.isArray(list))
+        return [];
+    const out = [];
+    for (const item of list) {
+        const date = String((_a = item === null || item === void 0 ? void 0 : item.date) !== null && _a !== void 0 ? _a : '').trim();
+        if (isValidDate(date))
+            out.push(date);
+    }
+    return out;
 }
 /** 下一次休业（今天或未来最近一条），供后台/C 端提示 */
 function nextClosure(dates, now = Date.now()) {

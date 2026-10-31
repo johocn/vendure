@@ -16,13 +16,18 @@ const MAX_DAYS = 731;
  * @param timeoutHours 处理时限（营业小时数）
  * @param businessHours 门店营业时间文案（如 10:00-22:00）；空=全天营业
  * @param pausedMs SLA 暂停累计时长（§95），按线性顺延
+ * @param closureDates 休业日（§70，YYYY-MM-DD 校园自然日，§100）：整天不计入处理时限
  * @returns 截止时间（毫秒时间戳）
  */
-function businessDeadline(createdAt, timeoutHours, businessHours, pausedMs = 0) {
+function businessDeadline(createdAt, timeoutHours, businessHours, pausedMs = 0, closureDates) {
     const startMs = typeof createdAt === 'number' ? createdAt : createdAt.getTime();
     const pause = Math.max(0, Math.round(Number(pausedMs) || 0));
     const plainMs = Math.max(0, Math.round((Number(timeoutHours) || 0) * 3600000)) + pause;
-    const ranges = (0, business_hours_1.parseBusinessHours)(businessHours);
+    const closed = new Set((closureDates !== null && closureDates !== void 0 ? closureDates : []).map(d => String(d !== null && d !== void 0 ? d : '').trim()).filter(Boolean));
+    let ranges = (0, business_hours_1.parseBusinessHours)(businessHours);
+    // 无营业时间配置但有休业日：按全天营业逐日推进，休业日整天跳过
+    if (!ranges.length && closed.size)
+        ranges = [{ start: 0, end: DAY_MINUTES }];
     if (!ranges.length)
         return startMs + plainMs;
     const durationMin = Math.max(0, Math.round((Number(timeoutHours) || 0) * 60));
@@ -31,13 +36,17 @@ function businessDeadline(createdAt, timeoutHours, businessHours, pausedMs = 0) 
     let remaining = durationMin;
     for (let guard = 0; guard < MAX_DAYS && remaining > 0; guard++) {
         const dayIdx = Math.floor(cursor / DAY_MINUTES);
-        // 跨零点时段需要取前一天/后一天展开，覆盖凌晨与深夜
+        // 跨零点时段需要取前一天/后一天展开，覆盖凌晨与深夜；
+        // 休业日（§100）按营业日整天丢弃，不计入处理时限
         const segments = ranges
             .flatMap(r => [-1, 0, 1].map(k => ({
+            day: dayIdx + k,
             start: (dayIdx + k) * DAY_MINUTES + r.start,
             end: (dayIdx + k) * DAY_MINUTES + r.end,
         })))
             .filter(seg => seg.end > cursor)
+            .filter(seg => !closed.size
+            || !closed.has((0, campus_time_1.campusDayKey)(seg.day * DAY_MINUTES * MINUTE_MS - campus_time_1.CAMPUS_TZ_OFFSET_MS)))
             .sort((a, b) => a.start - b.start);
         if (!segments.length) {
             cursor = (dayIdx + 1) * DAY_MINUTES;

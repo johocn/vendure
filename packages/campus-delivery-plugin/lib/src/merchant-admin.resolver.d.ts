@@ -184,6 +184,22 @@ export declare class MerchantAdminResolver {
     campusMerchantDeleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception */
     campusMerchantAfterSalesRecordReturnLogistics(ctx: RequestContext, id: ID, status: string, description?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReturnLogistics>;
+    /** 售后操作审计检索（§100）：按时间/动作/处理人筛选，带订单号 */
+    campusMerchantAfterSalesAuditLogs(ctx: RequestContext, from?: string | null, to?: string | null, action?: string | null, actorUserId?: ID | null, take?: number | null, skip?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesAuditRow[]>;
+    /** 售后操作审计导出（§100）：CSV，按同一筛选条件 */
+    campusMerchantAfterSalesAuditExport(ctx: RequestContext, from?: string | null, to?: string | null, action?: string | null, actorUserId?: ID | null): Promise<string>;
+    /** 售后值班表（§100）：本店全部排班 */
+    campusMerchantAfterSalesDutyRoster(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesDutyEntry[]>;
+    /** 整体替换售后值班表（§100）：entries 为 JSON 字符串 [{weekday,startMin,endMin,userId}] */
+    campusMerchantSetAfterSalesDutyRoster(ctx: RequestContext, entries: string): Promise<import("./merchant-admin.service").MerchantAfterSalesDutyEntry[]>;
+    /** 补偿挽留方案列表（§100） */
+    campusMerchantAfterSalesCompensationPlans(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesCompensationPlan[]>;
+    /** 保存补偿方案（§100）：id 为空=新增；refundAmount 单位分 */
+    campusMerchantSaveAfterSalesCompensationPlan(ctx: RequestContext, id: ID | null, name: string, refundAmount: number, couponTemplateId?: string | null, note?: string | null, enabled?: boolean | null): Promise<import("./merchant-admin.service").MerchantAfterSalesCompensationPlan[]>;
+    /** 删除补偿方案（§100） */
+    campusMerchantDeleteAfterSalesCompensationPlan(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesCompensationPlan[]>;
+    /** 一键发放补偿挽留（§100）：部分退款 + 优惠券，随后关闭售后单 */
+    campusMerchantAfterSalesApplyCompensation(ctx: RequestContext, id: ID, planId: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesCompensationResult>;
     /** 保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate */
     campusMerchantSaveAfterSalesAutoRule(ctx: RequestContext, id: ID | null, name: string, action: string, priority?: number | null, enabled?: boolean | null, matchType?: string | null, matchReason?: string | null, minAmount?: number | null, maxAmount?: number | null, rejectReason?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesAutoRule>;
     /** 删除售后自动分流规则（§98） */

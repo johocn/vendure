@@ -167,6 +167,7 @@ const p26_after_sales_escalation_automation_1 = require("./migrations/p26-after-
 const p27_after_sales_template_category_1 = require("./migrations/p27-after-sales-template-category");
 const p28_after_sales_product_and_rules_1 = require("./migrations/p28-after-sales-product-and-rules");
 const p29_after_sales_refund_review_and_sla_1 = require("./migrations/p29-after-sales-refund-review-and-sla");
+const p30_after_sales_audit_duty_compensation_1 = require("./migrations/p30-after-sales-audit-duty-compensation");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -379,6 +380,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p27_after_sales_template_category_1.P27AfterSalesTemplateCategoryMigration,
             p28_after_sales_product_and_rules_1.P28AfterSalesProductAndRulesMigration,
             p29_after_sales_refund_review_and_sla_1.P29AfterSalesRefundReviewAndSlaMigration,
+            p30_after_sales_audit_duty_compensation_1.P30AfterSalesAuditDutyCompensationMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -1441,6 +1443,56 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     score: Int!
                 }
 
+                """售后操作审计行（§100）：统一操作留痕"""
+                type CampusMerchantAfterSalesAuditRow {
+                    id: ID!
+                    requestId: ID!
+                    """订单号（A2400xxx）"""
+                    orderCode: String
+                    """操作动作（approve/reject/close/transfer/assign…）"""
+                    action: String!
+                    """处理人 User id（系统操作为空）"""
+                    actorUserId: String
+                    """处理人姓名"""
+                    actorName: String
+                    """操作详情"""
+                    detail: String
+                    createdAt: DateTime!
+                }
+
+                """售后值班条目（§100）：weekday 0=周日，跨零点 endMin>1440"""
+                type CampusMerchantAfterSalesDutyEntry {
+                    weekday: Int!
+                    startMin: Int!
+                    endMin: Int!
+                    userId: ID!
+                    userName: String
+                }
+
+                """补偿挽留方案（§100）：部分退款 + 优惠券补偿"""
+                type CampusMerchantAfterSalesCompensationPlan {
+                    id: ID!
+                    name: String!
+                    """退款金额（分，0=只发券）"""
+                    refundAmount: Int!
+                    """优惠券模板 id（空=不发券）"""
+                    couponTemplateId: String
+                    note: String
+                    enabled: Boolean!
+                    createdAt: DateTime!
+                }
+
+                """补偿发放结果（§100）"""
+                type CampusMerchantAfterSalesCompensationResult {
+                    ok: Boolean!
+                    """本次退款金额（分）"""
+                    refundAmount: Int!
+                    """补偿券是否发放成功"""
+                    couponGranted: Boolean!
+                    """降级说明（发券失败等）"""
+                    message: String!
+                }
+
                 """商家快捷回复模板（§87）：本店渠道共用"""
                 type CampusMerchantAfterSalesReplyTemplate {
                     id: ID!
@@ -2473,6 +2525,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesRefundReviews(status: String): [CampusMerchantAfterSalesRefundReview!]!
                     """智能话术推荐（§99）：按售后原因/类型匹配本店快捷回复模板"""
                     campusMerchantAfterSalesSuggestedReplies(id: ID!): [CampusMerchantAfterSalesSuggestedReply!]!
+                    """售后操作审计检索（§100）：按时间/动作/处理人筛选"""
+                    campusMerchantAfterSalesAuditLogs(from: String, to: String, action: String, actorUserId: ID, take: Int, skip: Int): [CampusMerchantAfterSalesAuditRow!]!
+                    """售后操作审计导出（§100）：CSV"""
+                    campusMerchantAfterSalesAuditExport(from: String, to: String, action: String, actorUserId: ID): String!
+                    """售后值班表（§100）"""
+                    campusMerchantAfterSalesDutyRoster: [CampusMerchantAfterSalesDutyEntry!]!
+                    """补偿挽留方案列表（§100）"""
+                    campusMerchantAfterSalesCompensationPlans: [CampusMerchantAfterSalesCompensationPlan!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2818,6 +2878,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantDeleteAfterSalesReplyTemplate(id: ID!): Boolean!
                     """登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception"""
                     campusMerchantAfterSalesRecordReturnLogistics(id: ID!, status: String!, description: String): CampusMerchantAfterSalesReturnLogistics!
+                    """整体替换售后值班表（§100）：entries 为 JSON [{weekday,startMin,endMin,userId}]"""
+                    campusMerchantSetAfterSalesDutyRoster(entries: String!): [CampusMerchantAfterSalesDutyEntry!]!
+                    """保存补偿方案（§100）：id 为空=新增，refundAmount 单位分"""
+                    campusMerchantSaveAfterSalesCompensationPlan(id: ID, name: String!, refundAmount: Int!, couponTemplateId: String, note: String, enabled: Boolean): [CampusMerchantAfterSalesCompensationPlan!]!
+                    """删除补偿方案（§100）"""
+                    campusMerchantDeleteAfterSalesCompensationPlan(id: ID!): [CampusMerchantAfterSalesCompensationPlan!]!
+                    """一键发放补偿挽留（§100）：部分退款 + 优惠券，随后关闭售后单"""
+                    campusMerchantAfterSalesApplyCompensation(id: ID!, planId: ID!): CampusMerchantAfterSalesCompensationResult!
                     """保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate"""
                     campusMerchantSaveAfterSalesAutoRule(id: ID, name: String!, action: String!, priority: Int, enabled: Boolean, matchType: String, matchReason: String, minAmount: Int, maxAmount: Int, rejectReason: String): CampusMerchantAfterSalesAutoRule!
                     """删除售后自动分流规则（§98）"""

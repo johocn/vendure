@@ -286,6 +286,47 @@ export interface MerchantAfterSalesRules {
     /** 大额退款复核阈值（分，0=关闭，§99） */
     refundReviewThreshold: number;
 }
+/** 售后操作审计行（§100）：统一操作留痕，按处理人/动作/时间可检索导出 */
+export interface MerchantAfterSalesAuditRow {
+    id: string;
+    requestId: string;
+    orderCode: string | null;
+    action: string;
+    actorUserId: string | null;
+    actorName: string | null;
+    detail: string | null;
+    createdAt: Date;
+}
+/** 值班条目（§100）：weekday 0=周日，分钟区间，跨零点 endMin>1440 */
+export interface MerchantAfterSalesDutyEntry {
+    weekday: number;
+    startMin: number;
+    endMin: number;
+    userId: string;
+    userName: string | null;
+}
+/** 补偿挽留方案（§100）：部分退款 + 优惠券补偿 */
+export interface MerchantAfterSalesCompensationPlan {
+    id: string;
+    name: string;
+    /** 退款金额（分，0=只发券） */
+    refundAmount: number;
+    /** 优惠券模板 id（空=不发券） */
+    couponTemplateId: string | null;
+    note: string | null;
+    enabled: boolean;
+    createdAt: Date;
+}
+/** 发放补偿结果（§100） */
+export interface MerchantAfterSalesCompensationResult {
+    ok: boolean;
+    /** 本次部分退款金额（分） */
+    refundAmount: number;
+    /** 是否成功发放补偿券 */
+    couponGranted: boolean;
+    /** 结果说明（发券失败等降级原因） */
+    message: string;
+}
 /** 商家快捷回复模板（§87）：本店渠道共用 */
 export interface MerchantAfterSalesReplyTemplate {
     id: string;
@@ -967,8 +1008,14 @@ export declare class MerchantAdminService {
     private refundRetryAt;
     /** 催办顾客冷却（§84）：同单 60 秒内只发一次站内信，防对顾客骚扰 */
     private remindAt;
+    /** 补偿券服务缓存（§100）：coupon-plugin 可选依赖 */
+    private couponSvc?;
+    /** 无人值班预警去重（§100）：channelId:校园日，同一天只预警一次 */
+    private dutyWarnAt;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private getAfterSales;
+    /** 补偿券服务（§100）：coupon-plugin 未安装/未启用时返回 null，发券失败降级为仅退款 */
+    private getCouponService;
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     storeProfile(ctx: RequestContext): Promise<MerchantStoreProfile>;
     /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
@@ -1017,6 +1064,8 @@ export declare class MerchantAdminService {
     customerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
     /** 本渠道营业时间（Channel.customFields.waimaiBusinessHours）；原生查询，供工作台高频轮询 */
     private channelBusinessHours;
+    /** 本渠道休业日列表（§100 SLA 口径）：含历史日期，供 businessDeadline 整天跳过 */
+    private channelClosureDateKeys;
     board(ctx: RequestContext): Promise<MerchantBoard>;
     /**
      * 今日/区间已完成订单明细（§75 对账）：送达口径与工作台「今日完成」一致
@@ -1255,6 +1304,8 @@ export declare class MerchantAdminService {
      * - 返回本轮实际指派单数，供定时任务日志。
      */
     afterSalesAutoAssign(ctx: RequestContext): Promise<number>;
+    /** 无人值班预警（§100）：值班表非空但当前时段无人，飞书群提醒，同一校园日只发一次 */
+    private warnNoDuty;
     /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
     afterSalesRemind(ctx: RequestContext, id: ID, note?: string | null): Promise<MerchantAfterSalesRow>;
     /** 退款流水（§84）：按退款时间倒序分页，日期为校园日（UTC+8），可省略不限 */
@@ -1455,6 +1506,50 @@ export declare class MerchantAdminService {
     afterSalesWorkbench(ctx: RequestContext): Promise<MerchantAfterSalesWorkbench>;
     /** 申请时间区间：纯日期按校园日（UTC+8）切分，to 含当天；非法格式直接拒绝 */
     private afterSalesRange;
+    /** 售后操作审计留痕（§100）：统一记录处理人/动作/详情，失败不阻断业务操作 */
+    private auditAfterSales;
+    /** 售后操作审计检索（§100）：按时间/动作/处理人筛选，带订单号 */
+    afterSalesAuditLogs(ctx: RequestContext, opts?: {
+        from?: string | null;
+        to?: string | null;
+        action?: string | null;
+        actorUserId?: ID | null;
+        take?: number | null;
+        skip?: number | null;
+    }): Promise<MerchantAfterSalesAuditRow[]>;
+    /** 售后操作审计导出（§100）：CSV，最多 5000 条 */
+    afterSalesAuditExport(ctx: RequestContext, opts?: {
+        from?: string | null;
+        to?: string | null;
+        action?: string | null;
+        actorUserId?: ID | null;
+    }): Promise<string>;
+    /** 审计查询（§100）：统一拼条件，导出与列表共用 */
+    private queryAuditRows;
+    private toAuditRow;
+    /** 值班表（§100）：本店全部排班，带值班人姓名 */
+    afterSalesDutyRoster(ctx: RequestContext): Promise<MerchantAfterSalesDutyEntry[]>;
+    /** 整体替换值班表（§100）：校验值班人均属本店，事务内先删后插 */
+    setAfterSalesDutyRoster(ctx: RequestContext, entries: unknown): Promise<MerchantAfterSalesDutyEntry[]>;
+    /** 补偿挽留方案列表（§100） */
+    afterSalesCompensationPlans(ctx: RequestContext): Promise<MerchantAfterSalesCompensationPlan[]>;
+    /** 保存补偿方案（§100）：id 为空新建，否则更新；退款金额单位分 */
+    saveAfterSalesCompensationPlan(ctx: RequestContext, input: {
+        id?: ID | null;
+        name: string;
+        refundAmount: number;
+        couponTemplateId?: string | null;
+        note?: string | null;
+        enabled?: boolean | null;
+    }): Promise<MerchantAfterSalesCompensationPlan[]>;
+    /** 删除补偿方案（§100） */
+    deleteAfterSalesCompensationPlan(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesCompensationPlan[]>;
+    private toCompensationPlan;
+    /**
+     * 一键发放补偿挽留（§100）：部分退款（可 0）+ 优惠券补偿，随后关闭售后单并通知顾客。
+     * 退款失败直接抛错（不吞金额），发券失败降级为仅退款并回写原因。
+     */
+    afterSalesApplyCompensation(ctx: RequestContext, id: ID, planId: ID): Promise<MerchantAfterSalesCompensationResult>;
     /** 渠道售后处理时限（小时）：afterSalesTimeoutHours，未配置按售后插件默认 48 */
     private afterSalesTimeoutHours;
     /**

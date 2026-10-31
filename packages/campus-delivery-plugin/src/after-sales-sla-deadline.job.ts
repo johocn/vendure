@@ -1,6 +1,8 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
-import { Channel, Logger, TransactionalConnection } from '@vendure/core';
+import { Channel, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
 import { businessDeadline } from './after-sales-sla';
+import { closureDateKeys } from './closure-calendar';
+import { CampusConfigService } from './campus-config.service';
 import { PeriodicFallback } from './periodic-fallback';
 
 const loggerCtx = 'CampusAfterSalesSla';
@@ -19,7 +21,7 @@ const INTERVAL_MS = 5 * 60_000;
 export class AfterSalesSlaDeadlineJob implements OnApplicationShutdown {
     private fallback: PeriodicFallback | null = null;
 
-    constructor(private connection: TransactionalConnection) {}
+    constructor(private connection: TransactionalConnection, private config: CampusConfigService) {}
 
     start(): void {
         if (this.fallback) return;
@@ -62,6 +64,14 @@ export class AfterSalesSlaDeadlineJob implements OnApplicationShutdown {
         const cf = (channel.customFields ?? {}) as any;
         const businessHours = cf.waimaiBusinessHours ?? null;
         const timeoutHours = Number(cf.afterSalesTimeoutHours ?? 48);
+        // §100：休业日整天不计入处理时限（含历史休业日，供跨假期工单按同一口径重算）
+        const ctx = new RequestContext({ apiType: 'admin', channel, isAuthorized: true, authorizedAsOwnerOnly: false });
+        let closureDates: string[] = [];
+        try {
+            closureDates = closureDateKeys((await this.config.getConfig(ctx))?.closureDates);
+        } catch (e: any) {
+            Logger.warn(`read closure dates failed for channel ${channel.code}: ${String(e?.message ?? e)}`, loggerCtx);
+        }
         const raw = this.connection.rawConnection;
         const rows: any = await raw.query(
             `SELECT a.id, a."createdAt", COALESCE(a."slaPausedMs", 0) AS paused
@@ -75,7 +85,7 @@ export class AfterSalesSlaDeadlineJob implements OnApplicationShutdown {
         const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         if (!Array.isArray(list) || !list.length) return;
         for (const r of list) {
-            const deadline = businessDeadline(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused));
+            const deadline = businessDeadline(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused), closureDates);
             await raw.query(
                 'UPDATE after_sales_request SET "slaDeadlineAt" = to_timestamp($2 / 1000.0) '
                 + 'WHERE id = $1 AND "slaDeadlineAt" IS DISTINCT FROM to_timestamp($2 / 1000.0)',

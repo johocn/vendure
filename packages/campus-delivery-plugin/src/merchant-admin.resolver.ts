@@ -899,6 +899,98 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesRecordReturnLogistics(ctx, id, status, description);
     }
 
+    /** 售后操作审计检索（§100）：按时间/动作/处理人筛选，带订单号 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAuditLogs(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
+        @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
+        @Args({ name: 'action', type: () => String, nullable: true }) action?: string | null,
+        @Args({ name: 'actorUserId', type: () => String, nullable: true }) actorUserId?: ID | null,
+        @Args({ name: 'take', type: () => Int, nullable: true }) take?: number | null,
+        @Args({ name: 'skip', type: () => Int, nullable: true }) skip?: number | null,
+    ) {
+        return this.merchant.afterSalesAuditLogs(ctx, { from, to, action, actorUserId, take, skip });
+    }
+
+    /** 售后操作审计导出（§100）：CSV，按同一筛选条件 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAuditExport(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
+        @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
+        @Args({ name: 'action', type: () => String, nullable: true }) action?: string | null,
+        @Args({ name: 'actorUserId', type: () => String, nullable: true }) actorUserId?: ID | null,
+    ) {
+        return this.merchant.afterSalesAuditExport(ctx, { from, to, action, actorUserId });
+    }
+
+    /** 售后值班表（§100）：本店全部排班 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesDutyRoster(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesDutyRoster(ctx);
+    }
+
+    /** 整体替换售后值班表（§100）：entries 为 JSON 字符串 [{weekday,startMin,endMin,userId}] */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSetAfterSalesDutyRoster(
+        @Ctx() ctx: RequestContext,
+        @Args('entries') entries: string,
+    ) {
+        return this.merchant.setAfterSalesDutyRoster(ctx, parseJson(entries));
+    }
+
+    /** 补偿挽留方案列表（§100） */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesCompensationPlans(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesCompensationPlans(ctx);
+    }
+
+    /** 保存补偿方案（§100）：id 为空=新增；refundAmount 单位分 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSaveAfterSalesCompensationPlan(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'id', type: () => String, nullable: true }) id: ID | null,
+        @Args('name') name: string,
+        @Args('refundAmount') refundAmount: number,
+        @Args({ name: 'couponTemplateId', type: () => String, nullable: true }) couponTemplateId?: string | null,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+        @Args({ name: 'enabled', type: () => Boolean, nullable: true }) enabled?: boolean | null,
+    ) {
+        return this.merchant.saveAfterSalesCompensationPlan(ctx, {
+            id,
+            name,
+            refundAmount,
+            couponTemplateId,
+            note,
+            enabled,
+        });
+    }
+
+    /** 删除补偿方案（§100） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantDeleteAfterSalesCompensationPlan(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.deleteAfterSalesCompensationPlan(ctx, id);
+    }
+
+    /** 一键发放补偿挽留（§100）：部分退款 + 优惠券，随后关闭售后单 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesApplyCompensation(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('planId') planId: ID,
+    ) {
+        return this.merchant.afterSalesApplyCompensation(ctx, id, planId);
+    }
+
     /** 保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)

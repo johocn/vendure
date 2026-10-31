@@ -95,6 +95,29 @@ export function closedToday(dates: ClosureDate[] | null | undefined, now: number
     return (dates ?? []).find(d => d.date === today) ?? null;
 }
 
+/**
+ * SLA 口径（§100）：取配置中全部合法休业日期（含已过去的日期）。
+ * safeClosureDates 会丢弃过去日期（面向「今日营业状态」），但售后 SLA 重算需要覆盖
+ * 申请时点至今的历史休业日，否则跨假期的工单会被误判超时。
+ */
+export function closureDateKeys(raw: unknown): string[] {
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+        try {
+            list = JSON.parse(raw);
+        } catch {
+            return [];
+        }
+    }
+    if (!Array.isArray(list)) return [];
+    const out: string[] = [];
+    for (const item of list) {
+        const date = String((item as any)?.date ?? '').trim();
+        if (isValidDate(date)) out.push(date);
+    }
+    return out;
+}
+
 /** 下一次休业（今天或未来最近一条），供后台/C 端提示 */
 export function nextClosure(dates: ClosureDate[] | null | undefined, now: number = Date.now()): ClosureDate | null {
     const today = campusToday(now);

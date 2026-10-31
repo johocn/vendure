@@ -390,6 +390,45 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesRecordReturnLogistics(ctx, id, status, description) {
         return this.merchant.afterSalesRecordReturnLogistics(ctx, id, status, description);
     }
+    /** 售后操作审计检索（§100）：按时间/动作/处理人筛选，带订单号 */
+    async campusMerchantAfterSalesAuditLogs(ctx, from, to, action, actorUserId, take, skip) {
+        return this.merchant.afterSalesAuditLogs(ctx, { from, to, action, actorUserId, take, skip });
+    }
+    /** 售后操作审计导出（§100）：CSV，按同一筛选条件 */
+    async campusMerchantAfterSalesAuditExport(ctx, from, to, action, actorUserId) {
+        return this.merchant.afterSalesAuditExport(ctx, { from, to, action, actorUserId });
+    }
+    /** 售后值班表（§100）：本店全部排班 */
+    async campusMerchantAfterSalesDutyRoster(ctx) {
+        return this.merchant.afterSalesDutyRoster(ctx);
+    }
+    /** 整体替换售后值班表（§100）：entries 为 JSON 字符串 [{weekday,startMin,endMin,userId}] */
+    async campusMerchantSetAfterSalesDutyRoster(ctx, entries) {
+        return this.merchant.setAfterSalesDutyRoster(ctx, parseJson(entries));
+    }
+    /** 补偿挽留方案列表（§100） */
+    async campusMerchantAfterSalesCompensationPlans(ctx) {
+        return this.merchant.afterSalesCompensationPlans(ctx);
+    }
+    /** 保存补偿方案（§100）：id 为空=新增；refundAmount 单位分 */
+    async campusMerchantSaveAfterSalesCompensationPlan(ctx, id, name, refundAmount, couponTemplateId, note, enabled) {
+        return this.merchant.saveAfterSalesCompensationPlan(ctx, {
+            id,
+            name,
+            refundAmount,
+            couponTemplateId,
+            note,
+            enabled,
+        });
+    }
+    /** 删除补偿方案（§100） */
+    async campusMerchantDeleteAfterSalesCompensationPlan(ctx, id) {
+        return this.merchant.deleteAfterSalesCompensationPlan(ctx, id);
+    }
+    /** 一键发放补偿挽留（§100）：部分退款 + 优惠券，随后关闭售后单 */
+    async campusMerchantAfterSalesApplyCompensation(ctx, id, planId) {
+        return this.merchant.afterSalesApplyCompensation(ctx, id, planId);
+    }
     /** 保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate */
     async campusMerchantSaveAfterSalesAutoRule(ctx, id, name, action, priority, enabled, matchType, matchReason, minAmount, maxAmount, rejectReason) {
         return this.merchant.saveAfterSalesAutoRule(ctx, {
@@ -1371,6 +1410,90 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRecordReturnLogistics", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'action', type: () => String, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'actorUserId', type: () => String, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'take', type: () => graphql_1.Int, nullable: true })),
+    __param(6, (0, graphql_1.Args)({ name: 'skip', type: () => graphql_1.Int, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesAuditLogs", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'action', type: () => String, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'actorUserId', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesAuditExport", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesDutyRoster", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('entries')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSetAfterSalesDutyRoster", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesCompensationPlans", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'id', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)('name')),
+    __param(3, (0, graphql_1.Args)('refundAmount')),
+    __param(4, (0, graphql_1.Args)({ name: 'couponTemplateId', type: () => String, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __param(6, (0, graphql_1.Args)({ name: 'enabled', type: () => Boolean, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Number, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSaveAfterSalesCompensationPlan", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantDeleteAfterSalesCompensationPlan", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('planId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesApplyCompensation", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

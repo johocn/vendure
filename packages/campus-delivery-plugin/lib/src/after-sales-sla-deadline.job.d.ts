@@ -1,5 +1,6 @@
 import { OnApplicationShutdown } from '@nestjs/common';
 import { Channel, TransactionalConnection } from '@vendure/core';
+import { CampusConfigService } from './campus-config.service';
 /**
  * 售后 SLA 截止时间重算（§99）：把「申请时间 + 处理时限」换算成营业时段感知的截止时间，
  * 写入 after_sales_request.slaDeadlineAt，供列表筛选、工作台统计、处理人负载、报表统一使用。
@@ -8,8 +9,9 @@ import { Channel, TransactionalConnection } from '@vendure/core';
  */
 export declare class AfterSalesSlaDeadlineJob implements OnApplicationShutdown {
     private connection;
+    private config;
     private fallback;
-    constructor(connection: TransactionalConnection);
+    constructor(connection: TransactionalConnection, config: CampusConfigService);
     start(): void;
     stop(): void;
     onApplicationShutdown(): void;

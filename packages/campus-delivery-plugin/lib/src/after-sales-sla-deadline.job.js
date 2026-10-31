@@ -13,6 +13,8 @@ exports.AfterSalesSlaDeadlineJob = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const after_sales_sla_1 = require("./after-sales-sla");
+const closure_calendar_1 = require("./closure-calendar");
+const campus_config_service_1 = require("./campus-config.service");
 const periodic_fallback_1 = require("./periodic-fallback");
 const loggerCtx = 'CampusAfterSalesSla';
 /** 启动后首跑延迟：等迁移补 slaDeadlineAt 列 */
@@ -26,8 +28,9 @@ const INTERVAL_MS = 5 * 60000;
  * - 幂等重算，多实例并发写同一值，无需咨询锁。
  */
 let AfterSalesSlaDeadlineJob = class AfterSalesSlaDeadlineJob {
-    constructor(connection) {
+    constructor(connection, config) {
         this.connection = connection;
+        this.config = config;
         this.fallback = null;
     }
     start() {
@@ -69,10 +72,19 @@ let AfterSalesSlaDeadlineJob = class AfterSalesSlaDeadlineJob {
         }
     }
     async runChannel(channel) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e;
         const cf = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {});
         const businessHours = (_b = cf.waimaiBusinessHours) !== null && _b !== void 0 ? _b : null;
         const timeoutHours = Number((_c = cf.afterSalesTimeoutHours) !== null && _c !== void 0 ? _c : 48);
+        // §100：休业日整天不计入处理时限（含历史休业日，供跨假期工单按同一口径重算）
+        const ctx = new core_1.RequestContext({ apiType: 'admin', channel, isAuthorized: true, authorizedAsOwnerOnly: false });
+        let closureDates = [];
+        try {
+            closureDates = (0, closure_calendar_1.closureDateKeys)((_d = (await this.config.getConfig(ctx))) === null || _d === void 0 ? void 0 : _d.closureDates);
+        }
+        catch (e) {
+            core_1.Logger.warn(`read closure dates failed for channel ${channel.code}: ${String((_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e)}`, loggerCtx);
+        }
         const raw = this.connection.rawConnection;
         const rows = await raw.query(`SELECT a.id, a."createdAt", COALESCE(a."slaPausedMs", 0) AS paused
                FROM after_sales_request a
@@ -84,7 +96,7 @@ let AfterSalesSlaDeadlineJob = class AfterSalesSlaDeadlineJob {
         if (!Array.isArray(list) || !list.length)
             return;
         for (const r of list) {
-            const deadline = (0, after_sales_sla_1.businessDeadline)(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused));
+            const deadline = (0, after_sales_sla_1.businessDeadline)(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused), closureDates);
             await raw.query('UPDATE after_sales_request SET "slaDeadlineAt" = to_timestamp($2 / 1000.0) '
                 + 'WHERE id = $1 AND "slaDeadlineAt" IS DISTINCT FROM to_timestamp($2 / 1000.0)', [Number(r.id), deadline]);
         }
@@ -93,6 +105,6 @@ let AfterSalesSlaDeadlineJob = class AfterSalesSlaDeadlineJob {
 exports.AfterSalesSlaDeadlineJob = AfterSalesSlaDeadlineJob;
 exports.AfterSalesSlaDeadlineJob = AfterSalesSlaDeadlineJob = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection, campus_config_service_1.CampusConfigService])
 ], AfterSalesSlaDeadlineJob);
 //# sourceMappingURL=after-sales-sla-deadline.job.js.map
