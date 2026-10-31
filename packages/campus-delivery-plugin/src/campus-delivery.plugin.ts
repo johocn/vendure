@@ -67,6 +67,7 @@ import { AfterSalesFollowUpRemindJob } from './after-sales-followup-remind.job';
 import { AfterSalesMonthlyPushJob } from './after-sales-monthly-push.job';
 import { AfterSalesAutoAssignJob } from './after-sales-auto-assign.job';
 import { AfterSalesAutoRuleJob } from './after-sales-auto-rule.job';
+import { AfterSalesSlaDeadlineJob } from './after-sales-sla-deadline.job';
 import { AfterSalesAnomalyAlertJob } from './after-sales-anomaly-alert.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
@@ -166,6 +167,7 @@ import { P25AfterSalesSlaFollowupMonthlyMigration } from './migrations/p25-after
 import { P26AfterSalesEscalationAutomationMigration } from './migrations/p26-after-sales-escalation-automation';
 import { P27AfterSalesTemplateCategoryMigration } from './migrations/p27-after-sales-template-category';
 import { P28AfterSalesProductAndRulesMigration } from './migrations/p28-after-sales-product-and-rules';
+import { P29AfterSalesRefundReviewAndSlaMigration } from './migrations/p29-after-sales-refund-review-and-sla';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -213,6 +215,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P26AfterSalesEscalationAutomationMigration,
         P27AfterSalesTemplateCategoryMigration,
         P28AfterSalesProductAndRulesMigration,
+        P29AfterSalesRefundReviewAndSlaMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -229,6 +232,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         AfterSalesMonthlyPushJob,
         AfterSalesAutoAssignJob,
         AfterSalesAutoRuleJob,
+        AfterSalesSlaDeadlineJob,
         AfterSalesAnomalyAlertJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
@@ -712,6 +716,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     slaPausedReason: String
                     """已升级平台仲裁且工单未关闭（§96）"""
                     escalated: Boolean!
+                    """已提交大额退款复核、等待其他管理员确认（§99）"""
+                    refundReviewPending: Boolean!
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -857,6 +863,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     fromName: String
                     toUserId: ID
                     toName: String
+                    """转交/指派原因（§99）"""
+                    reason: String
                     createdAt: DateTime!
                 }
 
@@ -1227,6 +1235,47 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     resolveTargetHours: Int!
                     """临期提醒阈值（小时，0=关闭，§88）"""
                     dueSoonHours: Int!
+                    """大额退款复核阈值（分，0=关闭，§99）"""
+                    refundReviewThreshold: Int!
+                }
+
+                """大额退款复核记录（§99）：申请人以外的管理员确认后才退款"""
+                type CampusMerchantAfterSalesRefundReview {
+                    id: ID!
+                    requestId: ID!
+                    orderId: ID!
+                    """订单号（A2400xxx）"""
+                    orderCode: String!
+                    """退款金额（分）"""
+                    amount: Int!
+                    """复核状态（Pending/Approved/Rejected）"""
+                    status: String!
+                    """申请人 User id"""
+                    requestedBy: String!
+                    """申请人姓名"""
+                    requestedByName: String
+                    """申请时间"""
+                    requestedAt: DateTime!
+                    """复核人 User id（未复核为空）"""
+                    reviewedBy: String
+                    """复核人姓名（未复核为空）"""
+                    reviewedByName: String
+                    """复核时间（未复核为空）"""
+                    reviewedAt: DateTime
+                    """复核备注"""
+                    note: String
+                    """当前登录者即申请人（不能再复核，§99）"""
+                    selfRequested: Boolean!
+                }
+
+                """智能话术推荐（§99）：按售后原因/类型匹配的快捷回复"""
+                type CampusMerchantAfterSalesSuggestedReply {
+                    """模板 id"""
+                    id: ID!
+                    """建议回复内容"""
+                    content: String!
+                    """匹配得分：越高越相关"""
+                    score: Int!
                 }
 
                 """商家快捷回复模板（§87）：本店渠道共用"""
@@ -2257,6 +2306,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantAfterSalesReturnLogistics(id: ID!): CampusMerchantAfterSalesReturnLogistics!
                     """售后自动分流规则（§98）：按优先级升序"""
                     campusMerchantAfterSalesAutoRules: [CampusMerchantAfterSalesAutoRule!]!
+                    """大额退款复核队列（§99）：默认待复核，status=Pending|Approved|Rejected"""
+                    campusMerchantAfterSalesRefundReviews(status: String): [CampusMerchantAfterSalesRefundReview!]!
+                    """智能话术推荐（§99）：按售后原因/类型匹配本店快捷回复模板"""
+                    campusMerchantAfterSalesSuggestedReplies(id: ID!): [CampusMerchantAfterSalesSuggestedReply!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2555,7 +2608,11 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     """保存售后寄回地址（§83）"""
                     campusMerchantUpdateAfterSalesReturnAddress(address: String!): Boolean!
                     """保存售后规则（§84）：超时提醒 1-168h，自动同意 0-168h，自动重试 0-5 次"""
-                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int, firstResponseTargetHours: Int, resolveTargetHours: Int, dueSoonHours: Int): CampusMerchantAfterSalesRules!
+                    campusMerchantUpdateAfterSalesRules(timeoutHours: Int, autoApproveHours: Int, refundAutoRetry: Int, firstResponseTargetHours: Int, resolveTargetHours: Int, dueSoonHours: Int, refundReviewThreshold: Int): CampusMerchantAfterSalesRules!
+                    """售后单转交（§99）：转给另一位本店管理员，原因必填并推送店铺群"""
+                    campusMerchantAfterSalesTransfer(id: ID!, userId: ID!, reason: String!): CampusMerchantAfterSalesItem!
+                    """大额退款复核（§99）：申请人以外的管理员确认同意或驳回"""
+                    campusMerchantAfterSalesResolveRefundReview(id: ID!, approve: Boolean!, note: String): CampusMerchantAfterSalesRefundReview!
                     """商家关闭待处理售后（§84）：Pending → Closed，原因必填"""
                     campusMerchantAfterSalesClose(id: ID!, reason: String!): CampusMerchantAfterSalesItem!
                     """商家催办顾客（§84）：60 秒内同单一次，站内信提醒"""
@@ -3500,6 +3557,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         // 售后自动分配（§96）：5 分钟把未指派售后单派给未完结量最少的处理人
         this.injector.get(AfterSalesAutoAssignJob).start();
         this.injector.get(AfterSalesAutoRuleJob).start();
+        // 售后 SLA 营业时间感知重算（§99）：5 分钟按渠道营业时段刷新 slaDeadlineAt
+        this.injector.get(AfterSalesSlaDeadlineJob).start();
         // 售后异常预警推送（§96）：30 分钟检查近 7 日退款率/超时待处理，超阈值推店铺群
         this.injector.get(AfterSalesAnomalyAlertJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {

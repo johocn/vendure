@@ -93,6 +93,8 @@ export const campusCustomFields: CustomFields = {
         { name: 'waimaiAfterSalesAlertRefundRate', type: 'int', nullable: true }, // 退款率阈值（百分比），0/空=关闭该项
         { name: 'waimaiAfterSalesAlertOverdueCount', type: 'int', nullable: true }, // 超时待处理阈值（单），0/空=关闭该项
         { name: 'waimaiAfterSalesAlertLastDay', type: 'string', nullable: true }, // 幂等键：已预警的校园日 'YYYY-MM-DD'
+        // 大额退款二次复核（§99）：申请退款金额达到阈值（分）时，需另一位管理员复核后才执行退款
+        { name: 'waimaiAfterSalesReviewThreshold', type: 'int', nullable: true }, // 0/空=关闭
     ],
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0

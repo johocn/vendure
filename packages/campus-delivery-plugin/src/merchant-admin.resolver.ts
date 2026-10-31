@@ -471,6 +471,23 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesRules(ctx);
     }
 
+    /** 大额退款复核队列（§99）：默认待复核，可按状态筛选 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRefundReviews(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'status', type: () => String, nullable: true }) status?: string | null,
+    ) {
+        return this.merchant.afterSalesRefundReviews(ctx, status);
+    }
+
+    /** 智能话术推荐（§99）：按售后原因/类型匹配本店快捷回复模板 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesSuggestedReplies(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesSuggestedReplies(ctx, id);
+    }
+
     /** 退款流水（§84）：按退款时间倒序分页 */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)
@@ -728,6 +745,7 @@ export class MerchantAdminResolver {
         @Args({ name: 'firstResponseTargetHours', type: () => Number, nullable: true }) firstResponseTargetHours?: number | null,
         @Args({ name: 'resolveTargetHours', type: () => Number, nullable: true }) resolveTargetHours?: number | null,
         @Args({ name: 'dueSoonHours', type: () => Number, nullable: true }) dueSoonHours?: number | null,
+        @Args({ name: 'refundReviewThreshold', type: () => Int, nullable: true }) refundReviewThreshold?: number | null,
     ) {
         return this.merchant.updateAfterSalesRules(ctx, {
             timeoutHours,
@@ -736,7 +754,32 @@ export class MerchantAdminResolver {
             firstResponseTargetHours,
             resolveTargetHours,
             dueSoonHours,
+            refundReviewThreshold,
         });
+    }
+
+    /** 售后单转交（§99）：转给另一位本店管理员，原因必填并推送店铺群 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesTransfer(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('userId') userId: ID,
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.afterSalesTransfer(ctx, id, userId, reason);
+    }
+
+    /** 大额退款复核（§99）：申请人以外的管理员确认同意或驳回 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesResolveRefundReview(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('approve') approve: boolean,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+    ) {
+        return this.merchant.afterSalesResolveRefundReview(ctx, id, approve, note);
     }
 
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */

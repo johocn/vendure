@@ -218,6 +218,14 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesRules(ctx) {
         return this.merchant.afterSalesRules(ctx);
     }
+    /** 大额退款复核队列（§99）：默认待复核，可按状态筛选 */
+    async campusMerchantAfterSalesRefundReviews(ctx, status) {
+        return this.merchant.afterSalesRefundReviews(ctx, status);
+    }
+    /** 智能话术推荐（§99）：按售后原因/类型匹配本店快捷回复模板 */
+    async campusMerchantAfterSalesSuggestedReplies(ctx, id) {
+        return this.merchant.afterSalesSuggestedReplies(ctx, id);
+    }
     /** 退款流水（§84）：按退款时间倒序分页 */
     async campusMerchantAfterSalesRefunds(ctx, from, to, skip, take) {
         return this.merchant.afterSalesRefunds(ctx, { from, to, skip, take });
@@ -319,7 +327,7 @@ let MerchantAdminResolver = class MerchantAdminResolver {
         return this.merchant.updateAfterSalesReturnAddress(ctx, address);
     }
     /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
-    async campusMerchantUpdateAfterSalesRules(ctx, timeoutHours, autoApproveHours, refundAutoRetry, firstResponseTargetHours, resolveTargetHours, dueSoonHours) {
+    async campusMerchantUpdateAfterSalesRules(ctx, timeoutHours, autoApproveHours, refundAutoRetry, firstResponseTargetHours, resolveTargetHours, dueSoonHours, refundReviewThreshold) {
         return this.merchant.updateAfterSalesRules(ctx, {
             timeoutHours,
             autoApproveHours,
@@ -327,7 +335,16 @@ let MerchantAdminResolver = class MerchantAdminResolver {
             firstResponseTargetHours,
             resolveTargetHours,
             dueSoonHours,
+            refundReviewThreshold,
         });
+    }
+    /** 售后单转交（§99）：转给另一位本店管理员，原因必填并推送店铺群 */
+    async campusMerchantAfterSalesTransfer(ctx, id, userId, reason) {
+        return this.merchant.afterSalesTransfer(ctx, id, userId, reason);
+    }
+    /** 大额退款复核（§99）：申请人以外的管理员确认同意或驳回 */
+    async campusMerchantAfterSalesResolveRefundReview(ctx, id, approve, note) {
+        return this.merchant.afterSalesResolveRefundReview(ctx, id, approve, note);
     }
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     async campusMerchantAfterSalesClose(ctx, id, reason) {
@@ -945,6 +962,24 @@ __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'status', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRefundReviews", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesSuggestedReplies", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
     __param(2, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
     __param(3, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
@@ -1197,10 +1232,33 @@ __decorate([
     __param(4, (0, graphql_1.Args)({ name: 'firstResponseTargetHours', type: () => Number, nullable: true })),
     __param(5, (0, graphql_1.Args)({ name: 'resolveTargetHours', type: () => Number, nullable: true })),
     __param(6, (0, graphql_1.Args)({ name: 'dueSoonHours', type: () => Number, nullable: true })),
+    __param(7, (0, graphql_1.Args)({ name: 'refundReviewThreshold', type: () => graphql_1.Int, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesRules", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('userId')),
+    __param(3, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesTransfer", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('approve')),
+    __param(3, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Boolean, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesResolveRefundReview", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

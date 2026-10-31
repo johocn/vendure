@@ -7,6 +7,7 @@ import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CloudPrintService } from './cloud-print.service';
+import { FeishuClient } from './feishu/feishu.client';
 import { PrivacyNumberService } from './privacy-number.service';
 import { ClosureDate } from './closure-calendar';
 import { BatchOrderResult } from './batch-orders';
@@ -174,6 +175,8 @@ export interface MerchantAfterSalesRow {
     slaPausedReason: string | null;
     /** 已升级平台仲裁且工单未关闭（§96） */
     escalated: boolean;
+    /** 已提交大额退款复核、等待其他管理员确认（§99） */
+    refundReviewPending: boolean;
 }
 /** 换货发货结果复用列表行；批量处理逐单结果 */
 export interface MerchantAfterSalesBatchResult {
@@ -280,6 +283,8 @@ export interface MerchantAfterSalesRules {
     resolveTargetHours: number;
     /** 临期提醒小时（0=关闭，§88） */
     dueSoonHours: number;
+    /** 大额退款复核阈值（分，0=关闭，§99） */
+    refundReviewThreshold: number;
 }
 /** 商家快捷回复模板（§87）：本店渠道共用 */
 export interface MerchantAfterSalesReplyTemplate {
@@ -413,12 +418,14 @@ export interface MerchantAfterSalesLine {
     /** 行单价（含税，分） */
     unitPrice: number;
 }
-/** 指派变更记录（§92）：谁把售后单指派给谁 */
+/** 指派变更记录（§92）：谁把售后单指派给谁；§99 起支持转交原因 */
 export interface MerchantAfterSalesAssignLogRow {
     fromUserId: string | null;
     fromName: string | null;
     toUserId: string | null;
     toName: string | null;
+    /** 转交原因（普通指派/取消指派为 null，§99） */
+    reason: string | null;
     createdAt: Date;
 }
 /** 商品售后统计（§92）：区间内某商品的售后单量/退款与售后率 */
@@ -679,6 +686,33 @@ export interface MerchantAfterSalesAutoRule {
     rejectReason: string | null;
     createdAt: Date;
 }
+/** 大额退款复核记录（§99）：达到阈值时需另一位管理员确认后才执行退款 */
+export interface MerchantAfterSalesRefundReview {
+    id: string;
+    requestId: string;
+    orderId: string;
+    orderCode: string;
+    /** 待退款金额（分） */
+    amount: number;
+    /** Pending / Approved / Rejected */
+    status: string;
+    requestedBy: string | null;
+    requestedByName: string | null;
+    requestedAt: Date;
+    reviewedBy: string | null;
+    reviewedByName: string | null;
+    reviewedAt: Date | null;
+    note: string | null;
+    /** 当前登录管理员是否为申请人（是则不能自行复核） */
+    selfRequested: boolean;
+}
+/** 智能话术推荐（§99）：按售后类型/原因匹配本店快捷回复模板 */
+export interface MerchantAfterSalesSuggestedReply {
+    id: string;
+    content: string;
+    /** 匹配得分（0=无关键词命中，仅按排序兜底推荐） */
+    score: number;
+}
 /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
 export interface MerchantAfterSalesWorkbench {
     /** 待同意（Pending + Appealed） */
@@ -924,8 +958,9 @@ export declare class MerchantAdminService {
     private orderService;
     private privacy;
     private cloud;
+    private feishu;
     private moduleRef?;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService, moduleRef?: ModuleRef | undefined);
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService, feishu: FeishuClient, moduleRef?: ModuleRef | undefined);
     /** 售后插件为可选依赖：未安装时售后清单为空，「售后申请」入口降级隐藏 */
     private afterSalesSvc?;
     /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */
@@ -1129,8 +1164,27 @@ export declare class MerchantAdminService {
      * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
      * 先按「本店渠道 + 待处理」校验，避免越权或已处理单重复触发退款。
      * 顾客申诉（Rejected → Appealed）后商家仍可同意（appealRequest 已把申诉说明写入留言流）。
+     * §99：退款金额达到渠道复核阈值时只登记待复核，由另一位管理员确认后才真正退款。
      */
     afterSalesApprove(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /**
+     * 大额退款复核门槛（§99）：返回「需要复核」的售后单及申请退款金额。
+     * 阈值为 0 或单金额低于阈值时无需复核，保持原直退链路。
+     */
+    private refundReviewGate;
+    /** 登记待复核（§99）：同一售后单仅保留一条 Pending 记录（部分唯一索引兜底幂等） */
+    private createRefundReview;
+    /** 大额退款复核队列（§99）：默认只列待复核，附订单号与申请人/复核人姓名 */
+    afterSalesRefundReviews(ctx: RequestContext, status?: string | null): Promise<MerchantAfterSalesRefundReview[]>;
+    /**
+     * 复核大额退款（§99）：approve=true 才真正调用售后插件退款，false=驳回复核（售后单保持待处理）。
+     * 必须由另一位管理员复核；申请人为空（系统登记）不受此限制。
+     */
+    afterSalesResolveRefundReview(ctx: RequestContext, id: ID, approve: boolean, note?: string | null): Promise<MerchantAfterSalesRefundReview>;
+    private refundReviewOne;
+    private toRefundReview;
+    /** 待复核标记（§99）：列表/详情标出「已提交复核」，避免商家误以为卡单 */
+    private refundReviewPendingSet;
     /**
      * 售后详情（§81）：售后单 + 协商留言（含顾客申诉说明）+ 状态时间线 + 退款失败留痕。
      * 渠道隔离同列表；留言表缺失时降级为空列表，不影响详情可用。
@@ -1173,6 +1227,7 @@ export declare class MerchantAdminService {
         firstResponseTargetHours?: number | null;
         resolveTargetHours?: number | null;
         dueSoonHours?: number | null;
+        refundReviewThreshold?: number | null;
     }): Promise<MerchantAfterSalesRules>;
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     afterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
@@ -1292,6 +1347,18 @@ export declare class MerchantAdminService {
     afterSalesAssignees(ctx: RequestContext): Promise<MerchantAfterSalesAssignee[]>;
     /** 指派处理人（§89）：传空=取消指派；处理人必须是本店渠道管理员 */
     afterSalesAssign(ctx: RequestContext, id: ID, userId: ID | null): Promise<MerchantAfterSalesRow>;
+    /**
+     * 工单转交（§99）：把售后单转给另一位本店管理员，附转交原因并写指派历史，
+     * 同时向店铺群推送协作通知（飞书未配置时静默跳过）。
+     */
+    afterSalesTransfer(ctx: RequestContext, id: ID, userId: ID, reason: string): Promise<MerchantAfterSalesRow>;
+    /** 管理员显示名（§99）：firstName + lastName，取不到回退为 null */
+    private adminDisplayName;
+    /**
+     * 智能话术推荐（§99）：按售后类型 + 顾客申请原因匹配本店快捷回复模板，
+     * 关键词命中优先、分类命中次之，返回得分最高的 3 条；全部未命中时按排序兜底。
+     */
+    afterSalesSuggestedReplies(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesSuggestedReply[]>;
     /** 批量打标签（§89）：上限 50 单、5 个标签，逐单返回结果，失败不阻断整批 */
     afterSalesBatchTag(ctx: RequestContext, ids: ID[], tagIds: ID[]): Promise<MerchantAfterSalesBatchResult[]>;
     /** 解除本店拉黑（§89）：按顾客维度撤销 active 记录 */
@@ -1303,9 +1370,9 @@ export declare class MerchantAdminService {
     }): Promise<MerchantAfterSalesBlacklistEntry[]>;
     /** 批量指派处理人（§90）：userId 为空=批量取消，逐单返回结果 */
     afterSalesBatchAssign(ctx: RequestContext, ids: ID[], userId: ID | null): Promise<MerchantAfterSalesBatchResult[]>;
-    /** 记录指派变更（§92）：写日志失败不阻断指派本身 */
+    /** 记录指派/转交变更（§92、§99）：写日志失败不阻断指派本身 */
     private recordAssignChange;
-    /** 指派历史（§92）：按时间倒序，带双方姓名 */
+    /** 指派历史（§92）：按时间倒序，带双方姓名；§99 起含转交原因 */
     private afterSalesAssignLogs;
     /** 批量内部备注（§92）：上限 50 单，逐单结果；单条售后备注上限 200 条 */
     afterSalesBatchNote(ctx: RequestContext, ids: ID[], content: string): Promise<MerchantAfterSalesBatchResult[]>;
@@ -1390,6 +1457,13 @@ export declare class MerchantAdminService {
     private afterSalesRange;
     /** 渠道售后处理时限（小时）：afterSalesTimeoutHours，未配置按售后插件默认 48 */
     private afterSalesTimeoutHours;
+    /**
+     * 按当前营业时间/处理时限重算本渠道未完结售后单的 SLA 截止时间（§99）。
+     * 规则或门店营业时间变更后立即生效，无需等定时任务下一轮。
+     */
+    private recomputeSlaDeadlines;
+    /** 单条售后单的 SLA 截止时间即时重算（§99）：SLA 恢复/暂停后调用 */
+    private refreshSlaDeadline;
     /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
     afterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
     /** 分流规则行映射（§98）：DB 原始行 → 接口结构 */

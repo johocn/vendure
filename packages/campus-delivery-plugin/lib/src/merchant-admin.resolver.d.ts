@@ -102,6 +102,10 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */
     campusMerchantAfterSalesRules(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
+    /** 大额退款复核队列（§99）：默认待复核，可按状态筛选 */
+    campusMerchantAfterSalesRefundReviews(ctx: RequestContext, status?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRefundReview[]>;
+    /** 智能话术推荐（§99）：按售后原因/类型匹配本店快捷回复模板 */
+    campusMerchantAfterSalesSuggestedReplies(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesSuggestedReply[]>;
     /** 退款流水（§84）：按退款时间倒序分页 */
     campusMerchantAfterSalesRefunds(ctx: RequestContext, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRefundList>;
     /** 售后自动化任务（§85）：本店超时/自动同意/退款重试任务 */
@@ -153,7 +157,11 @@ export declare class MerchantAdminResolver {
     /** 保存售后寄回地址（§83） */
     campusMerchantUpdateAfterSalesReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
     /** 保存售后规则（§84）：只写传入项，保留其它渠道字段 */
-    campusMerchantUpdateAfterSalesRules(ctx: RequestContext, timeoutHours?: number | null, autoApproveHours?: number | null, refundAutoRetry?: number | null, firstResponseTargetHours?: number | null, resolveTargetHours?: number | null, dueSoonHours?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
+    campusMerchantUpdateAfterSalesRules(ctx: RequestContext, timeoutHours?: number | null, autoApproveHours?: number | null, refundAutoRetry?: number | null, firstResponseTargetHours?: number | null, resolveTargetHours?: number | null, dueSoonHours?: number | null, refundReviewThreshold?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRules>;
+    /** 售后单转交（§99）：转给另一位本店管理员，原因必填并推送店铺群 */
+    campusMerchantAfterSalesTransfer(ctx: RequestContext, id: ID, userId: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 大额退款复核（§99）：申请人以外的管理员确认同意或驳回 */
+    campusMerchantAfterSalesResolveRefundReview(ctx: RequestContext, id: ID, approve: boolean, note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRefundReview>;
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     campusMerchantAfterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 商家催办顾客（§84）：60 秒内同单一次 */

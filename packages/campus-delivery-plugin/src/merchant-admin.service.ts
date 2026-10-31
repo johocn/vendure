@@ -32,7 +32,9 @@ import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { normalizePrintMode } from './waimai-store.service';
 import { CloudPrintService } from './cloud-print.service';
+import { FeishuClient } from './feishu/feishu.client';
 import { PrivacyNumberService } from './privacy-number.service';
+import { businessDeadline } from './after-sales-sla';
 import {
     serializeAddonGroups,
     serializeCombo,
@@ -223,6 +225,8 @@ export interface MerchantAfterSalesRow {
     slaPausedReason: string | null;
     /** 已升级平台仲裁且工单未关闭（§96） */
     escalated: boolean;
+    /** 已提交大额退款复核、等待其他管理员确认（§99） */
+    refundReviewPending: boolean;
 }
 
 /** 换货发货结果复用列表行；批量处理逐单结果 */
@@ -318,6 +322,8 @@ export interface MerchantAfterSalesRules {
     resolveTargetHours: number;
     /** 临期提醒小时（0=关闭，§88） */
     dueSoonHours: number;
+    /** 大额退款复核阈值（分，0=关闭，§99） */
+    refundReviewThreshold: number;
 }
 
 /** 商家快捷回复模板（§87）：本店渠道共用 */
@@ -465,12 +471,14 @@ export interface MerchantAfterSalesLine {
     unitPrice: number;
 }
 
-/** 指派变更记录（§92）：谁把售后单指派给谁 */
+/** 指派变更记录（§92）：谁把售后单指派给谁；§99 起支持转交原因 */
 export interface MerchantAfterSalesAssignLogRow {
     fromUserId: string | null;
     fromName: string | null;
     toUserId: string | null;
     toName: string | null;
+    /** 转交原因（普通指派/取消指派为 null，§99） */
+    reason: string | null;
     createdAt: Date;
 }
 
@@ -751,6 +759,35 @@ export interface MerchantAfterSalesAutoRule {
     createdAt: Date;
 }
 
+/** 大额退款复核记录（§99）：达到阈值时需另一位管理员确认后才执行退款 */
+export interface MerchantAfterSalesRefundReview {
+    id: string;
+    requestId: string;
+    orderId: string;
+    orderCode: string;
+    /** 待退款金额（分） */
+    amount: number;
+    /** Pending / Approved / Rejected */
+    status: string;
+    requestedBy: string | null;
+    requestedByName: string | null;
+    requestedAt: Date;
+    reviewedBy: string | null;
+    reviewedByName: string | null;
+    reviewedAt: Date | null;
+    note: string | null;
+    /** 当前登录管理员是否为申请人（是则不能自行复核） */
+    selfRequested: boolean;
+}
+
+/** 智能话术推荐（§99）：按售后类型/原因匹配本店快捷回复模板 */
+export interface MerchantAfterSalesSuggestedReply {
+    id: string;
+    content: string;
+    /** 匹配得分（0=无关键词命中，仅按排序兜底推荐） */
+    score: number;
+}
+
 /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
 export interface MerchantAfterSalesWorkbench {
     /** 待同意（Pending + Appealed） */
@@ -1014,6 +1051,7 @@ export class MerchantAdminService {
         private orderService: OrderService,
         private privacy: PrivacyNumberService,
         private cloud: CloudPrintService,
+        private feishu: FeishuClient,
         private moduleRef?: ModuleRef,
     ) {}
 
@@ -1103,6 +1141,8 @@ export class MerchantAdminService {
             if (!channel) throw new UserInputError('当前店铺渠道不存在');
             (channel.customFields as any).waimaiBusinessHours = raw || null;
             await repo.save(channel);
+            // §99：营业时间影响售后 SLA，变更后立即重算未完结单截止时间
+            await this.recomputeSlaDeadlines(ctx);
         }
         if (input.storeNotice !== undefined) patch.storeNotice = String(input.storeNotice ?? '').trim() || null;
         if (input.storePhone !== undefined) patch.storePhone = String(input.storePhone ?? '').trim() || null;
@@ -2416,8 +2456,9 @@ export class MerchantAdminService {
             // 快捷筛选（§91）：超时 / 临期 / 未回复 / 回访到期（§95）
             const attention = String(opts.attention ?? '').trim();
             // SLA 截止时间（§95）：申请时间 + 时限 + 已暂停累计时长；暂停中不参与超时/临期判定
-            const deadlineExpr = 'a."createdAt" + make_interval(hours => :toh) '
-                + '+ (COALESCE(a."slaPausedMs", 0) / 1000) * interval \'1 second\'';
+            // §99：优先用营业时段感知的 slaDeadlineAt（定时任务/规则变更时写入），缺失时退回日历口径
+            const deadlineExpr = 'COALESCE(a."slaDeadlineAt", a."createdAt" + make_interval(hours => :toh) '
+                + '+ (COALESCE(a."slaPausedMs", 0) / 1000) * interval \'1 second\')';
             if (attention) {
                 if (attention === 'overdue') {
                     target.andWhere('a.state = \'Pending\'')
@@ -2512,7 +2553,9 @@ export class MerchantAdminService {
         const riskMap = await this.afterSalesRiskReasons(ctx, rows.map(r => Number(r.id)));
         const slaPauseMap = await this.afterSalesSlaPauses(rows.map(r => Number(r.id)));
         const escalatedMap = await this.afterSalesEscalatedMap(ctx, rows.map(r => Number(r.id)));
+        const reviewPending = await this.refundReviewPendingSet(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const businessHours = await this.channelBusinessHours(ctx);
         const now = Date.now();
         return {
             items: rows.map(r => this.toAfterSalesRow(r, counts, timeoutHours, now, lastSender, {
@@ -2522,6 +2565,8 @@ export class MerchantAdminService {
                 risks: riskMap,
                 slaPauses: slaPauseMap,
                 escalated: escalatedMap,
+                refundReviewPending: reviewPending,
+                businessHours,
             })),
             pendingCount,
             total,
@@ -2535,11 +2580,17 @@ export class MerchantAdminService {
      * 同意售后（§81）：refund_only 由售后插件链式 Received → 退款到账，商家一次操作即闭环；
      * 先按「本店渠道 + 待处理」校验，避免越权或已处理单重复触发退款。
      * 顾客申诉（Rejected → Appealed）后商家仍可同意（appealRequest 已把申诉说明写入留言流）。
+     * §99：退款金额达到渠道复核阈值时只登记待复核，由另一位管理员确认后才真正退款。
      */
     async afterSalesApprove(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow> {
-        await this.assertChannelAfterSales(ctx, id, AFTER_SALES_PENDING_STATES);
+        const request = await this.assertChannelAfterSales(ctx, id, AFTER_SALES_PENDING_STATES);
         const svc = this.getAfterSales();
         if (!svc) throw new UserInputError('售后插件未安装，暂不能处理售后申请');
+        const gated = await this.refundReviewGate(ctx, [Number(request.id)]);
+        if (gated.has(Number(request.id))) {
+            await this.createRefundReview(ctx, Number(request.id), gated.get(Number(request.id)) as number);
+            return this.afterSalesOne(ctx, id);
+        }
         try {
             await svc.approveRequest(ctx, id);
         } catch (e: any) {
@@ -2548,6 +2599,181 @@ export class MerchantAdminService {
         return this.afterSalesOne(ctx, id);
     }
 
+    /**
+     * 大额退款复核门槛（§99）：返回「需要复核」的售后单及申请退款金额。
+     * 阈值为 0 或单金额低于阈值时无需复核，保持原直退链路。
+     */
+    private async refundReviewGate(ctx: RequestContext, ids: number[]): Promise<Map<number, number>> {
+        const out = new Map<number, number>();
+        const list = Array.from(new Set(ids.filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length) return out;
+        const rules = await this.afterSalesRules(ctx);
+        if (rules.refundReviewThreshold <= 0) return out;
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT id, "refundAmount" AS amount, state FROM after_sales_request WHERE id = ANY($1::int[])',
+            [list],
+        );
+        const rawList: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        for (const r of Array.isArray(rawList) ? rawList : []) {
+            if (!AFTER_SALES_PENDING_STATES.includes(String(r.state ?? ''))) continue;
+            const amount = Math.round(Number(r.amount ?? 0));
+            if (amount >= rules.refundReviewThreshold) out.set(Number(r.id), amount);
+        }
+        return out;
+    }
+
+    /** 登记待复核（§99）：同一售后单仅保留一条 Pending 记录（部分唯一索引兜底幂等） */
+    private async createRefundReview(ctx: RequestContext, requestId: number, amount: number): Promise<void> {
+        try {
+            await this.connection.rawConnection.query(
+                'INSERT INTO campus_after_sales_refund_review ("channelId", "requestId", amount, "requestedBy") '
+                + 'VALUES ($1, $2, $3, $4) '
+                + 'ON CONFLICT ("channelId", "requestId") WHERE status = \'Pending\' DO NOTHING',
+                [Number(ctx.channelId), requestId, Math.round(amount), ctx.activeUserId ? Number(ctx.activeUserId) : null],
+            );
+        } catch (e: any) {
+            throw new UserInputError(`大额退款复核登记失败：${e?.message ?? e}`);
+        }
+    }
+
+    /** 大额退款复核队列（§99）：默认只列待复核，附订单号与申请人/复核人姓名 */
+    async afterSalesRefundReviews(ctx: RequestContext, status?: string | null): Promise<MerchantAfterSalesRefundReview[]> {
+        const st = String(status ?? '').trim() || 'Pending';
+        if (!['Pending', 'Approved', 'Rejected'].includes(st)) {
+            throw new UserInputError('复核状态只能是 Pending / Approved / Rejected');
+        }
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                `SELECT r.id, r."requestId", r.amount, r.status, r."requestedBy", r."requestedAt",
+                        r."reviewedBy", r."reviewedAt", r.note,
+                        o.id AS "orderId", o.code AS "orderCode",
+                        rb."firstName" AS rbf, rb."lastName" AS rbl,
+                        vb."firstName" AS vbf, vb."lastName" AS vbl
+                   FROM campus_after_sales_refund_review r
+                   JOIN after_sales_request a ON a.id = r."requestId"
+                   JOIN "order" o ON o.id = a."orderId"
+                   LEFT JOIN administrator rb ON rb."userId" = r."requestedBy"
+                   LEFT JOIN administrator vb ON vb."userId" = r."reviewedBy"
+                  WHERE r."channelId" = $1 AND r.status = $2
+                    AND (r.status <> 'Pending' OR a.state IN ('Pending', 'Appealed'))
+                  ORDER BY r."requestedAt" ASC LIMIT 100`,
+                [Number(ctx.channelId), st],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => this.toRefundReview(ctx, r));
+        } catch (e: any) {
+            Logger.warn(`refund review list failed: ${String(e?.message ?? e)}`, 'CampusMerchantAfterSales');
+            return [];
+        }
+    }
+
+    /**
+     * 复核大额退款（§99）：approve=true 才真正调用售后插件退款，false=驳回复核（售后单保持待处理）。
+     * 必须由另一位管理员复核；申请人为空（系统登记）不受此限制。
+     */
+    async afterSalesResolveRefundReview(
+        ctx: RequestContext,
+        id: ID,
+        approve: boolean,
+        note?: string | null,
+    ): Promise<MerchantAfterSalesRefundReview> {
+        const chId = Number(ctx.channelId);
+        const raw = this.connection.rawConnection;
+        const rows: any = await raw.query(
+            'SELECT "requestId", "requestedBy", status FROM campus_after_sales_refund_review '
+            + 'WHERE id = $1 AND "channelId" = $2',
+            [Number(id), chId],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const row = Array.isArray(list) ? list[0] : null;
+        if (!row) throw new UserInputError('复核记录不存在或不属于当前店铺');
+        if (String(row.status) !== 'Pending') throw new UserInputError('该复核记录已处理');
+        const requestedBy = row.requestedBy == null ? null : Number(row.requestedBy);
+        if (requestedBy != null && ctx.activeUserId != null && Number(ctx.activeUserId) === requestedBy) {
+            throw new UserInputError('大额退款需由另一位管理员复核');
+        }
+        const text = String(note ?? '').trim();
+        if (text.length > 200) throw new UserInputError('复核备注最多 200 字');
+        const requestId = Number(row.requestId);
+        if (approve) {
+            await this.assertChannelAfterSales(ctx, requestId as any, AFTER_SALES_PENDING_STATES);
+            const svc = this.getAfterSales();
+            if (!svc) throw new UserInputError('售后插件未安装，暂不能处理售后申请');
+            try {
+                await svc.approveRequest(ctx, requestId as any);
+            } catch (e: any) {
+                throw new UserInputError(`复核通过后执行退款失败：${e?.message ?? e}`);
+            }
+        }
+        await raw.query(
+            'UPDATE campus_after_sales_refund_review SET status = $2, "reviewedBy" = $3, "reviewedAt" = now(), '
+            + 'note = $4, "updatedAt" = now() WHERE id = $1 AND status = \'Pending\'',
+            [Number(id), approve ? 'Approved' : 'Rejected', ctx.activeUserId ? Number(ctx.activeUserId) : null, text || null],
+        );
+        const one = await this.refundReviewOne(ctx, Number(id));
+        if (!one) throw new UserInputError('复核记录读取失败');
+        return one;
+    }
+
+    private async refundReviewOne(ctx: RequestContext, id: number): Promise<MerchantAfterSalesRefundReview | null> {
+        const rows: any = await this.connection.rawConnection.query(
+            `SELECT r.id, r."requestId", r.amount, r.status, r."requestedBy", r."requestedAt",
+                    r."reviewedBy", r."reviewedAt", r.note,
+                    o.id AS "orderId", o.code AS "orderCode",
+                    rb."firstName" AS rbf, rb."lastName" AS rbl,
+                    vb."firstName" AS vbf, vb."lastName" AS vbl
+               FROM campus_after_sales_refund_review r
+               JOIN after_sales_request a ON a.id = r."requestId"
+               JOIN "order" o ON o.id = a."orderId"
+               LEFT JOIN administrator rb ON rb."userId" = r."requestedBy"
+               LEFT JOIN administrator vb ON vb."userId" = r."reviewedBy"
+              WHERE r.id = $1 AND r."channelId" = $2`,
+            [id, Number(ctx.channelId)],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const r = Array.isArray(list) ? list[0] : null;
+        return r ? this.toRefundReview(ctx, r) : null;
+    }
+
+    private toRefundReview(ctx: RequestContext, r: any): MerchantAfterSalesRefundReview {
+        const requestedBy = r.requestedBy == null ? null : String(r.requestedBy);
+        return {
+            id: String(r.id),
+            requestId: String(r.requestId),
+            orderId: String(r.orderId ?? ''),
+            orderCode: String(r.orderCode ?? ''),
+            amount: Number(r.amount) || 0,
+            status: String(r.status ?? ''),
+            requestedBy,
+            requestedByName: [r.rbf, r.rbl].filter(Boolean).join('') || null,
+            requestedAt: new Date(r.requestedAt),
+            reviewedBy: r.reviewedBy == null ? null : String(r.reviewedBy),
+            reviewedByName: [r.vbf, r.vbl].filter(Boolean).join('') || null,
+            reviewedAt: r.reviewedAt == null ? null : new Date(r.reviewedAt),
+            note: r.note == null ? null : String(r.note),
+            selfRequested: ctx.activeUserId != null && requestedBy != null
+                && String(ctx.activeUserId) === requestedBy,
+        };
+    }
+
+    /** 待复核标记（§99）：列表/详情标出「已提交复核」，避免商家误以为卡单 */
+    private async refundReviewPendingSet(ctx: RequestContext, ids: number[]): Promise<Set<number>> {
+        const out = new Set<number>();
+        const list = Array.from(new Set(ids.filter(n => Number.isFinite(n) && n > 0)));
+        if (!list.length) return out;
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT "requestId" FROM campus_after_sales_refund_review '
+                + 'WHERE "channelId" = $1 AND status = \'Pending\' AND "requestId" = ANY($2::int[])',
+                [Number(ctx.channelId), list],
+            );
+            const rawList: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            for (const r of Array.isArray(rawList) ? rawList : []) out.add(Number(r.requestId));
+        } catch {
+            return out;
+        }
+        return out;
+    }
     /**
      * 售后详情（§81）：售后单 + 协商留言（含顾客申诉说明）+ 状态时间线 + 退款失败留痕。
      * 渠道隔离同列表；留言表缺失时降级为空列表，不影响详情可用。
@@ -2565,11 +2791,15 @@ export class MerchantAdminService {
         const riskMap = await this.afterSalesRiskReasons(ctx, [Number(request.id)]);
         const slaPauseMap = await this.afterSalesSlaPauses([Number(request.id)]);
         const escalatedMap = await this.afterSalesEscalatedMap(ctx, [Number(request.id)]);
+        const reviewPending = await this.refundReviewPendingSet(ctx, [Number(request.id)]);
+        const businessHours = await this.channelBusinessHours(ctx);
         return {
             request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender, {
                 risks: riskMap,
                 slaPauses: slaPauseMap,
                 escalated: escalatedMap,
+                refundReviewPending: reviewPending,
+                businessHours,
             }),
             messages,
             messageTotal: counts.get(Number(request.id)) ?? messages.length,
@@ -2729,6 +2959,7 @@ export class MerchantAdminService {
             firstResponseTargetHours: Number(cf.afterSalesFirstResponseTargetHours ?? 0),
             resolveTargetHours: Number(cf.afterSalesResolveTargetHours ?? 0),
             dueSoonHours: Number(cf.afterSalesDueSoonHours ?? 12),
+            refundReviewThreshold: Math.max(0, Math.floor(Number(cf.waimaiAfterSalesReviewThreshold ?? 0) || 0)),
         };
     }
 
@@ -2746,6 +2977,7 @@ export class MerchantAdminService {
             firstResponseTargetHours?: number | null;
             resolveTargetHours?: number | null;
             dueSoonHours?: number | null;
+            refundReviewThreshold?: number | null;
         },
     ): Promise<MerchantAfterSalesRules> {
         const repo = this.connection.getRepository(ctx, Channel);
@@ -2794,6 +3026,13 @@ export class MerchantAdminService {
             }
             cf.afterSalesDueSoonHours = n;
         }
+        if (input.refundReviewThreshold !== undefined) {
+            const n = Math.floor(Number(input.refundReviewThreshold));
+            if (input.refundReviewThreshold == null || !Number.isFinite(n) || n < 0 || n > 1_000_000) {
+                throw new UserInputError('大额退款复核阈值应为 0-1000000 分（0=关闭）');
+            }
+            cf.waimaiAfterSalesReviewThreshold = n;
+        }
         channel.customFields = cf;
         await repo.save(channel);
         const saved = await this.afterSalesRules(ctx);
@@ -2801,6 +3040,8 @@ export class MerchantAdminService {
         await this.rescheduleAfterSalesTasks(ctx, saved);
         // 退款重试次数变更立即生效（§87）：为 RefundFailed 单补排/复位重试任务
         await this.rescheduleRefundRetryTasks(ctx, saved);
+        // 处理时限变更立即生效（§99）：按营业时段重算未完结单的 SLA 截止时间
+        if (input.timeoutHours !== undefined) await this.recomputeSlaDeadlines(ctx);
         return saved;
     }
 
@@ -2880,6 +3121,9 @@ export class MerchantAdminService {
             + 'WHERE id = $1 AND "slaPausedAt" IS NOT NULL',
             [nid, ms],
         );
+        // §99：恢复后按营业时段重算截止时间，立即生效
+        await this.refreshSlaDeadline(ctx, nid).catch(e =>
+            Logger.warn(`refresh sla deadline failed: ${String(e?.message ?? e)}`, 'CampusMerchantAfterSales'));
         try {
             await raw.query(
                 'UPDATE campus_after_sales_sla_pause SET "resumedAt" = now(), "pausedMs" = $2::bigint '
@@ -4104,6 +4348,113 @@ export class MerchantAdminService {
         return this.afterSalesOne(ctx, id);
     }
 
+    /**
+     * 工单转交（§99）：把售后单转给另一位本店管理员，附转交原因并写指派历史，
+     * 同时向店铺群推送协作通知（飞书未配置时静默跳过）。
+     */
+    async afterSalesTransfer(
+        ctx: RequestContext,
+        id: ID,
+        userId: ID,
+        reason: string,
+    ): Promise<MerchantAfterSalesRow> {
+        await this.assertRequestInChannel(ctx, id);
+        const why = String(reason ?? '').trim();
+        if (!why) throw new UserInputError('请填写转交原因');
+        if (why.length > 200) throw new UserInputError('转交原因最多 200 字');
+        const chId = Number(ctx.channelId);
+        const nid = Number(id);
+        const uid = Number(userId);
+        if (!Number.isFinite(uid) || uid <= 0) throw new UserInputError('接手人参数无效');
+        const raw = this.connection.rawConnection;
+        const prevRows: any = await raw.query(
+            'SELECT "assigneeUserId" FROM campus_after_sales_assignee WHERE "channelId" = $1 AND "requestId" = $2',
+            [chId, nid],
+        );
+        const prevList: any[] = Array.isArray(prevRows) && Array.isArray(prevRows[0]) ? prevRows[0] : prevRows;
+        const fromId = prevList?.[0]?.assigneeUserId == null ? null : Number(prevList[0].assigneeUserId);
+        if (fromId === uid) throw new UserInputError('该售后单已由该处理人负责，无需转交');
+        const owned: any = await raw.query(
+            'SELECT 1 FROM administrator ad '
+            + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
+            + 'JOIN role r ON r.id = ar."roleId" '
+            + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $2 '
+            + 'WHERE ad."userId" = $1 AND ad."deletedAt" IS NULL LIMIT 1',
+            [uid, chId],
+        );
+        const hits: any[] = Array.isArray(owned) && Array.isArray(owned[0]) ? owned[0] : owned;
+        if (!Array.isArray(hits) || !hits.length) throw new UserInputError('接手人不存在或不属于当前店铺');
+        await raw.query(
+            'INSERT INTO campus_after_sales_assignee ("channelId", "requestId", "assigneeUserId") '
+            + 'VALUES ($1, $2, $3) '
+            + 'ON CONFLICT ("channelId", "requestId") DO UPDATE '
+            + 'SET "assigneeUserId" = EXCLUDED."assigneeUserId", "updatedAt" = now()',
+            [chId, nid, uid],
+        );
+        await this.recordAssignChange(chId, nid, fromId, uid, why);
+        const toName = await this.adminDisplayName(uid);
+        if (this.feishu.enabled) {
+            const code = String((ctx.channel as any)?.code ?? '');
+            this.feishu.broadcast(
+                `【售后转交】售后单 #${nid} 转交给 ${toName || `操作人 #${uid}`}，原因：${why}`,
+                { channel: code },
+            ).catch(e => Logger.warn(`transfer notify failed: ${String(e?.message ?? e)}`, 'CampusMerchantAfterSales'));
+        }
+        return this.afterSalesOne(ctx, id);
+    }
+
+    /** 管理员显示名（§99）：firstName + lastName，取不到回退为 null */
+    private async adminDisplayName(userId: number): Promise<string | null> {
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT "firstName", "lastName", identifier FROM administrator WHERE "userId" = $1 LIMIT 1',
+                [userId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            const r = Array.isArray(list) ? list[0] : null;
+            if (!r) return null;
+            return [r.firstName, r.lastName].filter(Boolean).join('') || String(r.identifier ?? '') || null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 智能话术推荐（§99）：按售后类型 + 顾客申请原因匹配本店快捷回复模板，
+     * 关键词命中优先、分类命中次之，返回得分最高的 3 条；全部未命中时按排序兜底。
+     */
+    async afterSalesSuggestedReplies(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesSuggestedReply[]> {
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        const templates = await this.afterSalesReplyTemplates(ctx);
+        const type = String(request.type ?? '');
+        const reason = String(request.reason ?? '');
+        const typeWords: Record<string, string[]> = {
+            refund_only: ['退款', '仅退款', '不退货'],
+            return_refund: ['退货', '退回', '寄回', '退换'],
+            exchange: ['换货', '补发', '换新'],
+        };
+        const typeLabels: Record<string, string> = {
+            refund_only: '仅退款',
+            return_refund: '退货退款',
+            exchange: '换货',
+        };
+        const typeText = [type, ...(typeWords[type] ?? [])].join(' ');
+        const scored = templates.map(t => {
+            let score = 0;
+            const kws = String(t.keywords ?? '').split(/[\s,，;；、]+/).filter(Boolean);
+            for (const kw of kws) {
+                if (reason.includes(kw)) score += 3;
+                if (typeText.includes(kw)) score += 2;
+            }
+            const label = typeLabels[type];
+            if (label && t.category && t.category.includes(label)) score += 2;
+            if (reason.length >= 2 && t.content.includes(reason)) score += 2;
+            return { id: t.id, content: t.content, score };
+        });
+        scored.sort((a, b) => b.score - a.score);
+        return scored.slice(0, 3);
+    }
+
     /** 批量打标签（§89）：上限 50 单、5 个标签，逐单返回结果，失败不阻断整批 */
     async afterSalesBatchTag(ctx: RequestContext, ids: ID[], tagIds: ID[]): Promise<MerchantAfterSalesBatchResult[]> {
         const chId = Number(ctx.channelId);
@@ -4278,24 +4629,30 @@ export class MerchantAdminService {
             : { id: String(n), success: false, state: '', message: '售后单不存在或不属于当前店铺' });
     }
 
-    /** 记录指派变更（§92）：写日志失败不阻断指派本身 */
-    private async recordAssignChange(channelId: number, requestId: number, fromUserId: number | null, toUserId: number | null): Promise<void> {
+    /** 记录指派/转交变更（§92、§99）：写日志失败不阻断指派本身 */
+    private async recordAssignChange(
+        channelId: number,
+        requestId: number,
+        fromUserId: number | null,
+        toUserId: number | null,
+        reason?: string,
+    ): Promise<void> {
         try {
             await this.connection.rawConnection.query(
-                'INSERT INTO campus_after_sales_assign_log ("channelId", "requestId", "fromUserId", "toUserId") '
-                + 'VALUES ($1, $2, $3, $4)',
-                [channelId, requestId, fromUserId, toUserId],
+                'INSERT INTO campus_after_sales_assign_log ("channelId", "requestId", "fromUserId", "toUserId", reason) '
+                + 'VALUES ($1, $2, $3, $4, $5)',
+                [channelId, requestId, fromUserId, toUserId, reason ? String(reason).slice(0, 200) : null],
             );
         } catch (e: any) {
             Logger.warn(`record assign change failed: ${String(e?.message ?? e)}`, 'MerchantAdmin');
         }
     }
 
-    /** 指派历史（§92）：按时间倒序，带双方姓名 */
+    /** 指派历史（§92）：按时间倒序，带双方姓名；§99 起含转交原因 */
     private async afterSalesAssignLogs(requestId: number): Promise<MerchantAfterSalesAssignLogRow[]> {
         try {
             const rows: any = await this.connection.rawConnection.query(
-                'SELECT l."fromUserId", l."toUserId", l."createdAt", '
+                'SELECT l."fromUserId", l."toUserId", l."createdAt", l.reason, '
                 + 'f."firstName" AS ff, f."lastName" AS fl, '
                 + 't."firstName" AS tf, t."lastName" AS tl '
                 + 'FROM campus_after_sales_assign_log l '
@@ -4310,6 +4667,7 @@ export class MerchantAdminService {
                 fromName: [r.ff, r.fl].filter(Boolean).join('') || null,
                 toUserId: r.toUserId == null ? null : String(r.toUserId),
                 toName: [r.tf, r.tl].filter(Boolean).join('') || null,
+                reason: r.reason == null ? null : String(r.reason),
                 createdAt: new Date(r.createdAt),
             }));
         } catch {
@@ -4978,16 +5336,19 @@ export class MerchantAdminService {
                     COUNT(*)::int AS open_count,
                     COUNT(*) FILTER (
                         WHERE a."slaPausedAt" IS NULL
-                          AND a."createdAt" + make_interval(hours => $2)
-                              + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second' <= now()
+                          AND COALESCE(a."slaDeadlineAt",
+                                a."createdAt" + make_interval(hours => $2)
+                                  + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second') <= now()
                     )::int AS overdue_count,
                     COUNT(*) FILTER (
                         WHERE $3::int > 0
                           AND a."slaPausedAt" IS NULL
-                          AND a."createdAt" + make_interval(hours => $2)
-                              + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second' > now()
-                          AND a."createdAt" + make_interval(hours => $2)
-                              + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second'
+                          AND COALESCE(a."slaDeadlineAt",
+                                a."createdAt" + make_interval(hours => $2)
+                                  + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second') > now()
+                          AND COALESCE(a."slaDeadlineAt",
+                                a."createdAt" + make_interval(hours => $2)
+                                  + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second')
                               - now() <= make_interval(hours => $3::int)
                     )::int AS due_soon_count
                FROM after_sales_request a
@@ -5355,8 +5716,9 @@ export class MerchantAdminService {
                 `SELECT COUNT(*)::int AS n FROM after_sales_request a
                   WHERE a.state = 'Pending' AND a."createdAt" >= $2 AND a."createdAt" < $3
                     AND a."slaPausedAt" IS NULL
-                    AND a."createdAt" + make_interval(hours => $4)
-                        + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second' <= now()
+                    AND COALESCE(a."slaDeadlineAt",
+                          a."createdAt" + make_interval(hours => $4)
+                            + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second') <= now()
                     AND ${scope}`,
                 [chId, start, end, timeoutHours],
             );
@@ -5380,8 +5742,9 @@ export class MerchantAdminService {
                 `SELECT COUNT(*)::int AS n FROM after_sales_request a
                   WHERE a.state = 'Pending' AND a."createdAt" >= $2 AND a."createdAt" < $3
                     AND a."slaPausedAt" IS NULL
-                    AND a."createdAt" + make_interval(hours => $4)
-                        + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second' <= now()
+                    AND COALESCE(a."slaDeadlineAt",
+                          a."createdAt" + make_interval(hours => $4)
+                            + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second') <= now()
                     AND ${scope}`,
                 [chId, prevStart, prevEnd, timeoutHours],
             );
@@ -5534,20 +5897,43 @@ export class MerchantAdminService {
             .filter(id => !owned.has(id))
             .map(id => ({ id: String(id), success: false, state: '', message: '售后单不存在或不属于当前店铺' }));
         if (owned.size) {
-            try {
-                const pluginResults = mode === 'approve'
-                    ? await svc.batchApprove(ctx, Array.from(owned))
-                    : await svc.batchReject(ctx, Array.from(owned), reason as string);
-                for (const r of pluginResults) {
-                    results.push({
-                        id: String(r.id),
-                        success: Boolean(r.success),
-                        state: String(r.state ?? ''),
-                        message: String(r.message ?? ''),
-                    });
+            let targets = Array.from(owned);
+            // §99：大额退款先登记复核，不直接批量退款
+            if (mode === 'approve') {
+                const gated = await this.refundReviewGate(ctx, targets);
+                if (gated.size) {
+                    for (const [rid, amount] of gated) {
+                        try {
+                            await this.createRefundReview(ctx, rid, amount);
+                            results.push({
+                                id: String(rid),
+                                success: true,
+                                state: 'Pending',
+                                message: '已提交大额退款复核，等待其他管理员确认',
+                            });
+                        } catch (e: any) {
+                            results.push({ id: String(rid), success: false, state: '', message: String(e?.message ?? e) });
+                        }
+                    }
+                    targets = targets.filter(id => !gated.has(id));
                 }
-            } catch (e: any) {
-                throw new UserInputError(`批量处理失败：${e?.message ?? e}`);
+            }
+            if (targets.length) {
+                try {
+                    const pluginResults = mode === 'approve'
+                        ? await svc.batchApprove(ctx, targets)
+                        : await svc.batchReject(ctx, targets, reason as string);
+                    for (const r of pluginResults) {
+                        results.push({
+                            id: String(r.id),
+                            success: Boolean(r.success),
+                            state: String(r.state ?? ''),
+                            message: String(r.message ?? ''),
+                        });
+                    }
+                } catch (e: any) {
+                    throw new UserInputError(`批量处理失败：${e?.message ?? e}`);
+                }
             }
         }
         const order = new Map(ids.map((id, i) => [String(id), i]));
@@ -5612,8 +5998,9 @@ export class MerchantAdminService {
         const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
             + 'AND oc."channelId" = $1 WHERE o.id = a."orderId" AND o."customFieldsHallstatus" IS NOT NULL)';
         // §95：SLA 截止 = 申请时间 + 时限 + 已累计暂停时长；暂停中的单不计超时/临期
-        const deadlineExpr = 'a."createdAt" + make_interval(hours => $2) '
-            + '+ (COALESCE(a."slaPausedMs", 0) / 1000) * interval \'1 second\'';
+        // §99：优先用营业时段感知的 slaDeadlineAt
+        const deadlineExpr = 'COALESCE(a."slaDeadlineAt", a."createdAt" + make_interval(hours => $2) '
+            + '+ (COALESCE(a."slaPausedMs", 0) / 1000) * interval \'1 second\')';
 
         const pendingRows: any[] = await raw.query(
             `SELECT COUNT(*) FILTER (WHERE a.state IN ('Pending', 'Appealed')) AS "pending",
@@ -5777,6 +6164,55 @@ export class MerchantAdminService {
         return Number.isFinite(n) && n >= 0 ? n : 48;
     }
 
+    /**
+     * 按当前营业时间/处理时限重算本渠道未完结售后单的 SLA 截止时间（§99）。
+     * 规则或门店营业时间变更后立即生效，无需等定时任务下一轮。
+     */
+    private async recomputeSlaDeadlines(ctx: RequestContext): Promise<void> {
+        const chId = Number(ctx.channelId);
+        const businessHours = await this.channelBusinessHours(ctx);
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const raw = this.connection.rawConnection;
+        const rows: any = await raw.query(
+            `SELECT a.id, a."createdAt", COALESCE(a."slaPausedMs", 0) AS paused
+               FROM after_sales_request a
+              WHERE a.state IN ('Pending', 'Appealed')
+                AND EXISTS (SELECT 1 FROM "order" o
+                            JOIN order_channels_channel oc ON oc."orderId" = o.id
+                            WHERE o.id = a."orderId" AND oc."channelId" = $1)`,
+            [chId],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        for (const r of Array.isArray(list) ? list : []) {
+            const deadline = businessDeadline(new Date(r.createdAt), timeoutHours, businessHours, Number(r.paused));
+            await raw.query(
+                'UPDATE after_sales_request SET "slaDeadlineAt" = to_timestamp($2 / 1000.0) WHERE id = $1',
+                [Number(r.id), deadline],
+            );
+        }
+    }
+
+    /** 单条售后单的 SLA 截止时间即时重算（§99）：SLA 恢复/暂停后调用 */
+    private async refreshSlaDeadline(ctx: RequestContext, requestId: number): Promise<void> {
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT "createdAt", COALESCE("slaPausedMs", 0) AS paused FROM after_sales_request WHERE id = $1',
+            [requestId],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const r = Array.isArray(list) ? list[0] : null;
+        if (!r) return;
+        const deadline = businessDeadline(
+            new Date(r.createdAt),
+            this.afterSalesTimeoutHours(ctx),
+            await this.channelBusinessHours(ctx),
+            Number(r.paused),
+        );
+        await this.connection.rawConnection.query(
+            'UPDATE after_sales_request SET "slaDeadlineAt" = to_timestamp($2 / 1000.0) WHERE id = $1',
+            [requestId, deadline],
+        );
+    }
+
     /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
     async afterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow> {
         const text = String(reason ?? '').trim();
@@ -5838,6 +6274,8 @@ export class MerchantAdminService {
         const riskMap = await this.afterSalesRiskReasons(ctx, [Number(row.id)]);
         const slaPauseMap = await this.afterSalesSlaPauses([Number(row.id)]);
         const escalatedMap = await this.afterSalesEscalatedMap(ctx, [Number(row.id)]);
+        const reviewPending = await this.refundReviewPendingSet(ctx, [Number(row.id)]);
+        const businessHours = await this.channelBusinessHours(ctx);
         const rules = await this.afterSalesRules(ctx);
         return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender, {
             tags: tagMap,
@@ -5846,6 +6284,8 @@ export class MerchantAdminService {
             risks: riskMap,
             slaPauses: slaPauseMap,
             escalated: escalatedMap,
+            refundReviewPending: reviewPending,
+            businessHours,
         });
     }
 
@@ -5978,7 +6418,7 @@ export class MerchantAdminService {
         timeoutHours: number,
         now: number,
         lastSender: Map<number, string>,
-        opts: { tags?: Map<number, string[]>; dueSoonHours?: number; assignees?: Map<number, { userId: string; name: string | null }>; risks?: Map<number, string>; slaPauses?: Map<number, { paused: boolean; pausedMs: number; reason: string | null }>; escalated?: Map<number, boolean> } = {},
+        opts: { tags?: Map<number, string[]>; dueSoonHours?: number; assignees?: Map<number, { userId: string; name: string | null }>; risks?: Map<number, string>; slaPauses?: Map<number, { paused: boolean; pausedMs: number; reason: string | null }>; escalated?: Map<number, boolean>; refundReviewPending?: Set<number>; businessHours?: string | null } = {},
     ): MerchantAfterSalesRow {
         const customer = row.customer as any;
         const order = row.order as any;
@@ -5986,7 +6426,8 @@ export class MerchantAdminService {
         const sla = opts.slaPauses?.get(Number(row.id));
         const slaPaused = Boolean(sla?.paused);
         // §95：暂停累计时长顺延截止时间；暂停中不再判超时/临期
-        const deadline = new Date(row.createdAt).getTime() + timeoutHours * 3600_000 + (sla?.pausedMs ?? 0);
+        // §99：只统计门店营业时段，非营业时间不计入处理时长
+        const deadline = businessDeadline(row.createdAt, timeoutHours, opts.businessHours, sla?.pausedMs ?? 0);
         const assignee = opts.assignees?.get(Number(row.id));
         return {
             id: String(row.id),
@@ -6021,6 +6462,7 @@ export class MerchantAdminService {
             slaPaused,
             slaPausedReason: slaPaused ? (sla?.reason ?? null) : null,
             escalated: Boolean(opts.escalated?.get(Number(row.id))),
+            refundReviewPending: Boolean(opts.refundReviewPending?.has(Number(row.id))),
         };
     }
 
