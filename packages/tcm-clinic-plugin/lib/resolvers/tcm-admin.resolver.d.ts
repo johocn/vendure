@@ -114,6 +114,12 @@ export declare class TcmAdminResolver {
     wellnessPlan(ctx: RequestContext, id: string | number): Promise<any | null>;
     private currentClinicIds;
     /**
+     * 写路径：先校验馆归属，再返回落审计用的 staffId。
+     * SuperAdmin 未绑定该馆的员工时返回 0（表示系统级操作），不会静默跳过校验。
+     */
+    private writeStaffId;
+    private findEncounter;
+    /**
      * 只读查询的馆范围：
      * - null  = SuperAdmin，不限馆
      * - []    = 无员工归属，调用方必须返回空（不回退成「看全部」）

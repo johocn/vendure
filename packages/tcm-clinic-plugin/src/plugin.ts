@@ -1,5 +1,6 @@
-import { Inject, Type } from '@nestjs/common';
-import { PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { I18nService, Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { tcmSsoAuthenticationStrategy } from './auth/tcm-sso.strategy';
 import { TCM_PLUGIN_OPTIONS } from './constants';
@@ -25,6 +26,26 @@ import { TcmWellnessService } from './services/tcm-wellness.service';
 import { TcmClinicPluginOptions } from './types';
 
 const { gql } = require('graphql-tag');
+
+/**
+ * 写路径馆归属拒绝文案：与 ClinicScopeForbiddenError 的 message key 一一对应，
+ * bootstrap 阶段注册到 I18nService（en 为兜底语言，zh_Hans 为工作台默认）。
+ */
+const tcmErrorTranslations = {
+    en: {
+        error: {
+            'tcm-account-not-bound':
+                'This account is not bound to any clinic; ask an administrator to bind it before performing this action',
+            'tcm-clinic-access-denied': 'This account is not bound to clinic { clinicId } and cannot modify its data',
+        },
+    },
+    zh_Hans: {
+        error: {
+            'tcm-account-not-bound': '当前账号未绑定任何诊所，请联系管理员绑定后再操作',
+            'tcm-clinic-access-denied': '当前账号未绑定诊所 { clinicId }，无权操作该诊所数据',
+        },
+    },
+};
 
 /**
  * Shop API（患者端）：输出类型均不含 *Enc/prescription 等加密字段，
@@ -405,11 +426,27 @@ const adminSchema = () => gql`
     },
     compatibility: '^3.0.0',
 })
-export class TcmClinicPlugin {
+export class TcmClinicPlugin implements OnApplicationBootstrap {
     static options: TcmClinicPluginOptions = {};
+
+    constructor(private moduleRef?: ModuleRef) {}
 
     static init(options?: TcmClinicPluginOptions): Type<TcmClinicPlugin> {
         TcmClinicPlugin.options = options ?? {};
         return TcmClinicPlugin;
+    }
+
+    /** 注册写路径馆归属拒绝的 i18n 文案（en / zh_Hans 双语） */
+    async onApplicationBootstrap(): Promise<void> {
+        if (!this.moduleRef) {
+            return;
+        }
+        try {
+            const i18nService = new Injector(this.moduleRef).get(I18nService);
+            i18nService.addTranslation('en', tcmErrorTranslations.en);
+            i18nService.addTranslation('zh_Hans', tcmErrorTranslations.zh_Hans);
+        } catch (err: any) {
+            Logger.error(`Failed to register i18n translations: ${err?.message ?? err}`, 'TcmClinicPlugin');
+        }
     }
 }

@@ -3,6 +3,20 @@ import { Administrator, ForbiddenError, Permission, RequestContext, Transactiona
 
 import { TcmClinicStaff } from '../entities/tcm-clinic-staff.entity';
 
+/**
+ * 馆归属拒绝（沿用 FORBIDDEN 错误码，但换成可区分/可解释的 i18n 文案）：
+ * - not-bound    账号未绑定任何诊所
+ * - wrong-clinic 账号不属于目标诊所
+ * 文案在 plugin bootstrap 阶段注册进 I18nService。
+ */
+export class ClinicScopeForbiddenError extends ForbiddenError {
+    constructor(reason: 'not-bound' | 'wrong-clinic', clinicId?: number) {
+        super();
+        this.message = reason === 'not-bound' ? 'error.tcm-account-not-bound' : 'error.tcm-clinic-access-denied';
+        this.variables = clinicId == null ? {} : { clinicId };
+    }
+}
+
 @Injectable()
 export class TcmStaffService {
     constructor(private connection: TransactionalConnection) {}
@@ -45,6 +59,31 @@ export class TcmStaffService {
             return;
         }
         await this.assertStaffOfClinic(ctx, clinicId);
+    }
+
+    /**
+     * 写路径的馆归属校验。
+     * - SuperAdmin：可写全量，返回其在该馆的员工绑定（未绑定时为 null，审计 staffId 以 0 兜底）
+     * - 普通账号：必须绑定该馆，否则抛 ClinicScopeForbiddenError（区分「未绑定任何诊所」/「不属于该馆」）
+     */
+    async assertCanWriteClinic(ctx: RequestContext, clinicId: number): Promise<TcmClinicStaff | null> {
+        const administratorId = await this.administratorIdOf(ctx, ctx.activeUserId as number);
+        if (administratorId === null) {
+            throw new ClinicScopeForbiddenError('not-bound');
+        }
+        const repo = this.connection.getRepository(ctx, TcmClinicStaff);
+        const staff = await repo.findOne({ where: { administratorId, clinicId } });
+        if (staff) {
+            return staff;
+        }
+        if (this.isSuperAdmin(ctx)) {
+            return null;
+        }
+        // 完全没有任何员工绑定 → 「未绑定诊所」；有绑定但不含目标馆 → 「不属于该馆」
+        const anyBinding = await repo.findOne({ where: { administratorId } });
+        throw anyBinding
+            ? new ClinicScopeForbiddenError('wrong-clinic', clinicId)
+            : new ClinicScopeForbiddenError('not-bound');
     }
 
     async staffOf(ctx: RequestContext, userId: number): Promise<TcmClinicStaff[]> {

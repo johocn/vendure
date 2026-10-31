@@ -67,6 +67,7 @@ describe('TcmClinicPlugin', () => {
     });
 
     it('staff guard + patient profile creation', async () => {
+        const strip = (v: any) => Number(String(v).replace('T_', ''));
         // 建第二家馆
         await adminClient.query(gql`
             mutation {
@@ -77,26 +78,51 @@ describe('TcmClinicPlugin', () => {
         const me = await adminClient.query(gql`
             query { me { id } }
         `);
-        const adminId = Number(String(me.me.id).replace('T_', ''));
-        const staffRes = await adminClient.query(gql`
+        const superAdminId = strip(me.me.id);
+        await adminClient.query(gql`
             mutation {
-                createClinicStaff(input: { clinicId: 1, administratorId: ${adminId}, displayName: "张医生", role: "doctor" }) {
+                createClinicStaff(input: { clinicId: 1, administratorId: ${superAdminId}, displayName: "张医生", role: "doctor" }) {
                     id
                     clinicId
                     displayName
                 }
             }
         `);
-        expect(staffRes.createClinicStaff.displayName).toBe('张医生');
-        expect(Number(String(staffRes.createClinicStaff.clinicId).replace('T_', ''))).toBe(1);
-        // 馆2 未绑定 → 建档应被拒绝（守卫抛 ForbiddenError，固定文案）
+        // 另建一名真实馆1员工（非 SuperAdmin）用于验证写守卫
+        const roleRes = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "tcm-guard-e2e" description: "馆1员工" permissions: [ReadCustomer, UpdateCustomer]
+            }) { id } }
+        `)) as any;
+        const roleId = roleRes.createRole.id;
+        const guardRes = (await adminClient.query(gql`
+            mutation { createAdministrator(input: {
+                firstName: "守卫" lastName: "员工" emailAddress: "tcm-guard@test.com" password: "tcm-guard-123"
+                roleIds: ["${roleId}"]
+            }) { id } }
+        `)) as any;
+        const guardAdminId = strip(guardRes.createAdministrator.id);
+        const staffRes = await adminClient.query(gql`
+            mutation {
+                createClinicStaff(input: { clinicId: 1, administratorId: ${guardAdminId}, displayName: "李医生", role: "doctor" }) {
+                    id
+                    clinicId
+                    displayName
+                }
+            }
+        `);
+        expect(staffRes.createClinicStaff.displayName).toBe('李医生');
+        expect(strip(staffRes.createClinicStaff.clinicId)).toBe(1);
+
+        await adminClient.asUserWithCredentials('tcm-guard@test.com', 'tcm-guard-123');
+        // 馆2 未绑定 → 建档应被拒绝（FORBIDDEN，文案区分「不属于该馆」）
         await expect(
             adminClient.query(gql`
                 mutation {
                     createPatientProfile(input: { clinicId: 2, customerId: 1 }) { id }
                 }
             `),
-        ).rejects.toThrow(/not currently authorized/);
+        ).rejects.toThrow(/not bound to clinic 2|无权操作该诊所/);
         // 馆1 建档成功
         const okRes = await adminClient.query(gql`
             mutation {
@@ -107,8 +133,9 @@ describe('TcmClinicPlugin', () => {
                 }
             }
         `);
-        expect(Number(String(okRes.createPatientProfile.customerId).replace('T_', ''))).toBe(1);
+        expect(strip(okRes.createPatientProfile.customerId)).toBe(1);
         expect(okRes.createPatientProfile.constitution.type).toBe('阳虚质');
+        await adminClient.asSuperAdmin();
     });
 
     it('encounter state machine with optimistic lock', async () => {
@@ -497,6 +524,187 @@ describe('TcmClinicPlugin', () => {
         await expect(
             adminClient.query(gql`query { auditLogs(options: {}) { totalItems } }`),
         ).rejects.toThrow(/not currently authorized/);
+    });
+
+    /**
+     * C：写路径馆归属校验。
+     * 覆盖：A馆员工写A馆成功；A馆员工写/改B馆记录被拒；无绑定员工写被拒（文案明确）；
+     * SuperAdmin 跨馆可写；匿名 FORBIDDEN。
+     */
+    it('写路径馆归属校验：A馆成功、跨馆写改被拒、无绑定被拒、SuperAdmin 全量、匿名 FORBIDDEN', async () => {
+        await adminClient.asSuperAdmin();
+        const strip = (v: any) => Number(String(v).replace('T_', ''));
+        const codeOf = (err: any) => err?.response?.errors?.[0]?.extensions?.code;
+        const expectForbidden = async (promise: Promise<any>, msgPattern?: RegExp) => {
+            const err: any = await promise.then(() => null, (e: any) => e);
+            expect(err, 'expected the operation to be rejected').toBeTruthy();
+            expect(codeOf(err)).toBe('FORBIDDEN');
+            if (msgPattern) {
+                expect(String(err?.message ?? '')).toMatch(msgPattern);
+            }
+            return err;
+        };
+
+        // 角色 + 三名管理员：WA 绑馆1、WB 绑馆2、WC 不绑任何馆
+        const roleRes = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "tcm-write-e2e" description: "写路径校验" permissions: [ReadCustomer, UpdateCustomer]
+            }) { id } }
+        `)) as any;
+        const roleId = roleRes.createRole.id;
+        const createAdmin = async (first: string, last: string, email: string, password: string) => {
+            const res = (await adminClient.query(gql`
+                mutation { createAdministrator(input: {
+                    firstName: "${first}" lastName: "${last}" emailAddress: "${email}" password: "${password}"
+                    roleIds: ["${roleId}"]
+                }) { id } }
+            `)) as any;
+            return strip(res.createAdministrator.id);
+        };
+        const waId = await createAdmin('写', '甲', 'tcm-wa@test.com', 'tcm-wa-123');
+        const wbId = await createAdmin('写', '乙', 'tcm-wb@test.com', 'tcm-wb-123');
+        await createAdmin('写', '丙', 'tcm-wc@test.com', 'tcm-wc-123');
+        await adminClient.query(gql`
+            mutation { createClinicStaff(input: { clinicId: 1, administratorId: ${waId}, displayName: "写甲医生" }) { id } }
+        `);
+        await adminClient.query(gql`
+            mutation { createClinicStaff(input: { clinicId: 2, administratorId: ${wbId}, displayName: "写乙医生" }) { id } }
+        `);
+
+        // 三名新客户：A/B 各用于本馆建档，S 用于 SuperAdmin 跨馆建档
+        const mkCustomer = async (first: string, last: string, email: string) => {
+            const res = (await adminClient.query(gql`
+                mutation { createCustomer(input: { firstName: "${first}", lastName: "${last}", emailAddress: "${email}" }) { ... on Customer { id } } }
+            `)) as any;
+            return strip(res.createCustomer.id);
+        };
+        const customerAId = await mkCustomer('写甲', '患者', 'tcm-wa-patient@test.com');
+        const customerBId = await mkCustomer('写乙', '患者', 'tcm-wb-patient@test.com');
+        const customerSId = await mkCustomer('超管', '患者', 'tcm-sa-patient@test.com');
+
+        // —— 馆B员工先建全套数据，供馆A员工做跨馆写/改尝试 ——
+        await adminClient.asUserWithCredentials('tcm-wb@test.com', 'tcm-wb-123');
+        const profileB = (await adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: 2, customerId: ${customerBId} }) { id } }
+        `)) as any;
+        const profileBId = strip(profileB.createPatientProfile.id);
+        const encB = (await adminClient.query(gql`
+            mutation { createEncounter(input: { patientProfileId: ${profileBId}, clinicId: 2 }) { id } }
+        `)) as any;
+        const encBId = strip(encB.createEncounter.id);
+        const recB = (await adminClient.query(gql`
+            mutation { createMedicalRecord(input: { encounterId: ${encBId}, chiefComplaint: "乙馆主诉", diagnosis: "乙馆诊断" }) { id } }
+        `)) as any;
+        const recBId = strip(recB.createMedicalRecord.id);
+        const planB = (await adminClient.query(gql`
+            mutation { createWellnessPlan(input: { patientProfileId: ${profileBId}, clinicId: 2, title: "乙馆方案" }) { id } }
+        `)) as any;
+        const planBId = strip(planB.createWellnessPlan.id);
+        const fuB = (await adminClient.query(gql`
+            mutation { createFollowUp(input: { patientProfileId: ${profileBId}, planId: ${planBId}, title: "乙馆随访", dueAt: "2026-11-06T10:00:00.000Z" }) { id } }
+        `)) as any;
+        const fuBId = strip(fuB.createFollowUp.id);
+
+        // —— 馆A员工：本馆写成功 ——
+        await adminClient.asUserWithCredentials('tcm-wa@test.com', 'tcm-wa-123');
+        const profileA = (await adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: 1, customerId: ${customerAId} }) { id clinicId } }
+        `)) as any;
+        const profileAId = strip(profileA.createPatientProfile.id);
+        const encA = (await adminClient.query(gql`
+            mutation { createEncounter(input: { patientProfileId: ${profileAId}, clinicId: 1 }) { id } }
+        `)) as any;
+        const encAId = strip(encA.createEncounter.id);
+        const recA = (await adminClient.query(gql`
+            mutation { createMedicalRecord(input: { encounterId: ${encAId}, chiefComplaint: "甲馆主诉", diagnosis: "甲馆诊断" }) { id } }
+        `)) as any;
+        const recAId = strip(recA.createMedicalRecord.id);
+        const planA = (await adminClient.query(gql`
+            mutation { createWellnessPlan(input: { patientProfileId: ${profileAId}, clinicId: 1, title: "甲馆方案" }) { id } }
+        `)) as any;
+        const planAId = strip(planA.createWellnessPlan.id);
+        const fuA = (await adminClient.query(gql`
+            mutation { createFollowUp(input: { patientProfileId: ${profileAId}, planId: ${planAId}, title: "甲馆随访", dueAt: "2026-11-06T10:00:00.000Z" }) { id } }
+        `)) as any;
+        const fuAId = strip(fuA.createFollowUp.id);
+        const updatedA = (await adminClient.query(gql`
+            mutation { updateMedicalRecord(id: "${recAId}", input: { diagnosis: "甲馆诊断（复诊）" }) { id version } }
+        `)) as any;
+        expect(updatedA.updateMedicalRecord.version).toBe(2);
+
+        // —— 馆A员工：跨馆建档 / 写接诊 / 写病志 / 改病志 / 状态迁移 / 计划 / 随访 全部被拒 ——
+        await expectForbidden(adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: 2, customerId: ${customerBId} }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { createEncounter(input: { patientProfileId: ${profileBId}, clinicId: 1 }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { createMedicalRecord(input: { encounterId: ${encBId}, chiefComplaint: "x", diagnosis: "y" }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { updateMedicalRecord(id: "${recBId}", input: { diagnosis: "被跨馆改写" }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { startEncounter(id: "${encBId}") { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { completeEncounter(id: "${encBId}") { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { createWellnessPlan(input: { patientProfileId: ${profileBId}, clinicId: 1, title: "跨馆方案" }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { transitionWellnessPlan(id: "${planBId}", to: ACTIVE) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { addPlanItem(input: { planId: ${planBId}, title: "跨馆计划项" }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { createFollowUp(input: { patientProfileId: ${profileBId}, title: "跨馆随访", dueAt: "2026-11-07T10:00:00.000Z" }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { createFollowUp(input: { patientProfileId: ${profileAId}, planId: ${planBId}, title: "跨馆挂接", dueAt: "2026-11-07T10:00:00.000Z" }) { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { completeFollowUp(id: "${fuBId}") { id } }
+        `));
+        await expectForbidden(adminClient.query(gql`
+            mutation { cancelFollowUp(id: "${fuBId}") { id } }
+        `));
+
+        // —— 无绑定员工：写操作被拒，且文案明确「未绑定任何诊所」 ——
+        await adminClient.asUserWithCredentials('tcm-wc@test.com', 'tcm-wc-123');
+        await expectForbidden(
+            adminClient.query(gql`
+                mutation { createPatientProfile(input: { clinicId: 1, customerId: ${customerAId} }) { id } }
+            `),
+            /not bound to any clinic|未绑定任何诊所/,
+        );
+
+        // —— SuperAdmin：跨馆可写（建档 + 改他馆病志） ——
+        await adminClient.asSuperAdmin();
+        const saProfile = (await adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: 2, customerId: ${customerSId} }) { id clinicId } }
+        `)) as any;
+        expect(strip(saProfile.createPatientProfile.clinicId)).toBe(2);
+        const saUpdate = (await adminClient.query(gql`
+            mutation { updateMedicalRecord(id: "${recBId}", input: { diagnosis: "超管复核" }) { id version } }
+        `)) as any;
+        expect(saUpdate.updateMedicalRecord.version).toBe(2);
+        // 本馆员工写的随访仍可被本馆员工正常完成（写守卫未误伤本馆）
+        await adminClient.asUserWithCredentials('tcm-wa@test.com', 'tcm-wa-123');
+        const doneA = (await adminClient.query(gql`
+            mutation { completeFollowUp(id: "${fuAId}") { status } }
+        `)) as any;
+        expect(doneA.completeFollowUp.status).toBe('DONE');
+        expect(planAId).toBeGreaterThan(0);
+
+        // —— 匿名：FORBIDDEN ——
+        await adminClient.asAnonymousUser();
+        await expectForbidden(adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: 1, customerId: ${customerAId} }) { id } }
+        `));
     });
 });
 

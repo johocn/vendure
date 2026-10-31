@@ -29,7 +29,7 @@ import {
     TcmMedicalRecordService,
 } from '../services/tcm-medical-record.service';
 import { TcmAuditService } from '../services/tcm-audit.service';
-import { TcmStaffService } from '../services/tcm-staff.service';
+import { ClinicScopeForbiddenError, TcmStaffService } from '../services/tcm-staff.service';
 import { TcmWellnessService } from '../services/tcm-wellness.service';
 
 @Resolver()
@@ -55,16 +55,17 @@ export class TcmAdminResolver {
         return { items, totalItems: items.length };
     }
 
+    // 建馆/绑定员工属于租户级运维操作，无目标 clinicId 可校验，收紧为 SuperAdmin-only
     @Transaction()
     @Mutation()
-    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
+    @Allow(Permission.SuperAdmin)
     async createClinic(@Ctx() ctx: RequestContext, @Args('input') input: CreateClinicInput): Promise<TcmClinic> {
         return this.clinicService.createClinic(ctx, input);
     }
 
     @Transaction()
     @Mutation()
-    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
+    @Allow(Permission.SuperAdmin)
     async createClinicStaff(
         @Ctx() ctx: RequestContext,
         @Args('input') input: { clinicId: number; administratorId: number; displayName: string; role?: string },
@@ -79,7 +80,12 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('input') input: { clinicId: number; customerId: number; constitution?: Record<string, any> },
     ): Promise<TcmPatientProfile> {
-        await this.staffService.assertStaffOfClinic(ctx, input.clinicId);
+        await this.staffService.assertCanWriteClinic(ctx, input.clinicId);
+        // 档案跨馆共享（customerId 唯一）：已有档案属于他馆时不得把该档案「带」给非本馆员工
+        const existing = await this.clinicService.findProfileByCustomerId(ctx, input.customerId);
+        if (existing && Number(existing.clinicId) !== Number(input.clinicId) && !this.staffService.isSuperAdmin(ctx)) {
+            throw new ClinicScopeForbiddenError('wrong-clinic', Number(existing.clinicId));
+        }
         return this.clinicService.createPatientProfile(ctx, input);
     }
 
@@ -90,22 +96,33 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('input') input: { patientProfileId: number; clinicId: number; type?: string },
     ): Promise<TcmEncounter> {
-        const staff = await this.staffService.assertStaffOfClinic(ctx, input.clinicId);
-        return this.encounterService.create(ctx, input, Number(staff.id));
+        const staffId = await this.writeStaffId(ctx, input.clinicId);
+        // 接诊必须落在患者档案所属馆，防止「本馆身份 + 他馆档案」的跨馆写入
+        const profile = await this.findPatientProfile(ctx, input.patientProfileId);
+        if (Number(profile.clinicId) !== Number(input.clinicId)) {
+            throw new ClinicScopeForbiddenError('wrong-clinic', Number(profile.clinicId));
+        }
+        return this.encounterService.create(ctx, input, staffId);
     }
 
     @Transaction()
     @Mutation()
     @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async startEncounter(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmEncounter> {
-        return this.encounterService.transition(ctx, Number(String(id).replace('T_', '')), 'ACTIVE');
+        const encounterId = Number(String(id).replace('T_', ''));
+        const encounter = await this.findEncounter(ctx, encounterId);
+        await this.staffService.assertCanWriteClinic(ctx, Number(encounter.clinicId));
+        return this.encounterService.transition(ctx, encounterId, 'ACTIVE');
     }
 
     @Transaction()
     @Mutation()
     @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async completeEncounter(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmEncounter> {
-        return this.encounterService.transition(ctx, Number(String(id).replace('T_', '')), 'COMPLETED');
+        const encounterId = Number(String(id).replace('T_', ''));
+        const encounter = await this.findEncounter(ctx, encounterId);
+        await this.staffService.assertCanWriteClinic(ctx, Number(encounter.clinicId));
+        return this.encounterService.transition(ctx, encounterId, 'COMPLETED');
     }
 
     @Transaction()
@@ -122,8 +139,8 @@ export class TcmAdminResolver {
         if (!encounter) {
             throw new UserInputError(`接诊不存在：${input.encounterId}`);
         }
-        const staff = await this.staffService.assertStaffOfClinic(ctx, encounter.clinicId);
-        const record = await this.recordService.create(ctx, Number(staff.id), input);
+        const staffId = await this.writeStaffId(ctx, Number(encounter.clinicId));
+        const record = await this.recordService.create(ctx, staffId, input);
         const view = await this.recordService.decryptView(record);
         return {
             id: Number(record.id),
@@ -150,15 +167,9 @@ export class TcmAdminResolver {
         if (!record) {
             throw new UserInputError(`病志不存在：${recordId}`);
         }
-        // 经病志的 encounterId 取 encounter → 校验馆归属
-        const encounter = await this.connection
-            .getRepository(ctx, TcmEncounter)
-            .findOne({ where: { id: record.encounterId } });
-        if (!encounter) {
-            throw new UserInputError(`接诊不存在：${record.encounterId}`);
-        }
-        const staff = await this.staffService.assertStaffOfClinic(ctx, encounter.clinicId);
-        const updated = await this.recordService.update(ctx, Number(staff.id), recordId, input);
+        // 按记录「当前所属馆」校验（不看入参，防「传自己 clinicId 改他馆记录」）
+        const staffId = await this.writeStaffId(ctx, Number(record.clinicId));
+        const updated = await this.recordService.update(ctx, staffId, recordId, input);
         const view = await this.recordService.decryptView(updated);
         return {
             id: Number(updated.id),
@@ -220,8 +231,13 @@ export class TcmAdminResolver {
             cycleEnd?: Date;
         },
     ): Promise<TcmWellnessPlan> {
-        const staff = await this.staffService.assertStaffOfClinic(ctx, input.clinicId);
-        return this.wellnessService.createPlan(ctx, Number(staff.id), input);
+        const staffId = await this.writeStaffId(ctx, input.clinicId);
+        // 规划必须落在患者档案所属馆
+        const profile = await this.findPatientProfile(ctx, input.patientProfileId);
+        if (Number(profile.clinicId) !== Number(input.clinicId)) {
+            throw new ClinicScopeForbiddenError('wrong-clinic', Number(profile.clinicId));
+        }
+        return this.wellnessService.createPlan(ctx, staffId, input);
     }
 
     @Transaction()
@@ -239,8 +255,8 @@ export class TcmAdminResolver {
         if (!plan) {
             throw new UserInputError(`康养规划不存在：${planId}`);
         }
-        const staff = await this.staffService.assertStaffOfClinic(ctx, plan.clinicId);
-        return this.wellnessService.transitionPlan(ctx, Number(staff.id), planId, to);
+        const staffId = await this.writeStaffId(ctx, Number(plan.clinicId));
+        return this.wellnessService.transitionPlan(ctx, staffId, planId, to);
     }
 
     @Transaction()
@@ -257,7 +273,7 @@ export class TcmAdminResolver {
         if (!plan) {
             throw new UserInputError(`康养规划不存在：${input.planId}`);
         }
-        await this.staffService.assertStaffOfClinic(ctx, plan.clinicId);
+        await this.staffService.assertCanWriteClinic(ctx, Number(plan.clinicId));
         return this.wellnessService.addPlanItem(ctx, input);
     }
 
@@ -271,8 +287,20 @@ export class TcmAdminResolver {
     ): Promise<TcmFollowUpTask> {
         // 馆归属来自患者档案：先取档案，再守卫，最后落任务
         const profile = await this.findPatientProfile(ctx, input.patientProfileId);
-        const staff = await this.staffService.assertStaffOfClinic(ctx, profile.clinicId);
-        return this.wellnessService.createFollowUp(ctx, Number(staff.id), input);
+        const staffId = await this.writeStaffId(ctx, Number(profile.clinicId));
+        // 关联规划必须与档案同馆，防止跨馆挂接
+        if (input.planId != null) {
+            const plan = await this.connection
+                .getRepository(ctx, TcmWellnessPlan)
+                .findOne({ where: { id: input.planId } });
+            if (!plan) {
+                throw new UserInputError(`康养规划不存在：${input.planId}`);
+            }
+            if (Number(plan.clinicId) !== Number(profile.clinicId)) {
+                throw new ClinicScopeForbiddenError('wrong-clinic', Number(plan.clinicId));
+            }
+        }
+        return this.wellnessService.createFollowUp(ctx, staffId, input);
     }
 
     @Transaction()
@@ -292,8 +320,15 @@ export class TcmAdminResolver {
         }
         // 经任务的 patientProfileId → 档案的 clinicId 守卫
         const profile = await this.findPatientProfile(ctx, task.patientProfileId);
-        const staff = await this.staffService.assertStaffOfClinic(ctx, profile.clinicId);
-        return this.wellnessService.completeFollowUp(ctx, Number(staff.id), taskId, followUpEncounterId);
+        const staffId = await this.writeStaffId(ctx, Number(profile.clinicId));
+        // 回写结果的接诊必须同馆
+        if (followUpEncounterId != null) {
+            const encounter = await this.findEncounter(ctx, Number(followUpEncounterId));
+            if (Number(encounter.clinicId) !== Number(profile.clinicId)) {
+                throw new ClinicScopeForbiddenError('wrong-clinic', Number(encounter.clinicId));
+            }
+        }
+        return this.wellnessService.completeFollowUp(ctx, staffId, taskId, followUpEncounterId);
     }
 
     @Transaction()
@@ -308,8 +343,8 @@ export class TcmAdminResolver {
             throw new UserInputError(`随访任务不存在：${taskId}`);
         }
         const profile = await this.findPatientProfile(ctx, task.patientProfileId);
-        const staff = await this.staffService.assertStaffOfClinic(ctx, profile.clinicId);
-        return this.wellnessService.cancelFollowUp(ctx, Number(staff.id), taskId);
+        const staffId = await this.writeStaffId(ctx, Number(profile.clinicId));
+        return this.wellnessService.cancelFollowUp(ctx, staffId, taskId);
     }
 
     @Transaction()
@@ -468,6 +503,25 @@ export class TcmAdminResolver {
     private async currentClinicIds(ctx: RequestContext): Promise<number[]> {
         const staffList = await this.staffService.staffOf(ctx, ctx.activeUserId as number);
         return staffList.map(s => Number(s.clinicId));
+    }
+
+    /**
+     * 写路径：先校验馆归属，再返回落审计用的 staffId。
+     * SuperAdmin 未绑定该馆的员工时返回 0（表示系统级操作），不会静默跳过校验。
+     */
+    private async writeStaffId(ctx: RequestContext, clinicId: number): Promise<number> {
+        const staff = await this.staffService.assertCanWriteClinic(ctx, clinicId);
+        return staff ? Number(staff.id) : 0;
+    }
+
+    private async findEncounter(ctx: RequestContext, id: number): Promise<TcmEncounter> {
+        const encounter = await this.connection
+            .getRepository(ctx, TcmEncounter)
+            .findOne({ where: { id } });
+        if (!encounter) {
+            throw new UserInputError(`接诊不存在：${id}`);
+        }
+        return encounter;
     }
 
     /**

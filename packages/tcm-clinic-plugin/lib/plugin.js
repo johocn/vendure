@@ -5,10 +5,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 var TcmClinicPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TcmClinicPlugin = void 0;
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
 const tcm_sso_strategy_1 = require("./auth/tcm-sso.strategy");
 const constants_1 = require("./constants");
 const tcm_clinic_entity_1 = require("./entities/tcm-clinic.entity");
@@ -31,6 +35,24 @@ const tcm_medical_record_service_1 = require("./services/tcm-medical-record.serv
 const tcm_staff_service_1 = require("./services/tcm-staff.service");
 const tcm_wellness_service_1 = require("./services/tcm-wellness.service");
 const { gql } = require('graphql-tag');
+/**
+ * 写路径馆归属拒绝文案：与 ClinicScopeForbiddenError 的 message key 一一对应，
+ * bootstrap 阶段注册到 I18nService（en 为兜底语言，zh_Hans 为工作台默认）。
+ */
+const tcmErrorTranslations = {
+    en: {
+        error: {
+            'tcm-account-not-bound': 'This account is not bound to any clinic; ask an administrator to bind it before performing this action',
+            'tcm-clinic-access-denied': 'This account is not bound to clinic { clinicId } and cannot modify its data',
+        },
+    },
+    zh_Hans: {
+        error: {
+            'tcm-account-not-bound': '当前账号未绑定任何诊所，请联系管理员绑定后再操作',
+            'tcm-clinic-access-denied': '当前账号未绑定诊所 { clinicId }，无权操作该诊所数据',
+        },
+    },
+};
 /**
  * Shop API（患者端）：输出类型均不含 *Enc/prescription 等加密字段，
  * 病志仅暴露脱敏摘要 diagnosisSummary。
@@ -366,16 +388,34 @@ const adminSchema = () => gql `
     }
 `;
 let TcmClinicPlugin = TcmClinicPlugin_1 = class TcmClinicPlugin {
+    constructor(moduleRef) {
+        this.moduleRef = moduleRef;
+    }
     static init(options) {
         TcmClinicPlugin_1.options = options !== null && options !== void 0 ? options : {};
         return TcmClinicPlugin_1;
+    }
+    /** 注册写路径馆归属拒绝的 i18n 文案（en / zh_Hans 双语） */
+    async onApplicationBootstrap() {
+        var _a;
+        if (!this.moduleRef) {
+            return;
+        }
+        try {
+            const i18nService = new core_2.Injector(this.moduleRef).get(core_2.I18nService);
+            i18nService.addTranslation('en', tcmErrorTranslations.en);
+            i18nService.addTranslation('zh_Hans', tcmErrorTranslations.zh_Hans);
+        }
+        catch (err) {
+            core_2.Logger.error(`Failed to register i18n translations: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, 'TcmClinicPlugin');
+        }
     }
 };
 exports.TcmClinicPlugin = TcmClinicPlugin;
 TcmClinicPlugin.options = {};
 exports.TcmClinicPlugin = TcmClinicPlugin = TcmClinicPlugin_1 = __decorate([
-    (0, core_1.VendurePlugin)({
-        imports: [core_1.PluginCommonModule],
+    (0, core_2.VendurePlugin)({
+        imports: [core_2.PluginCommonModule],
         entities: [
             tcm_clinic_entity_1.TcmClinic,
             tcm_clinic_staff_entity_1.TcmClinicStaff,
@@ -416,6 +456,7 @@ exports.TcmClinicPlugin = TcmClinicPlugin = TcmClinicPlugin_1 = __decorate([
             return config;
         },
         compatibility: '^3.0.0',
-    })
+    }),
+    __metadata("design:paramtypes", [core_1.ModuleRef])
 ], TcmClinicPlugin);
 //# sourceMappingURL=plugin.js.map
