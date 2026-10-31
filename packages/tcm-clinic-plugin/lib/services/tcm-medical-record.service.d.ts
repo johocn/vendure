@@ -43,11 +43,18 @@ export declare class TcmMedicalRecordService {
         diagnosis: string;
         prescription: Record<string, any>;
     }>;
-    /** 病志列表（含 revisions 解密视图） */
-    findAll(ctx: RequestContext, options?: ListOptions): Promise<{
+    /**
+     * 病志列表（含 revisions 解密视图）。
+     * clinicIds 为 undefined 时不限馆（调用方已确认是 SuperAdmin）；
+     * 传入空数组表示无馆归属 → 直接返回空，绝不默认「看全部」。
+     */
+    findAll(ctx: RequestContext, options?: ListOptions, clinicIds?: number[]): Promise<{
         items: MedicalRecordView[];
         totalItems: number;
     }>;
-    /** 单条病志视图（含版本链），供工作台详情页 */
-    findOneView(ctx: RequestContext, recordId: number): Promise<MedicalRecordView | null>;
+    /**
+     * 单条病志视图（含版本链），供工作台详情页。
+     * clinicIds 语义同 findAll：undefined = SuperAdmin 不限；空数组 = 无归属，返回 null。
+     */
+    findOneView(ctx: RequestContext, recordId: number, clinicIds?: number[]): Promise<MedicalRecordView | null>;
 }

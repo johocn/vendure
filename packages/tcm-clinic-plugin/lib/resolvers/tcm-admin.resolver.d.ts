@@ -113,6 +113,13 @@ export declare class TcmAdminResolver {
     medicalRecord(ctx: RequestContext, id: string | number): Promise<any | null>;
     wellnessPlan(ctx: RequestContext, id: string | number): Promise<any | null>;
     private currentClinicIds;
+    /**
+     * 只读查询的馆范围：
+     * - null  = SuperAdmin，不限馆
+     * - []    = 无员工归属，调用方必须返回空（不回退成「看全部」）
+     * - [..]  = 当前管理员被绑定到的馆
+     */
+    private clinicScope;
     /** 患者档案视图增强：读时联查 Customer 姓名/手机号（无外键，仅 ID 关联） */
     private enrichProfiles;
     private findPatientProfile;

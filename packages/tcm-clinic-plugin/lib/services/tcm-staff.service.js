@@ -42,6 +42,17 @@ let TcmStaffService = class TcmStaffService {
         }
         return staff;
     }
+    /** 当前请求是否超级管理员（SuperAdmin 权限保留跨馆全量读取） */
+    isSuperAdmin(ctx) {
+        return ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+    }
+    /** 只读路径的馆归属校验：SuperAdmin 放行，其余必须是该馆员工（否则 Forbidden） */
+    async assertCanReadClinic(ctx, clinicId) {
+        if (this.isSuperAdmin(ctx)) {
+            return;
+        }
+        await this.assertStaffOfClinic(ctx, clinicId);
+    }
     async staffOf(ctx, userId) {
         const administratorId = await this.administratorIdOf(ctx, userId);
         if (administratorId === null) {

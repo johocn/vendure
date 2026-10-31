@@ -11,11 +11,15 @@ export declare class TcmAuditService {
         action: string;
         diff?: Record<string, any>;
     }): Promise<void>;
-    /** 只读分页查询 */
+    /**
+     * 只读分页查询。
+     * 审计日志无 clinicId 列，按操作人 staffId 归属过滤：
+     * staffIds 为 undefined 时不限（调用方已确认是 SuperAdmin）；空数组 = 无归属，返回空。
+     */
     findAll(ctx: RequestContext, options?: {
         skip?: number;
         take?: number;
-    }): Promise<{
+    }, staffIds?: number[]): Promise<{
         items: TcmAuditLog[];
         totalItems: number;
     }>;

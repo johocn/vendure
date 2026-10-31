@@ -133,13 +133,22 @@ export class TcmMedicalRecordService {
         };
     }
 
-    /** 病志列表（含 revisions 解密视图） */
+    /**
+     * 病志列表（含 revisions 解密视图）。
+     * clinicIds 为 undefined 时不限馆（调用方已确认是 SuperAdmin）；
+     * 传入空数组表示无馆归属 → 直接返回空，绝不默认「看全部」。
+     */
     async findAll(
         ctx: RequestContext,
         options: ListOptions = {},
+        clinicIds?: number[],
     ): Promise<{ items: MedicalRecordView[]; totalItems: number }> {
+        if (clinicIds && clinicIds.length === 0) {
+            return { items: [], totalItems: 0 };
+        }
         const repo = this.connection.getRepository(ctx, TcmMedicalRecord);
         const [records, totalItems] = await repo.findAndCount({
+            where: clinicIds ? { clinicId: In(clinicIds) } : {},
             skip: options.skip,
             take: options.take,
             order: { id: 'ASC' },
@@ -166,9 +175,23 @@ export class TcmMedicalRecordService {
         return { items, totalItems };
     }
 
-    /** 单条病志视图（含版本链），供工作台详情页 */
-    async findOneView(ctx: RequestContext, recordId: number): Promise<MedicalRecordView | null> {
-        const record = await this.connection.getRepository(ctx, TcmMedicalRecord).findOne({ where: { id: recordId } });
+    /**
+     * 单条病志视图（含版本链），供工作台详情页。
+     * clinicIds 语义同 findAll：undefined = SuperAdmin 不限；空数组 = 无归属，返回 null。
+     */
+    async findOneView(
+        ctx: RequestContext,
+        recordId: number,
+        clinicIds?: number[],
+    ): Promise<MedicalRecordView | null> {
+        if (clinicIds && clinicIds.length === 0) {
+            return null;
+        }
+        const record = await this.connection
+            .getRepository(ctx, TcmMedicalRecord)
+            .findOne({
+                where: clinicIds ? { id: recordId, clinicId: In(clinicIds) } : { id: recordId },
+            });
         if (!record) return null;
         const view = await this.decryptView(record);
         const revisions = await this.connection.getRepository(ctx, TcmMedicalRecordRevision).find({

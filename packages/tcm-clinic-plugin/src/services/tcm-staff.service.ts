@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Administrator, ForbiddenError, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Administrator, ForbiddenError, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
 
 import { TcmClinicStaff } from '../entities/tcm-clinic-staff.entity';
 
@@ -32,6 +32,19 @@ export class TcmStaffService {
             throw new ForbiddenError();
         }
         return staff;
+    }
+
+    /** 当前请求是否超级管理员（SuperAdmin 权限保留跨馆全量读取） */
+    isSuperAdmin(ctx: RequestContext): boolean {
+        return ctx.userHasPermissions([Permission.SuperAdmin]);
+    }
+
+    /** 只读路径的馆归属校验：SuperAdmin 放行，其余必须是该馆员工（否则 Forbidden） */
+    async assertCanReadClinic(ctx: RequestContext, clinicId: number): Promise<void> {
+        if (this.isSuperAdmin(ctx)) {
+            return;
+        }
+        await this.assertStaffOfClinic(ctx, clinicId);
     }
 
     async staffOf(ctx: RequestContext, userId: number): Promise<TcmClinicStaff[]> {

@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TcmAuditService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const tcm_audit_log_entity_1 = require("../entities/tcm-audit-log.entity");
 let TcmAuditService = class TcmAuditService {
     constructor(connection) {
@@ -21,11 +22,23 @@ let TcmAuditService = class TcmAuditService {
     async log(ctx, input) {
         await this.connection.getRepository(ctx, tcm_audit_log_entity_1.TcmAuditLog).save(new tcm_audit_log_entity_1.TcmAuditLog(input));
     }
-    /** 只读分页查询 */
-    async findAll(ctx, options = {}) {
+    /**
+     * 只读分页查询。
+     * 审计日志无 clinicId 列，按操作人 staffId 归属过滤：
+     * staffIds 为 undefined 时不限（调用方已确认是 SuperAdmin）；空数组 = 无归属，返回空。
+     */
+    async findAll(ctx, options = {}, staffIds) {
+        if (staffIds && staffIds.length === 0) {
+            return { items: [], totalItems: 0 };
+        }
         const [items, totalItems] = await this.connection
             .getRepository(ctx, tcm_audit_log_entity_1.TcmAuditLog)
-            .findAndCount({ skip: options.skip, take: options.take, order: { id: 'ASC' } });
+            .findAndCount({
+            where: staffIds ? { staffId: (0, typeorm_1.In)(staffIds) } : {},
+            skip: options.skip,
+            take: options.take,
+            order: { id: 'ASC' },
+        });
         return { items, totalItems };
     }
 };

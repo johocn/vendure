@@ -177,7 +177,8 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('options') options?: ListOptions,
     ): Promise<{ items: MedicalRecordView[]; totalItems: number }> {
-        return this.recordService.findAll(ctx, options);
+        const clinicIds = await this.clinicScope(ctx);
+        return this.recordService.findAll(ctx, options, clinicIds ?? undefined);
     }
 
     @Transaction()
@@ -187,7 +188,22 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('options') options?: ListOptions,
     ): Promise<{ items: TcmAuditLog[]; totalItems: number }> {
-        return this.auditService.findAll(ctx, options);
+        // 审计日志无 clinicId，按「当前可读馆在职员工」的 staffId 过滤
+        const clinicIds = await this.clinicScope(ctx);
+        let staffIds: number[] | undefined;
+        if (clinicIds) {
+            if (!clinicIds.length) {
+                return { items: [], totalItems: 0 };
+            }
+            const staff = await this.connection
+                .getRepository(ctx, TcmClinicStaff)
+                .find({ where: { clinicId: In(clinicIds) } });
+            staffIds = staff.map(s => Number(s.id));
+            if (!staffIds.length) {
+                return { items: [], totalItems: 0 };
+            }
+        }
+        return this.auditService.findAll(ctx, options, staffIds);
     }
 
     @Transaction()
@@ -303,13 +319,15 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number },
     ): Promise<{ items: TcmWellnessPlan[]; totalItems: number }> {
-        // 按当前 staff 所属馆过滤
-        const staffList = await this.staffService.staffOf(ctx, ctx.activeUserId as number);
-        const clinicIds = staffList.map(s => s.clinicId);
+        // 按当前 staff 所属馆过滤（SuperAdmin 不限；无归属 → 空）
+        const clinicIds = await this.clinicScope(ctx);
+        if (clinicIds && !clinicIds.length) {
+            return { items: [], totalItems: 0 };
+        }
         const [items, totalItems] = await this.connection
             .getRepository(ctx, TcmWellnessPlan)
             .findAndCount({
-                where: clinicIds.length ? { clinicId: In(clinicIds) } : undefined,
+                where: clinicIds ? { clinicId: In(clinicIds) } : {},
                 skip: options?.skip,
                 take: options?.take,
                 order: { id: 'ASC' },
@@ -324,22 +342,25 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number },
     ): Promise<{ items: TcmFollowUpTask[]; totalItems: number }> {
-        // 随访任务无 clinicId 列，经所属馆的患者档案过滤
-        const staffList = await this.staffService.staffOf(ctx, ctx.activeUserId as number);
-        const clinicIds = staffList.map(s => s.clinicId);
-        const profiles = clinicIds.length
+        // 随访任务无 clinicId 列，经所属馆的患者档案过滤（SuperAdmin 不限；无归属 → 空）
+        const clinicIds = await this.clinicScope(ctx);
+        if (clinicIds && !clinicIds.length) {
+            return { items: [], totalItems: 0 };
+        }
+        const profiles = clinicIds
             ? await this.connection
                   .getRepository(ctx, TcmPatientProfile)
                   .find({ where: { clinicId: In(clinicIds) } })
             : [];
-        const profileIds = profiles.map(p => p.id);
-        if (!profileIds.length) {
+        if (clinicIds && !profiles.length) {
             return { items: [], totalItems: 0 };
         }
+        const profileIds = profiles.map(p => p.id);
+        const where = clinicIds ? { patientProfileId: In(profileIds) } : {};
         const [items, totalItems] = await this.connection
             .getRepository(ctx, TcmFollowUpTask)
             .findAndCount({
-                where: { patientProfileId: In(profileIds) },
+                where,
                 skip: options?.skip,
                 take: options?.take,
                 order: { id: 'ASC' },
@@ -361,12 +382,12 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number },
     ): Promise<{ items: any[]; totalItems: number }> {
-        const clinicIds = await this.currentClinicIds(ctx);
-        if (!clinicIds.length) return { items: [], totalItems: 0 };
+        const clinicIds = await this.clinicScope(ctx);
+        if (clinicIds && !clinicIds.length) return { items: [], totalItems: 0 };
         const [items, totalItems] = await this.connection
             .getRepository(ctx, TcmPatientProfile)
             .findAndCount({
-                where: { clinicId: In(clinicIds) },
+                where: clinicIds ? { clinicId: In(clinicIds) } : {},
                 skip: options?.skip,
                 take: options?.take,
                 order: { id: 'ASC' },
@@ -383,7 +404,7 @@ export class TcmAdminResolver {
     ): Promise<any | null> {
         const profile = await this.clinicService.findPatientProfile(ctx, Number(String(id).replace('T_', '')));
         if (!profile) return null;
-        await this.staffService.assertStaffOfClinic(ctx, Number(profile.clinicId));
+        await this.staffService.assertCanReadClinic(ctx, Number(profile.clinicId));
         return (await this.enrichProfiles(ctx, [profile]))[0];
     }
 
@@ -394,13 +415,13 @@ export class TcmAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number; since?: Date },
     ): Promise<{ items: TcmEncounter[]; totalItems: number }> {
-        const clinicIds = await this.currentClinicIds(ctx);
-        if (!clinicIds.length) return { items: [], totalItems: 0 };
+        const clinicIds = await this.clinicScope(ctx);
+        if (clinicIds && !clinicIds.length) return { items: [], totalItems: 0 };
         const [items, totalItems] = await this.connection
             .getRepository(ctx, TcmEncounter)
             .findAndCount({
                 where: {
-                    clinicId: In(clinicIds),
+                    ...(clinicIds ? { clinicId: In(clinicIds) } : {}),
                     ...(options?.since ? { createdAt: MoreThanOrEqual(options.since) } : {}),
                 },
                 skip: options?.skip,
@@ -418,7 +439,7 @@ export class TcmAdminResolver {
             .getRepository(ctx, TcmEncounter)
             .findOne({ where: { id: Number(String(id).replace('T_', '')) } });
         if (!enc) return null;
-        await this.staffService.assertStaffOfClinic(ctx, Number(enc.clinicId));
+        await this.staffService.assertCanReadClinic(ctx, Number(enc.clinicId));
         return enc;
     }
 
@@ -426,7 +447,8 @@ export class TcmAdminResolver {
     @Query()
     @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async medicalRecord(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<any | null> {
-        return this.recordService.findOneView(ctx, Number(String(id).replace('T_', '')));
+        const clinicIds = await this.clinicScope(ctx);
+        return this.recordService.findOneView(ctx, Number(String(id).replace('T_', '')), clinicIds ?? undefined);
     }
 
     @Transaction()
@@ -437,7 +459,7 @@ export class TcmAdminResolver {
             .getRepository(ctx, TcmWellnessPlan)
             .findOne({ where: { id: Number(String(id).replace('T_', '')) } });
         if (!plan) return null;
-        await this.staffService.assertStaffOfClinic(ctx, Number(plan.clinicId));
+        await this.staffService.assertCanReadClinic(ctx, Number(plan.clinicId));
         const items = await this.connection.getRepository(ctx, TcmPlanItem).find({ where: { planId: Number(plan.id) }, order: { id: 'ASC' } });
         const followUps = await this.connection.getRepository(ctx, TcmFollowUpTask).find({ where: { planId: Number(plan.id) }, order: { id: 'ASC' } });
         return { ...plan, items, followUps };
@@ -446,6 +468,19 @@ export class TcmAdminResolver {
     private async currentClinicIds(ctx: RequestContext): Promise<number[]> {
         const staffList = await this.staffService.staffOf(ctx, ctx.activeUserId as number);
         return staffList.map(s => Number(s.clinicId));
+    }
+
+    /**
+     * 只读查询的馆范围：
+     * - null  = SuperAdmin，不限馆
+     * - []    = 无员工归属，调用方必须返回空（不回退成「看全部」）
+     * - [..]  = 当前管理员被绑定到的馆
+     */
+    private async clinicScope(ctx: RequestContext): Promise<number[] | null> {
+        if (this.staffService.isSuperAdmin(ctx)) {
+            return null;
+        }
+        return this.currentClinicIds(ctx);
     }
 
     /** 患者档案视图增强：读时联查 Customer 姓名/手机号（无外键，仅 ID 关联） */

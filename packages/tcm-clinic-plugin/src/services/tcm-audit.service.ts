@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
+import { In } from 'typeorm';
 
 import { TcmAuditLog } from '../entities/tcm-audit-log.entity';
 
@@ -15,14 +16,27 @@ export class TcmAuditService {
         await this.connection.getRepository(ctx, TcmAuditLog).save(new TcmAuditLog(input));
     }
 
-    /** 只读分页查询 */
+    /**
+     * 只读分页查询。
+     * 审计日志无 clinicId 列，按操作人 staffId 归属过滤：
+     * staffIds 为 undefined 时不限（调用方已确认是 SuperAdmin）；空数组 = 无归属，返回空。
+     */
     async findAll(
         ctx: RequestContext,
         options: { skip?: number; take?: number } = {},
+        staffIds?: number[],
     ): Promise<{ items: TcmAuditLog[]; totalItems: number }> {
+        if (staffIds && staffIds.length === 0) {
+            return { items: [], totalItems: 0 };
+        }
         const [items, totalItems] = await this.connection
             .getRepository(ctx, TcmAuditLog)
-            .findAndCount({ skip: options.skip, take: options.take, order: { id: 'ASC' } });
+            .findAndCount({
+                where: staffIds ? { staffId: In(staffIds) } : {},
+                skip: options.skip,
+                take: options.take,
+                order: { id: 'ASC' },
+            });
         return { items, totalItems };
     }
 }
