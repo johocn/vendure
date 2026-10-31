@@ -2742,7 +2742,14 @@ let MerchantAdminService = class MerchantAdminService {
                 continue;
             try {
                 if (rule.action === 'approve') {
-                    await svc.approveRequest(ctx, Number(r.id));
+                    // 大额退款二次复核（§99）对自动分流同样生效：命中阈值只登记复核，不直接退款
+                    const gated = await this.refundReviewGate(ctx, [Number(r.id)]);
+                    if (gated.has(Number(r.id))) {
+                        await this.createRefundReview(ctx, Number(r.id), gated.get(Number(r.id)));
+                    }
+                    else {
+                        await svc.approveRequest(ctx, Number(r.id));
+                    }
                 }
                 else if (rule.action === 'reject') {
                     await svc.rejectRequest(ctx, Number(r.id), (_b = rule.rejectReason) !== null && _b !== void 0 ? _b : '不符合售后条件');
@@ -4426,7 +4433,11 @@ let MerchantAdminService = class MerchantAdminService {
     }
     toCsv(header, rows) {
         const cell = (v) => {
-            const s = v == null ? '' : String(v);
+            let s = v == null ? '' : String(v);
+            // CSV 公式注入防护：用户可控文本以 = + - @ 开头时 Excel 会当公式执行；
+            // 数值列保持原样（负数金额不能加前缀破坏类型）
+            if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s))
+                s = `'${s}`;
             return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
         const lines = [header, ...rows].map(r => r.map(cell).join(','));

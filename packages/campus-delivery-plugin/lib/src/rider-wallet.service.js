@@ -141,6 +141,7 @@ let RiderWalletService = class RiderWalletService {
         // 「防重检查→余额校验→扣款→落库」对同骑手串行化：并发双请求只有一个能通过 PENDING 检查。
         // 残余风险（与历史一致且窗口极小）：扣款成功后 raw 事务提交失败 → 已扣无单，需人工对账。
         return this.connection.rawConnection.transaction(async (em) => {
+            var _a;
             // 裸 SQL 行锁：Customer 实体 findOne+lock 会 LEFT JOIN channels 等关联表，
             // PG 拒绝对外连接可空侧 FOR UPDATE，故用单表 SELECT ... FOR UPDATE
             await em.query('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [rider.id]);
@@ -153,14 +154,21 @@ let RiderWalletService = class RiderWalletService {
             if (amount > available)
                 throw new core_1.UserInputError('超过可提现余额');
             await port.deductBalance(pc, rider.id, amount);
-            return em.getRepository(rider_withdrawal_entity_1.RiderWithdrawalRequest).save({
-                customerId: rider.id,
-                channelId: pc.channelId,
-                amount,
-                channel: channelText,
-                account: accountText,
-                status: 'PENDING',
-            });
+            try {
+                return await em.getRepository(rider_withdrawal_entity_1.RiderWithdrawalRequest).save({
+                    customerId: rider.id,
+                    channelId: pc.channelId,
+                    amount,
+                    channel: channelText,
+                    account: accountText,
+                    status: 'PENDING',
+                });
+            }
+            catch (e) {
+                // 余额端口的事务已提交，此处失败会导致「已扣款但无申请」，必须留可检索的补单线索
+                common_1.Logger.error(`WITHDRAW_DEDUCTED_NO_REQUEST rider=${rider.id} amount=${amount} channel=${channelText} account=${accountText}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}. 需人工补建提现申请或退回余额`, 'CampusWallet');
+                throw e;
+            }
         });
     }
     /** 管理端：提现申请列表（status=ALL 或具体状态；平台级，不限定选店渠道） */

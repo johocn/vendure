@@ -140,14 +140,23 @@ export class RiderWalletService {
             const available = await port.getBalance(pc, rider.id as number);
             if (amount > available) throw new UserInputError('超过可提现余额');
             await port.deductBalance(pc, rider.id as number, amount);
-            return em.getRepository(RiderWithdrawalRequest).save({
-                customerId: rider.id,
-                channelId: pc.channelId,
-                amount,
-                channel: channelText,
-                account: accountText,
-                status: 'PENDING',
-            } as any);
+            try {
+                return await em.getRepository(RiderWithdrawalRequest).save({
+                    customerId: rider.id,
+                    channelId: pc.channelId,
+                    amount,
+                    channel: channelText,
+                    account: accountText,
+                    status: 'PENDING',
+                } as any);
+            } catch (e: any) {
+                // 余额端口的事务已提交，此处失败会导致「已扣款但无申请」，必须留可检索的补单线索
+                Logger.error(
+                    `WITHDRAW_DEDUCTED_NO_REQUEST rider=${rider.id} amount=${amount} channel=${channelText} account=${accountText}: ${e?.message ?? e}. 需人工补建提现申请或退回余额`,
+                    'CampusWallet',
+                );
+                throw e;
+            }
         });
     }
 
