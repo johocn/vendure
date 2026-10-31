@@ -3573,7 +3573,7 @@ export class MerchantAdminService {
     }
 
     /**
-     * 售后明细 / 退款流水 / 升级工单导出（§85、§97）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 售后明细 / 退款流水 / 升级工单 / 员工绩效导出（§85、§97、§89）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
      * 供前端保存为 .csv；日期为校园日（UTC+8）。filter 支持状态/类型/关键词/处理人筛选。
      */
     async afterSalesExport(
@@ -3589,7 +3589,7 @@ export class MerchantAdminService {
         if (start.getTime() > end.getTime()) throw new UserInputError('开始日期不能晚于结束日期');
         if (end.getTime() - start.getTime() > 366 * 86_400_000) throw new UserInputError('导出区间最长一年');
         const k = String(kind ?? '').trim();
-        if (!['requests', 'refunds', 'escalations'].includes(k)) throw new UserInputError('导出类型无效');
+        if (!['requests', 'refunds', 'escalations', 'staff'].includes(k)) throw new UserInputError('导出类型无效');
         const f = filter ?? {};
         const state = String(f.state ?? '').trim();
         const type = String(f.type ?? '').trim();
@@ -3619,6 +3619,17 @@ export class MerchantAdminService {
             return { sql: conds.length ? ` AND ${conds.join(' AND ')}` : '', params };
         };
         try {
+            // 员工处理绩效导出（§89）：复用 afterSalesStaffStats 的统计口径，不受状态/类型/关键词/处理人筛选影响
+            if (k === 'staff') {
+                const rows = await this.afterSalesStaffStats(ctx, from, to);
+                const header = ['操作人ID', '操作人', '处理量', '完结数', '完结率%', '首响均时(分)', '完结均时(分)', '在途超时', '升级仲裁', '评价数', '评价均分'];
+                const lines = rows.map(r => [
+                    r.operatorUserId, r.operatorName, r.handled, r.resolved, r.resolveRate,
+                    r.firstActionAvgMinutes, r.resolveAvgMinutes, r.overdueCount, r.escalatedCount,
+                    r.reviewCount, r.reviewAvgScore,
+                ]);
+                return this.toCsv(header, lines);
+            }
             if (k === 'requests') {
                 const c = buildConds('a.state');
                 const rows: any = await raw.query(

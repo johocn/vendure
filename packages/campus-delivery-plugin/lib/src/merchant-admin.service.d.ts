@@ -1327,7 +1327,7 @@ export declare class MerchantAdminService {
      */
     afterSalesRunTask(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesTaskRow>;
     /**
-     * 售后明细 / 退款流水 / 升级工单导出（§85、§97）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 售后明细 / 退款流水 / 升级工单 / 员工绩效导出（§85、§97、§89）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
      * 供前端保存为 .csv；日期为校园日（UTC+8）。filter 支持状态/类型/关键词/处理人筛选。
      */
     afterSalesExport(ctx: RequestContext, from: string, to: string, kind: string, filter?: MerchantAfterSalesExportFilter | null): Promise<string>;

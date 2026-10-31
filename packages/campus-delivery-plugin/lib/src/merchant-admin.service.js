@@ -2397,7 +2397,7 @@ let MerchantAdminService = class MerchantAdminService {
         return this.toTaskRow(fresh !== null && fresh !== void 0 ? fresh : task);
     }
     /**
-     * 售后明细 / 退款流水 / 升级工单导出（§85、§97）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 售后明细 / 退款流水 / 升级工单 / 员工绩效导出（§85、§97、§89）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
      * 供前端保存为 .csv；日期为校园日（UTC+8）。filter 支持状态/类型/关键词/处理人筛选。
      */
     async afterSalesExport(ctx, from, to, kind, filter) {
@@ -2411,7 +2411,7 @@ let MerchantAdminService = class MerchantAdminService {
         if (end.getTime() - start.getTime() > 366 * 86400000)
             throw new core_2.UserInputError('导出区间最长一年');
         const k = String(kind !== null && kind !== void 0 ? kind : '').trim();
-        if (!['requests', 'refunds', 'escalations'].includes(k))
+        if (!['requests', 'refunds', 'escalations', 'staff'].includes(k))
             throw new core_2.UserInputError('导出类型无效');
         const f = filter !== null && filter !== void 0 ? filter : {};
         const state = String((_a = f.state) !== null && _a !== void 0 ? _a : '').trim();
@@ -2445,6 +2445,17 @@ let MerchantAdminService = class MerchantAdminService {
             return { sql: conds.length ? ` AND ${conds.join(' AND ')}` : '', params };
         };
         try {
+            // 员工处理绩效导出（§89）：复用 afterSalesStaffStats 的统计口径，不受状态/类型/关键词/处理人筛选影响
+            if (k === 'staff') {
+                const rows = await this.afterSalesStaffStats(ctx, from, to);
+                const header = ['操作人ID', '操作人', '处理量', '完结数', '完结率%', '首响均时(分)', '完结均时(分)', '在途超时', '升级仲裁', '评价数', '评价均分'];
+                const lines = rows.map(r => [
+                    r.operatorUserId, r.operatorName, r.handled, r.resolved, r.resolveRate,
+                    r.firstActionAvgMinutes, r.resolveAvgMinutes, r.overdueCount, r.escalatedCount,
+                    r.reviewCount, r.reviewAvgScore,
+                ]);
+                return this.toCsv(header, lines);
+            }
             if (k === 'requests') {
                 const c = buildConds('a.state');
                 const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.state, a.reason, a."rejectReason",
