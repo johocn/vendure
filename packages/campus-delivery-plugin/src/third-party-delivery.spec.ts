@@ -188,7 +188,7 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
     });
 
     it('R3 外部运力异常 → 条件写回大厅并刷新入厅时间', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, hall, notify } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyState: 'accepted', hallStatus: 'third_party', fulfillmentRoute: 'R3' },
         });
@@ -199,6 +199,8 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
             ['third_party'],
             expect.objectContaining({ hallStatus: 'open', hallEnteredAt: expect.any(Date) }),
         );
+        // §4/§6：异常态不能静默，顾客必须收到「配送方式调整」
+        expect(notify.user).toHaveBeenCalledWith(expect.anything(), 1, 'deliveryFallback', '运力异常，重新派送');
     });
     it('旧运单号迟到回调（已换运力重推）→ 忽略，不污染新运单状态', async () => {
         const { svc, hall, rawQuery } = makeEnv({

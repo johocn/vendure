@@ -3,9 +3,10 @@ import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure
 import { CampusConfigService } from './campus-config.service';
 import { CampusSmsService } from './campus-sms.service';
 
-/** 用户侧节点通知触点（履约 5 + 用户订单域 4 + 改址 1） */
+/** 用户侧节点通知触点（履约 7 + 用户订单域 4 + 改址 1） */
 export type CampusNotifyEvent =
     | 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled'
+    | 'arrivedHandover' | 'deliveryFallback'
     | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales' | 'addressChanged';
 
 /** 触点 → 配置实体模板字段（值 = SSO msg-template 的 templateCode；未配置 = 该节点静默跳过） */
@@ -15,6 +16,8 @@ const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
     cookingDone: 'notifyTemplateCookingDone',
     orderDelivered: 'notifyTemplateDelivered',
     exceptionHandled: 'notifyTemplateExceptionHandled',
+    arrivedHandover: 'notifyTemplateArrivedHandover',
+    deliveryFallback: 'notifyTemplateDeliveryFallback',
     orderPlaced: 'notifyTemplateOrderPlaced',
     paymentPending: 'notifyTemplatePaymentPending',
     orderCancelled: 'notifyTemplateCancelled',
@@ -35,6 +38,8 @@ const SMS_EVENT_LABEL: Record<CampusNotifyEvent, string> = {
     cookingDone: '餐品已出餐',
     orderDelivered: '订单已送达',
     exceptionHandled: '异常已处理',
+    arrivedHandover: '已到校园交接点',
+    deliveryFallback: '配送方式调整',
     orderPlaced: '下单成功',
     paymentPending: '待付款提醒',
     orderCancelled: '订单已取消',
@@ -122,15 +127,19 @@ export class CampusNotifyService {
                 const params =
                     event === 'orderCancelled'
                         ? { orderCode: order.code, itemName, refundAmount: amount }
+                        : event === 'arrivedHandover'
+                        ? { orderCode: order.code, itemName, handoverPoint: (text ?? '校园交接点').slice(0, 20) }
+                        : event === 'deliveryFallback'
+                        ? { orderCode: order.code, itemName, reason: (text ?? '配送方式调整').slice(0, 20) }
                         : event === 'addressChanged'
-                          ? { orderCode: order.code, itemName, newAddress: (text ?? '').slice(0, 20) }
-                          : event === 'afterSales' || event === 'exceptionHandled'
-                          ? {
-                                orderCode: order.code,
-                                itemName,
-                                afterSaleType: (text ?? AFTER_SALE_TYPE[event] ?? '进度更新').slice(0, 5),
-                            }
-                          : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
+                        ? { orderCode: order.code, itemName, newAddress: (text ?? '').slice(0, 20) }
+                        : event === 'afterSales' || event === 'exceptionHandled'
+                        ? {
+                              orderCode: order.code,
+                              itemName,
+                              afterSaleType: (text ?? AFTER_SALE_TYPE[event] ?? '进度更新').slice(0, 5),
+                          }
+                        : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
                 const link = h5BaseUrl
                     ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
                     : undefined;

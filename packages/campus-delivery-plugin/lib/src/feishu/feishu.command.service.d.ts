@@ -5,7 +5,7 @@ import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
-export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'confirmRestore' | 'close' | 'open' | 'unknown';
+export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'handover' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'confirmRestore' | 'close' | 'open' | 'unknown';
 export interface ParsedCommand {
     name: FeishuCommandName;
     orderCode?: string;
@@ -91,6 +91,8 @@ export declare class FeishuCommandService {
     private overdueOf;
     private accept;
     private cooking;
+    /** R1 商户/自营快递送达校园交接点：按当前履约阶段分流（无需商户进后台点按钮） */
+    private handover;
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
     private stageReject;
     private confirmReject;

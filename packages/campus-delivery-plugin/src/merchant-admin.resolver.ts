@@ -1265,9 +1265,9 @@ export class MerchantAdminResolver {
         return this.merchant.cancelExternal(ctx, orderId, reason);
     }
 
-    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池）：商户可接，运营调度也可代接 */
     @Mutation()
-    @Allow(CampusPermissions.CampusMerchant as any)
+    @Allow(CampusPermissions.CampusMerchant as any, CampusPermissions.CampusDispatch as any)
     async campusMerchantAcceptOwned(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.merchant.acceptOwned(ctx, orderId);
     }
@@ -1279,9 +1279,9 @@ export class MerchantAdminResolver {
         return this.merchant.markHandoverArrived(ctx, orderId);
     }
 
-    /** 自营快递送达：R1/R2 到交接点，R3 到学生 */
+    /** 自营快递送达：R1/R2 到交接点，R3 到学生（商户可确认，运营调度也可代确认） */
     @Mutation()
-    @Allow(CampusPermissions.CampusMerchant as any)
+    @Allow(CampusPermissions.CampusMerchant as any, CampusPermissions.CampusDispatch as any)
     async campusMerchantMarkOwnedArrived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.merchant.markOwnedArrived(ctx, orderId);
     }

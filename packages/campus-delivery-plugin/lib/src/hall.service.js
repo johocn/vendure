@@ -18,6 +18,7 @@ const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-mes
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
+const campus_notify_service_1 = require("./campus-notify.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const slot_lock_service_1 = require("./slot-lock.service");
 const route_matrix_1 = require("./route-matrix");
@@ -36,12 +37,13 @@ const orderColumn = (field) => `"customFields${field.charAt(0).toUpperCase()}${f
  * 支付闸门：由插件订阅 PaymentStateTransitionEvent（Authorized/Settled）触发，未支付订单不进大厅、不可被抢。
  */
 let HallService = HallService_1 = class HallService {
-    constructor(connection, slotLock, moduleRef, capacity, feishu) {
+    constructor(connection, slotLock, moduleRef, capacity, feishu, notify) {
         this.connection = connection;
         this.slotLock = slotLock;
         this.moduleRef = moduleRef;
         this.capacity = capacity;
         this.feishu = feishu;
+        this.notify = notify;
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     get injector() {
@@ -224,6 +226,7 @@ let HallService = HallService_1 = class HallService {
      * extra 承载调用方需要同语句落库的附加字段（如 handoverAt/thirdPartyState），避免两步写。
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
     async enterHallForHandover(ctx, orderId, cause, from = ['third_party', 'merchant_delivering', 'owned_dispatched'], extra = {}) {
+        var _a, _b, _c;
         const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
@@ -239,6 +242,9 @@ let HallService = HallService_1 = class HallService {
             return '';
         }
         this.notifyRiders(ctx, order);
+        // 第一段交接完成：给顾客一个明确节点（餐/包裹已到校园交接点，等待骑手接力）
+        const point = String((_b = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.handoverPointName) !== null && _b !== void 0 ? _b : '校园交接点');
+        (_c = this.notify) === null || _c === void 0 ? void 0 : _c.user(ctx, order.id, 'arrivedHandover', point);
         core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
         return handoverCode;
     }
@@ -328,6 +334,7 @@ exports.HallService = HallService = HallService_1 = __decorate([
         slot_lock_service_1.SlotLockService,
         core_1.ModuleRef,
         capacity_service_1.CapacityService,
-        feishu_notify_service_1.FeishuNotifyService])
+        feishu_notify_service_1.FeishuNotifyService,
+        campus_notify_service_1.CampusNotifyService])
 ], HallService);
 //# sourceMappingURL=hall.service.js.map

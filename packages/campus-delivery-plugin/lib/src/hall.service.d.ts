@@ -2,6 +2,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CapacityService } from './capacity.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { SlotLockService } from './slot-lock.service';
 /** 仍在履约链路上的大厅状态（取消脱厅/回厅/条件状态迁移共用）。
@@ -18,9 +19,10 @@ export declare class HallService {
     private moduleRef;
     private capacity;
     private feishu?;
+    private notify?;
     /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
     static readonly SCHEDULE_RELEASE_MIN = 30;
-    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService, feishu?: FeishuNotifyService | undefined);
+    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */

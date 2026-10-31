@@ -2,6 +2,7 @@ import { OnApplicationShutdown } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -16,6 +17,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private moduleRef;
     private thirdParty?;
     private feishu?;
+    private notify?;
     /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
     private fallback;
     private running;
@@ -25,6 +27,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private compensationWarnAt;
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt;
+    /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
+    private readonly externalExceptionAlerted;
     /**
      * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
      * - open：量最大，T2 强派 / T4 退款；
@@ -32,7 +36,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * - inflight：已接单/待商家/外部快递/自营，负责取货超时、异常 SLA、外部对账。
      */
     private static readonly SCAN_BUCKETS;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     start(intervalMs?: number): void;

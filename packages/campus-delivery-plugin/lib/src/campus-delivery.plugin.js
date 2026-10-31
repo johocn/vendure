@@ -168,6 +168,7 @@ const p27_after_sales_template_category_1 = require("./migrations/p27-after-sale
 const p28_after_sales_product_and_rules_1 = require("./migrations/p28-after-sales-product-and-rules");
 const p29_after_sales_refund_review_and_sla_1 = require("./migrations/p29-after-sales-refund-review-and-sla");
 const p30_after_sales_audit_duty_compensation_1 = require("./migrations/p30-after-sales-audit-duty-compensation");
+const p31_notify_handover_fallback_1 = require("./migrations/p31-notify-handover-fallback");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -381,6 +382,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p28_after_sales_product_and_rules_1.P28AfterSalesProductAndRulesMigration,
             p29_after_sales_refund_review_and_sla_1.P29AfterSalesRefundReviewAndSlaMigration,
             p30_after_sales_audit_duty_compensation_1.P30AfterSalesAuditDutyCompensationMigration,
+            p31_notify_handover_fallback_1.P31NotifyHandoverFallbackMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -1789,6 +1791,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
                     notifyTemplateExceptionHandled: String
+                    """第一段交接完成：餐/包裹已到校园交接点"""
+                    notifyTemplateArrivedHandover: String
+                    """配送方式降级/异常重派（超时转传信者、外部运力异常）"""
+                    notifyTemplateDeliveryFallback: String
                     notifyTemplateOrderPlaced: String
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String
@@ -1890,6 +1896,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
                     notifyTemplateExceptionHandled: String
+                    """第一段交接完成：餐/包裹已到校园交接点"""
+                    notifyTemplateArrivedHandover: String
+                    """配送方式降级/异常重派（超时转传信者、外部运力异常）"""
+                    notifyTemplateDeliveryFallback: String
                     notifyTemplateOrderPlaced: String
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String

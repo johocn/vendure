@@ -1,8 +1,8 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusSmsService } from './campus-sms.service';
-/** 用户侧节点通知触点（履约 5 + 用户订单域 4 + 改址 1） */
-export type CampusNotifyEvent = 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled' | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales' | 'addressChanged';
+/** 用户侧节点通知触点（履约 7 + 用户订单域 4 + 改址 1） */
+export type CampusNotifyEvent = 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled' | 'arrivedHandover' | 'deliveryFallback' | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales' | 'addressChanged';
 /**
  * 用户侧节点通知（公众号模板消息，经 zhao-sso 服务间 API 发送）。
  * 链路：customer.customFields.ssoId（SSO 用户 id）→ POST {SSO_NOTIFY_BASE_URL}/v1/msg/template-send

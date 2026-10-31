@@ -888,6 +888,23 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(call![2]).toContain('not_received');
     });
 
+    // §6 异常态（回调丢失后由对账/轮询发现）：必须告警且同一运单只推一次
+    it('third_party 异常态 → 外部运单异常告警（同一运单号去重）', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc } = makeEnv({
+            openOrders: [{ id: 402, code: 'TP_EXC_01', customFields: { hallStatus: 'third_party', thirdPartyDispatchAt: minAgo(2), thirdPartyState: 'exception', thirdPartyNo: 'TP-EXC', fulfillmentRoute: 'R3' } }],
+            cfg: { merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20, inProgressSlaMinutes: 45, synchronize: false },
+            feishu,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        const dedupe = (c: any[]) => c[4] === 'TP_EXC_01:external_exception';
+        expect(feishu.pushEvent.mock.calls.filter(dedupe)).toHaveLength(1);
+        expect(feishu.pushEvent.mock.calls.find(dedupe)![1]).toBe('外部运单异常');
+        // 异常未恢复 → 下一轮仍只推一次
+        await svc.scan({ channelId: 1 } as any);
+        expect(feishu.pushEvent.mock.calls.filter(dedupe)).toHaveLength(1);
+    });
+
     // P3：拍平截断时年轻订单会被 oldest-first 长期饿死，必须让运营在飞书看到积压
     it('单轮扫描达到 200 上限 → 飞书推送调度积压告警（按渠道去重键）', async () => {
         const feishu = { pushEvent: vi.fn() };

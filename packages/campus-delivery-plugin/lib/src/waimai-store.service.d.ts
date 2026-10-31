@@ -63,6 +63,10 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
     notifyTemplateExceptionHandled: string | null;
+    /** 第一段交接完成（餐/包裹已到校园交接点） */
+    notifyTemplateArrivedHandover: string | null;
+    /** 配送方式降级/异常重派 */
+    notifyTemplateDeliveryFallback: string | null;
     notifyTemplateOrderPlaced: string | null;
     notifyTemplatePaymentPending: string | null;
     notifyTemplateCancelled: string | null;
@@ -193,6 +197,8 @@ export declare class WaimaiStoreService {
         notifyTemplateCookingDone?: string | null;
         notifyTemplateDelivered?: string | null;
         notifyTemplateExceptionHandled?: string | null;
+        notifyTemplateArrivedHandover?: string | null;
+        notifyTemplateDeliveryFallback?: string | null;
         notifyTemplateOrderPlaced?: string | null;
         notifyTemplatePaymentPending?: string | null;
         notifyTemplateCancelled?: string | null;

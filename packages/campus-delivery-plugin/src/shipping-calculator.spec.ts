@@ -192,6 +192,17 @@ describe('campusErrandCalculator', () => {
         expect(res!.metadata?.freeShipping).toBeUndefined();
     });
 
+    it('R2 第三方到校：thirdPartyBaseFee=0 → 平台免费接管（不再回落店铺普通快递运费）', async () => {
+        cfgRepo.findOne.mockResolvedValue({ thirdPartyBaseFee: 0 });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { subTotalWithTax: 999999, customFields: { fulfillmentRoute: 'R2', campusZone: '东区' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(0);
+        expect(res!.metadata).toMatchObject({ scope: 'third-party', baseFee: 0, pricing: 'base-fee' });
+    });
+
     // ===== 供需加价必须带在线骑手数（与改址/派单同口径，2026-10-24） =====
     it('供需加价：积压达标且在线骑手 <= riderThreshold 才加价，骑手充足不加价', async () => {
         const supply = { backlogThreshold: 5, riderThreshold: 3, addFee: 200 };

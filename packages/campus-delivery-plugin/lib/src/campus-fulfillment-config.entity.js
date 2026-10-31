@@ -157,6 +157,14 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "notifyTemplateArrivedHandover", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "notifyTemplateDeliveryFallback", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "notifyTemplateOrderPlaced", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),

@@ -5,6 +5,7 @@ import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugi
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { SlotLockService } from './slot-lock.service';
 import { resolveHandoverPoint, resolveRoutePlan } from './route-matrix';
@@ -36,6 +37,7 @@ export class HallService {
         private moduleRef: ModuleRef,
         private capacity: CapacityService,
         private feishu?: FeishuNotifyService,
+        private notify?: CampusNotifyService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -277,6 +279,9 @@ export class HallService {
             return '';
         }
         this.notifyRiders(ctx, order);
+        // 第一段交接完成：给顾客一个明确节点（餐/包裹已到校园交接点，等待骑手接力）
+        const point = String((order.customFields as any)?.handoverPointName ?? '校园交接点');
+        this.notify?.user(ctx, order.id, 'arrivedHandover', point);
         Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
         return handoverCode;
     }

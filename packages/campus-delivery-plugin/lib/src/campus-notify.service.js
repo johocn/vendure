@@ -21,6 +21,8 @@ const TEMPLATE_FIELD = {
     cookingDone: 'notifyTemplateCookingDone',
     orderDelivered: 'notifyTemplateDelivered',
     exceptionHandled: 'notifyTemplateExceptionHandled',
+    arrivedHandover: 'notifyTemplateArrivedHandover',
+    deliveryFallback: 'notifyTemplateDeliveryFallback',
     orderPlaced: 'notifyTemplateOrderPlaced',
     paymentPending: 'notifyTemplatePaymentPending',
     orderCancelled: 'notifyTemplateCancelled',
@@ -39,6 +41,8 @@ const SMS_EVENT_LABEL = {
     cookingDone: '餐品已出餐',
     orderDelivered: '订单已送达',
     exceptionHandled: '异常已处理',
+    arrivedHandover: '已到校园交接点',
+    deliveryFallback: '配送方式调整',
     orderPlaced: '下单成功',
     paymentPending: '待付款提醒',
     orderCancelled: '订单已取消',
@@ -109,15 +113,19 @@ let CampusNotifyService = class CampusNotifyService {
                 const amount = (((_g = order.totalWithTax) !== null && _g !== void 0 ? _g : 0) / 100).toFixed(2);
                 const params = event === 'orderCancelled'
                     ? { orderCode: order.code, itemName, refundAmount: amount }
-                    : event === 'addressChanged'
-                        ? { orderCode: order.code, itemName, newAddress: (text !== null && text !== void 0 ? text : '').slice(0, 20) }
-                        : event === 'afterSales' || event === 'exceptionHandled'
-                            ? {
-                                orderCode: order.code,
-                                itemName,
-                                afterSaleType: ((_h = text !== null && text !== void 0 ? text : AFTER_SALE_TYPE[event]) !== null && _h !== void 0 ? _h : '进度更新').slice(0, 5),
-                            }
-                            : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
+                    : event === 'arrivedHandover'
+                        ? { orderCode: order.code, itemName, handoverPoint: (text !== null && text !== void 0 ? text : '校园交接点').slice(0, 20) }
+                        : event === 'deliveryFallback'
+                            ? { orderCode: order.code, itemName, reason: (text !== null && text !== void 0 ? text : '配送方式调整').slice(0, 20) }
+                            : event === 'addressChanged'
+                                ? { orderCode: order.code, itemName, newAddress: (text !== null && text !== void 0 ? text : '').slice(0, 20) }
+                                : event === 'afterSales' || event === 'exceptionHandled'
+                                    ? {
+                                        orderCode: order.code,
+                                        itemName,
+                                        afterSaleType: ((_h = text !== null && text !== void 0 ? text : AFTER_SALE_TYPE[event]) !== null && _h !== void 0 ? _h : '进度更新').slice(0, 5),
+                                    }
+                                    : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
                 const link = h5BaseUrl
                     ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
                     : undefined;

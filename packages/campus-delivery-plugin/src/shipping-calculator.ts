@@ -92,9 +92,9 @@ export const campusErrandCalculator = new ShippingCalculator({
             return quoteDynamicBaseFee(conn, ctx.channelId as ID, cfg?.errandBaseFee ?? 200, cfg, 'errand');
         }
         if (route === 'R2') {
-            // R2 第三方到校：仅当店铺配置了 thirdPartyBaseFee 才接管顾客侧运费，否则沿用店铺普通快递运费
+            // R2 第三方到校：null=不接管（沿用店铺普通快递运费）；0=平台免费接管（仍按动态定价报价）
             const thirdPartyBase = cfg?.thirdPartyBaseFee ?? null;
-            if (thirdPartyBase == null || thirdPartyBase <= 0) return undefined;
+            if (thirdPartyBase == null) return undefined;
             return quoteDynamicBaseFee(conn, ctx.channelId as ID, thirdPartyBase, cfg, 'third-party');
         }
         const zones = (await conn.rawConnection.getRepository(CampusZone).find({

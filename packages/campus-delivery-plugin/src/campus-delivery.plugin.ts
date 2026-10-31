@@ -169,6 +169,7 @@ import { P27AfterSalesTemplateCategoryMigration } from './migrations/p27-after-s
 import { P28AfterSalesProductAndRulesMigration } from './migrations/p28-after-sales-product-and-rules';
 import { P29AfterSalesRefundReviewAndSlaMigration } from './migrations/p29-after-sales-refund-review-and-sla';
 import { P30AfterSalesAuditDutyCompensationMigration } from './migrations/p30-after-sales-audit-duty-compensation';
+import { P31NotifyHandoverFallbackMigration } from './migrations/p31-notify-handover-fallback';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -218,6 +219,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P28AfterSalesProductAndRulesMigration,
         P29AfterSalesRefundReviewAndSlaMigration,
         P30AfterSalesAuditDutyCompensationMigration,
+        P31NotifyHandoverFallbackMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -1626,6 +1628,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
                     notifyTemplateExceptionHandled: String
+                    """第一段交接完成：餐/包裹已到校园交接点"""
+                    notifyTemplateArrivedHandover: String
+                    """配送方式降级/异常重派（超时转传信者、外部运力异常）"""
+                    notifyTemplateDeliveryFallback: String
                     notifyTemplateOrderPlaced: String
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String
@@ -1727,6 +1733,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
                     notifyTemplateExceptionHandled: String
+                    """第一段交接完成：餐/包裹已到校园交接点"""
+                    notifyTemplateArrivedHandover: String
+                    """配送方式降级/异常重派（超时转传信者、外部运力异常）"""
+                    notifyTemplateDeliveryFallback: String
                     notifyTemplateOrderPlaced: String
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String

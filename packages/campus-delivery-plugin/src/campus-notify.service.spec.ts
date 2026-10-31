@@ -36,6 +36,8 @@ describe('CampusNotifyService', () => {
                     notifyTemplateCookingDone: opts.templateCode ?? null,
                     notifyTemplateDelivered: opts.templateCode ?? null,
                     notifyTemplateExceptionHandled: opts.templateCode ?? null,
+                    notifyTemplateArrivedHandover: opts.templateCode ?? null,
+                    notifyTemplateDeliveryFallback: opts.templateCode ?? null,
                     notifyTemplateOrderPlaced: opts.templateCode ?? null,
                     notifyTemplatePaymentPending: opts.templateCode ?? null,
                     notifyTemplateCancelled: opts.templateCode ?? null,
@@ -122,6 +124,30 @@ describe('CampusNotifyService', () => {
             orderCode: 'ORD1',
             itemName: '拿铁 等2件',
             afterSaleType: '订单已全额',
+        });
+    });
+
+    it('arrivedHandover：点位名 → handoverPoint 型 params（§5 第一段交接完成）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_arrived_handover' });
+        svc.user(makeCtx(), 5, 'arrivedHandover', '东区·桂1栋交接点');
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            handoverPoint: '东区·桂1栋交接点',
+        });
+    });
+
+    it('deliveryFallback：原因文案 → reason 型 params（§4 降级/异常重派）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_delivery_fallback' });
+        svc.user(makeCtx(), 6, 'deliveryFallback', '超时转传信者配送');
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            reason: '超时转传信者配送',
         });
     });
 

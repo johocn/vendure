@@ -20,7 +20,7 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) storePhone: string | null; // 联系电话
     @Column({ type: 'varchar', nullable: true }) storeNotice: string | null; // 店铺公告
     @Column({ type: 'int', nullable: true }) errandBaseFee: number | null; // R5 跑腿起步价（分；null=默认 200）
-    @Column({ type: 'int', nullable: true }) thirdPartyBaseFee: number | null; // R2 第三方到校配送基价（分；null=不接管，沿用店铺普通快递运费）
+    @Column({ type: 'int', nullable: true }) thirdPartyBaseFee: number | null; // R2 第三方到校配送基价（分；null=不接管，沿用店铺普通快递运费；0=免费接管）
     @Column({ type: 'int', nullable: true }) freeShippingThreshold: number | null; // 满 X 元免配送费（分；null=不启用，仅 R1/R3 外卖单）
     /** 配送费阶梯（P3-4）：按商品金额分档替换分区运费基价，[{minAmount:分, fee:分}]，null=不启用 */
     @Column({ type: 'simple-json', nullable: true })
@@ -53,6 +53,8 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) notifyTemplateCookingDone: string | null; // 出餐完成
     @Column({ type: 'varchar', nullable: true }) notifyTemplateDelivered: string | null; // 已送达
     @Column({ type: 'varchar', nullable: true }) notifyTemplateExceptionHandled: string | null; // 异常处置完结
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateArrivedHandover: string | null; // 已到校园交接点
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateDeliveryFallback: string | null; // 配送方式降级/异常重派
     // 订单域通知（spec §4.1）：4 个模板 ID + H5 落地页域名（禁硬编码域名，per-channel 配置）
     @Column({ type: 'varchar', nullable: true }) notifyTemplateOrderPlaced: string | null; // 下单成功
     @Column({ type: 'varchar', nullable: true }) notifyTemplatePaymentPending: string | null; // 待付款提醒

@@ -102,9 +102,9 @@ exports.campusErrandCalculator = new core_1.ShippingCalculator({
             return quoteDynamicBaseFee(conn, ctx.channelId, (_b = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _b !== void 0 ? _b : 200, cfg, 'errand');
         }
         if (route === 'R2') {
-            // R2 第三方到校：仅当店铺配置了 thirdPartyBaseFee 才接管顾客侧运费，否则沿用店铺普通快递运费
+            // R2 第三方到校：null=不接管（沿用店铺普通快递运费）；0=平台免费接管（仍按动态定价报价）
             const thirdPartyBase = (_c = cfg === null || cfg === void 0 ? void 0 : cfg.thirdPartyBaseFee) !== null && _c !== void 0 ? _c : null;
-            if (thirdPartyBase == null || thirdPartyBase <= 0)
+            if (thirdPartyBase == null)
                 return undefined;
             return quoteDynamicBaseFee(conn, ctx.channelId, thirdPartyBase, cfg, 'third-party');
         }

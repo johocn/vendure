@@ -12,6 +12,7 @@ import {
 } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { ACTIVE_HALL_STATUSES, HallService } from './hall.service';
@@ -49,6 +50,8 @@ export class DispatchJobService implements OnApplicationShutdown {
     private compensationWarnAt = 0;
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt = 0;
+    /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
+    private readonly externalExceptionAlerted = new Set<string>();
 
     /**
      * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
@@ -86,6 +89,7 @@ export class DispatchJobService implements OnApplicationShutdown {
         private moduleRef: ModuleRef,
         private thirdParty?: ThirdPartyDeliveryService,
         private feishu?: FeishuNotifyService,
+        private notify?: CampusNotifyService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -629,6 +633,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                         o.code,
                         o.code,
                     );
+                    this.notify?.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', cfg.h5BaseUrl ?? undefined);
                     cf.hallStatus = 'open';
                     cf.hallEnteredAt = enteredAt;
                     continue;
@@ -654,6 +659,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                         o.code,
                         o.code,
                     );
+                    this.notify?.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', cfg.h5BaseUrl ?? undefined);
                     cf.hallStatus = 'open';
                     cf.hallEnteredAt = enteredAt;
                     continue;
@@ -664,6 +670,23 @@ export class DispatchJobService implements OnApplicationShutdown {
                 //    但仍设 3×fallbackMs 硬上限，防止「接单后永不送达」永久占用。
                 const tpState = String(cf.thirdPartyState ?? '');
                 const inDelivery = tpState === 'accepted' || tpState === 'pickup';
+                // §6 异常态（平台判定运力失败/拒收/破损等）：同样不等待，先告警 + 通知顾客，再由下方 tpStale 取消回落。
+                // 去重键带外部运单号：回落重推后新运单异常会再次告警。
+                const exceptionKey = `${o.code}:${String(cf.thirdPartyNo ?? '')}`;
+                if (tpState !== 'exception') {
+                    this.externalExceptionAlerted.delete(exceptionKey);
+                } else if (cf.hallStatus === 'third_party' && !this.externalExceptionAlerted.has(exceptionKey)) {
+                    this.externalExceptionAlerted.add(exceptionKey);
+                    Logger.warn(`Order ${o.code} external courier exception (${String(cf.thirdPartyNo ?? '-')})`, 'CampusDispatch');
+                    void this.feishu?.pushEvent(
+                        'exception',
+                        '外部运单异常',
+                        `订单 ${o.code} 外部运单${cf.thirdPartyNo ? ` ${cf.thirdPartyNo}` : ''} 状态异常，请尽快人工核实；超时将自动取消并回落。`,
+                        o.code,
+                        `${o.code}:external_exception`,
+                    );
+                    this.notify?.user(ctx, Number(o.id), 'deliveryFallback', '运力异常，重新派送', cfg.h5BaseUrl ?? undefined);
+                }
                 const tpElapsed = cf.thirdPartyDispatchAt
                     ? now - new Date(cf.thirdPartyDispatchAt).getTime()
                     : 0;
@@ -753,6 +776,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                         o.code,
                         o.code,
                     );
+                    this.notify?.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', cfg.h5BaseUrl ?? undefined);
                     cf.hallStatus = 'open';
                     cf.hallEnteredAt = enteredAt;
                     continue;
@@ -781,6 +805,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                         o.code,
                         o.code,
                     );
+                    this.notify?.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', cfg.h5BaseUrl ?? undefined);
                     cf.hallStatus = 'open';
                     cf.hallEnteredAt = enteredAt;
                 }

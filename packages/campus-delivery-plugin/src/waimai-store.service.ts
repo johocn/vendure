@@ -73,6 +73,10 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
     notifyTemplateExceptionHandled: string | null;
+    /** 第一段交接完成（餐/包裹已到校园交接点） */
+    notifyTemplateArrivedHandover: string | null;
+    /** 配送方式降级/异常重派 */
+    notifyTemplateDeliveryFallback: string | null;
     notifyTemplateOrderPlaced: string | null;
     notifyTemplatePaymentPending: string | null;
     notifyTemplateCancelled: string | null;
@@ -196,7 +200,8 @@ const CAMPUS_R4_REMARK = 'campus-r4';
 /** 用户侧模板消息 ID 字段：未传即保留，避免后台表单漏传把已配模板清空 */
 const NOTIFY_TEMPLATE_FIELDS = [
     'notifyTemplateAccepted', 'notifyTemplateRiderAssigned', 'notifyTemplateCookingDone',
-    'notifyTemplateDelivered', 'notifyTemplateExceptionHandled', 'notifyTemplateOrderPlaced',
+    'notifyTemplateDelivered', 'notifyTemplateExceptionHandled', 'notifyTemplateArrivedHandover',
+    'notifyTemplateDeliveryFallback', 'notifyTemplateOrderPlaced',
     'notifyTemplatePaymentPending', 'notifyTemplateCancelled', 'notifyTemplateAfterSales',
     'notifyTemplateAddressChanged',
 ] as const;
@@ -351,6 +356,8 @@ export class WaimaiStoreService {
             notifyTemplateCookingDone?: string | null;
             notifyTemplateDelivered?: string | null;
             notifyTemplateExceptionHandled?: string | null;
+            notifyTemplateArrivedHandover?: string | null;
+            notifyTemplateDeliveryFallback?: string | null;
             notifyTemplateOrderPlaced?: string | null;
             notifyTemplatePaymentPending?: string | null;
             notifyTemplateCancelled?: string | null;
@@ -806,6 +813,8 @@ export class WaimaiStoreService {
             notifyTemplateCookingDone: cfg?.notifyTemplateCookingDone ?? null,
             notifyTemplateDelivered: cfg?.notifyTemplateDelivered ?? null,
             notifyTemplateExceptionHandled: cfg?.notifyTemplateExceptionHandled ?? null,
+            notifyTemplateArrivedHandover: cfg?.notifyTemplateArrivedHandover ?? null,
+            notifyTemplateDeliveryFallback: cfg?.notifyTemplateDeliveryFallback ?? null,
             notifyTemplateOrderPlaced: cfg?.notifyTemplateOrderPlaced ?? null,
             notifyTemplatePaymentPending: cfg?.notifyTemplatePaymentPending ?? null,
             notifyTemplateCancelled: cfg?.notifyTemplateCancelled ?? null,

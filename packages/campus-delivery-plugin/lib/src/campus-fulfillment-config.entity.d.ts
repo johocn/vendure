@@ -48,6 +48,8 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
     notifyTemplateExceptionHandled: string | null;
+    notifyTemplateArrivedHandover: string | null;
+    notifyTemplateDeliveryFallback: string | null;
     notifyTemplateOrderPlaced: string | null;
     notifyTemplatePaymentPending: string | null;
     notifyTemplateCancelled: string | null;

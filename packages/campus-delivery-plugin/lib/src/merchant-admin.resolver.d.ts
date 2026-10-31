@@ -317,7 +317,7 @@ export declare class MerchantAdminResolver {
         reason: string | undefined;
         skipped?: undefined;
     }>;
-    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池）：商户可接，运营调度也可代接 */
     campusMerchantAcceptOwned(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
@@ -326,7 +326,7 @@ export declare class MerchantAdminResolver {
         ok: boolean;
         done: boolean;
     }>;
-    /** 自营快递送达：R1/R2 到交接点，R3 到学生 */
+    /** 自营快递送达：R1/R2 到交接点，R3 到学生（商户可确认，运营调度也可代确认） */
     campusMerchantMarkOwnedArrived(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
         done: boolean;

@@ -469,6 +469,11 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             const moved = await this.hall.transitionFrom(oCtx, orderIdNum, ['third_party'], patch);
             if (!moved) {
                 Logger.warn(`订单 ${order.code} 外部失败回调忽略（订单已取消或状态已变更）`, loggerCtx);
+                return;
+            }
+            // §4/§6：异常态顾客可见（不是静默降级），失败原因与后续重新派送都算配送方式调整
+            if (update.status === 'exception') {
+                this.notify.user(oCtx, order.id, 'deliveryFallback', '运力异常，重新派送');
             }
             return;
         }

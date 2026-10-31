@@ -45,7 +45,7 @@ const RIDER_PICK_TIMEOUT_MIN = 15;
 
 export type FeishuCommandName =
     | 'help' | 'board' | 'digest' | 'status' | 'exceptions'
-    | 'accept' | 'cooking' | 'reject' | 'confirmReject'
+    | 'accept' | 'cooking' | 'handover' | 'reject' | 'confirmReject'
     | 'reassign' | 'handled' | 'restore' | 'confirmRestore'
     | 'close' | 'open' | 'unknown';
 
@@ -79,6 +79,7 @@ export function parseCommand(raw: string): ParsedCommand {
     if (/^(开店|恢复营业|营业)$/.test(head)) return { name: 'open', store: arg ? arg.split(' ')[0] : undefined };
     if (/^接单$/.test(head)) return { name: 'accept', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^出餐$/.test(head)) return { name: 'cooking', orderCode: arg ? arg.split(' ')[0] : undefined };
+    if (/^(送达|交接)$/.test(head)) return { name: 'handover', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^确认拒单$/.test(head)) return { name: 'confirmReject', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^确认恢复$/.test(head)) return { name: 'confirmRestore', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^拒单$/.test(head)) {
@@ -245,6 +246,9 @@ export class FeishuCommandService {
                     break;
                 case 'cooking':
                     await this.cooking(chat, chatId, openId, cmd);
+                    break;
+                case 'handover':
+                    await this.handover(chat, chatId, openId, cmd);
                     break;
                 case 'reject':
                     await this.stageReject(chat, chatId, openId, cmd);
@@ -792,6 +796,29 @@ export class FeishuCommandService {
         await this.merchant.cookingDone(found.ctx, found.order.id);
         await this.audit(chatId, openId, { ...cmd, orderCode: code }, 'ok');
         await this.reply(chatId, `已出餐：${found.order.code}`);
+    }
+
+    /** R1 商户/自营快递送达校园交接点：按当前履约阶段分流（无需商户进后台点按钮） */
+    private async handover(chat: FeishuChatConfig, chatId: string, openId: string, cmd: ParsedCommand) {
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '请带单号，例如「送达 A1234」。');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code) return;
+        const found = await this.requireOrder(chat, chatId, code);
+        if (!found) return;
+        const status = String((found.order.customFields as any)?.hallStatus ?? '');
+        if (status === 'merchant_delivering') {
+            await this.merchant.markHandoverArrived(found.ctx, found.order.id);
+        } else if (status === 'owned_dispatched') {
+            await this.merchant.markOwnedArrived(found.ctx, found.order.id);
+        } else {
+            await this.reply(chatId, `订单 ${found.order.code} 当前状态（${status || '未知'}）不能确认送达交接点。`);
+            return;
+        }
+        await this.audit(chatId, openId, { ...cmd, orderCode: code }, 'ok');
+        await this.reply(chatId, `已确认送达校园交接点：${found.order.code}`);
     }
 
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
