@@ -176,9 +176,9 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 // open 看入厅时间，在途单优先看接单时间（骑手取货/送达超时从 assignedAt 起算）。
                 // 用 limit 而非 take：take + join 会走 TypeORM 的 distinct 性分页（子查询），
                 // 该路径把表达式里的 "order" 当成别名解析导致整轮报错；本查询已按 channel 过滤不会重复行。
-                .orderBy(bucket.key === 'scheduled'
-                ? `${bucket.orderBy} ASC NULLS LAST`
-                : `${bucket.orderBy} ASC`)
+                // 预约单空值排后：nulls 必须走 orderBy 第三参数，拼进排序表达式会被二次追加 ASC 导致
+                // `... ASC NULLS LAST ASC` 语法报错（生产 errorMissingColumn 之外的 syntax error at or near "ASC"）。
+                .orderBy(bucket.orderBy, 'ASC', bucket.key === 'scheduled' ? 'NULLS LAST' : undefined)
                 .limit(bucket.limit)
                 .getMany();
             if (rows.length >= bucket.limit)
