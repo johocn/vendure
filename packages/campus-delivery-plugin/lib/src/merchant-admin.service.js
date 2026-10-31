@@ -5388,7 +5388,7 @@ let MerchantAdminService = class MerchantAdminService {
         return out;
     }
     toAfterSalesRow(row, counts, timeoutHours, now, lastSender, opts = {}) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
         const customer = row.customer;
         const order = row.order;
         const dueSoonHours = Number((_a = opts.dueSoonHours) !== null && _a !== void 0 ? _a : 0);
@@ -5432,6 +5432,8 @@ let MerchantAdminService = class MerchantAdminService {
             slaPausedReason: slaPaused ? ((_y = sla === null || sla === void 0 ? void 0 : sla.reason) !== null && _y !== void 0 ? _y : null) : null,
             escalated: Boolean((_z = opts.escalated) === null || _z === void 0 ? void 0 : _z.get(Number(row.id))),
             refundReviewPending: Boolean((_0 = opts.refundReviewPending) === null || _0 === void 0 ? void 0 : _0.has(Number(row.id))),
+            // §110：退款失败原因随列表回传，便于不点卡片就判断要不要重试
+            refundError: (_1 = row.refundError) !== null && _1 !== void 0 ? _1 : null,
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

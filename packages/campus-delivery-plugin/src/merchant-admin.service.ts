@@ -228,6 +228,8 @@ export interface MerchantAfterSalesRow {
     escalated: boolean;
     /** 已提交大额退款复核、等待其他管理员确认（§99） */
     refundReviewPending: boolean;
+    /** 退款失败原因（§110）：仅 RefundFailed 有值，列表直接展示，免进详情排查 */
+    refundError: string | null;
 }
 
 /** 换货发货结果复用列表行；批量处理逐单结果 */
@@ -6975,6 +6977,8 @@ export class MerchantAdminService {
             slaPausedReason: slaPaused ? (sla?.reason ?? null) : null,
             escalated: Boolean(opts.escalated?.get(Number(row.id))),
             refundReviewPending: Boolean(opts.refundReviewPending?.has(Number(row.id))),
+            // §110：退款失败原因随列表回传，便于不点卡片就判断要不要重试
+            refundError: row.refundError ?? null,
         };
     }
 
