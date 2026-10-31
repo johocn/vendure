@@ -21,7 +21,9 @@ const campus_fulfillment_config_entity_1 = require("../campus-fulfillment-config
 const campus_time_1 = require("../campus-time");
 const delivery_stats_service_1 = require("../delivery-stats.service");
 const dispatch_admin_service_1 = require("../dispatch-admin.service");
+const hall_service_1 = require("../hall.service");
 const merchant_admin_service_1 = require("../merchant-admin.service");
+const rider_task_service_1 = require("../rider-task.service");
 const feishu_alert_windows_1 = require("./feishu.alert-windows");
 const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
@@ -62,6 +64,9 @@ function parseCommand(raw) {
         return { name: 'cooking', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^(送达|交接)$/.test(head))
         return { name: 'handover', orderCode: arg ? arg.split(' ')[0] : undefined };
+    if (/^(重发交接码|重发码)$/.test(head)) {
+        return { name: 'resendHandover', orderCode: arg ? arg.split(' ')[0] : undefined };
+    }
     if (/^确认拒单$/.test(head))
         return { name: 'confirmReject', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^确认恢复$/.test(head))
@@ -127,7 +132,7 @@ CREATE TABLE IF NOT EXISTS feishu_audit_log (
  * 所有操作记审计日志，回复里不出现顾客手机号/详细地址。
  */
 let FeishuCommandService = class FeishuCommandService {
-    constructor(cfg, client, cards, requestContextService, connection, merchant, dispatchAdmin, deliveryStats) {
+    constructor(cfg, client, cards, requestContextService, connection, merchant, dispatchAdmin, deliveryStats, hall, riderTask) {
         this.cfg = cfg;
         this.client = client;
         this.cards = cards;
@@ -136,6 +141,8 @@ let FeishuCommandService = class FeishuCommandService {
         this.merchant = merchant;
         this.dispatchAdmin = dispatchAdmin;
         this.deliveryStats = deliveryStats;
+        this.hall = hall;
+        this.riderTask = riderTask;
         this.rate = new Map();
         this.pendingReject = new Map();
         this.pendingRestore = new Map();
@@ -209,6 +216,9 @@ let FeishuCommandService = class FeishuCommandService {
                     break;
                 case 'handover':
                     await this.handover(chat, chatId, openId, cmd);
+                    break;
+                case 'resendHandover':
+                    await this.resendHandover(chat, chatId, openId, cmd);
                     break;
                 case 'reject':
                     await this.stageReject(chat, chatId, openId, cmd);
@@ -798,6 +808,23 @@ let FeishuCommandService = class FeishuCommandService {
         await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
         await this.reply(chatId, `已确认送达校园交接点：${found.order.code}`);
     }
+    /** R5 交接码重发：仅待交接（hallStatus=open）订单可重发；同单 10 分钟限流。 */
+    async resendHandover(chat, chatId, openId, cmd) {
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '请带单号，例如「重发交接码 A1234」。');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
+        const found = await this.requireOrder(chat, chatId, code);
+        if (!found)
+            return;
+        const newCode = await this.hall.resendHandoverCode(found.ctx, Number(found.order.id));
+        this.riderTask.resetHandoverGuard(found.order.id);
+        await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
+        await this.reply(chatId, `已重发交接码：${found.order.code} → ${newCode}（10 分钟内有效，请告知交接点）`);
+    }
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
     async stageReject(chat, chatId, openId, cmd) {
         if (!cmd.orderCode) {
@@ -1048,6 +1075,8 @@ exports.FeishuCommandService = FeishuCommandService = __decorate([
         core_1.TransactionalConnection,
         merchant_admin_service_1.MerchantAdminService,
         dispatch_admin_service_1.DispatchAdminService,
-        delivery_stats_service_1.DeliveryStatsService])
+        delivery_stats_service_1.DeliveryStatsService,
+        hall_service_1.HallService,
+        rider_task_service_1.RiderTaskService])
 ], FeishuCommandService);
 //# sourceMappingURL=feishu.command.service.js.map

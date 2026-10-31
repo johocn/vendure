@@ -22,6 +22,9 @@ export declare class HallService {
     private notify?;
     /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
     static readonly SCHEDULE_RELEASE_MIN = 30;
+    /** R5 交接码重发限流：同单 10 分钟一次（进程内，pm2 单实例足够；多实例需换 DB/Redis） */
+    static readonly HANDOVER_RESEND_INTERVAL_MS: number;
+    private handoverResendAt;
     constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
@@ -50,6 +53,14 @@ export declare class HallService {
      * extra 承载调用方需要同语句落库的附加字段（如 handoverAt/thirdPartyState），避免两步写。
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
     enterHallForHandover(ctx: RequestContext, orderId: number, cause: string, from?: string[], extra?: Record<string, unknown>): Promise<string>;
+    /**
+     * R5 交接码重发（飞书指令 / 顾客侧共用）。
+     * 条件写（CAS）：仅当 hallStatus='open' 且订单未取消才更新，避免把已完成/已脱厅订单的码改掉。
+     * 限流：同单 10 分钟一次；返回新码（调用方自行决定是否展示，日志不落明文）。
+     */
+    resendHandoverCode(ctx: RequestContext, orderId: number): Promise<string>;
+    /** R5 顾客侧重发：先校验订单归属当前登录顾客，再复用同一条件写。 */
+    resendHandoverCodeForCustomer(ctx: RequestContext, orderId: number): Promise<string>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
      *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；extra 与复位字段同语句落库（后台强制回厅留痕）。
      *  返回是否命中。 */

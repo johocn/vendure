@@ -278,3 +278,56 @@ describe('HallService.exitHall 取消脱厅（3.3）', () => {
         await expect(env.svc.exitHall({} as any, order)).resolves.toBeUndefined();
     });
 });
+
+// R5 交接码一键重发：CAS 仅待交接单可重发、同单 10 分钟限流、顾客只能重发自己的单
+describe('HallService.resendHandoverCode', () => {
+    const ctx = { channelId: 1 } as any;
+
+    it('待交接订单 → 生成 4 位新码并 CAS 写库（open 且非 Cancelled）', async () => {
+        const env = makeEnv();
+        const code = await env.svc.resendHandoverCode(ctx, 9);
+        expect(code).toMatch(/^\d{4}$/);
+        const call = env.rawQuery.mock.calls.find(c => String(c[0]).includes('"customFieldsHandovercode" ='));
+        expect(call).toBeDefined();
+        const [sql, params] = call!;
+        expect(sql).toContain('"customFieldsHallstatus" = $4');
+        expect(sql).toContain('"state" <> $5');
+        expect(params[0]).toBe(code);
+        expect(params[1]).toBeInstanceOf(Date);
+        expect(params[2]).toBe(9);
+        expect(params[3]).toBe('open');
+        expect(params[4]).toBe('Cancelled');
+    });
+
+    it('CAS 未命中（已交接/已取消）→ 拒绝重发', async () => {
+        const env = makeEnv();
+        env.rawQuery.mockResolvedValueOnce([[]]);
+        await expect(env.svc.resendHandoverCode(ctx, 9)).rejects.toThrow('订单当前不在待交接状态');
+    });
+
+    it('同单 10 分钟内重复重发 → 限流拒绝，不再写库', async () => {
+        const env = makeEnv();
+        await env.svc.resendHandoverCode(ctx, 9);
+        await expect(env.svc.resendHandoverCode(ctx, 9)).rejects.toThrow('交接码重发过于频繁');
+        expect(env.rawQuery.mock.calls.filter(c => String(c[0]).includes('"customFieldsHandovercode" ='))).toHaveLength(1);
+    });
+
+    it('顾客侧：订单归属本人 → 允许重发', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ id: 9, customer: { user: { id: 99 } } });
+        const code = await env.svc.resendHandoverCodeForCustomer({ ...ctx, activeUserId: 99 }, 9);
+        expect(code).toMatch(/^\d{4}$/);
+    });
+
+    it('顾客侧：订单不属于本人 → 拒绝', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ id: 9, customer: { user: { id: 98 } } });
+        await expect(env.svc.resendHandoverCodeForCustomer({ ...ctx, activeUserId: 99 }, 9))
+            .rejects.toThrow('订单不存在或不属于当前顾客');
+    });
+
+    it('顾客侧：未登录 → 拒绝', async () => {
+        const env = makeEnv();
+        await expect(env.svc.resendHandoverCodeForCustomer(ctx, 9)).rejects.toThrow('请先登录');
+    });
+});

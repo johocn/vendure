@@ -44,6 +44,7 @@ let HallService = HallService_1 = class HallService {
         this.capacity = capacity;
         this.feishu = feishu;
         this.notify = notify;
+        this.handoverResendAt = new Map();
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     get injector() {
@@ -248,6 +249,43 @@ let HallService = HallService_1 = class HallService {
         core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码已生成并脱敏`, 'CampusHall');
         return handoverCode;
     }
+    /**
+     * R5 交接码重发（飞书指令 / 顾客侧共用）。
+     * 条件写（CAS）：仅当 hallStatus='open' 且订单未取消才更新，避免把已完成/已脱厅订单的码改掉。
+     * 限流：同单 10 分钟一次；返回新码（调用方自行决定是否展示，日志不落明文）。
+     */
+    async resendHandoverCode(ctx, orderId) {
+        const key = Number(orderId);
+        const last = this.handoverResendAt.get(key);
+        if (last != null && Date.now() - last < HallService_1.HANDOVER_RESEND_INTERVAL_MS) {
+            throw new core_2.UserInputError('交接码重发过于频繁，请 10 分钟后再试');
+        }
+        const handoverCode = String(Math.floor(1000 + Math.random() * 9000));
+        const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsHandovercode" = $1, "customFieldsHandovercodeat" = $2 '
+            + 'WHERE id = $3 AND "customFieldsHallstatus" = $4 AND "state" <> $5 RETURNING id', [handoverCode, new Date(), key, 'open', 'Cancelled']);
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new core_2.UserInputError('订单当前不在待交接状态，无法重发交接码');
+        }
+        this.handoverResendAt.set(key, Date.now());
+        core_2.Logger.info(`订单 #${key} 交接码已重发（脱敏）`, 'CampusHall');
+        return handoverCode;
+    }
+    /** R5 顾客侧重发：先校验订单归属当前登录顾客，再复用同一条件写。 */
+    async resendHandoverCodeForCustomer(ctx, orderId) {
+        var _a, _b;
+        if (!ctx.activeUserId)
+            throw new core_2.UserInputError('请先登录');
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
+            where: { id: orderId },
+            relations: ['customer', 'customer.user'],
+        });
+        const ownerUserId = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+        if (!order || ownerUserId == null || Number(ownerUserId) !== Number(ctx.activeUserId)) {
+            throw new core_2.UserInputError('订单不存在或不属于当前顾客');
+        }
+        return this.resendHandoverCode(ctx, orderId);
+    }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
      *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；extra 与复位字段同语句落库（后台强制回厅留痕）。
      *  返回是否命中。 */
@@ -328,6 +366,8 @@ let HallService = HallService_1 = class HallService {
 exports.HallService = HallService;
 /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
 HallService.SCHEDULE_RELEASE_MIN = 30;
+/** R5 交接码重发限流：同单 10 分钟一次（进程内，pm2 单实例足够；多实例需换 DB/Redis） */
+HallService.HANDOVER_RESEND_INTERVAL_MS = 10 * 60000;
 exports.HallService = HallService = HallService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_2.TransactionalConnection,

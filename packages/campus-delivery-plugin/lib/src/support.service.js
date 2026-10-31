@@ -234,6 +234,8 @@ let SupportService = SupportService_1 = class SupportService {
             content,
             images: normalizeImages(input.images),
             status: 'open',
+            source: 'customer',
+            dedupeKey: null,
         });
         // 运营提醒：新工单推当前店铺群（channel 定向；平台群始终接收），无群也不影响提交
         const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || '-';
@@ -253,6 +255,41 @@ let SupportService = SupportService_1 = class SupportService {
             ? null
             : (_d = (await this.loadAfterSalesSummaries(ctx, [ticket])).byId.get(Number(afterSalesRequestId))) !== null && _d !== void 0 ? _d : null;
         return Object.assign(Object.assign({}, ticket), SupportService_1.afterSalesView(summary));
+    }
+    /**
+     * R7 系统工单（外部运单异常等）：不依赖顾客登录态，幂等键保证同一异常只建一张。
+     * 返回已存在/新建的工单 id，调用方据此在告警文案中带上工单号。
+     */
+    async createSystemTicket(ctx, input) {
+        var _a, _b;
+        const repo = this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket);
+        const existing = await repo.findOne({ where: { dedupeKey: input.dedupeKey } });
+        if (existing)
+            return { id: Number(existing.id), created: false };
+        try {
+            const ticket = await repo.save({
+                channelId: (_a = input.channelId) !== null && _a !== void 0 ? _a : ctx.channelId,
+                customerId: null,
+                orderCode: input.orderCode,
+                orderId: input.orderId,
+                afterSalesRequestId: null,
+                category: input.category,
+                content: input.content.slice(0, MAX_CONTENT),
+                images: null,
+                status: 'open',
+                source: input.source,
+                dedupeKey: input.dedupeKey,
+            });
+            void this.pushFeishu('support_ticket', '系统工单：外部运单异常', [`订单：${input.orderCode}`, `来源：${input.source}`, `内容：${input.content.slice(0, 160)}`].join('\n'), input.orderCode, `ticket:${ticket.id}`);
+            return { id: Number(ticket.id), created: true };
+        }
+        catch (e) {
+            // 并发下唯一索引冲突：视为已存在，回查返回，不阻断调度
+            const again = await repo.findOne({ where: { dedupeKey: input.dedupeKey } });
+            if (!again)
+                core_2.Logger.warn(`系统工单建单失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, loggerCtx);
+            return { id: again ? Number(again.id) : null, created: false };
+        }
     }
     async myTickets(ctx, skip, take) {
         const customer = await this.requireCustomer(ctx);
@@ -291,8 +328,9 @@ let SupportService = SupportService_1 = class SupportService {
             skip: clampSkip(skip),
             take: clampTake(take),
         });
-        const customers = items.length
-            ? await this.connection.getRepository(ctx, core_2.Customer).findByIds(items.map(i => String(i.customerId)))
+        const customerIds = items.map(i => i.customerId).filter((id) => id != null);
+        const customers = customerIds.length
+            ? await this.connection.getRepository(ctx, core_2.Customer).findByIds(customerIds.map(String))
             : [];
         const byId = new Map(customers.map(c => [String(c.id), c]));
         // 工单与售后打通：列表直接回显关联售后单状态/金额，运营无需另开售后列表对照
@@ -330,7 +368,8 @@ let SupportService = SupportService_1 = class SupportService {
         }
         // 顾客一致性：工单无订单号时无法靠订单比对，必须校验售后单归属顾客，
         // 否则可把顾客 A 的工单挂到同店铺顾客 B 的售后单，A 的工单列表会回显 B 的退款信息。
-        if (request.customerId != null && Number(request.customerId) !== Number(ticket.customerId)) {
+        if (ticket.customerId != null && request.customerId != null
+            && Number(request.customerId) !== Number(ticket.customerId)) {
             throw new core_2.UserInputError('售后单与工单不属于同一顾客');
         }
         if (ticket.orderId != null && Number(ticket.orderId) !== Number(request.orderId)) {
@@ -372,7 +411,7 @@ let SupportService = SupportService_1 = class SupportService {
     }
     /** 运营回复（replied）/ 关闭（closed）；回复内容必填（关闭时可选沿用原回复） */
     async replyTicket(ctx, id, reply, status) {
-        var _a;
+        var _a, _b;
         const target = String(status !== null && status !== void 0 ? status : 'replied');
         if (!['replied', 'closed'].includes(target))
             throw new core_2.UserInputError('工单状态不合法');
@@ -392,12 +431,26 @@ let SupportService = SupportService_1 = class SupportService {
             repliedBy: String((_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : ''),
             repliedAt: new Date(),
         });
-        // 站内信：回复/关闭都通知顾客（C 端消息中心红点）
         const title = target === 'closed' ? '客服工单已关闭' : '客服工单已回复';
         const body = target === 'closed'
             ? `工单 #${ticket.id} 已关闭${text ? `：${text}` : ''}`
             : `工单 #${ticket.id} 回复：${text}`;
-        await this.sendInAppMessage(ctx, ticket.customerId, title, body);
+        // 站内信：回复/关闭都通知顾客（C 端消息中心红点）；系统工单无顾客时跳过
+        if (ticket.customerId != null) {
+            await this.sendInAppMessage(ctx, ticket.customerId, title, body);
+        }
+        // R7 关闭联动：外部运单异常工单关闭 → 回写订单已处置标记，调度不再重复告警
+        if (target === 'closed' && ticket.source === 'third_party_exception' && ticket.orderId != null) {
+            try {
+                await this.connection.getRepository(ctx, core_2.Order).update(ticket.orderId, {
+                    customFields: { exceptionResolvedAt: new Date() },
+                    campusCause: 'third_party_exception_resolved',
+                });
+            }
+            catch (e) {
+                core_2.Logger.warn(`工单关闭回写订单异常已处置失败 order=${ticket.orderId}: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, loggerCtx);
+            }
+        }
         // 工单与售后打通：已关联售后单时，回复同时写入售后协商留言，顾客在售后单里也能看到同一结论
         if (ticket.afterSalesRequestId != null) {
             await this.forwardReplyToAfterSales(ctx, Number(ticket.afterSalesRequestId), text || body);

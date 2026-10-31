@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Injector, Logger, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusBuilding } from './campus-building.entity';
@@ -30,6 +30,10 @@ const orderColumn = (field: string) => `"customFields${field.charAt(0).toUpperCa
 export class HallService {
     /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
     static readonly SCHEDULE_RELEASE_MIN = 30;
+
+    /** R5 交接码重发限流：同单 10 分钟一次（进程内，pm2 单实例足够；多实例需换 DB/Redis） */
+    static readonly HANDOVER_RESEND_INTERVAL_MS = 10 * 60_000;
+    private handoverResendAt = new Map<number, number>();
 
     constructor(
         private connection: TransactionalConnection,
@@ -284,6 +288,46 @@ export class HallService {
         this.notify?.user(ctx, order.id, 'arrivedHandover', point);
         Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码已生成并脱敏`, 'CampusHall');
         return handoverCode;
+    }
+
+    /**
+     * R5 交接码重发（飞书指令 / 顾客侧共用）。
+     * 条件写（CAS）：仅当 hallStatus='open' 且订单未取消才更新，避免把已完成/已脱厅订单的码改掉。
+     * 限流：同单 10 分钟一次；返回新码（调用方自行决定是否展示，日志不落明文）。
+     */
+    async resendHandoverCode(ctx: RequestContext, orderId: number): Promise<string> {
+        const key = Number(orderId);
+        const last = this.handoverResendAt.get(key);
+        if (last != null && Date.now() - last < HallService.HANDOVER_RESEND_INTERVAL_MS) {
+            throw new UserInputError('交接码重发过于频繁，请 10 分钟后再试');
+        }
+        const handoverCode = String(Math.floor(1000 + Math.random() * 9000));
+        const res: any = await this.connection.rawConnection.query(
+            'UPDATE "order" SET "customFieldsHandovercode" = $1, "customFieldsHandovercodeat" = $2 '
+            + 'WHERE id = $3 AND "customFieldsHallstatus" = $4 AND "state" <> $5 RETURNING id',
+            [handoverCode, new Date(), key, 'open', 'Cancelled'],
+        );
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new UserInputError('订单当前不在待交接状态，无法重发交接码');
+        }
+        this.handoverResendAt.set(key, Date.now());
+        Logger.info(`订单 #${key} 交接码已重发（脱敏）`, 'CampusHall');
+        return handoverCode;
+    }
+
+    /** R5 顾客侧重发：先校验订单归属当前登录顾客，再复用同一条件写。 */
+    async resendHandoverCodeForCustomer(ctx: RequestContext, orderId: number): Promise<string> {
+        if (!ctx.activeUserId) throw new UserInputError('请先登录');
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['customer', 'customer.user'],
+        });
+        const ownerUserId = (order?.customer as any)?.user?.id;
+        if (!order || ownerUserId == null || Number(ownerUserId) !== Number(ctx.activeUserId)) {
+            throw new UserInputError('订单不存在或不属于当前顾客');
+        }
+        return this.resendHandoverCode(ctx, orderId);
     }
 
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。

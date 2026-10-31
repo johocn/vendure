@@ -46,6 +46,23 @@ export declare class SupportService {
         images?: string[] | null;
         orderCode?: string | null;
     }): Promise<any>;
+    /**
+     * R7 系统工单（外部运单异常等）：不依赖顾客登录态，幂等键保证同一异常只建一张。
+     * 返回已存在/新建的工单 id，调用方据此在告警文案中带上工单号。
+     */
+    createSystemTicket(ctx: RequestContext, input: {
+        /** 工单幂等键（source + 单号 + 外部运单号），重复调用不会再建单 */
+        dedupeKey: string;
+        orderCode: string;
+        orderId: number | null;
+        category: string;
+        source: string;
+        content: string;
+        channelId?: ID;
+    }): Promise<{
+        id: number | null;
+        created: boolean;
+    }>;
     myTickets(ctx: RequestContext, skip?: number, take?: number): Promise<CampusSupportTicket[] | ({
         afterSalesRequestId: number | null;
         afterSalesState: null;
@@ -53,9 +70,11 @@ export declare class SupportService {
         afterSalesRefundAmount: null;
         afterSalesActualRefundAmount: null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -73,9 +92,11 @@ export declare class SupportService {
         afterSalesRefundAmount: number | null;
         afterSalesActualRefundAmount: number | null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -99,9 +120,11 @@ export declare class SupportService {
             afterSalesRefundAmount: null;
             afterSalesActualRefundAmount: null;
             channelId: ID;
-            customerId: ID;
+            customerId: number | null;
             orderCode: string | null;
             orderId: number | null;
+            source: string;
+            dedupeKey: string | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -121,9 +144,11 @@ export declare class SupportService {
             afterSalesRefundAmount: number | null;
             afterSalesActualRefundAmount: number | null;
             channelId: ID;
-            customerId: ID;
+            customerId: number | null;
             orderCode: string | null;
             orderId: number | null;
+            source: string;
+            dedupeKey: string | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -148,9 +173,11 @@ export declare class SupportService {
         afterSalesRefundAmount: null;
         afterSalesActualRefundAmount: null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -168,9 +195,11 @@ export declare class SupportService {
         afterSalesRefundAmount: number | null;
         afterSalesActualRefundAmount: number | null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -192,10 +221,12 @@ export declare class SupportService {
         status: string;
         reply: string | null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
         afterSalesRequestId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;

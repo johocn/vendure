@@ -9,6 +9,8 @@ function makeEnv(opts: {
     refundedSum?: number;
     thirdParty?: any;
     feishu?: any;
+    /** R7：外部运单异常自动建工单的 SupportService 桩 */
+    support?: any;
     /** 覆盖扫描查询返回（用于构造积压等极端批次），未传时用 open/assigned 拼装 */
     scanOrders?: any[];
 }) {
@@ -101,6 +103,9 @@ function makeEnv(opts: {
         conn, grabSvc as any, hallSvc as any, capacitySvc as any, creditSvc as any, { get: vi.fn() } as any,
         opts.thirdParty ?? undefined,
         opts.feishu ?? undefined,
+        undefined,
+        undefined,
+        opts.support ?? undefined,
     );
     return { svc, grabSvc, creditSvc, hallSvc, capacitySvc, orderRepo, configRepo, grabResults, rawQuery: conn.rawConnection.query };
 }
@@ -1119,6 +1124,112 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         });
         await svc.scan({ channelId: 1 } as any);
         expect(feishu.pushEvent.mock.calls.some((c: any[]) => c[4] === 'dispatch_backlog:1')).toBe(false);
+    });
+});
+
+// R7 外部运单异常转工单：同异常只建一张、告警带工单号、工单关闭后不再重复告警
+describe('DispatchJobService 外部运单异常转工单（R7）', () => {
+    const cfg = {
+        merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10,
+        externalFallbackMinutes: 20, inProgressSlaMinutes: 45, synchronize: false,
+    };
+
+    it('异常态 → 自动建系统工单并在告警中带工单号', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const support = { createSystemTicket: vi.fn().mockResolvedValue({ id: 55, created: true }) };
+        const { svc } = makeEnv({
+            openOrders: [{
+                id: 403, code: 'TP_EXC_02',
+                customFields: {
+                    hallStatus: 'third_party', thirdPartyDispatchAt: minAgo(2),
+                    thirdPartyState: 'exception', thirdPartyNo: 'TP-NO', fulfillmentRoute: 'R3',
+                },
+            }],
+            cfg,
+            feishu,
+            support,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(support.createSystemTicket).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            dedupeKey: 'third_party:TP_EXC_02:TP-NO',
+            orderCode: 'TP_EXC_02',
+            orderId: 403,
+            category: 'delivery',
+            source: 'third_party_exception',
+        }));
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'TP_EXC_02:external_exception');
+        expect(call![2]).toContain('已建工单 #55');
+    });
+
+    it('工单关闭已回写 exceptionResolvedAt → 不再建单也不再告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const support = { createSystemTicket: vi.fn().mockResolvedValue({ id: 55, created: true }) };
+        const { svc } = makeEnv({
+            openOrders: [{
+                id: 404, code: 'TP_EXC_03',
+                customFields: {
+                    hallStatus: 'third_party', thirdPartyDispatchAt: minAgo(2),
+                    thirdPartyState: 'exception', thirdPartyNo: 'TP-03',
+                    exceptionResolvedAt: new Date(), fulfillmentRoute: 'R3',
+                },
+            }],
+            cfg,
+            feishu,
+            support,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(support.createSystemTicket).not.toHaveBeenCalled();
+        expect(feishu.pushEvent.mock.calls.some((c: any[]) => c[4] === 'TP_EXC_03:external_exception')).toBe(false);
+    });
+
+    it('异常持续未恢复 → 多轮扫描只建一张工单', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const support = { createSystemTicket: vi.fn().mockResolvedValue({ id: 55, created: true }) };
+        const { svc } = makeEnv({
+            openOrders: [{
+                id: 405, code: 'TP_EXC_04',
+                customFields: {
+                    hallStatus: 'third_party', thirdPartyDispatchAt: minAgo(2),
+                    thirdPartyState: 'exception', thirdPartyNo: 'TP-04', fulfillmentRoute: 'R3',
+                },
+            }],
+            cfg,
+            feishu,
+            support,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        await svc.scan({ channelId: 1 } as any);
+        expect(support.createSystemTicket).toHaveBeenCalledTimes(1);
+    });
+
+    it('外部取消失败连续 3 轮 → 建取消失败工单并告警带工单号', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const thirdParty = {
+            syncStatus: vi.fn().mockResolvedValue({ ok: true, state: 'pending' }),
+            onDeliveryStatus: vi.fn().mockResolvedValue(undefined),
+            cancel: vi.fn().mockResolvedValue({ ok: false }),
+        };
+        const support = { createSystemTicket: vi.fn().mockResolvedValue({ id: 66, created: true }) };
+        const { svc } = makeEnv({
+            scanOrders: [{
+                id: 406, code: 'TP_CANCEL_FAIL2', createdAt: minAgo(200),
+                customFields: {
+                    hallStatus: 'third_party', fulfillmentRoute: 'R3', thirdPartyState: 'pending',
+                    thirdPartyDispatchAt: minAgo(100), thirdPartyNo: 'TP-16',
+                },
+            }],
+            thirdParty,
+            feishu,
+            support,
+            cfg: { ...cfg, externalFallbackMinutes: 20, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        for (let i = 0; i < 3; i++) await svc.scan({ channelId: 1 } as any);
+        expect(support.createSystemTicket).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            dedupeKey: 'third_party_cancel:TP_CANCEL_FAIL2:TP-16',
+            source: 'third_party_exception',
+        }));
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'TP_CANCEL_FAIL2:cancel_failed');
+        expect(call![2]).toContain('已建工单 #66');
     });
 });
 

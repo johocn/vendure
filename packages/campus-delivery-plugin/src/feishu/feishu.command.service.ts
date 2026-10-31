@@ -14,7 +14,9 @@ import { CampusFulfillmentConfig } from '../campus-fulfillment-config.entity';
 import { campusDayKey, startOfCampusDay } from '../campus-time';
 import { DeliveryStatsService } from '../delivery-stats.service';
 import { DispatchAdminService } from '../dispatch-admin.service';
+import { HallService } from '../hall.service';
 import { MerchantAdminService } from '../merchant-admin.service';
+import { RiderTaskService } from '../rider-task.service';
 import { ALERT_WINDOWS_MIN } from './feishu.alert-windows';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
@@ -45,7 +47,7 @@ const RIDER_PICK_TIMEOUT_MIN = 15;
 
 export type FeishuCommandName =
     | 'help' | 'board' | 'digest' | 'status' | 'exceptions'
-    | 'accept' | 'cooking' | 'handover' | 'reject' | 'confirmReject'
+    | 'accept' | 'cooking' | 'handover' | 'resendHandover' | 'reject' | 'confirmReject'
     | 'reassign' | 'handled' | 'restore' | 'confirmRestore'
     | 'close' | 'open' | 'unknown';
 
@@ -80,6 +82,9 @@ export function parseCommand(raw: string): ParsedCommand {
     if (/^接单$/.test(head)) return { name: 'accept', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^出餐$/.test(head)) return { name: 'cooking', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^(送达|交接)$/.test(head)) return { name: 'handover', orderCode: arg ? arg.split(' ')[0] : undefined };
+    if (/^(重发交接码|重发码)$/.test(head)) {
+        return { name: 'resendHandover', orderCode: arg ? arg.split(' ')[0] : undefined };
+    }
     if (/^确认拒单$/.test(head)) return { name: 'confirmReject', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^确认恢复$/.test(head)) return { name: 'confirmRestore', orderCode: arg ? arg.split(' ')[0] : undefined };
     if (/^拒单$/.test(head)) {
@@ -169,6 +174,8 @@ export class FeishuCommandService {
         private merchant: MerchantAdminService,
         private dispatchAdmin: DispatchAdminService,
         private deliveryStats: DeliveryStatsService,
+        private hall: HallService,
+        private riderTask: RiderTaskService,
     ) {}
 
     async handleMessage(input: {
@@ -249,6 +256,9 @@ export class FeishuCommandService {
                     break;
                 case 'handover':
                     await this.handover(chat, chatId, openId, cmd);
+                    break;
+                case 'resendHandover':
+                    await this.resendHandover(chat, chatId, openId, cmd);
                     break;
                 case 'reject':
                     await this.stageReject(chat, chatId, openId, cmd);
@@ -835,6 +845,25 @@ export class FeishuCommandService {
         }
         await this.audit(chatId, openId, { ...cmd, orderCode: code }, 'ok');
         await this.reply(chatId, `已确认送达校园交接点：${found.order.code}`);
+    }
+
+    /** R5 交接码重发：仅待交接（hallStatus=open）订单可重发；同单 10 分钟限流。 */
+    private async resendHandover(chat: FeishuChatConfig, chatId: string, openId: string, cmd: ParsedCommand) {
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '请带单号，例如「重发交接码 A1234」。');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code) return;
+        const found = await this.requireOrder(chat, chatId, code);
+        if (!found) return;
+        const newCode = await this.hall.resendHandoverCode(found.ctx, Number(found.order.id));
+        this.riderTask.resetHandoverGuard(found.order.id);
+        await this.audit(chatId, openId, { ...cmd, orderCode: code }, 'ok');
+        await this.reply(
+            chatId,
+            `已重发交接码：${found.order.code} → ${newCode}（10 分钟内有效，请告知交接点）`,
+        );
     }
 
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */

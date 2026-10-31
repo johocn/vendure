@@ -60,7 +60,11 @@ describe('feishu command parsing', () => {
         expect(parseCommand('确认拒单 A1234')).toEqual({ name: 'confirmReject', orderCode: 'A1234' });
         expect(parseCommand('送达 A1234')).toEqual({ name: 'handover', orderCode: 'A1234' });
         expect(parseCommand('交接 A1234')).toEqual({ name: 'handover', orderCode: 'A1234' });
+        // R5 交接码过期/遗失：重新生成
+        expect(parseCommand('重发交接码 A1234')).toEqual({ name: 'resendHandover', orderCode: 'A1234' });
+        expect(parseCommand('重发码 A1234')).toEqual({ name: 'resendHandover', orderCode: 'A1234' });
         expect(requiredRole('handover')).toBe('operator');
+        expect(requiredRole('resendHandover')).toBe('operator');
         expect(parseCommand('关店').name).toBe('close');
         expect(parseCommand('帮助').name).toBe('help');
         expect(parseCommand('随便说点什么').name).toBe('unknown');

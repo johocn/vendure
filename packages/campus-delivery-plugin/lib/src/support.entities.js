@@ -24,7 +24,7 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusSupportTicket.prototype, "channelId", void 0);
 __decorate([
-    (0, typeorm_1.Column)('int'),
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], CampusSupportTicket.prototype, "customerId", void 0);
 __decorate([
@@ -39,6 +39,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], CampusSupportTicket.prototype, "afterSalesRequestId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'customer' }),
+    __metadata("design:type", String)
+], CampusSupportTicket.prototype, "source", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusSupportTicket.prototype, "dedupeKey", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)

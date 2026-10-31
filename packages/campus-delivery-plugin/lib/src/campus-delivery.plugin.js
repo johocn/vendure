@@ -174,6 +174,7 @@ const p33_channel_waimai_columns_1 = require("./migrations/p33-channel-waimai-co
 const p34_channel_aftersales_review_threshold_1 = require("./migrations/p34-channel-aftersales-review-threshold");
 const p35_withdraw_deduct_state_1 = require("./migrations/p35-withdraw-deduct-state");
 const p36_compensation_task_1 = require("./migrations/p36-compensation-task");
+const p37_support_ticket_system_1 = require("./migrations/p37-support-ticket-system");
 const withdraw_reconcile_job_1 = require("./withdraw-reconcile.job");
 const compensation_task_service_1 = require("./compensation-task.service");
 const compensation_retry_job_1 = require("./compensation-retry.job");
@@ -404,6 +405,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p34_channel_aftersales_review_threshold_1.P34ChannelAfterSalesReviewThresholdMigration,
             p35_withdraw_deduct_state_1.P35WithdrawDeductStateMigration,
             p36_compensation_task_1.P36CompensationTaskMigration,
+            p37_support_ticket_system_1.P37SupportTicketSystemMigration,
             withdraw_reconcile_job_1.WithdrawReconcileJob,
             compensation_task_service_1.CompensationTaskService,
             compensation_retry_job_1.CompensationRetryJob,
@@ -910,6 +912,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     escalated: Boolean!
                     """已提交大额退款复核、等待其他管理员确认（§99）"""
                     refundReviewPending: Boolean!
+                    """退款失败原因（§110）：仅 RefundFailed 有值"""
+                    refundError: String
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -2023,7 +2027,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 type CampusSupportTicket {
                     id: ID!
-                    customerId: ID!
+                    """顾客工单为下单顾客；系统工单（外部运单异常等）为 null"""
+                    customerId: ID
                     customerName: String
                     customerPhone: String
                     orderCode: String
@@ -3672,6 +3677,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusStartTask(orderId: ID!, code: String): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
+                    """R5 顾客侧重发交接码（仅本人待交接订单，10 分钟限流）"""
+                    campusResendHandoverCode(orderId: ID!): String!
                     campusRiderReportLocation(orderId: ID!, lat: Float!, lng: Float!): Order!
                     campusUrgeOrder(orderId: ID!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!

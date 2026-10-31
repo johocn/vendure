@@ -175,6 +175,7 @@ import { P33ChannelWaimaiColumnsMigration } from './migrations/p33-channel-waima
 import { P34ChannelAfterSalesReviewThresholdMigration } from './migrations/p34-channel-aftersales-review-threshold';
 import { P35WithdrawDeductStateMigration } from './migrations/p35-withdraw-deduct-state';
 import { P36CompensationTaskMigration } from './migrations/p36-compensation-task';
+import { P37SupportTicketSystemMigration } from './migrations/p37-support-ticket-system';
 import { WithdrawReconcileJob } from './withdraw-reconcile.job';
 import { CompensationTaskService } from './compensation-task.service';
 import { CompensationRetryJob } from './compensation-retry.job';
@@ -235,6 +236,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P34ChannelAfterSalesReviewThresholdMigration,
         P35WithdrawDeductStateMigration,
         P36CompensationTaskMigration,
+        P37SupportTicketSystemMigration,
         WithdrawReconcileJob,
         CompensationTaskService,
         CompensationRetryJob,
@@ -741,6 +743,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     escalated: Boolean!
                     """已提交大额退款复核、等待其他管理员确认（§99）"""
                     refundReviewPending: Boolean!
+                    """退款失败原因（§110）：仅 RefundFailed 有值"""
+                    refundError: String
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -1854,7 +1858,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
 
                 type CampusSupportTicket {
                     id: ID!
-                    customerId: ID!
+                    """顾客工单为下单顾客；系统工单（外部运单异常等）为 null"""
+                    customerId: ID
                     customerName: String
                     customerPhone: String
                     orderCode: String
@@ -3503,6 +3508,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusStartTask(orderId: ID!, code: String): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
+                    """R5 顾客侧重发交接码（仅本人待交接订单，10 分钟限流）"""
+                    campusResendHandoverCode(orderId: ID!): String!
                     campusRiderReportLocation(orderId: ID!, lat: Float!, lng: Float!): Order!
                     campusUrgeOrder(orderId: ID!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!

@@ -7,12 +7,17 @@ import { DeepPartial, ID, VendureEntity } from '@vendure/core';
 export class CampusSupportTicket extends VendureEntity {
     [key: string]: any;
     @Column('int') channelId: ID;
-    @Column('int') customerId: ID;
+    /** 顾客工单为下单顾客；系统工单（外部运单异常等）无顾客，为 null */
+    @Column({ type: 'int', nullable: true }) customerId: number | null;
     @Column({ type: 'varchar', nullable: true }) orderCode: string | null;
     /** 关联订单主键（建单时按订单号解析并校验归属；未匹配到订单为 null） */
     @Column({ type: 'int', nullable: true }) orderId: number | null;
     /** 关联售后单主键（工单与售后打通：建单自动挂接在途售后单，运营也可手工关联） */
     @Column({ type: 'int', nullable: true }) afterSalesRequestId: number | null;
+    /** 来源：customer（顾客提交）/ third_party_exception（外部运单异常自动建单） */
+    @Column({ type: 'varchar', default: 'customer' }) source: string;
+    /** 系统工单幂等键（顾客工单为 null）：同一异常只建一张 */
+    @Column({ type: 'varchar', nullable: true }) dedupeKey: string | null;
     /** order / delivery / refund / invoice / other */
     @Column() category: string;
     @Column({ type: 'text' }) content: string;

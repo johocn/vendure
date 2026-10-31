@@ -46,6 +46,8 @@ function make(overrides?: {
         Order: {
             // 未传 order = 订单号不存在：工单仍可提交，仅不关联（宽松策略）
             findOne: vi.fn(() => Promise.resolve(overrides?.order ?? null)),
+            // R7 系统工单关闭 → 回写 exceptionResolvedAt
+            update: vi.fn().mockResolvedValue({ affected: 1 }),
         },
         AfterSalesRequest: {
             findOne: vi.fn(() => Promise.resolve((overrides?.afterSales ?? []).slice().sort((a, b) => Number(b.id) - Number(a.id))[0] ?? null)),
@@ -320,6 +322,84 @@ describe('SupportService.importBlacklist', () => {
         await expect(svc.importBlacklist(ctx, 'phone', [])).rejects.toThrow('请粘贴要导入的用户 ID 或手机号');
         await expect(svc.importBlacklist(ctx, 'phone', Array.from({ length: 501 }, (_, i) => `138${i}`))).rejects.toThrow('单次最多导入 500 条');
         await expect(svc.importBlacklist(ctx, 'email' as any, ['a@b.c'])).rejects.toThrow('黑名单类型不合法');
+    });
+});
+
+// R7 外部运单异常 → 系统工单：无顾客、幂等建单、关闭回写订单已处置
+describe('SupportService 系统工单（R7）', () => {
+    const input = {
+        dedupeKey: 'third_party:A1:TP-1',
+        orderCode: 'A1',
+        orderId: 88,
+        category: 'delivery',
+        source: 'third_party_exception',
+        content: '外部运单异常：平台顺丰，运单 TP-1',
+        channelId: 1,
+    };
+
+    it('同 dedupeKey 已存在 → 复用不重复建单、不重复告警', async () => {
+        const { svc, repos, feishu } = make();
+        repos.CampusSupportTicket.findOne.mockResolvedValue({ id: 33, dedupeKey: input.dedupeKey });
+        const res = await svc.createSystemTicket(ctx, input);
+        expect(res).toEqual({ id: 33, created: false });
+        expect(repos.CampusSupportTicket.save).not.toHaveBeenCalled();
+        expect(feishu.pushEvent).not.toHaveBeenCalled();
+    });
+
+    it('新建系统工单 customerId=null 并推飞书（带工单号去重键）', async () => {
+        const { svc, repos, feishu } = make();
+        repos.CampusSupportTicket.findOne.mockResolvedValue(null);
+        const res = await svc.createSystemTicket(ctx, input);
+        expect(res).toEqual({ id: 11, created: true });
+        expect(repos.CampusSupportTicket.save.mock.calls[0][0]).toMatchObject({
+            channelId: 1,
+            customerId: null,
+            orderCode: 'A1',
+            orderId: 88,
+            afterSalesRequestId: null,
+            category: 'delivery',
+            status: 'open',
+            source: 'third_party_exception',
+            dedupeKey: input.dedupeKey,
+        });
+        await vi.waitFor(() => expect(feishu.pushEvent).toHaveBeenCalledTimes(1));
+        expect(feishu.pushEvent.mock.calls[0][1]).toBe('系统工单：外部运单异常');
+        expect(feishu.pushEvent.mock.calls[0][4]).toBe('ticket:11');
+    });
+
+    it('并发唯一索引冲突 → 回查已存在工单，不阻断调度', async () => {
+        const { svc, repos } = make();
+        repos.CampusSupportTicket.findOne
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ id: 44, dedupeKey: input.dedupeKey });
+        repos.CampusSupportTicket.save.mockRejectedValueOnce(new Error('duplicate key'));
+        const res = await svc.createSystemTicket(ctx, input);
+        expect(res).toEqual({ id: 44, created: false });
+    });
+
+    it('关闭外部异常工单 → 回写订单 exceptionResolvedAt（调度不再重复告警）', async () => {
+        const { svc, repos, saved } = make();
+        repos.CampusSupportTicket.findOne.mockResolvedValue({
+            id: 11, channelId: 1, customerId: null, status: 'open', reply: null,
+            source: 'third_party_exception', orderId: 88,
+        });
+        await svc.replyTicket(ctx, 11, undefined, 'closed');
+        expect(repos.Order.update).toHaveBeenCalledWith(
+            88,
+            expect.objectContaining({ campusCause: 'third_party_exception_resolved' }),
+        );
+        expect(repos.Order.update.mock.calls[0][1].customFields.exceptionResolvedAt).toBeInstanceOf(Date);
+        // 无顾客系统工单不发站内信
+        expect(saved.find(s => s.entity === 'Message')).toBeUndefined();
+    });
+
+    it('关闭顾客工单不回写订单异常标记', async () => {
+        const { svc, repos } = make();
+        repos.CampusSupportTicket.findOne.mockResolvedValue({
+            id: 11, channelId: 1, customerId: 5, status: 'open', reply: null, source: 'customer', orderId: 88,
+        });
+        await svc.replyTicket(ctx, 11, undefined, 'closed');
+        expect(repos.Order.update).not.toHaveBeenCalled();
     });
 });
 

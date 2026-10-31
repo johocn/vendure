@@ -9,6 +9,7 @@ import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { RiderCreditService } from './rider-credit.service';
+import { SupportService } from './support.service';
 export declare class DispatchJobService implements OnApplicationShutdown {
     private connection;
     private grab;
@@ -20,6 +21,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private feishu?;
     private notify?;
     private compensation?;
+    /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
+    private support?;
     /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
     private fallback;
     private running;
@@ -42,9 +45,13 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * - inflight：已接单/待商家/外部快递/自营，负责取货超时、异常 SLA、外部对账。
      */
     private static readonly SCAN_BUCKETS;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined, compensation?: CompensationTaskService | undefined);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined, compensation?: CompensationTaskService | undefined, 
+    /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
+    support?: SupportService | undefined);
     /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
     private shouldAlertExternalException;
+    /** R7：外部运单异常建工单（幂等由 dedupeKey 保证）；建单失败不影响告警主流程 */
+    private createExceptionTicket;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     start(intervalMs?: number): void;

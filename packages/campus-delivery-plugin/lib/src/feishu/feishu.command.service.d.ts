@@ -1,11 +1,13 @@
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
 import { DeliveryStatsService } from '../delivery-stats.service';
 import { DispatchAdminService } from '../dispatch-admin.service';
+import { HallService } from '../hall.service';
 import { MerchantAdminService } from '../merchant-admin.service';
+import { RiderTaskService } from '../rider-task.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
-export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'handover' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'confirmRestore' | 'close' | 'open' | 'unknown';
+export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'handover' | 'resendHandover' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'confirmRestore' | 'close' | 'open' | 'unknown';
 export interface ParsedCommand {
     name: FeishuCommandName;
     orderCode?: string;
@@ -46,12 +48,14 @@ export declare class FeishuCommandService {
     private merchant;
     private dispatchAdmin;
     private deliveryStats;
+    private hall;
+    private riderTask;
     private rate;
     private pendingReject;
     private pendingRestore;
     /** audit 表建表单飞 Promise（零 migration，首次写库时自动建表） */
     private auditReady?;
-    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService);
+    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService, hall: HallService, riderTask: RiderTaskService);
     handleMessage(input: {
         chatId: string;
         openId: string;
@@ -93,6 +97,8 @@ export declare class FeishuCommandService {
     private cooking;
     /** R1 商户/自营快递送达校园交接点：按当前履约阶段分流（无需商户进后台点按钮） */
     private handover;
+    /** R5 交接码重发：仅待交接（hallStatus=open）订单可重发；同单 10 分钟限流。 */
+    private resendHandover;
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
     private stageReject;
     private confirmReject;

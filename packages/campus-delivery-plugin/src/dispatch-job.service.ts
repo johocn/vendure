@@ -21,6 +21,7 @@ import { refundablePayments, settleRefundOrMarkFailed } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CREDIT_LIMIT, CREDIT_TIMEOUT, RiderCreditService } from './rider-credit.service';
 import { PeriodicFallback } from './periodic-fallback';
+import { SupportService } from './support.service';
 
 const NOT_PICKED_TIMEOUT_MIN = 15;
 /** 外部运单轮询对账间隔（防平台回调丢失）：每单 5min 一次主动查询 */
@@ -96,6 +97,8 @@ export class DispatchJobService implements OnApplicationShutdown {
         private feishu?: FeishuNotifyService,
         private notify?: CampusNotifyService,
         private compensation?: CompensationTaskService,
+        /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
+        private support?: SupportService,
     ) {}
 
     /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
@@ -108,6 +111,29 @@ export class DispatchJobService implements OnApplicationShutdown {
         }
         this.externalExceptionAlertedAt.set(key, now);
         return true;
+    }
+
+    /** R7：外部运单异常建工单（幂等由 dedupeKey 保证）；建单失败不影响告警主流程 */
+    private async createExceptionTicket(
+        ctx: RequestContext,
+        input: { dedupeKey: string; order: Order; cf: any; content: string },
+    ): Promise<number | null> {
+        if (!this.support) return null;
+        try {
+            const res = await this.support.createSystemTicket(ctx, {
+                dedupeKey: input.dedupeKey,
+                orderCode: input.order.code,
+                orderId: Number(input.order.id),
+                category: 'delivery',
+                source: 'third_party_exception',
+                content: input.content,
+                channelId: ctx.channelId,
+            });
+            return res.id;
+        } catch (e: any) {
+            Logger.warn(`订单 ${input.order.code} 外部异常建工单失败: ${e?.message ?? e}`, 'CampusDispatch');
+            return null;
+        }
     }
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -795,14 +821,26 @@ export class DispatchJobService implements OnApplicationShutdown {
                 // §6 异常态（平台判定运力失败/拒收/破损等）：同样不等待，先告警 + 通知顾客，再由下方 tpStale 取消回落。
                 // 去重键带外部运单号：回落重推后新运单异常会再次告警。
                 const exceptionKey = `${o.code}:${String(cf.thirdPartyNo ?? '')}`;
+                // R7：工单关闭后回写 exceptionResolvedAt → 同一异常不再重复告警/建单
+                const exceptionResolved = !!(cf as any).exceptionResolvedAt;
                 if (tpState !== 'exception') {
                     this.externalExceptionAlertedAt.delete(exceptionKey);
-                } else if (cf.hallStatus === 'third_party' && this.shouldAlertExternalException(exceptionKey)) {
+                } else if (
+                    !exceptionResolved
+                    && cf.hallStatus === 'third_party'
+                    && this.shouldAlertExternalException(exceptionKey)
+                ) {
                     Logger.warn(`Order ${o.code} external courier exception (${String(cf.thirdPartyNo ?? '-')})`, 'CampusDispatch');
+                    const ticketId = await this.createExceptionTicket(ctx, {
+                        dedupeKey: `third_party:${exceptionKey}`,
+                        order: o,
+                        cf,
+                        content: `外部运单异常：平台 ${String(cf.thirdPartyProvider ?? '-')}，运单 ${String(cf.thirdPartyNo ?? '-')}，订单卡在 third_party。请核实运单状态与外部平台沟通，处置后关闭本工单。`,
+                    });
                     void this.feishu?.pushEvent(
                         'exception',
                         '外部运单异常',
-                        `订单 ${o.code} 外部运单${cf.thirdPartyNo ? ` ${cf.thirdPartyNo}` : ''} 状态异常，请尽快人工核实；超时将自动取消并回落。`,
+                        `订单 ${o.code} 外部运单${cf.thirdPartyNo ? ` ${cf.thirdPartyNo}` : ''} 状态异常，${ticketId ? `已建工单 #${ticketId}` : '请尽快人工核实'}；超时将自动取消并回落。`,
                         o.code,
                         `${o.code}:external_exception`,
                     );
@@ -856,10 +894,18 @@ export class DispatchJobService implements OnApplicationShutdown {
                         // 连续 3 轮仍未确认取消：升级飞书异常（30min 限频），绝不自动回落（会双运单双份运费）
                         if (fail.n >= 3 && now - fail.alertedAt > 30 * 60_000) {
                             fail.alertedAt = now;
+                            const ticketId = !exceptionResolved
+                                ? await this.createExceptionTicket(ctx, {
+                                      dedupeKey: `third_party_cancel:${exceptionKey}`,
+                                      order: o,
+                                      cf,
+                                      content: `外部运单取消失败：平台 ${String(cf.thirdPartyProvider ?? '-')}，运单 ${String(cf.thirdPartyNo ?? '-')}，连续 ${fail.n} 轮取消未确认。订单保持 third_party 不回落（防双运单双份运费），请人工核实平台运单状态后关闭本工单。`,
+                                  })
+                                : null;
                             void this.feishu?.pushEvent(
                                 'exception',
                                 '外部运单取消失败',
-                                `订单 ${o.code} 外部运单连续 ${fail.n} 轮取消未确认（${String(cf.thirdPartyNo ?? '-')}），已保持 third_party 不回落；请人工核实平台运单状态。`,
+                                `订单 ${o.code} 外部运单连续 ${fail.n} 轮取消未确认（${String(cf.thirdPartyNo ?? '-')}），已保持 third_party 不回落；${ticketId ? `已建工单 #${ticketId}` : '请人工核实平台运单状态'}。`,
                                 o.code,
                                 `${o.code}:cancel_failed`,
                             );

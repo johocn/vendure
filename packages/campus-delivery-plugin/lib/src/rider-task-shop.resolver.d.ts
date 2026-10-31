@@ -1,10 +1,12 @@
 import { ID, RequestContext } from '@vendure/core';
 import { R2MarkService } from './r2-mark.service';
+import { HallService } from './hall.service';
 import { RiderTaskService } from './rider-task.service';
 export declare class RiderTaskShopResolver {
     private riderTaskService;
     private r2Mark;
-    constructor(riderTaskService: RiderTaskService, r2Mark: R2MarkService);
+    private hall;
+    constructor(riderTaskService: RiderTaskService, r2Mark: R2MarkService, hall: HallService);
     /** 需登录骑手：service 内部 assertApprovedRider，未登录/未批准/信用分不足抛 ForbiddenError。 */
     campusMyTasks(ctx: RequestContext, status?: string): Promise<import("@vendure/core").Order[]>;
     /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，返回 display/callable 而非真实号 */
@@ -42,6 +44,8 @@ export declare class RiderTaskShopResolver {
     campusMarkArrived(ctx: RequestContext, orderId: ID): Promise<{
         leg1Status: string;
     }>;
+    /** R5 顾客侧重发交接码：订单归属校验在 service，仅待交接订单可重发（同单 10 分钟限流）。 */
+    campusResendHandoverCode(ctx: RequestContext, orderId: ID): Promise<string>;
     /** 用户催单（plan 2.4）：状态/频率校验在 service，标记 urged=true + urgedAt。 */
     campusUrgeOrder(ctx: RequestContext, orderId: ID): Promise<import("@vendure/core").Order>;
 }

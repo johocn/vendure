@@ -13,9 +13,11 @@ export declare class SupportShopResolver {
         afterSalesRefundAmount: null;
         afterSalesActualRefundAmount: null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -33,9 +35,11 @@ export declare class SupportShopResolver {
         afterSalesRefundAmount: number | null;
         afterSalesActualRefundAmount: number | null;
         channelId: ID;
-        customerId: ID;
+        customerId: number | null;
         orderCode: string | null;
         orderId: number | null;
+        source: string;
+        dedupeKey: string | null;
         category: string;
         content: string;
         images: string[] | null;

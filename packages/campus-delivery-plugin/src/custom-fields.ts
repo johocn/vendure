@@ -59,6 +59,8 @@ export const campusCustomFields: CustomFields = {
         { name: 'handoverPointLng', type: 'float', nullable: true },
         { name: 'thirdPartyDispatchAt', type: 'datetime', nullable: true }, // 推送外部快递时间
         { name: 'thirdPartySyncAt', type: 'datetime', nullable: true }, // 最近一次轮询对账外部运单时间（限频）
+        // R7 外部异常转工单：工单关闭后回写，调度据此不再重复告警
+        { name: 'exceptionResolvedAt', type: 'datetime', nullable: true },
         // 交接码（两段接力防丢餐扯皮）：第一段送达交接点时生成 4 位码，第二段骑手取货时校验
         { name: 'handoverCode', type: 'string', nullable: true },
         { name: 'handoverCodeAt', type: 'datetime', nullable: true },

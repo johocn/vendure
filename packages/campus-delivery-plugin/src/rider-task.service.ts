@@ -299,6 +299,13 @@ export class RiderTaskService {
         return order;
     }
 
+    /** R5 交接码重发后清空该单错误计数与锁定（新码生效，旧失败次数不应继续累计） */
+    resetHandoverGuard(orderId: ID): void {
+        const key = Number(orderId);
+        this.handoverFails.delete(key);
+        this.handoverLockUntil.delete(key);
+    }
+
     /** 交接码读取（R1/R2 第二段起送必填）：仅本单骑手、assigned/in_progress 可读。
      *  原实现交接码只写入不暴露，骑手只能线下向交接点口头索取，取不到就卡在 grabbed 直到超时回厅。 */
     async handoverCode(ctx: RequestContext, orderId: ID): Promise<string | null> {
