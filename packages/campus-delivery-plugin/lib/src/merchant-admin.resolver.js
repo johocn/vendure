@@ -121,8 +121,8 @@ let MerchantAdminResolver = class MerchantAdminResolver {
         return this.merchant.dailyReport(ctx, date);
     }
     /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    async campusMerchantAfterSales(ctx, state, type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, from, to, skip, take) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, from, to, skip, take });
+    async campusMerchantAfterSales(ctx, state, type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, risk, from, to, skip, take) {
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, risk, from, to, skip, take });
     }
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
     async campusMerchantAfterSalesDetail(ctx, id) {
@@ -151,6 +151,26 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
     async campusMerchantAfterSalesPrintSlip(ctx, id) {
         return this.merchant.afterSalesPrintSlip(ctx, id);
+    }
+    /** 批量打印售后凭证（§94）：多选一次生成多张凭条，上限 50 */
+    async campusMerchantAfterSalesPrintSlips(ctx, ids) {
+        return this.merchant.afterSalesPrintSlips(ctx, ids);
+    }
+    /** 线下退款登记（§94）：现金/转账等线下退款后登记，直接置为已退款 */
+    async campusMerchantAfterSalesOfflineRefund(ctx, id, amount, method, note) {
+        return this.merchant.afterSalesOfflineRefund(ctx, id, amount, method, note);
+    }
+    /** 标记售后风险（§94）：争议/异常单 */
+    async campusMerchantAfterSalesRiskFlag(ctx, id, reason) {
+        return this.merchant.afterSalesRiskFlag(ctx, id, reason);
+    }
+    /** 解除售后风险标记（§94） */
+    async campusMerchantAfterSalesRiskClear(ctx, id) {
+        return this.merchant.afterSalesRiskClear(ctx, id);
+    }
+    /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
+    async campusMerchantAfterSalesAddFollowUp(ctx, id, method, result, note, nextAt) {
+        return this.merchant.afterSalesAddFollowUp(ctx, id, method, result, note, nextAt);
     }
     /** 售后寄回地址（§83）：本店渠道配置 */
     async campusMerchantAfterSalesReturnAddress(ctx) {
@@ -619,12 +639,13 @@ __decorate([
     __param(8, (0, graphql_1.Args)({ name: 'attention', type: () => String, nullable: true })),
     __param(9, (0, graphql_1.Args)({ name: 'minAmount', type: () => graphql_1.Int, nullable: true })),
     __param(10, (0, graphql_1.Args)({ name: 'maxAmount', type: () => graphql_1.Int, nullable: true })),
-    __param(11, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
-    __param(12, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
-    __param(13, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
-    __param(14, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __param(11, (0, graphql_1.Args)({ name: 'risk', type: () => String, nullable: true })),
+    __param(12, (0, graphql_1.Args)({ name: 'from', type: () => String, nullable: true })),
+    __param(13, (0, graphql_1.Args)({ name: 'to', type: () => String, nullable: true })),
+    __param(14, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(15, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSales", null);
 __decorate([
@@ -694,6 +715,59 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesPrintSlip", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'ids', type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesPrintSlips", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'amount', type: () => graphql_1.Int })),
+    __param(3, (0, graphql_1.Args)('method')),
+    __param(4, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, String, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesOfflineRefund", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'reason', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRiskFlag", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRiskClear", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('method')),
+    __param(3, (0, graphql_1.Args)('result')),
+    __param(4, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'nextAt', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesAddFollowUp", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

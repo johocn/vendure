@@ -166,6 +166,8 @@ export interface MerchantAfterSalesRow {
     assigneeUserId: string | null;
     /** 处理人姓名（未指派或未匹配到为 null） */
     assigneeName: string | null;
+    /** 风险标记原因（§94）：未标记或已解除为 null */
+    riskReason: string | null;
 }
 /** 换货发货结果复用列表行；批量处理逐单结果 */
 export interface MerchantAfterSalesBatchResult {
@@ -357,6 +359,8 @@ export interface MerchantAfterSalesListOptions {
     minAmount?: number | null;
     /** 金额上界（分，§92） */
     maxAmount?: number | null;
+    /** 风险筛选（§94）：'flagged'=仅已标记风险的售后单 */
+    risk?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -479,6 +483,30 @@ export interface MerchantAfterSalesDetail {
     orderTotal: number;
     /** 指派变更历史（§92），按时间倒序 */
     assignHistory: MerchantAfterSalesAssignLogRow[];
+    /** 顾客回访记录（§94），按时间倒序 */
+    followUps: MerchantAfterSalesFollowUpRow[];
+}
+/** 顾客回访记录（§94）：电话/线上沟通留痕 */
+export interface MerchantAfterSalesFollowUpRow {
+    id: string;
+    /** 回访方式：phone / wechat / onsite / other */
+    method: string;
+    /** 回访结果：reached / unreached / refused / other */
+    result: string;
+    note: string | null;
+    /** 下次跟进时间（null=无需再跟） */
+    nextAt: Date | null;
+    operatorName: string | null;
+    createdAt: Date;
+}
+/** 线下退款登记回执（§94）：不触发支付网关，直接置为已退款 */
+export interface MerchantAfterSalesOfflineRefundResult {
+    id: string;
+    state: string;
+    /** 本次登记退款金额（分） */
+    actualRefundAmount: number;
+    /** 登记后退款到账时间 */
+    refundedAt: Date;
 }
 /** 售后处理统计（§81）：入口红点 + 今日处理量 + 今日退款额 */
 export interface MerchantAfterSalesStats {
@@ -1065,7 +1093,23 @@ export declare class MerchantAdminService {
     afterSalesCustomerProfile(ctx: RequestContext, customerId: ID): Promise<MerchantAfterSalesCustomerProfile>;
     /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
     afterSalesPrintSlip(ctx: RequestContext, id: ID): Promise<string>;
-    /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
+    /** 批量打印售后凭证（§94）：多选一次生成多张凭条，单批上限 50，无效单跳过 */
+    afterSalesPrintSlips(ctx: RequestContext, ids: ID[]): Promise<string[]>;
+    /**
+     * 线下退款登记（§94）：商家以现金/转账等方式线下退款后登记，直接置为 Refunded，
+     * 不触发支付网关；同时写状态历史与内部备注留痕，并触达顾客。
+     */
+    afterSalesOfflineRefund(ctx: RequestContext, id: ID, amount: number, method: string, note?: string | null): Promise<MerchantAfterSalesOfflineRefundResult>;
+    /** 标记售后风险（§94）：争议/异常单，列表可按风险筛选 */
+    afterSalesRiskFlag(ctx: RequestContext, id: ID, reason?: string | null): Promise<MerchantAfterSalesRow>;
+    /** 解除售后风险标记（§94） */
+    afterSalesRiskClear(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
+    afterSalesAddFollowUp(ctx: RequestContext, id: ID, method: string, result: string, note?: string | null, nextAt?: string | null): Promise<MerchantAfterSalesFollowUpRow[]>;
+    /** 回访记录列表（§94，按时间倒序）：表缺失时降级为空 */
+    private afterSalesFollowUps;
+    /** 风险原因映射（§94）：Key=requestId，仅返回 active=true 的标记 */
+    private afterSalesRiskReasons;
     afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string>;
     /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */
     afterSalesAssigneeLoad(ctx: RequestContext): Promise<MerchantAfterSalesAssigneeLoad[]>;

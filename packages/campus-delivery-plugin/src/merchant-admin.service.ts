@@ -215,6 +215,8 @@ export interface MerchantAfterSalesRow {
     assigneeUserId: string | null;
     /** 处理人姓名（未指派或未匹配到为 null） */
     assigneeName: string | null;
+    /** 风险标记原因（§94）：未标记或已解除为 null */
+    riskReason: string | null;
 }
 
 /** 换货发货结果复用列表行；批量处理逐单结果 */
@@ -404,6 +406,8 @@ export interface MerchantAfterSalesListOptions {
     minAmount?: number | null;
     /** 金额上界（分，§92） */
     maxAmount?: number | null;
+    /** 风险筛选（§94）：'flagged'=仅已标记风险的售后单 */
+    risk?: string | null;
     /** 申请时间下界（YYYY-MM-DD 或 ISO） */
     from?: string | null;
     /** 申请时间上界（YYYY-MM-DD 含当天 / ISO） */
@@ -536,6 +540,32 @@ export interface MerchantAfterSalesDetail {
     orderTotal: number;
     /** 指派变更历史（§92），按时间倒序 */
     assignHistory: MerchantAfterSalesAssignLogRow[];
+    /** 顾客回访记录（§94），按时间倒序 */
+    followUps: MerchantAfterSalesFollowUpRow[];
+}
+
+/** 顾客回访记录（§94）：电话/线上沟通留痕 */
+export interface MerchantAfterSalesFollowUpRow {
+    id: string;
+    /** 回访方式：phone / wechat / onsite / other */
+    method: string;
+    /** 回访结果：reached / unreached / refused / other */
+    result: string;
+    note: string | null;
+    /** 下次跟进时间（null=无需再跟） */
+    nextAt: Date | null;
+    operatorName: string | null;
+    createdAt: Date;
+}
+
+/** 线下退款登记回执（§94）：不触发支付网关，直接置为已退款 */
+export interface MerchantAfterSalesOfflineRefundResult {
+    id: string;
+    state: string;
+    /** 本次登记退款金额（分） */
+    actualRefundAmount: number;
+    /** 登记后退款到账时间 */
+    refundedAt: Date;
 }
 
 /** 售后处理统计（§81）：入口红点 + 今日处理量 + 今日退款额 */
@@ -2131,6 +2161,14 @@ export class MerchantAdminService {
                     { maxA: Math.floor(maxAmount) },
                 );
             }
+            // 风险筛选（§94）：仅已标记且未解除
+            if (String(opts.risk ?? '').trim() === 'flagged') {
+                target.andWhere(
+                    'EXISTS (SELECT 1 FROM campus_after_sales_risk rk '
+                    + 'WHERE rk."channelId" = :rch AND rk."requestId" = a.id AND rk.active = true)',
+                    { rch: Number(ctx.channelId) },
+                );
+            }
             return target;
         };
 
@@ -2166,6 +2204,7 @@ export class MerchantAdminService {
         const lastSender = await this.afterSalesLastSender(rows.map(r => Number(r.id)));
         const tagMap = await this.afterSalesTagNames(ctx, rows.map(r => Number(r.id)));
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, rows.map(r => Number(r.id)));
+        const riskMap = await this.afterSalesRiskReasons(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         return {
@@ -2173,6 +2212,7 @@ export class MerchantAdminService {
                 tags: tagMap,
                 dueSoonHours: rules.dueSoonHours,
                 assignees: assigneeMap,
+                risks: riskMap,
             })),
             pendingCount,
             total,
@@ -2213,8 +2253,9 @@ export class MerchantAdminService {
         const order = request.order as any;
         const customer = request.customer as any;
         const addr = order?.shippingAddress ?? null;
+        const riskMap = await this.afterSalesRiskReasons(ctx, [Number(request.id)]);
         return {
-            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender),
+            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender, { risks: riskMap }),
             messages,
             messageTotal: counts.get(Number(request.id)) ?? messages.length,
             stateHistory,
@@ -2234,6 +2275,7 @@ export class MerchantAdminService {
             orderItems: await this.afterSalesOrderItems(Number(order?.id ?? request.orderId)),
             orderTotal: Number(order?.totalWithTax ?? 0),
             assignHistory: await this.afterSalesAssignLogs(Number(request.id)),
+            followUps: await this.afterSalesFollowUps(Number(request.id)),
         };
     }
 
@@ -3654,7 +3696,193 @@ export class MerchantAdminService {
         return lines.join('\n');
     }
 
-    /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
+    /** 批量打印售后凭证（§94）：多选一次生成多张凭条，单批上限 50，无效单跳过 */
+    async afterSalesPrintSlips(ctx: RequestContext, ids: ID[]): Promise<string[]> {
+        const list: number[] = (Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0);
+        const uniq = Array.from(new Set(list)).slice(0, 50);
+        if (!uniq.length) throw new UserInputError('请选择要打印的售后单');
+        const out: string[] = [];
+        for (const id of uniq) {
+            try {
+                out.push(await this.afterSalesPrintSlip(ctx, id as any));
+            } catch {
+                // 越权/已删除的单直接跳过，避免整批失败
+            }
+        }
+        if (!out.length) throw new UserInputError('所选售后单均不可打印');
+        return out;
+    }
+
+    /**
+     * 线下退款登记（§94）：商家以现金/转账等方式线下退款后登记，直接置为 Refunded，
+     * 不触发支付网关；同时写状态历史与内部备注留痕，并触达顾客。
+     */
+    async afterSalesOfflineRefund(
+        ctx: RequestContext,
+        id: ID,
+        amount: number,
+        method: string,
+        note?: string | null,
+    ): Promise<MerchantAfterSalesOfflineRefundResult> {
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        const state = String(request.state ?? '');
+        if (['Refunded', 'Rejected', 'Closed'].includes(state)) {
+            throw new UserInputError('该售后单已结束，不能登记线下退款');
+        }
+        const fen = Math.floor(Number(amount));
+        if (!Number.isFinite(fen) || fen <= 0) throw new UserInputError('退款金额必须大于 0');
+        const max = Number(request.refundAmount ?? 0);
+        if (max > 0 && fen > max) {
+            throw new UserInputError(`退款金额不能超过申请金额（最多 ¥${(max / 100).toFixed(2)}）`);
+        }
+        const methodText = String(method ?? '').trim();
+        if (!methodText) throw new UserInputError('请填写退款方式（如现金、转账、微信）');
+        if (methodText.length > 20) throw new UserInputError('退款方式最多 20 个字');
+        const remark = String(note ?? '').trim();
+        if (remark.length > 200) throw new UserInputError('退款凭证备注最多 200 字');
+
+        const raw = this.connection.rawConnection;
+        const uid = ctx.activeUserId ? Number(ctx.activeUserId) : null;
+        const updRows: any = await raw.query(
+            'UPDATE after_sales_request SET state = \'Refunded\', "actualRefundAmount" = $1, "refundedAt" = now(), '
+            + '"refundError" = NULL WHERE id = $2 AND state NOT IN (\'Refunded\', \'Rejected\', \'Closed\') '
+            + 'RETURNING id, state, "actualRefundAmount", "refundedAt"',
+            [fen, Number(id)],
+        );
+        const updated: any[] = Array.isArray(updRows) && Array.isArray(updRows[0]) ? updRows[0] : updRows;
+        const upd: any = Array.isArray(updated) ? updated[0] : undefined;
+        if (!upd) throw new UserInputError('售后单状态已变更，请刷新后重试');
+
+        const auditNote = `线下退款登记：方式 ${methodText}，金额 ¥${(fen / 100).toFixed(2)}`
+            + (remark ? `，备注：${remark}` : '');
+        // 留痕失败不阻断退款登记（历史/备注表缺失时降级）
+        await raw.query(
+            'INSERT INTO after_sales_state_history ("requestId", "fromState", "toState", "operatorUserId") '
+            + 'VALUES ($1, $2, \'Refunded\', $3)',
+            [Number(id), state, uid],
+        ).catch(() => undefined);
+        await raw.query(
+            'INSERT INTO campus_after_sales_note ("channelId", "requestId", "content", "createdBy") '
+            + 'VALUES ($1, $2, $3, \'merchant\')',
+            [Number(ctx.channelId), Number(id), auditNote.slice(0, 500)],
+        ).catch(() => undefined);
+        try {
+            this.notify.user(ctx, request.orderId as any, 'afterSales', `商家已线下退款 ¥${(fen / 100).toFixed(2)}（${methodText}）`);
+        } catch (e: any) {
+            Logger.warn(`offline refund notify failed: ${String(e?.message ?? e)}`, 'CampusMerchantAfterSales');
+        }
+        return {
+            id: String(upd.id ?? id),
+            state: String(upd.state ?? 'Refunded'),
+            actualRefundAmount: Number(upd.actualRefundAmount ?? fen),
+            refundedAt: new Date(upd.refundedAt ?? Date.now()),
+        };
+    }
+
+    /** 标记售后风险（§94）：争议/异常单，列表可按风险筛选 */
+    async afterSalesRiskFlag(ctx: RequestContext, id: ID, reason?: string | null): Promise<MerchantAfterSalesRow> {
+        await this.assertRequestInChannel(ctx, id);
+        const text = String(reason ?? '').trim() || '争议/异常';
+        if (text.length > 200) throw new UserInputError('风险说明最多 200 字');
+        await this.connection.rawConnection.query(
+            'INSERT INTO campus_after_sales_risk ("channelId", "requestId", reason, active) '
+            + 'VALUES ($1, $2, $3, true) '
+            + 'ON CONFLICT ("requestId") DO UPDATE SET reason = EXCLUDED.reason, active = true, "updatedAt" = now()',
+            [Number(ctx.channelId), Number(id), text],
+        );
+        return this.afterSalesOne(ctx, id);
+    }
+
+    /** 解除售后风险标记（§94） */
+    async afterSalesRiskClear(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow> {
+        await this.assertRequestInChannel(ctx, id);
+        await this.connection.rawConnection.query(
+            'UPDATE campus_after_sales_risk SET active = false, "updatedAt" = now() '
+            + 'WHERE "channelId" = $1 AND "requestId" = $2',
+            [Number(ctx.channelId), Number(id)],
+        );
+        return this.afterSalesOne(ctx, id);
+    }
+
+    /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
+    async afterSalesAddFollowUp(
+        ctx: RequestContext,
+        id: ID,
+        method: string,
+        result: string,
+        note?: string | null,
+        nextAt?: string | null,
+    ): Promise<MerchantAfterSalesFollowUpRow[]> {
+        await this.assertRequestInChannel(ctx, id);
+        const m = String(method ?? '').trim();
+        if (!['phone', 'wechat', 'onsite', 'other'].includes(m)) throw new UserInputError('回访方式无效');
+        const r = String(result ?? '').trim();
+        if (!['reached', 'unreached', 'refused', 'other'].includes(r)) throw new UserInputError('回访结果无效');
+        const text = String(note ?? '').trim();
+        if (text.length > 300) throw new UserInputError('回访说明最多 300 字');
+        let next: Date | null = null;
+        if (nextAt) {
+            const d = new Date(String(nextAt));
+            if (Number.isNaN(d.getTime())) throw new UserInputError('下次跟进时间格式无效');
+            next = d;
+        }
+        await this.connection.rawConnection.query(
+            'INSERT INTO campus_after_sales_followup ("channelId", "requestId", "operatorUserId", method, result, note, "nextAt") '
+            + 'VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [Number(ctx.channelId), Number(id), ctx.activeUserId ? Number(ctx.activeUserId) : null, m, r, text || null, next],
+        );
+        return this.afterSalesFollowUps(Number(id));
+    }
+
+    /** 回访记录列表（§94，按时间倒序）：表缺失时降级为空 */
+    private async afterSalesFollowUps(requestId: number): Promise<MerchantAfterSalesFollowUpRow[]> {
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT f.id, f.method, f.result, f.note, f."nextAt", f."createdAt", '
+                + 'ad."firstName", ad."lastName" '
+                + 'FROM campus_after_sales_followup f '
+                + 'LEFT JOIN administrator ad ON ad."userId" = f."operatorUserId" '
+                + 'WHERE f."requestId" = $1 ORDER BY f."createdAt" DESC LIMIT 50',
+                [requestId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => ({
+                id: String(r.id),
+                method: String(r.method ?? ''),
+                result: String(r.result ?? ''),
+                note: r.note == null ? null : String(r.note),
+                nextAt: r.nextAt ? new Date(r.nextAt) : null,
+                operatorName: [r.firstName, r.lastName].filter(Boolean).join('') || null,
+                createdAt: new Date(r.createdAt),
+            }));
+        } catch {
+            return [];
+        }
+    }
+
+    /** 风险原因映射（§94）：Key=requestId，仅返回 active=true 的标记 */
+    private async afterSalesRiskReasons(ctx: RequestContext, ids: number[]): Promise<Map<number, string>> {
+        const out = new Map<number, string>();
+        const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length) return out;
+        try {
+            const rows: any = await this.connection.rawConnection.query(
+                'SELECT "requestId", reason FROM campus_after_sales_risk '
+                + 'WHERE "channelId" = $1 AND "requestId" = ANY($2::int[]) AND active = true',
+                [Number(ctx.channelId), list],
+            );
+            const raw: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            for (const r of Array.isArray(raw) ? raw : []) {
+                out.set(Number(r.requestId), String(r.reason ?? ''));
+            }
+        } catch {
+            return out;
+        }
+        return out;
+    }
+
     async afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string> {
         const chId = Number(ctx.channelId);
         const list = Array.from(new Set((Array.isArray(ids) ? ids : [])
@@ -4437,11 +4665,13 @@ export class MerchantAdminService {
         const lastSender = await this.afterSalesLastSender([Number(row.id)]);
         const tagMap = await this.afterSalesTagNames(ctx, [Number(row.id)]);
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, [Number(row.id)]);
+        const riskMap = await this.afterSalesRiskReasons(ctx, [Number(row.id)]);
         const rules = await this.afterSalesRules(ctx);
         return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender, {
             tags: tagMap,
             dueSoonHours: rules.dueSoonHours,
             assignees: assigneeMap,
+            risks: riskMap,
         });
     }
 
@@ -4574,7 +4804,7 @@ export class MerchantAdminService {
         timeoutHours: number,
         now: number,
         lastSender: Map<number, string>,
-        opts: { tags?: Map<number, string[]>; dueSoonHours?: number; assignees?: Map<number, { userId: string; name: string | null }> } = {},
+        opts: { tags?: Map<number, string[]>; dueSoonHours?: number; assignees?: Map<number, { userId: string; name: string | null }>; risks?: Map<number, string> } = {},
     ): MerchantAfterSalesRow {
         const customer = row.customer as any;
         const order = row.order as any;
@@ -4611,6 +4841,7 @@ export class MerchantAdminService {
             tags: opts.tags?.get(Number(row.id)) ?? [],
             assigneeUserId: assignee?.userId ?? null,
             assigneeName: assignee?.name ?? null,
+            riskReason: opts.risks?.get(Number(row.id)) ?? null,
         };
     }
 

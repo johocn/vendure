@@ -1220,7 +1220,7 @@ let MerchantAdminService = class MerchantAdminService {
         const rules = await this.afterSalesRules(ctx);
         /** 追加非 state 筛选条件（原地修改并返回，保持 QueryBuilder 类型以便 getMany 正常推断） */
         const applyFilters = (target) => {
-            var _a, _b, _c, _d, _e, _f, _g;
+            var _a, _b, _c, _d, _e, _f, _g, _h;
             const type = String((_a = opts.type) !== null && _a !== void 0 ? _a : '').trim();
             if (type)
                 target.andWhere('a.type = :tp', { tp: type });
@@ -1298,6 +1298,11 @@ let MerchantAdminService = class MerchantAdminService {
             if (Number.isFinite(maxAmount) && maxAmount > 0) {
                 target.andWhere('COALESCE(a."actualRefundAmount", a."refundAmount") <= :maxA', { maxA: Math.floor(maxAmount) });
             }
+            // 风险筛选（§94）：仅已标记且未解除
+            if (String((_h = opts.risk) !== null && _h !== void 0 ? _h : '').trim() === 'flagged') {
+                target.andWhere('EXISTS (SELECT 1 FROM campus_after_sales_risk rk '
+                    + 'WHERE rk."channelId" = :rch AND rk."requestId" = a.id AND rk.active = true)', { rch: Number(ctx.channelId) });
+            }
             return target;
         };
         // 状态计数不受 state 筛选影响：入口红点与页签角标口径统一
@@ -1331,6 +1336,7 @@ let MerchantAdminService = class MerchantAdminService {
         const lastSender = await this.afterSalesLastSender(rows.map(r => Number(r.id)));
         const tagMap = await this.afterSalesTagNames(ctx, rows.map(r => Number(r.id)));
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, rows.map(r => Number(r.id)));
+        const riskMap = await this.afterSalesRiskReasons(ctx, rows.map(r => Number(r.id)));
         const timeoutHours = this.afterSalesTimeoutHours(ctx);
         const now = Date.now();
         return {
@@ -1338,6 +1344,7 @@ let MerchantAdminService = class MerchantAdminService {
                 tags: tagMap,
                 dueSoonHours: rules.dueSoonHours,
                 assignees: assigneeMap,
+                risks: riskMap,
             })),
             pendingCount,
             total,
@@ -1380,8 +1387,9 @@ let MerchantAdminService = class MerchantAdminService {
         const order = request.order;
         const customer = request.customer;
         const addr = (_a = order === null || order === void 0 ? void 0 : order.shippingAddress) !== null && _a !== void 0 ? _a : null;
+        const riskMap = await this.afterSalesRiskReasons(ctx, [Number(request.id)]);
         return {
-            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender),
+            request: this.toAfterSalesRow(request, counts, timeoutHours, Date.now(), lastSender, { risks: riskMap }),
             messages,
             messageTotal: (_b = counts.get(Number(request.id))) !== null && _b !== void 0 ? _b : messages.length,
             stateHistory,
@@ -1401,6 +1409,7 @@ let MerchantAdminService = class MerchantAdminService {
             orderItems: await this.afterSalesOrderItems(Number((_g = order === null || order === void 0 ? void 0 : order.id) !== null && _g !== void 0 ? _g : request.orderId)),
             orderTotal: Number((_h = order === null || order === void 0 ? void 0 : order.totalWithTax) !== null && _h !== void 0 ? _h : 0),
             assignHistory: await this.afterSalesAssignLogs(Number(request.id)),
+            followUps: await this.afterSalesFollowUps(Number(request.id)),
         };
     }
     /**
@@ -2714,7 +2723,169 @@ let MerchantAdminService = class MerchantAdminService {
         lines.push('————————', `打印时间：${fmt(Date.now())}`);
         return lines.join('\n');
     }
-    /** 选中单导出 CSV（§91）：按 id 导出，上限 500，列口径与区间导出一致 */
+    /** 批量打印售后凭证（§94）：多选一次生成多张凭条，单批上限 50，无效单跳过 */
+    async afterSalesPrintSlips(ctx, ids) {
+        const list = (Array.isArray(ids) ? ids : [])
+            .map(n => Number(n))
+            .filter(n => Number.isFinite(n) && n > 0);
+        const uniq = Array.from(new Set(list)).slice(0, 50);
+        if (!uniq.length)
+            throw new core_2.UserInputError('请选择要打印的售后单');
+        const out = [];
+        for (const id of uniq) {
+            try {
+                out.push(await this.afterSalesPrintSlip(ctx, id));
+            }
+            catch (_a) {
+                // 越权/已删除的单直接跳过，避免整批失败
+            }
+        }
+        if (!out.length)
+            throw new core_2.UserInputError('所选售后单均不可打印');
+        return out;
+    }
+    /**
+     * 线下退款登记（§94）：商家以现金/转账等方式线下退款后登记，直接置为 Refunded，
+     * 不触发支付网关；同时写状态历史与内部备注留痕，并触达顾客。
+     */
+    async afterSalesOfflineRefund(ctx, id, amount, method, note) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        const state = String((_a = request.state) !== null && _a !== void 0 ? _a : '');
+        if (['Refunded', 'Rejected', 'Closed'].includes(state)) {
+            throw new core_2.UserInputError('该售后单已结束，不能登记线下退款');
+        }
+        const fen = Math.floor(Number(amount));
+        if (!Number.isFinite(fen) || fen <= 0)
+            throw new core_2.UserInputError('退款金额必须大于 0');
+        const max = Number((_b = request.refundAmount) !== null && _b !== void 0 ? _b : 0);
+        if (max > 0 && fen > max) {
+            throw new core_2.UserInputError(`退款金额不能超过申请金额（最多 ¥${(max / 100).toFixed(2)}）`);
+        }
+        const methodText = String(method !== null && method !== void 0 ? method : '').trim();
+        if (!methodText)
+            throw new core_2.UserInputError('请填写退款方式（如现金、转账、微信）');
+        if (methodText.length > 20)
+            throw new core_2.UserInputError('退款方式最多 20 个字');
+        const remark = String(note !== null && note !== void 0 ? note : '').trim();
+        if (remark.length > 200)
+            throw new core_2.UserInputError('退款凭证备注最多 200 字');
+        const raw = this.connection.rawConnection;
+        const uid = ctx.activeUserId ? Number(ctx.activeUserId) : null;
+        const updRows = await raw.query('UPDATE after_sales_request SET state = \'Refunded\', "actualRefundAmount" = $1, "refundedAt" = now(), '
+            + '"refundError" = NULL WHERE id = $2 AND state NOT IN (\'Refunded\', \'Rejected\', \'Closed\') '
+            + 'RETURNING id, state, "actualRefundAmount", "refundedAt"', [fen, Number(id)]);
+        const updated = Array.isArray(updRows) && Array.isArray(updRows[0]) ? updRows[0] : updRows;
+        const upd = Array.isArray(updated) ? updated[0] : undefined;
+        if (!upd)
+            throw new core_2.UserInputError('售后单状态已变更，请刷新后重试');
+        const auditNote = `线下退款登记：方式 ${methodText}，金额 ¥${(fen / 100).toFixed(2)}`
+            + (remark ? `，备注：${remark}` : '');
+        // 留痕失败不阻断退款登记（历史/备注表缺失时降级）
+        await raw.query('INSERT INTO after_sales_state_history ("requestId", "fromState", "toState", "operatorUserId") '
+            + 'VALUES ($1, $2, \'Refunded\', $3)', [Number(id), state, uid]).catch(() => undefined);
+        await raw.query('INSERT INTO campus_after_sales_note ("channelId", "requestId", "content", "createdBy") '
+            + 'VALUES ($1, $2, $3, \'merchant\')', [Number(ctx.channelId), Number(id), auditNote.slice(0, 500)]).catch(() => undefined);
+        try {
+            this.notify.user(ctx, request.orderId, 'afterSales', `商家已线下退款 ¥${(fen / 100).toFixed(2)}（${methodText}）`);
+        }
+        catch (e) {
+            core_2.Logger.warn(`offline refund notify failed: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e)}`, 'CampusMerchantAfterSales');
+        }
+        return {
+            id: String((_d = upd.id) !== null && _d !== void 0 ? _d : id),
+            state: String((_e = upd.state) !== null && _e !== void 0 ? _e : 'Refunded'),
+            actualRefundAmount: Number((_f = upd.actualRefundAmount) !== null && _f !== void 0 ? _f : fen),
+            refundedAt: new Date((_g = upd.refundedAt) !== null && _g !== void 0 ? _g : Date.now()),
+        };
+    }
+    /** 标记售后风险（§94）：争议/异常单，列表可按风险筛选 */
+    async afterSalesRiskFlag(ctx, id, reason) {
+        await this.assertRequestInChannel(ctx, id);
+        const text = String(reason !== null && reason !== void 0 ? reason : '').trim() || '争议/异常';
+        if (text.length > 200)
+            throw new core_2.UserInputError('风险说明最多 200 字');
+        await this.connection.rawConnection.query('INSERT INTO campus_after_sales_risk ("channelId", "requestId", reason, active) '
+            + 'VALUES ($1, $2, $3, true) '
+            + 'ON CONFLICT ("requestId") DO UPDATE SET reason = EXCLUDED.reason, active = true, "updatedAt" = now()', [Number(ctx.channelId), Number(id), text]);
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 解除售后风险标记（§94） */
+    async afterSalesRiskClear(ctx, id) {
+        await this.assertRequestInChannel(ctx, id);
+        await this.connection.rawConnection.query('UPDATE campus_after_sales_risk SET active = false, "updatedAt" = now() '
+            + 'WHERE "channelId" = $1 AND "requestId" = $2', [Number(ctx.channelId), Number(id)]);
+        return this.afterSalesOne(ctx, id);
+    }
+    /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
+    async afterSalesAddFollowUp(ctx, id, method, result, note, nextAt) {
+        await this.assertRequestInChannel(ctx, id);
+        const m = String(method !== null && method !== void 0 ? method : '').trim();
+        if (!['phone', 'wechat', 'onsite', 'other'].includes(m))
+            throw new core_2.UserInputError('回访方式无效');
+        const r = String(result !== null && result !== void 0 ? result : '').trim();
+        if (!['reached', 'unreached', 'refused', 'other'].includes(r))
+            throw new core_2.UserInputError('回访结果无效');
+        const text = String(note !== null && note !== void 0 ? note : '').trim();
+        if (text.length > 300)
+            throw new core_2.UserInputError('回访说明最多 300 字');
+        let next = null;
+        if (nextAt) {
+            const d = new Date(String(nextAt));
+            if (Number.isNaN(d.getTime()))
+                throw new core_2.UserInputError('下次跟进时间格式无效');
+            next = d;
+        }
+        await this.connection.rawConnection.query('INSERT INTO campus_after_sales_followup ("channelId", "requestId", "operatorUserId", method, result, note, "nextAt") '
+            + 'VALUES ($1, $2, $3, $4, $5, $6, $7)', [Number(ctx.channelId), Number(id), ctx.activeUserId ? Number(ctx.activeUserId) : null, m, r, text || null, next]);
+        return this.afterSalesFollowUps(Number(id));
+    }
+    /** 回访记录列表（§94，按时间倒序）：表缺失时降级为空 */
+    async afterSalesFollowUps(requestId) {
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT f.id, f.method, f.result, f.note, f."nextAt", f."createdAt", '
+                + 'ad."firstName", ad."lastName" '
+                + 'FROM campus_after_sales_followup f '
+                + 'LEFT JOIN administrator ad ON ad."userId" = f."operatorUserId" '
+                + 'WHERE f."requestId" = $1 ORDER BY f."createdAt" DESC LIMIT 50', [requestId]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            return (Array.isArray(list) ? list : []).map(r => {
+                var _a, _b;
+                return ({
+                    id: String(r.id),
+                    method: String((_a = r.method) !== null && _a !== void 0 ? _a : ''),
+                    result: String((_b = r.result) !== null && _b !== void 0 ? _b : ''),
+                    note: r.note == null ? null : String(r.note),
+                    nextAt: r.nextAt ? new Date(r.nextAt) : null,
+                    operatorName: [r.firstName, r.lastName].filter(Boolean).join('') || null,
+                    createdAt: new Date(r.createdAt),
+                });
+            });
+        }
+        catch (_a) {
+            return [];
+        }
+    }
+    /** 风险原因映射（§94）：Key=requestId，仅返回 active=true 的标记 */
+    async afterSalesRiskReasons(ctx, ids) {
+        var _a;
+        const out = new Map();
+        const list = (Array.isArray(ids) ? ids : []).filter(n => Number.isFinite(n) && n > 0);
+        if (!list.length)
+            return out;
+        try {
+            const rows = await this.connection.rawConnection.query('SELECT "requestId", reason FROM campus_after_sales_risk '
+                + 'WHERE "channelId" = $1 AND "requestId" = ANY($2::int[]) AND active = true', [Number(ctx.channelId), list]);
+            const raw = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            for (const r of Array.isArray(raw) ? raw : []) {
+                out.set(Number(r.requestId), String((_a = r.reason) !== null && _a !== void 0 ? _a : ''));
+            }
+        }
+        catch (_b) {
+            return out;
+        }
+        return out;
+    }
     async afterSalesExportSelection(ctx, ids, kind) {
         var _a;
         const chId = Number(ctx.channelId);
@@ -3423,11 +3594,13 @@ let MerchantAdminService = class MerchantAdminService {
         const lastSender = await this.afterSalesLastSender([Number(row.id)]);
         const tagMap = await this.afterSalesTagNames(ctx, [Number(row.id)]);
         const assigneeMap = await this.afterSalesAssigneeMap(ctx, [Number(row.id)]);
+        const riskMap = await this.afterSalesRiskReasons(ctx, [Number(row.id)]);
         const rules = await this.afterSalesRules(ctx);
         return this.toAfterSalesRow(row, counts, this.afterSalesTimeoutHours(ctx), Date.now(), lastSender, {
             tags: tagMap,
             dueSoonHours: rules.dueSoonHours,
             assignees: assigneeMap,
+            risks: riskMap,
         });
     }
     /** 协商留言列表（正序，最多 100 条）：插件表缺失时降级为空，不影响详情可用 */
@@ -3554,7 +3727,7 @@ let MerchantAdminService = class MerchantAdminService {
         return out;
     }
     toAfterSalesRow(row, counts, timeoutHours, now, lastSender, opts = {}) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
         const customer = row.customer;
         const order = row.order;
         const dueSoonHours = Number((_a = opts.dueSoonHours) !== null && _a !== void 0 ? _a : 0);
@@ -3590,6 +3763,7 @@ let MerchantAdminService = class MerchantAdminService {
             tags: (_r = (_q = opts.tags) === null || _q === void 0 ? void 0 : _q.get(Number(row.id))) !== null && _r !== void 0 ? _r : [],
             assigneeUserId: (_s = assignee === null || assignee === void 0 ? void 0 : assignee.userId) !== null && _s !== void 0 ? _s : null,
             assigneeName: (_t = assignee === null || assignee === void 0 ? void 0 : assignee.name) !== null && _t !== void 0 ? _t : null,
+            riskReason: (_v = (_u = opts.risks) === null || _u === void 0 ? void 0 : _u.get(Number(row.id))) !== null && _v !== void 0 ? _v : null,
         };
     }
     /** 一键沽清：商品列表（本渠道），带售罄标记与规格数（搜索按名称模糊） */

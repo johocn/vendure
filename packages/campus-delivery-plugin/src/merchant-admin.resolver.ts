@@ -226,12 +226,13 @@ export class MerchantAdminResolver {
         @Args({ name: 'attention', type: () => String, nullable: true }) attention?: string | null,
         @Args({ name: 'minAmount', type: () => Int, nullable: true }) minAmount?: number | null,
         @Args({ name: 'maxAmount', type: () => Int, nullable: true }) maxAmount?: number | null,
+        @Args({ name: 'risk', type: () => String, nullable: true }) risk?: string | null,
         @Args({ name: 'from', type: () => String, nullable: true }) from?: string | null,
         @Args({ name: 'to', type: () => String, nullable: true }) to?: string | null,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number | null,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number | null,
     ) {
-        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, from, to, skip, take });
+        return this.merchant.afterSalesList(ctx, state, { type, orderCode, keyword, tag, assignee, messageKeyword, attention, minAmount, maxAmount, risk, from, to, skip, take });
     }
 
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
@@ -301,6 +302,64 @@ export class MerchantAdminResolver {
         @Args('id') id: ID,
     ) {
         return this.merchant.afterSalesPrintSlip(ctx, id);
+    }
+
+    /** 批量打印售后凭证（§94）：多选一次生成多张凭条，上限 50 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesPrintSlips(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'ids', type: () => [String] }) ids: string[],
+    ) {
+        return this.merchant.afterSalesPrintSlips(ctx, ids);
+    }
+
+    /** 线下退款登记（§94）：现金/转账等线下退款后登记，直接置为已退款 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesOfflineRefund(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'amount', type: () => Int }) amount: number,
+        @Args('method') method: string,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+    ) {
+        return this.merchant.afterSalesOfflineRefund(ctx, id, amount, method, note);
+    }
+
+    /** 标记售后风险（§94）：争议/异常单 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRiskFlag(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'reason', type: () => String, nullable: true }) reason?: string | null,
+    ) {
+        return this.merchant.afterSalesRiskFlag(ctx, id, reason);
+    }
+
+    /** 解除售后风险标记（§94） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRiskClear(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+    ) {
+        return this.merchant.afterSalesRiskClear(ctx, id);
+    }
+
+    /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAddFollowUp(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('method') method: string,
+        @Args('result') result: string,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string | null,
+        @Args({ name: 'nextAt', type: () => String, nullable: true }) nextAt?: string | null,
+    ) {
+        return this.merchant.afterSalesAddFollowUp(ctx, id, method, result, note, nextAt);
     }
 
     /** 售后寄回地址（§83）：本店渠道配置 */

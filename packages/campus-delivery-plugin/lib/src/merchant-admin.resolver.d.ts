@@ -57,7 +57,7 @@ export declare class MerchantAdminResolver {
     /** 营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值 */
     campusMerchantDailyReport(ctx: RequestContext, date?: string | null): Promise<import("./merchant-admin.service").MerchantDailyReport>;
     /** 售后申请清单（§81）：本店渠道订单的售后单；state 为空=全部，Pending=待处理 */
-    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, assignee?: string | null, messageKeyword?: string | null, attention?: string | null, minAmount?: number | null, maxAmount?: number | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
+    campusMerchantAfterSales(ctx: RequestContext, state?: string | null, type?: string | null, orderCode?: string | null, keyword?: string | null, tag?: string | null, assignee?: string | null, messageKeyword?: string | null, attention?: string | null, minAmount?: number | null, maxAmount?: number | null, risk?: string | null, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesList>;
     /** 售后详情（§81）：协商留言 + 状态时间线 + 退款失败留痕 */
     campusMerchantAfterSalesDetail(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesDetail>;
     /** 售后处理统计（§81）：待处理/超时/今日处理量/今日退款额 */
@@ -72,6 +72,16 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesCustomerProfile(ctx: RequestContext, customerId: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesCustomerProfile>;
     /** 售后处理凭证（§93）：门店留存/交接用纯文本凭条 */
     campusMerchantAfterSalesPrintSlip(ctx: RequestContext, id: ID): Promise<string>;
+    /** 批量打印售后凭证（§94）：多选一次生成多张凭条，上限 50 */
+    campusMerchantAfterSalesPrintSlips(ctx: RequestContext, ids: string[]): Promise<string[]>;
+    /** 线下退款登记（§94）：现金/转账等线下退款后登记，直接置为已退款 */
+    campusMerchantAfterSalesOfflineRefund(ctx: RequestContext, id: ID, amount: number, method: string, note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesOfflineRefundResult>;
+    /** 标记售后风险（§94）：争议/异常单 */
+    campusMerchantAfterSalesRiskFlag(ctx: RequestContext, id: ID, reason?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 解除售后风险标记（§94） */
+    campusMerchantAfterSalesRiskClear(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
+    campusMerchantAfterSalesAddFollowUp(ctx: RequestContext, id: ID, method: string, result: string, note?: string | null, nextAt?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesFollowUpRow[]>;
     /** 售后寄回地址（§83）：本店渠道配置 */
     campusMerchantAfterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */

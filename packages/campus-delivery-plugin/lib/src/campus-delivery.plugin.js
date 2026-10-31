@@ -155,6 +155,7 @@ const p20_after_sales_assignee_1 = require("./migrations/p20-after-sales-assigne
 const p21_after_sales_sla_alert_1 = require("./migrations/p21-after-sales-sla-alert");
 const p22_after_sales_assign_log_1 = require("./migrations/p22-after-sales-assign-log");
 const p23_after_sales_review_1 = require("./migrations/p23-after-sales-review");
+const p24_after_sales_risk_followup_1 = require("./migrations/p24-after-sales-risk-followup");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -346,6 +347,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p21_after_sales_sla_alert_1.P21AfterSalesSlaAlertMigration,
             p22_after_sales_assign_log_1.P22AfterSalesAssignLogMigration,
             p23_after_sales_review_1.P23AfterSalesReviewMigration,
+            p24_after_sales_risk_followup_1.P24AfterSalesRiskFollowupMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -832,6 +834,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     assigneeUserId: ID
                     """处理人姓名（未指派或未匹配为空，§89）"""
                     assigneeName: String
+                    """风险标记原因（未标记/已解除为空，§94）"""
+                    riskReason: String
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -913,6 +917,31 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     orderTotal: Int!
                     """指派变更历史（§92），按时间倒序"""
                     assignHistory: [CampusMerchantAfterSalesAssignLog!]!
+                    """顾客回访记录（§94），按时间倒序"""
+                    followUps: [CampusMerchantAfterSalesFollowUp!]!
+                }
+
+                """顾客回访记录（§94）：电话/线上沟通留痕"""
+                type CampusMerchantAfterSalesFollowUp {
+                    id: ID!
+                    """回访方式：phone / wechat / onsite / other"""
+                    method: String!
+                    """回访结果：reached / unreached / refused / other"""
+                    result: String!
+                    note: String
+                    """下次跟进时间（空=无需再跟）"""
+                    nextAt: DateTime
+                    operatorName: String
+                    createdAt: DateTime!
+                }
+
+                """线下退款登记回执（§94）"""
+                type CampusMerchantAfterSalesOfflineRefundResult {
+                    id: ID!
+                    state: String!
+                    """本次登记退款金额（分）"""
+                    actualRefundAmount: Int!
+                    refundedAt: DateTime!
                 }
 
                 """指派变更记录（§92）"""
@@ -2153,7 +2182,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     """营业日报（§80）：单日 KPI + 时段分布 + 商品 Top5 + 对比昨日/近 7 日均值"""
                     campusMerchantDailyReport(date: String): CampusMerchantDailyReport!
                     """售后申请清单（§81）：本店渠道订单的售后单，state 为空=全部"""
-                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, messageKeyword: String, attention: String, minAmount: Int, maxAmount: Int, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
+                    campusMerchantAfterSales(state: String, type: String, orderCode: String, keyword: String, tag: ID, assignee: String, messageKeyword: String, attention: String, minAmount: Int, maxAmount: Int, risk: String, from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesList!
                     """售后工作台摘要（§88）：一次请求返回各待办入口计数"""
                     campusMerchantAfterSalesWorkbench: CampusMerchantAfterSalesWorkbench!
                     """售后标签列表（§88）"""
@@ -2182,6 +2211,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesCustomerProfile(customerId: ID!): CampusMerchantAfterSalesCustomerProfile!
                     """售后处理凭证（§93）：门店留存/交接用纯文本凭条"""
                     campusMerchantAfterSalesPrintSlip(id: ID!): String!
+                    """批量打印售后凭证（§94）：上限 50 单，返回逐单凭条"""
+                    campusMerchantAfterSalesPrintSlips(ids: [ID!]!): [String!]!
                     """退款后满意度汇总（§93）：均分/分档/低分待跟进"""
                     campusMerchantAfterSalesReviewSummary(from: String!, to: String!): CampusMerchantAfterSalesReviewSummary!
                     """售后寄回地址（§83）：本店渠道配置"""
@@ -2517,6 +2548,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesBatchNote(ids: [ID!]!, content: String!): [CampusMerchantAfterSalesBatchResult!]!
                     """标记低分已跟进（§93）"""
                     campusMerchantAfterSalesReviewFollowUp(id: ID!): Boolean!
+                    """线下退款登记（§94）：现金/转账等线下退款后登记，金额单位分"""
+                    campusMerchantAfterSalesOfflineRefund(id: ID!, amount: Int!, method: String!, note: String): CampusMerchantAfterSalesOfflineRefundResult!
+                    """标记售后风险（§94）：争议/异常单"""
+                    campusMerchantAfterSalesRiskFlag(id: ID!, reason: String): CampusMerchantAfterSalesItem!
+                    """解除售后风险标记（§94）"""
+                    campusMerchantAfterSalesRiskClear(id: ID!): CampusMerchantAfterSalesItem!
+                    """新增顾客回访记录（§94）：method=phone/wechat/onsite/other，result=reached/unreached/refused/other"""
+                    campusMerchantAfterSalesAddFollowUp(id: ID!, method: String!, result: String!, note: String, nextAt: String): [CampusMerchantAfterSalesFollowUp!]!
                     """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
