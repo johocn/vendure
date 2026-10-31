@@ -36,10 +36,12 @@ export class FeishuNotifyService {
             ? `${event.scene}:${event.orderId != null ? String(event.orderId) : event.orderCode}`
             : undefined;
         if (dedupeKey && this.isDuplicate(dedupeKey)) return;
+        // 订单级消息只发「本店群 + 平台群」：A 店单号/楼栋/金额不得出现在 B 店群
+        const channelToken = event.ctx.channel?.token;
 
         if (event.scene === 'shop_new_order' && event.orderCode) {
             try {
-                if (await this.cards.broadcastOrderCard(event.orderCode)) {
+                if (await this.cards.broadcastOrderCard(event.orderCode, channelToken)) {
                     if (dedupeKey) this.mark(dedupeKey);
                     return;
                 }
@@ -59,7 +61,9 @@ export class FeishuNotifyService {
             link,
             at: Date.now(),
         });
-        if (await this.deliver(text, event.scene)) {
+        // 卡片降级文本同样按渠道定向（无渠道时维持原全量广播，避免通知静默丢失）
+        const target = event.scene === 'shop_new_order' && channelToken ? { channel: channelToken } : undefined;
+        if (await this.deliver(text, event.scene, target)) {
             if (dedupeKey) this.mark(dedupeKey);
         }
     }

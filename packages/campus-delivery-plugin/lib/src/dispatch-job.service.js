@@ -453,7 +453,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * 6) owned_dispatched 超 merchantAutoOpenMinutes 未送达交接点 → 回大厅并清空骑手
      */
     async sweepRouteTimeouts(ctx, cfg, orders, now) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17;
         const minutes = (v, def) => (v !== null && v !== void 0 ? v : def) * 60000;
         const acceptMs = minutes(cfg.merchantAcceptMinutes, 5);
         const deliverMs = minutes(cfg.merchantAutoOpenMinutes, 15);
@@ -697,11 +697,18 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         });
                         try {
                             const res = await this.thirdParty.syncStatus(ctx, Number(o.id));
-                            if (res === null || res === void 0 ? void 0 : res.state) {
+                            // 网关可能返回未知状态串，只接受回调状态机定义的枚举
+                            const syncable = ['pending', 'accepted', 'pickup', 'delivered', 'cancelled', 'exception'];
+                            if ((res === null || res === void 0 ? void 0 : res.state) && syncable.includes(res.state)) {
+                                // 对账命中的状态必须落库（复用回调同一套幂等/条件写/入厅逻辑）：
+                                // 旧实现只改内存，回调丢失时订单在 DB 里永远停在 third_party，
+                                // 超时后会把已送达的运单取消并重派（重复配送）。
                                 cf.thirdPartyState = res.state;
-                                // 已送达交接点：回调侧已入大厅接力，内存同步防同轮规则误判
-                                if (res.state === 'delivered')
-                                    cf.hallStatus = 'open';
+                                await this.thirdParty.onDeliveryStatus(ctx, {
+                                    orderId: Number(o.id),
+                                    thirdPartyNo: String((_16 = cf.thirdPartyNo) !== null && _16 !== void 0 ? _16 : ''),
+                                    status: res.state,
+                                });
                                 core_2.Logger.info(`Order ${o.code} external status synced → ${res.state}`, 'CampusDispatch');
                             }
                         }
@@ -712,7 +719,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 }
             }
             catch (e) {
-                core_2.Logger.error(`route timeout sweep failed for order ${(_16 = o.code) !== null && _16 !== void 0 ? _16 : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                core_2.Logger.error(`route timeout sweep failed for order ${(_17 = o.code) !== null && _17 !== void 0 ? _17 : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
             }
         }
     }

@@ -225,6 +225,13 @@ export class FeishuClient {
         }
     }
 
+    /** 按订单渠道解析接收群：本店群 + 平台群。未传渠道时返回全部（仅限平台级广播使用）。 */
+    chatIdsFor(channelToken?: string): string[] {
+        return Object.entries(this.cfg.settings.chats)
+            .filter(([, chat]) => !channelToken || chat.scope === 'platform' || chat.channel === channelToken)
+            .map(([chatId]) => chatId);
+    }
+
     /**
      * 广播：优先发到已映射群；没有群映射时退回 webhook。
      * - scope：只发指定范围（platform = 跨店平台群）

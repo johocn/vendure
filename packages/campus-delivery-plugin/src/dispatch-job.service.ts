@@ -820,10 +820,18 @@ export class DispatchJobService implements OnApplicationShutdown {
                         } as any);
                         try {
                             const res = await this.thirdParty.syncStatus(ctx, Number(o.id));
-                            if (res?.state) {
+                            // 网关可能返回未知状态串，只接受回调状态机定义的枚举
+                            const syncable = ['pending', 'accepted', 'pickup', 'delivered', 'cancelled', 'exception'];
+                            if (res?.state && syncable.includes(res.state)) {
+                                // 对账命中的状态必须落库（复用回调同一套幂等/条件写/入厅逻辑）：
+                                // 旧实现只改内存，回调丢失时订单在 DB 里永远停在 third_party，
+                                // 超时后会把已送达的运单取消并重派（重复配送）。
                                 cf.thirdPartyState = res.state;
-                                // 已送达交接点：回调侧已入大厅接力，内存同步防同轮规则误判
-                                if (res.state === 'delivered') cf.hallStatus = 'open';
+                                await this.thirdParty.onDeliveryStatus(ctx, {
+                                    orderId: Number(o.id),
+                                    thirdPartyNo: String(cf.thirdPartyNo ?? ''),
+                                    status: res.state as any,
+                                });
                                 Logger.info(`Order ${o.code} external status synced → ${res.state}`, 'CampusDispatch');
                             }
                         } catch (e: any) {

@@ -163,15 +163,15 @@ let FeishuCardService = class FeishuCardService {
             return null;
         return this.client.sendCard(chatId, card);
     }
-    /** 新订单卡片：发到所有已映射群；一个都没发出去时返回 false，让调用方降级文本 */
-    async broadcastOrderCard(code) {
-        var _a, _b, _c;
+    /** 新订单卡片：只发「本店群 + 平台群」；一个都没发出去时返回 false，让调用方降级文本。
+     *  渠道定向是必须的：旧实现全量群发会把 A 店单号/楼栋/金额泄露到 B 店群。 */
+    async broadcastOrderCard(code, channelToken) {
         if (!this.client.enabled)
             return false;
         const card = await this.buildCard(code);
         if (!card)
             return false;
-        const chats = Object.keys((_c = (_b = (_a = this.client.cfg) === null || _a === void 0 ? void 0 : _a.settings) === null || _b === void 0 ? void 0 : _b.chats) !== null && _c !== void 0 ? _c : {});
+        const chats = this.client.chatIdsFor(channelToken);
         const msgMap = {};
         let ok = false;
         for (const chatId of chats) {

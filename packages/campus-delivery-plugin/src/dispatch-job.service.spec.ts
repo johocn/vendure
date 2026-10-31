@@ -905,6 +905,33 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(feishu.pushEvent.mock.calls.filter(dedupe)).toHaveLength(1);
     });
 
+    // F1：回调丢失时靠 5min 对账发现 delivered —— 必须复用回调状态机落库，不能只改内存
+    it('对账命中 delivered → 调用 onDeliveryStatus 落库（防止已送达被再次取消重派）', async () => {
+        const onDeliveryStatus = vi.fn().mockResolvedValue(undefined);
+        const thirdParty = {
+            syncStatus: vi.fn().mockResolvedValue({ ok: true, state: 'delivered' }),
+            onDeliveryStatus,
+        };
+        const { svc } = makeEnv({
+            openOrders: [{
+                id: 501, code: 'TP_SYNC_D',
+                customFields: {
+                    hallStatus: 'third_party', thirdPartyDeliveryOrderId: 'EXT-1', thirdPartyNo: 'TP-1',
+                    thirdPartySyncAt: minAgo(10), thirdPartyDispatchAt: minAgo(9),
+                    fulfillmentRoute: 'R2', handoverMode: 'to_campus_rider',
+                },
+            }],
+            cfg: { merchantAcceptMinutes: 5, merchantAutoOpenMinutes: 15, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20, inProgressSlaMinutes: 45 },
+            thirdParty,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(thirdParty.syncStatus).toHaveBeenCalled();
+        expect(onDeliveryStatus).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ orderId: 501, thirdPartyNo: 'TP-1', status: 'delivered' }),
+        );
+    });
+
     // P3：拍平截断时年轻订单会被 oldest-first 长期饿死，必须让运营在飞书看到积压
     it('单轮扫描达到 200 上限 → 飞书推送调度积压告警（按渠道去重键）', async () => {
         const feishu = { pushEvent: vi.fn() };

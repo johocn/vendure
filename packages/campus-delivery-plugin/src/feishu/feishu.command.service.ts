@@ -341,9 +341,13 @@ export class FeishuCommandService {
                 }
                 case 'exception':
                 case 'status':
-                case 'view':
+                case 'view': {
+                    // 读操作同样必须校验归属：店铺群只能看本店订单，避免跨店读取详情/异常备注
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found) return;
                     await this.replyInThread(chatId, messageId, await this.statusText(code));
                     break;
+                }
                 case 'template': {
                     const card = buildTemplateCard(code);
                     const inThread = messageId ? await this.client.replyCard(messageId, card, true) : false;

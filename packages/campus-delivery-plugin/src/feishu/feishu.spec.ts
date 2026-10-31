@@ -2,7 +2,7 @@ import { createCipheriv, createHash } from 'crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { FeishuClient, buildWebhookPayload, buildWebhookSignature } from './feishu.client';
-import { AUDIT_TABLE_SQL, buildRestoreSQL, parseCommand, requiredRole } from './feishu.command.service';
+import { AUDIT_TABLE_SQL, buildRestoreSQL, FeishuCommandService, parseCommand, requiredRole } from './feishu.command.service';
 import { parseChatMap, readFeishuSettings } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
 import { campusHhmm } from './feishu.digest.service';
@@ -559,5 +559,51 @@ describe('FeishuClient.broadcast 定向推送', () => {
         });
         await client.broadcast('x', { scope: 'platform' });
         expect(send.mock.calls.map(c => c[0])).toEqual(['oc_p']);
+    });
+
+    it('chatIdsFor：订单卡片按渠道只投本店群 + 平台群', () => {
+        const { client } = mkClient({
+            oc_a: { scope: 'channel', channel: 'canteen-a', operators: [], owners: [] },
+            oc_b: { scope: 'channel', channel: 'canteen-b', operators: [], owners: [] },
+            oc_p: { scope: 'platform', operators: [], owners: [] },
+        });
+        expect(client.chatIdsFor('canteen-a').sort()).toEqual(['oc_a', 'oc_p']);
+        expect(client.chatIdsFor(undefined).sort()).toEqual(['oc_a', 'oc_b', 'oc_p']);
+    });
+});
+
+describe('FeishuCommandService 卡片读操作归属校验', () => {
+    function makeCmd(order: any) {
+        const chat = { scope: 'channel', channel: 'canteen-a', operators: ['ou_op'], owners: [] };
+        const cfg = { chatOf: vi.fn().mockReturnValue(chat) };
+        const client = { enabled: true } as any;
+        const connection = {
+            rawConnection: {
+                getRepository: vi.fn().mockReturnValue({ findOne: vi.fn().mockResolvedValue(order) }),
+            },
+        };
+        const cmd: any = new FeishuCommandService(
+            cfg as any, client, {} as any, { create: vi.fn().mockResolvedValue({}) } as any,
+            connection as any, {} as any, {} as any, {} as any,
+        );
+        cmd.reply = vi.fn();
+        cmd.replyInThread = vi.fn();
+        cmd.statusText = vi.fn().mockResolvedValue('状态文本');
+        return { cmd, cfg, connection };
+    }
+
+    it('店铺群点「状态」查看他店订单 → 拒绝，不读取详情', async () => {
+        const { cmd } = makeCmd({ code: 'B2026', channels: [{ token: 'canteen-b' }] });
+        await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'status', c: 'B2026' } });
+        expect(cmd.reply).toHaveBeenCalledWith('oc_a', '未找到本店订单：B2026');
+        expect(cmd.statusText).not.toHaveBeenCalled();
+        expect(cmd.replyInThread).not.toHaveBeenCalled();
+    });
+
+    it('店铺群点「状态」查看本店订单 → 正常返回状态', async () => {
+        const { cmd } = makeCmd({ code: 'A2026', channels: [{ token: 'canteen-a' }] });
+        await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'status', c: 'A2026' } });
+        expect(cmd.statusText).toHaveBeenCalledWith('A2026');
+        expect(cmd.replyInThread).toHaveBeenCalledWith('oc_a', undefined, '状态文本');
     });
 });

@@ -30,7 +30,7 @@ let FeishuNotifyService = class FeishuNotifyService {
         this.recent = new Map();
     }
     async onAdminNotify(event) {
-        var _a;
+        var _a, _b;
         if (!this.client.enabled)
             return;
         const dedupeKey = event.orderCode || event.orderId != null
@@ -38,16 +38,18 @@ let FeishuNotifyService = class FeishuNotifyService {
             : undefined;
         if (dedupeKey && this.isDuplicate(dedupeKey))
             return;
+        // 订单级消息只发「本店群 + 平台群」：A 店单号/楼栋/金额不得出现在 B 店群
+        const channelToken = (_a = event.ctx.channel) === null || _a === void 0 ? void 0 : _a.token;
         if (event.scene === 'shop_new_order' && event.orderCode) {
             try {
-                if (await this.cards.broadcastOrderCard(event.orderCode)) {
+                if (await this.cards.broadcastOrderCard(event.orderCode, channelToken)) {
                     if (dedupeKey)
                         this.mark(dedupeKey);
                     return;
                 }
             }
             catch (e) {
-                core_1.Logger.warn(`新订单卡片发送失败，降级文本：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+                core_1.Logger.warn(`新订单卡片发送失败，降级文本：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, loggerCtx);
             }
         }
         const link = event.link
@@ -61,7 +63,9 @@ let FeishuNotifyService = class FeishuNotifyService {
             link,
             at: Date.now(),
         });
-        if (await this.deliver(text, event.scene)) {
+        // 卡片降级文本同样按渠道定向（无渠道时维持原全量广播，避免通知静默丢失）
+        const target = event.scene === 'shop_new_order' && channelToken ? { channel: channelToken } : undefined;
+        if (await this.deliver(text, event.scene, target)) {
             if (dedupeKey)
                 this.mark(dedupeKey);
         }

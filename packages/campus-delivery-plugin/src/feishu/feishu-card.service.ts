@@ -159,12 +159,13 @@ export class FeishuCardService {
         return this.client.sendCard(chatId, card);
     }
 
-    /** 新订单卡片：发到所有已映射群；一个都没发出去时返回 false，让调用方降级文本 */
-    async broadcastOrderCard(code: string): Promise<boolean> {
+    /** 新订单卡片：只发「本店群 + 平台群」；一个都没发出去时返回 false，让调用方降级文本。
+     *  渠道定向是必须的：旧实现全量群发会把 A 店单号/楼栋/金额泄露到 B 店群。 */
+    async broadcastOrderCard(code: string, channelToken?: string): Promise<boolean> {
         if (!this.client.enabled) return false;
         const card = await this.buildCard(code);
         if (!card) return false;
-        const chats = Object.keys((this.client as any).cfg?.settings?.chats ?? {});
+        const chats = this.client.chatIdsFor(channelToken);
         const msgMap: Record<string, string> = {};
         let ok = false;
         for (const chatId of chats) {

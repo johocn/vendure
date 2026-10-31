@@ -29,8 +29,9 @@ export declare class FeishuCardService {
     buildCard(code: string): Promise<Record<string, unknown> | null>;
     /** 发订单卡片，返回 message_id（用于后续原地刷新） */
     sendOrderCard(chatId: string, code: string): Promise<string | null>;
-    /** 新订单卡片：发到所有已映射群；一个都没发出去时返回 false，让调用方降级文本 */
-    broadcastOrderCard(code: string): Promise<boolean>;
+    /** 新订单卡片：只发「本店群 + 平台群」；一个都没发出去时返回 false，让调用方降级文本。
+     *  渠道定向是必须的：旧实现全量群发会把 A 店单号/楼栋/金额泄露到 B 店群。 */
+    broadcastOrderCard(code: string, channelToken?: string): Promise<boolean>;
     /** 外部写入 message_id（如用户查单触发 sendOrderCard 后） */
     trackMessage(code: string, chatId: string, messageId: string): void;
     /** 按钮操作后原地刷新卡片（失败不抛错，由调用方决定是否补文本） */
