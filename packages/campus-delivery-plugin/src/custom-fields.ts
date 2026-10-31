@@ -76,6 +76,10 @@ export const campusCustomFields: CustomFields = {
         { name: 'waimaiLogo', type: 'string', nullable: true },
         { name: 'waimaiPromoText', type: 'string', nullable: true }, // 满减 tag 文案，如 '满20减4'（spec §12.2 增补）
         { name: 'waimaiBusinessHours', type: 'string', nullable: true }, // 店铺营业时间文案，如 10:00-22:00；C 端店铺页展示
+        // 每日日报推送（§86）：营业结束后把昨日日报推到该店铺群（走 feishu broadcast，channel=店铺 code）
+        { name: 'waimaiDailyPushEnabled', type: 'boolean', nullable: true, defaultValue: false },
+        { name: 'waimaiDailyPushTime', type: 'string', nullable: true }, // 'HH:MM'，空=21:30
+        { name: 'waimaiDailyPushLastDate', type: 'string', nullable: true }, // 幂等键：已推送的校园日 'YYYY-MM-DD'
     ],
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0

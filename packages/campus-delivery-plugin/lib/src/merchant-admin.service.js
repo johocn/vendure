@@ -75,7 +75,7 @@ let MerchantAdminService = class MerchantAdminService {
     }
     /** 商家自助经营：门店资料（营业时间/公告/电话/营业状态） */
     async storeProfile(ctx) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f, _g;
         const cfg = await this.config.getConfig(ctx);
         const channel = await this.connection.getRepository(ctx, core_2.Channel)
             .findOne({ where: { id: ctx.channelId } });
@@ -104,6 +104,9 @@ let MerchantAdminService = class MerchantAdminService {
             closureDates,
             nextTransition: (0, business_hours_1.nextBusinessTransition)(hours),
             unfinishedOrders,
+            // 日报推送（§86）：Channel 自定义字段，空时间按 21:30
+            dailyPushEnabled: !!((_f = channel.customFields) !== null && _f !== void 0 ? _f : {}).waimaiDailyPushEnabled,
+            dailyPushTime: ((_g = channel.customFields) !== null && _g !== void 0 ? _g : {}).waimaiDailyPushTime || '21:30',
         };
     }
     /** 商家自助修改门店资料：营业时间走 Channel 自定义字段，公告/电话走履约配置白名单 */
@@ -133,6 +136,27 @@ let MerchantAdminService = class MerchantAdminService {
             patch.storePhone = String((_c = input.storePhone) !== null && _c !== void 0 ? _c : '').trim() || null;
         if (Object.keys(patch).length)
             await this.config.updateConfig(ctx, patch);
+        return this.storeProfile(ctx);
+    }
+    /**
+     * 每日日报推送设置（§86）：开关 + 推送时间。
+     * - 时间按校园时区解释，格式 HH:MM，空=沿用 21:30；改时间不清 lastDate，同一天不会重复推。
+     * - 关闭只改开关，历史 lastDate 保留，重开当天若已推过则不再推（幂等键按「已推送的昨日」记）。
+     */
+    async updateDailyPush(ctx, enabled, time) {
+        var _a;
+        const raw = String(time !== null && time !== void 0 ? time : '').trim();
+        if (raw && !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) {
+            throw new core_2.UserInputError('推送时间格式应为 HH:MM（如 21:30）');
+        }
+        const repo = this.connection.getRepository(ctx, core_2.Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId } });
+        if (!channel)
+            throw new core_2.UserInputError('当前店铺渠道不存在');
+        const cf = ((_a = channel.customFields) !== null && _a !== void 0 ? _a : {});
+        cf.waimaiDailyPushEnabled = !!enabled;
+        cf.waimaiDailyPushTime = raw || null;
+        await repo.save(channel);
         return this.storeProfile(ctx);
     }
     /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */

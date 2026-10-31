@@ -30,6 +30,7 @@ __exportStar(require("./business-hours"), exports);
 __exportStar(require("./daily-limit"), exports);
 __exportStar(require("./auto-accept"), exports);
 __exportStar(require("./auto-accept.job"), exports);
+__exportStar(require("./daily-report-push.job"), exports);
 __exportStar(require("./order-gate.process"), exports);
 __exportStar(require("./capacity-alert.job"), exports);
 __exportStar(require("./custom-fields"), exports);

@@ -57,7 +57,9 @@ import { P13AutoAcceptMigration } from './migrations/p13-auto-accept';
 import { P14ClosureCalendarMigration } from './migrations/p14-closure-calendar';
 import { P15SupportTicketAfterSalesMigration } from './migrations/p15-support-ticket-after-sales';
 import { P16MerchantUrgeAckMigration } from './migrations/p16-merchant-urge-ack';
+import { P23DailyPushMigration } from './migrations/p23-daily-push';
 import { AutoAcceptJob } from './auto-accept.job';
+import { DailyReportPushJob } from './daily-report-push.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
 import { AfterSalesSlaAlertJob } from './after-sales-sla-alert.job';
@@ -203,7 +205,9 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P14ClosureCalendarMigration,
         P15SupportTicketAfterSalesMigration,
         P16MerchantUrgeAckMigration,
+        P23DailyPushMigration,
         AutoAcceptJob,
+        DailyReportPushJob,
         SoldOutAutoRestoreJob,
         AfterSalesSlaAlertJob,
         AddWithdrawPayoutMigration,
@@ -1156,6 +1160,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     nextTransition: CampusBusinessTransition
                     """未出餐订单数（§71）：待接单 + 备餐中"""
                     unfinishedOrders: Int!
+                    """每日日报推送开关（§86）：营业结束后把昨日日报推到店铺群"""
+                    dailyPushEnabled: Boolean!
+                    """日报推送时间 HH:MM（默认 21:30）"""
+                    dailyPushTime: String!
                 }
 
                 """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
@@ -2384,6 +2392,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
+                    """每日日报推送设置（§86）：enabled=开关，time=HH:MM（空=21:30）"""
+                    campusMerchantUpdateDailyPush(enabled: Boolean!, time: String): MerchantStoreProfile!
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
@@ -3248,6 +3258,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(AfterSalesSlaAlertJob).start();
         // 商家自动接单（§69）：15s 扫描待接单订单，营业中且未休息时按延迟秒数自动确认
         this.injector.get(AutoAcceptJob).start();
+        // 每日日报推送（§86）：30 分钟扫描到点渠道，把昨日日报推到店铺群（同一天只推一条）
+        this.injector.get(DailyReportPushJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));

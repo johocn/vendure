@@ -673,6 +673,10 @@ export interface MerchantStoreProfile {
     nextTransition: BusinessTransition | null;
     /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
     unfinishedOrders: number;
+    /** 每日日报推送开关（§86）：营业结束后把昨日日报推到店铺群 */
+    dailyPushEnabled: boolean;
+    /** 日报推送时间 'HH:MM'，默认 21:30 */
+    dailyPushTime: string;
 }
 
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
@@ -879,6 +883,9 @@ export class MerchantAdminService {
             closureDates,
             nextTransition: nextBusinessTransition(hours),
             unfinishedOrders,
+            // 日报推送（§86）：Channel 自定义字段，空时间按 21:30
+            dailyPushEnabled: !!((channel.customFields ?? {}) as any).waimaiDailyPushEnabled,
+            dailyPushTime: ((channel.customFields ?? {}) as any).waimaiDailyPushTime || '21:30',
         };
     }
 
@@ -906,6 +913,30 @@ export class MerchantAdminService {
         if (input.storeNotice !== undefined) patch.storeNotice = String(input.storeNotice ?? '').trim() || null;
         if (input.storePhone !== undefined) patch.storePhone = String(input.storePhone ?? '').trim() || null;
         if (Object.keys(patch).length) await this.config.updateConfig(ctx, patch);
+        return this.storeProfile(ctx);
+    }
+
+    /**
+     * 每日日报推送设置（§86）：开关 + 推送时间。
+     * - 时间按校园时区解释，格式 HH:MM，空=沿用 21:30；改时间不清 lastDate，同一天不会重复推。
+     * - 关闭只改开关，历史 lastDate 保留，重开当天若已推过则不再推（幂等键按「已推送的昨日」记）。
+     */
+    async updateDailyPush(
+        ctx: RequestContext,
+        enabled: boolean,
+        time?: string | null,
+    ): Promise<MerchantStoreProfile> {
+        const raw = String(time ?? '').trim();
+        if (raw && !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) {
+            throw new UserInputError('推送时间格式应为 HH:MM（如 21:30）');
+        }
+        const repo = this.connection.getRepository(ctx, Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId as any } });
+        if (!channel) throw new UserInputError('当前店铺渠道不存在');
+        const cf = (channel.customFields ?? {}) as any;
+        cf.waimaiDailyPushEnabled = !!enabled;
+        cf.waimaiDailyPushTime = raw || null;
+        await repo.save(channel);
         return this.storeProfile(ctx);
     }
 

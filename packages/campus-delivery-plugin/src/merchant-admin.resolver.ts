@@ -73,6 +73,17 @@ export class MerchantAdminResolver {
         return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
     }
 
+    /** 每日日报推送设置（§86）：营业结束后把昨日日报推到店铺群；time 为 HH:MM，空=21:30 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateDailyPush(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'enabled', type: () => Boolean }) enabled: boolean,
+        @Args({ name: 'time', type: () => String, nullable: true }) time?: string | null,
+    ) {
+        return this.merchant.updateDailyPush(ctx, !!enabled, time);
+    }
+
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     @Mutation()

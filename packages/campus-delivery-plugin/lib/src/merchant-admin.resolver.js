@@ -54,6 +54,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantUpdateStore(ctx, businessHours, storeNotice, storePhone) {
         return this.merchant.updateStore(ctx, { businessHours, storeNotice, storePhone });
     }
+    /** 每日日报推送设置（§86）：营业结束后把昨日日报推到店铺群；time 为 HH:MM，空=21:30 */
+    async campusMerchantUpdateDailyPush(ctx, enabled, time) {
+        return this.merchant.updateDailyPush(ctx, !!enabled, time);
+    }
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     async campusMerchantSetClosureDates(ctx, dates) {
@@ -456,6 +460,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantUpdateStore", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'enabled', type: () => Boolean })),
+    __param(2, (0, graphql_1.Args)({ name: 'time', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Boolean, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateDailyPush", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

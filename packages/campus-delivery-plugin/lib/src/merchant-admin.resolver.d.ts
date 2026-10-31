@@ -13,6 +13,8 @@ export declare class MerchantAdminResolver {
     campusMerchantRefunds(ctx: RequestContext, from?: string | null, to?: string | null, take?: number | null, skip?: number | null): Promise<import("./merchant-admin.service").MerchantRefundList>;
     /** 商家自助修改门店资料：只改本渠道，营业时间写入 Channel 自定义字段 */
     campusMerchantUpdateStore(ctx: RequestContext, businessHours?: string | null, storeNotice?: string | null, storePhone?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
+    /** 每日日报推送设置（§86）：营业结束后把昨日日报推到店铺群；time 为 HH:MM，空=21:30 */
+    campusMerchantUpdateDailyPush(ctx: RequestContext, enabled: boolean, time?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     campusMerchantSetClosureDates(ctx: RequestContext, dates?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;

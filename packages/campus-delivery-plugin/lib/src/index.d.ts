@@ -14,6 +14,7 @@ export * from './business-hours';
 export * from './daily-limit';
 export * from './auto-accept';
 export * from './auto-accept.job';
+export * from './daily-report-push.job';
 export * from './order-gate.process';
 export * from './capacity-alert.job';
 export * from './custom-fields';

@@ -56,7 +56,9 @@ const p13_auto_accept_1 = require("./migrations/p13-auto-accept");
 const p14_closure_calendar_1 = require("./migrations/p14-closure-calendar");
 const p15_support_ticket_after_sales_1 = require("./migrations/p15-support-ticket-after-sales");
 const p16_merchant_urge_ack_1 = require("./migrations/p16-merchant-urge-ack");
+const p23_daily_push_1 = require("./migrations/p23-daily-push");
 const auto_accept_job_1 = require("./auto-accept.job");
+const daily_report_push_job_1 = require("./daily-report-push.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
 const after_sales_sla_alert_job_1 = require("./after-sales-sla-alert.job");
@@ -195,6 +197,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(after_sales_sla_alert_job_1.AfterSalesSlaAlertJob).start();
         // 商家自动接单（§69）：15s 扫描待接单订单，营业中且未休息时按延迟秒数自动确认
         this.injector.get(auto_accept_job_1.AutoAcceptJob).start();
+        // 每日日报推送（§86）：30 分钟扫描到点渠道，把昨日日报推到店铺群（同一天只推一条）
+        this.injector.get(daily_report_push_job_1.DailyReportPushJob).start();
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
@@ -349,7 +353,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p14_closure_calendar_1.P14ClosureCalendarMigration,
             p15_support_ticket_after_sales_1.P15SupportTicketAfterSalesMigration,
             p16_merchant_urge_ack_1.P16MerchantUrgeAckMigration,
+            p23_daily_push_1.P23DailyPushMigration,
             auto_accept_job_1.AutoAcceptJob,
+            daily_report_push_job_1.DailyReportPushJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             after_sales_sla_alert_job_1.AfterSalesSlaAlertJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
@@ -1302,6 +1308,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     nextTransition: CampusBusinessTransition
                     """未出餐订单数（§71）：待接单 + 备餐中"""
                     unfinishedOrders: Int!
+                    """每日日报推送开关（§86）：营业结束后把昨日日报推到店铺群"""
+                    dailyPushEnabled: Boolean!
+                    """日报推送时间 HH:MM（默认 21:30）"""
+                    dailyPushTime: String!
                 }
 
                 """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
@@ -2530,6 +2540,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     """商家自助修改门店资料：营业时间（Channel 自定义字段）/公告/电话，仅本渠道"""
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
+                    """每日日报推送设置（§86）：enabled=开关，time=HH:MM（空=21:30）"""
+                    campusMerchantUpdateDailyPush(enabled: Boolean!, time: String): MerchantStoreProfile!
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!

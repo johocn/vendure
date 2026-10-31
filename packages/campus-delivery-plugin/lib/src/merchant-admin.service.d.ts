@@ -609,6 +609,10 @@ export interface MerchantStoreProfile {
     nextTransition: BusinessTransition | null;
     /** 未出餐订单数（§71）：待接单 + 备餐中，休业日提示商家尽快处理 */
     unfinishedOrders: number;
+    /** 每日日报推送开关（§86）：营业结束后把昨日日报推到店铺群 */
+    dailyPushEnabled: boolean;
+    /** 日报推送时间 'HH:MM'，默认 21:30 */
+    dailyPushTime: string;
 }
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
 export interface KitchenTicketLine {
@@ -764,6 +768,12 @@ export declare class MerchantAdminService {
         storeNotice?: string | null;
         storePhone?: string | null;
     }): Promise<MerchantStoreProfile>;
+    /**
+     * 每日日报推送设置（§86）：开关 + 推送时间。
+     * - 时间按校园时区解释，格式 HH:MM，空=沿用 21:30；改时间不清 lastDate，同一天不会重复推。
+     * - 关闭只改开关，历史 lastDate 保留，重开当天若已推过则不再推（幂等键按「已推送的昨日」记）。
+     */
+    updateDailyPush(ctx: RequestContext, enabled: boolean, time?: string | null): Promise<MerchantStoreProfile>;
     /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
     updateClosureDates(ctx: RequestContext, dates: Array<{
         date?: string | null;
