@@ -3,6 +3,7 @@ import { Channel, Logger, Order, RequestContext, RequestContextService, Transact
 import { CampusConfigService } from './campus-config.service';
 import { CampusSmsService } from './campus-sms.service';
 import { CompensationTaskService } from './compensation-task.service';
+import { CampusTrackEvent } from './telemetry.entities';
 
 /** 用户侧节点通知触点（履约 7 + 用户订单域 4 + 改址 1） */
 export type CampusNotifyEvent =
@@ -210,10 +211,37 @@ export class CampusNotifyService {
         text?: string,
     ): Promise<void> {
         if (INAPP_FALLBACK_EVENTS.has(event)) {
+            await this.recordFallback(ctx, orderId, event, 'inapp');
             await this.inAppFallback(ctx, orderId, event, text);
             return;
         }
+        await this.recordFallback(ctx, orderId, event, 'sms');
         await this.smsFallback(ctx, orderId, event, text);
+    }
+
+    /** R6 兜底埋点：模板不可用时记录一次，巡检按日统计兜底量（CAMPUS_NOTIFY_STATS=false 关闭） */
+    private async recordFallback(
+        ctx: RequestContext,
+        orderId: number | string,
+        event: CampusNotifyEvent,
+        kind: 'inapp' | 'sms',
+    ): Promise<void> {
+        if (process.env.CAMPUS_NOTIFY_STATS === 'false') return;
+        try {
+            const repo = this.connection.getRepository(ctx, CampusTrackEvent);
+            await repo.save(repo.create({
+                channelId: Number(ctx.channelId),
+                customerId: null,
+                sessionId: null,
+                eventName: 'notify_delivery',
+                page: null,
+                props: { event, fallback: kind, orderId: Number(orderId) },
+                ua: null,
+                ip: null,
+            } as any));
+        } catch (e: any) {
+            Logger.debug(`notify fallback stat failed: ${e?.message ?? e}`, 'CampusNotify');
+        }
     }
 
     /**

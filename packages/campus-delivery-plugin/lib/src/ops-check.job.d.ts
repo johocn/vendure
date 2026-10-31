@@ -19,4 +19,6 @@ export declare class OpsCheckJob implements OnApplicationShutdown {
     /** 执行一次巡检；已过巡检时间且当日未发送时推送，返回推送文本（未触发/全为零返回 null） */
     runOnce(now?: number): Promise<string | null>;
     private collect;
+    /** 积压滞留 P95：只写日志（不进入每日推送），用于评估各状态桶是否长期滞留 */
+    private logBacklogP95;
 }

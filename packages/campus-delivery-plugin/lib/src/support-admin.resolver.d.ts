@@ -6,7 +6,7 @@ export declare class SupportAdminResolver {
     private support;
     private riderOps;
     constructor(support: SupportService, riderOps: RiderOpsService);
-    campusSupportTickets(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<{
+    campusSupportTickets(ctx: RequestContext, status?: string, source?: string, skip?: number, take?: number): Promise<{
         items: ({
             customerName: string;
             customerPhone: string | null;

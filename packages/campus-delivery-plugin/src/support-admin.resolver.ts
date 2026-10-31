@@ -14,10 +14,11 @@ export class SupportAdminResolver {
     async campusSupportTickets(
         @Ctx() ctx: RequestContext,
         @Args({ name: 'status', type: () => String, nullable: true }) status?: string,
+        @Args({ name: 'source', type: () => String, nullable: true }) source?: string,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number,
     ) {
-        return this.support.adminTickets(ctx, status, skip, take);
+        return this.support.adminTickets(ctx, status, skip, take, source);
     }
 
     @Mutation()

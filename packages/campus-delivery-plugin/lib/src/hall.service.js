@@ -284,7 +284,10 @@ let HallService = HallService_1 = class HallService {
         if (!order || ownerUserId == null || Number(ownerUserId) !== Number(ctx.activeUserId)) {
             throw new core_2.UserInputError('订单不存在或不属于当前顾客');
         }
-        return this.resendHandoverCode(ctx, orderId);
+        const code = await this.resendHandoverCode(ctx, orderId);
+        // G4 审计：顾客自助重发留痕（不记录明文交接码）
+        core_2.Logger.info(`顾客重发交接码 order=${orderId} user=${ctx.activeUserId}`, 'CampusHall');
+        return code;
     }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
      *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；extra 与复位字段同语句落库（后台强制回厅留痕）。

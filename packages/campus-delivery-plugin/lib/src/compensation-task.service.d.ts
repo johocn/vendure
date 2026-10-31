@@ -34,6 +34,14 @@ export declare class CompensationTaskService {
         suffix?: string;
     }): Promise<void>;
     private enqueue;
+    private static readonly STATUSES;
+    /** 管理端任务列表（按 createdAt 倒序）；status 为空返回全部 */
+    list(status?: string, skip?: number, take?: number): Promise<{
+        items: CampusCompensationTask[];
+        total: number;
+    }>;
+    /** 管理端手动重试：failed/pending 重置为立即可执行；返回是否命中（done 任务不重置） */
+    retry(id: number): Promise<boolean>;
     /** 到期待处理任务（按 nextAttemptAt 升序，最多 limit 条） */
     due(limit?: number): Promise<CampusCompensationTask[]>;
     /** 条件认领：仅当状态仍为 pending 且 attempts 未变时成功（多实例/并发安全） */

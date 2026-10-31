@@ -10,7 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 var SupportService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SupportService = exports.APPEAL_STATUSES = exports.TICKET_STATUSES = exports.TICKET_CATEGORIES = void 0;
+exports.SupportService = exports.APPEAL_STATUSES = exports.TICKET_SOURCES = exports.TICKET_STATUSES = exports.TICKET_CATEGORIES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
@@ -22,6 +22,8 @@ const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const loggerCtx = 'CampusSupport';
 exports.TICKET_CATEGORIES = ['order', 'delivery', 'refund', 'invoice', 'other'];
 exports.TICKET_STATUSES = ['open', 'replied', 'closed'];
+/** 工单来源：顾客提交 / 外部运单异常自动建单 */
+exports.TICKET_SOURCES = ['customer', 'third_party_exception'];
 exports.APPEAL_STATUSES = ['pending', 'approved', 'rejected'];
 const MAX_CONTENT = 500;
 const MAX_REPLY = 500;
@@ -315,12 +317,17 @@ let SupportService = SupportService_1 = class SupportService {
             // 无显式关联但按订单反查到售后单时，回显解析出的 id，便于前端跳转
             afterSalesRequestId: (_a = ticket.afterSalesRequestId) !== null && _a !== void 0 ? _a : (row ? Number(row.id) : null) });
     }
-    async adminTickets(ctx, status, skip, take) {
+    async adminTickets(ctx, status, skip, take, source) {
         const where = { channelId: ctx.channelId };
         if (status) {
             if (!exports.TICKET_STATUSES.includes(status))
                 throw new core_2.UserInputError('工单状态不合法');
             where.status = status;
+        }
+        if (source) {
+            if (!exports.TICKET_SOURCES.includes(source))
+                throw new core_2.UserInputError('工单来源不合法');
+            where.source = source;
         }
         const [items, total] = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).findAndCount({
             where: where,

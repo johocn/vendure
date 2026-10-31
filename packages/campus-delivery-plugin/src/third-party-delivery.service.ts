@@ -212,6 +212,8 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
                 thirdPartyNo: delivery.thirdPartyNo ?? delivery.code,
                 thirdPartyState: delivery.status,
                 thirdPartyDispatchAt: new Date(),
+                // 重新推单视为新的外部履约周期：清掉工单关闭回写的异常标记，后续异常可再次告警/建单
+                exceptionResolvedAt: null,
                 handoverPointName: dropoff.name ?? '',
                 handoverPointAddress: dropoff.address ?? null,
                 handoverPointLat: dropoff.lat,

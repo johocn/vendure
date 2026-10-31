@@ -80,6 +80,7 @@ const rider_ledger_admin_resolver_1 = require("./rider-ledger-admin.resolver");
 const rider_ledger_service_1 = require("./rider-ledger.service");
 const rider_ops_service_1 = require("./rider-ops.service");
 const support_admin_resolver_1 = require("./support-admin.resolver");
+const compensation_admin_resolver_1 = require("./compensation-admin.resolver");
 const support_service_1 = require("./support.service");
 const support_shop_resolver_1 = require("./support-shop.resolver");
 const dispatch_admin_resolver_1 = require("./dispatch-admin.resolver");
@@ -179,6 +180,7 @@ const withdraw_reconcile_job_1 = require("./withdraw-reconcile.job");
 const compensation_task_service_1 = require("./compensation-task.service");
 const compensation_retry_job_1 = require("./compensation-retry.job");
 const ops_check_job_1 = require("./ops-check.job");
+const slot_reconcile_job_1 = require("./slot-reconcile.job");
 const compensation_task_entity_1 = require("./compensation-task.entity");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
@@ -316,6 +318,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(compensation_retry_job_1.CompensationRetryJob).start();
         // R8 遗留巡检：每日把静默卡住的残留量汇总到平台群（只读 COUNT）
         this.injector.get(ops_check_job_1.OpsCheckJob).start();
+        // R3 锁位对账：容量与实际占位偏差告警（只读，先观测不自动修复）
+        this.injector.get(slot_reconcile_job_1.SlotReconcileJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(notification_plugin_1.AdminNotifyEvent).subscribe(event => {
             void this.injector.get(feishu_notify_service_1.FeishuNotifyService).onAdminNotify(event);
@@ -410,6 +414,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             compensation_task_service_1.CompensationTaskService,
             compensation_retry_job_1.CompensationRetryJob,
             ops_check_job_1.OpsCheckJob,
+            slot_reconcile_job_1.SlotReconcileJob,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -2029,6 +2034,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     id: ID!
                     """顾客工单为下单顾客；系统工单（外部运单异常等）为 null"""
                     customerId: ID
+                    """来源：customer（顾客提交）/ third_party_exception（外部运单异常自动建单）"""
+                    source: String!
                     customerName: String
                     customerPhone: String
                     orderCode: String
@@ -2052,6 +2059,26 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 type CampusSupportTicketList {
                     items: [CampusSupportTicket!]!
+                    total: Int!
+                }
+
+                type CampusCompensationTask {
+                    id: ID!
+                    orderId: ID!
+                    channelId: ID!
+                    customerId: ID
+                    """coupon=补发补偿券 / notify=补发站内信"""
+                    kind: String!
+                    dedupeKey: String!
+                    status: String!
+                    attempts: Int!
+                    nextAttemptAt: DateTime
+                    lastError: String
+                    createdAt: DateTime!
+                }
+
+                type CampusCompensationTaskList {
+                    items: [CampusCompensationTask!]!
                     total: Int!
                 }
 
@@ -2485,7 +2512,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
-                    campusSupportTickets(status: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusSupportTickets(status: String, source: String, skip: Int, take: Int): CampusSupportTicketList!
+                    """R2 补偿任务列表（失败任务排查；status=pending/done/failed）"""
+                    campusCompensationTasks(status: String, skip: Int, take: Int): CampusCompensationTaskList!
                     campusChatConversations(status: String, unreadOnly: Boolean, skip: Int, take: Int): CampusChatConversationList!
                     campusChatUnread: CampusChatUnread!
                     campusAdminChatMessages(conversationId: ID!, afterId: ID, take: Int): [CampusChatMessage!]!
@@ -2980,6 +3009,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
                     """工单手工关联售后单（同一店铺且同一订单；建单自动关联未命中时使用）"""
                     campusLinkSupportTicketAfterSales(id: ID!, afterSalesRequestId: ID!): CampusSupportTicket!
+                    """R2 手动重试补偿任务（仅 failed/pending 可重置；done 不允许）"""
+                    campusRetryCompensationTask(id: ID!): Boolean!
                     campusReplyChat(conversationId: ID!, content: String, images: [String!]): CampusChatMessage!
                     campusCloseChatConversation(conversationId: ID!): CampusChatConversation!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
@@ -3144,7 +3175,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, after_sales_review_resolver_1.AfterSalesReviewAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, sales_stats_resolver_1.SalesStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver, telemetry_resolver_1.TelemetryAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, rider_ledger_admin_resolver_1.RiderLedgerAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, after_sales_review_resolver_1.AfterSalesReviewAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, sales_stats_resolver_1.SalesStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, support_admin_resolver_1.SupportAdminResolver, compensation_admin_resolver_1.CompensationAdminResolver, chat_admin_resolver_1.ChatAdminResolver, campus_ad_resolver_1.CampusAdAdminResolver, campus_locker_resolver_1.CampusLockerAdminResolver, telemetry_resolver_1.TelemetryAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

@@ -5,6 +5,8 @@ import { RiderCreditService } from './rider-credit.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 export declare const TICKET_CATEGORIES: string[];
 export declare const TICKET_STATUSES: string[];
+/** 工单来源：顾客提交 / 外部运单异常自动建单 */
+export declare const TICKET_SOURCES: string[];
 export declare const APPEAL_STATUSES: string[];
 /**
  * 客服工单 + 骑手申诉 + 下单黑名单（站内留言制，非实时 IM）。
@@ -110,7 +112,7 @@ export declare class SupportService {
     })[]>;
     /** 工单行 + 售后摘要（无关联时各字段为 null） */
     private withAfterSalesView;
-    adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<{
+    adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number, source?: string): Promise<{
         items: ({
             customerName: string;
             customerPhone: string | null;

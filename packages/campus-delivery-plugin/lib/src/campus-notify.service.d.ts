@@ -25,6 +25,8 @@ export declare class CampusNotifyService {
     user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string, h5BaseUrl?: string, dedupeSuffix?: string): void;
     /** 模板消息不可用时的兜底：微信侧可能无模板的触点走站内信，其余维持短信兜底 */
     private fallback;
+    /** R6 兜底埋点：模板不可用时记录一次，巡检按日统计兜底量（CAMPUS_NOTIFY_STATS=false 关闭） */
+    private recordFallback;
     /**
      * 站内信兜底：复用 message-plugin 的 Message/MessageDelivery（与 support.service 同范式）。
      * 未装 message-plugin / 订单或顾客缺失时静默跳过，绝不阻塞主流程。

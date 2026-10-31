@@ -192,6 +192,8 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             thirdPartyNo: (_w = delivery.thirdPartyNo) !== null && _w !== void 0 ? _w : delivery.code,
             thirdPartyState: delivery.status,
             thirdPartyDispatchAt: new Date(),
+            // 重新推单视为新的外部履约周期：清掉工单关闭回写的异常标记，后续异常可再次告警/建单
+            exceptionResolvedAt: null,
             handoverPointName: (_x = dropoff.name) !== null && _x !== void 0 ? _x : '',
             handoverPointAddress: (_y = dropoff.address) !== null && _y !== void 0 ? _y : null,
             handoverPointLat: dropoff.lat,

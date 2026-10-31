@@ -42,6 +42,7 @@ function make(overrides?: {
             update: vi.fn().mockResolvedValue({ affected: 1 }),
             findOne: vi.fn(),
             find: vi.fn(() => Promise.resolve(overrides?.openTickets ?? [])),
+            findAndCount: vi.fn().mockResolvedValue([[], 0]),
         },
         Order: {
             // 未传 order = 订单号不存在：工单仍可提交，仅不关联（宽松策略）
@@ -400,6 +401,16 @@ describe('SupportService 系统工单（R7）', () => {
         });
         await svc.replyTicket(ctx, 11, undefined, 'closed');
         expect(repos.Order.update).not.toHaveBeenCalled();
+    });
+
+    it('管理端工单可按来源筛选；非法来源拒绝', async () => {
+        const { svc, repos } = make();
+        await svc.adminTickets(ctx, undefined, undefined, undefined, 'third_party_exception');
+        expect(repos.CampusSupportTicket.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+            where: { channelId: 1, source: 'third_party_exception' },
+        }));
+        await expect(svc.adminTickets(ctx, undefined, undefined, undefined, 'bad'))
+            .rejects.toThrow('工单来源不合法');
     });
 });
 

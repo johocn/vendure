@@ -8,12 +8,13 @@ const pc = { channelId: 1, apiType: 'admin' } as any;
 function make() {
     const query = vi.fn().mockResolvedValue([[], []]);
     const find = vi.fn().mockResolvedValue([]);
+    const findAndCount = vi.fn().mockResolvedValue([[], 0]);
     const conn = {
         rawConnection: { query },
-        getRepository: vi.fn(() => ({ find })),
+        getRepository: vi.fn(() => ({ find, findAndCount })),
     } as any;
     const svc = new CompensationTaskService(conn, { create: vi.fn().mockResolvedValue(pc) } as any);
-    return { svc, query, find };
+    return { svc, query, find, findAndCount };
 }
 
 describe('CompensationTaskService', () => {
@@ -61,5 +62,40 @@ describe('CompensationTaskService', () => {
         expect(query).toHaveBeenLastCalledWith(expect.any(String), ['pending', 'boom', next, 1]);
         await svc.markFailed(1, true, 'boom', next);
         expect(query).toHaveBeenLastCalledWith(expect.any(String), ['failed', 'boom', null, 1]);
+    });
+
+    it('list：默认按创建时间倒序分页；status 过滤', async () => {
+        const { svc, findAndCount } = make();
+        findAndCount.mockResolvedValueOnce([[{ id: 1 }], 1]);
+        expect(await svc.list()).toEqual({ items: [{ id: 1 }], total: 1 });
+        expect(findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+            where: {},
+            order: { createdAt: 'DESC' },
+            skip: 0,
+            take: 20,
+        }));
+        await svc.list('failed', 10, 500);
+        expect(findAndCount).toHaveBeenLastCalledWith(expect.objectContaining({
+            where: { status: 'failed' },
+            skip: 10,
+            take: 200,
+        }));
+    });
+
+    it('list：非法状态拒绝', async () => {
+        const { svc } = make();
+        await expect(svc.list('unknown')).rejects.toThrow('补偿任务状态不合法');
+    });
+
+    it('retry：failed/pending 条件重置为立即可执行；done 不命中', async () => {
+        const { svc, query } = make();
+        query.mockResolvedValueOnce([[{ id: 7 }], []]);
+        expect(await svc.retry(7)).toBe(true);
+        expect(query).toHaveBeenCalledWith(
+            expect.stringContaining("status IN ('failed', 'pending')"),
+            ['pending', 7],
+        );
+        query.mockResolvedValueOnce([[], []]);
+        expect(await svc.retry(7)).toBe(false);
     });
 });

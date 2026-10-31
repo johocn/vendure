@@ -22,6 +22,8 @@ const loggerCtx = 'CampusSupport';
 
 export const TICKET_CATEGORIES = ['order', 'delivery', 'refund', 'invoice', 'other'];
 export const TICKET_STATUSES = ['open', 'replied', 'closed'];
+/** 工单来源：顾客提交 / 外部运单异常自动建单 */
+export const TICKET_SOURCES = ['customer', 'third_party_exception'];
 export const APPEAL_STATUSES = ['pending', 'approved', 'rejected'];
 const MAX_CONTENT = 500;
 const MAX_REPLY = 500;
@@ -357,11 +359,15 @@ export class SupportService {
         };
     }
 
-    async adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number) {
+    async adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number, source?: string) {
         const where: Record<string, unknown> = { channelId: ctx.channelId };
         if (status) {
             if (!TICKET_STATUSES.includes(status)) throw new UserInputError('工单状态不合法');
             where.status = status;
+        }
+        if (source) {
+            if (!TICKET_SOURCES.includes(source)) throw new UserInputError('工单来源不合法');
+            where.source = source;
         }
         const [items, total] = await this.connection.getRepository(ctx, CampusSupportTicket).findAndCount({
             where: where as any,

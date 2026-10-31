@@ -81,6 +81,7 @@ import { RiderLedgerAdminResolver } from './rider-ledger-admin.resolver';
 import { RiderLedgerService } from './rider-ledger.service';
 import { RiderOpsService } from './rider-ops.service';
 import { SupportAdminResolver } from './support-admin.resolver';
+import { CompensationAdminResolver } from './compensation-admin.resolver';
 import { SupportService } from './support.service';
 import { SupportShopResolver } from './support-shop.resolver';
 import { DispatchAdminResolver } from './dispatch-admin.resolver';
@@ -180,6 +181,7 @@ import { WithdrawReconcileJob } from './withdraw-reconcile.job';
 import { CompensationTaskService } from './compensation-task.service';
 import { CompensationRetryJob } from './compensation-retry.job';
 import { OpsCheckJob } from './ops-check.job';
+import { SlotReconcileJob } from './slot-reconcile.job';
 import { CampusCompensationTask } from './compensation-task.entity';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
@@ -241,6 +243,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         CompensationTaskService,
         CompensationRetryJob,
         OpsCheckJob,
+        SlotReconcileJob,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -1860,6 +1863,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     id: ID!
                     """顾客工单为下单顾客；系统工单（外部运单异常等）为 null"""
                     customerId: ID
+                    """来源：customer（顾客提交）/ third_party_exception（外部运单异常自动建单）"""
+                    source: String!
                     customerName: String
                     customerPhone: String
                     orderCode: String
@@ -1883,6 +1888,26 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
 
                 type CampusSupportTicketList {
                     items: [CampusSupportTicket!]!
+                    total: Int!
+                }
+
+                type CampusCompensationTask {
+                    id: ID!
+                    orderId: ID!
+                    channelId: ID!
+                    customerId: ID
+                    """coupon=补发补偿券 / notify=补发站内信"""
+                    kind: String!
+                    dedupeKey: String!
+                    status: String!
+                    attempts: Int!
+                    nextAttemptAt: DateTime
+                    lastError: String
+                    createdAt: DateTime!
+                }
+
+                type CampusCompensationTaskList {
+                    items: [CampusCompensationTask!]!
                     total: Int!
                 }
 
@@ -2316,7 +2341,9 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
-                    campusSupportTickets(status: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusSupportTickets(status: String, source: String, skip: Int, take: Int): CampusSupportTicketList!
+                    """R2 补偿任务列表（失败任务排查；status=pending/done/failed）"""
+                    campusCompensationTasks(status: String, skip: Int, take: Int): CampusCompensationTaskList!
                     campusChatConversations(status: String, unreadOnly: Boolean, skip: Int, take: Int): CampusChatConversationList!
                     campusChatUnread: CampusChatUnread!
                     campusAdminChatMessages(conversationId: ID!, afterId: ID, take: Int): [CampusChatMessage!]!
@@ -2811,6 +2838,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusReplySupportTicket(id: ID!, reply: String, status: String): CampusSupportTicket!
                     """工单手工关联售后单（同一店铺且同一订单；建单自动关联未命中时使用）"""
                     campusLinkSupportTicketAfterSales(id: ID!, afterSalesRequestId: ID!): CampusSupportTicket!
+                    """R2 手动重试补偿任务（仅 failed/pending 可重置；done 不允许）"""
+                    campusRetryCompensationTask(id: ID!): Boolean!
                     campusReplyChat(conversationId: ID!, content: String, images: [String!]): CampusChatMessage!
                     campusCloseChatConversation(conversationId: ID!): CampusChatConversation!
                     campusReviewRiderAppeal(id: ID!, approve: Boolean!, creditDelta: Int, note: String): CampusRiderAppeal!
@@ -2975,7 +3004,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, AfterSalesReviewAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver, TelemetryAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, RiderLedgerAdminResolver, DispatchAdminResolver, MerchantAdminResolver, AfterSalesReviewAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, SalesStatsResolver, AddressChangeAdminResolver, SupportAdminResolver, CompensationAdminResolver, ChatAdminResolver, CampusAdAdminResolver, CampusLockerAdminResolver, TelemetryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -3749,6 +3778,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(CompensationRetryJob).start();
         // R8 遗留巡检：每日把静默卡住的残留量汇总到平台群（只读 COUNT）
         this.injector.get(OpsCheckJob).start();
+        // R3 锁位对账：容量与实际占位偏差告警（只读，先观测不自动修复）
+        this.injector.get(SlotReconcileJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
             void this.injector.get(FeishuNotifyService).onAdminNotify(event);

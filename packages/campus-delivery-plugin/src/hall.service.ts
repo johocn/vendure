@@ -327,7 +327,10 @@ export class HallService {
         if (!order || ownerUserId == null || Number(ownerUserId) !== Number(ctx.activeUserId)) {
             throw new UserInputError('订单不存在或不属于当前顾客');
         }
-        return this.resendHandoverCode(ctx, orderId);
+        const code = await this.resendHandoverCode(ctx, orderId);
+        // G4 审计：顾客自助重发留痕（不记录明文交接码）
+        Logger.info(`顾客重发交接码 order=${orderId} user=${ctx.activeUserId}`, 'CampusHall');
+        return code;
     }
 
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。

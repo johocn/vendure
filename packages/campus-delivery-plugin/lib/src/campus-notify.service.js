@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_sms_service_1 = require("./campus-sms.service");
 const compensation_task_service_1 = require("./compensation-task.service");
+const telemetry_entities_1 = require("./telemetry.entities");
 /** 触点 → 配置实体模板字段（值 = SSO msg-template 的 templateCode；未配置 = 该节点静默跳过） */
 const TEMPLATE_FIELD = {
     orderAccepted: 'notifyTemplateAccepted',
@@ -178,10 +179,34 @@ let CampusNotifyService = class CampusNotifyService {
     /** 模板消息不可用时的兜底：微信侧可能无模板的触点走站内信，其余维持短信兜底 */
     async fallback(ctx, orderId, event, text) {
         if (INAPP_FALLBACK_EVENTS.has(event)) {
+            await this.recordFallback(ctx, orderId, event, 'inapp');
             await this.inAppFallback(ctx, orderId, event, text);
             return;
         }
+        await this.recordFallback(ctx, orderId, event, 'sms');
         await this.smsFallback(ctx, orderId, event, text);
+    }
+    /** R6 兜底埋点：模板不可用时记录一次，巡检按日统计兜底量（CAMPUS_NOTIFY_STATS=false 关闭） */
+    async recordFallback(ctx, orderId, event, kind) {
+        var _a;
+        if (process.env.CAMPUS_NOTIFY_STATS === 'false')
+            return;
+        try {
+            const repo = this.connection.getRepository(ctx, telemetry_entities_1.CampusTrackEvent);
+            await repo.save(repo.create({
+                channelId: Number(ctx.channelId),
+                customerId: null,
+                sessionId: null,
+                eventName: 'notify_delivery',
+                page: null,
+                props: { event, fallback: kind, orderId: Number(orderId) },
+                ua: null,
+                ip: null,
+            }));
+        }
+        catch (e) {
+            core_1.Logger.debug(`notify fallback stat failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'CampusNotify');
+        }
     }
     /**
      * 站内信兜底：复用 message-plugin 的 Message/MessageDelivery（与 support.service 同范式）。

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
+import { RequestContext, RequestContextService, TransactionalConnection, UserInputError } from '@vendure/core';
 import { LessThanOrEqual } from 'typeorm';
 import { CampusCompensationTask } from './compensation-task.entity';
 
@@ -82,6 +82,37 @@ export class CompensationTaskService {
         } catch (e: any) {
             Logger.error(`补偿任务入队失败（${input.dedupeKey}）：${e?.message ?? e}`, 'CampusCompensation');
         }
+    }
+
+    private static readonly STATUSES = ['pending', 'done', 'failed'];
+
+    /** 管理端任务列表（按 createdAt 倒序）；status 为空返回全部 */
+    async list(status?: string, skip?: number, take?: number) {
+        const pc = await this.platformCtx();
+        const where: Record<string, unknown> = {};
+        if (status) {
+            if (!CompensationTaskService.STATUSES.includes(status)) throw new UserInputError('补偿任务状态不合法');
+            where.status = status;
+        }
+        const [items, total] = await this.connection.getRepository(pc, CampusCompensationTask).findAndCount({
+            where: where as any,
+            order: { createdAt: 'DESC' } as any,
+            skip: Math.max(0, Number(skip) || 0),
+            take: Math.min(200, Math.max(1, Number(take) || 20)),
+        });
+        return { items, total };
+    }
+
+    /** 管理端手动重试：failed/pending 重置为立即可执行；返回是否命中（done 任务不重置） */
+    async retry(id: number): Promise<boolean> {
+        const res: any = await this.connection.rawConnection.query(
+            'UPDATE campus_compensation_task SET status = $1, attempts = 0, "nextAttemptAt" = now(), '
+            + '"lastError" = NULL, "updatedAt" = now() '
+            + "WHERE id = $2 AND status IN ('failed', 'pending') RETURNING id",
+            ['pending', id],
+        );
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        return Array.isArray(rows) && rows.length > 0;
     }
 
     /** 到期待处理任务（按 nextAttemptAt 升序，最多 limit 条） */

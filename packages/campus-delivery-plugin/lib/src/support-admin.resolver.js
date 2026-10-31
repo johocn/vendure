@@ -24,8 +24,8 @@ let SupportAdminResolver = class SupportAdminResolver {
         this.support = support;
         this.riderOps = riderOps;
     }
-    async campusSupportTickets(ctx, status, skip, take) {
-        return this.support.adminTickets(ctx, status, skip, take);
+    async campusSupportTickets(ctx, status, source, skip, take) {
+        return this.support.adminTickets(ctx, status, skip, take, source);
     }
     async campusReplySupportTicket(ctx, id, reply, status) {
         return this.support.replyTicket(ctx, id, reply, status);
@@ -76,10 +76,11 @@ __decorate([
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'status', type: () => String, nullable: true })),
-    __param(2, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
-    __param(3, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'source', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], SupportAdminResolver.prototype, "campusSupportTickets", null);
 __decorate([

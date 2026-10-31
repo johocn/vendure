@@ -90,18 +90,20 @@ function makeEnv(opts: EnvOpts = {}) {
         settleRefund: vi.fn().mockResolvedValue({}),
         updateCustomFields: vi.fn().mockResolvedValue(order),
     };
+    const thirdParty = { cancel: vi.fn().mockResolvedValue({ ok: true }) };
+    const hall = { transitionFrom: vi.fn().mockResolvedValue(true), updateOrder: vi.fn() };
     const svc = new AddressChangeService(
         conn,
         orderService as any,
         { findOneByUserId: vi.fn().mockResolvedValue({ id: 5 }) } as any,
         { listOnlineRiders: vi.fn().mockResolvedValue([]) } as any,
         { user: vi.fn() } as any,
-        { cancel: vi.fn().mockResolvedValue({ ok: true }) } as any,
+        thirdParty as any,
         {} as any,
-        { transitionFrom: vi.fn().mockResolvedValue(true), updateOrder: vi.fn() } as any,
+        hall as any,
         { pushEvent: vi.fn() } as any,
     );
-    return { svc, ledgerRepo, orderService, refundRepo, order, zoneRepo, buildingRepo, cfgRepo };
+    return { svc, ledgerRepo, orderService, refundRepo, order, zoneRepo, buildingRepo, cfgRepo, thirdParty, hall };
 }
 
 const pendingRow = {
@@ -189,5 +191,49 @@ describe('AddressChangeService.applyChange 台账回滚（第13轮 P3）', () =>
         expect(env.ledgerRepo.delete).toHaveBeenCalledWith(99);
         // 改址失败不得通知用户/触发外部快递取消
         expect(env.orderService.updateCustomFields).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('AddressChangeService 外部运力改址重推（G5）', () => {
+    it('外部在途改址：取消旧运单后回待推送，并清空异常关闭标记', async () => {
+        const env = makeEnv({
+            zone: { id: 3, name: 'B区', fee: 200, channelId: 2 },
+            building: { id: 7, name: '7栋', zoneId: 3, channelId: 2, lat: 30.1, lng: 120.2 },
+            order: {
+                id: 10,
+                code: 'A10',
+                state: 'AddingItems',
+                shippingWithTax: 300,
+                customer: { id: 5 },
+                channels: [{ id: 2, code: 'canteen' }],
+                customFields: {
+                    hallStatus: 'third_party',
+                    deliveryPlan: 'external_courier',
+                    thirdPartyState: 'pickup',
+                    fulfillmentRoute: 'R2',
+                    exceptionResolvedAt: new Date('2026-10-01'),
+                },
+            },
+        });
+        // 外部已接单顾客侧锁死，走运营代改（adminChange 允许在途改址）
+        await env.svc.adminChange({ channelId: 2, activeUserId: 99 } as any, {
+            orderId: 10,
+            zoneId: 3,
+            buildingId: 7,
+            reason: '顾客换宿舍',
+        } as any);
+        expect(env.thirdParty.cancel).toHaveBeenCalled();
+        expect(env.hall.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(),
+            10,
+            ['open', 'pending_dispatch', 'third_party'],
+            expect.objectContaining({
+                hallStatus: 'pending_dispatch',
+                thirdPartyState: 'cancelled',
+                // 重新推单视为新的外部履约周期，旧的异常关闭标记必须清空
+                exceptionResolvedAt: null,
+                campusCause: 'address_changed_repush',
+            }),
+        );
     });
 });

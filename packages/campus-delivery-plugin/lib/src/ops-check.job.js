@@ -16,6 +16,19 @@ const campus_time_1 = require("./campus-time");
 const feishu_digest_service_1 = require("./feishu/feishu.digest.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const periodic_fallback_1 = require("./periodic-fallback");
+const slot_reconcile_job_1 = require("./slot-reconcile.job");
+/** 各履约状态桶的滞留时长 P95（分钟），仅日志输出，帮助判断积压是否长期化 */
+const BACKLOG_P95_SQL = `
+SELECT "customFieldsHallstatus" AS bucket,
+       COALESCE(percentile_cont(0.95) WITHIN GROUP (
+           ORDER BY EXTRACT(EPOCH FROM (now() - COALESCE("customFieldsHallenteredat"::timestamptz, "createdAt"))) / 60
+       ), 0)::int AS p95_min,
+       COUNT(*)::int AS n
+FROM "order"
+WHERE "state" <> 'Cancelled'
+  AND "customFieldsHallstatus" IN ('open', 'accepted', 'pending_merchant', 'pending_dispatch', 'owned_pool', 'third_party')
+GROUP BY 1
+`;
 /**
  * R8 遗留巡检（默认每日 09:00，UTC+8）：把「会静默卡住」的残留量汇总推送到平台群。
  * 全部指标为只读 COUNT；任一查询失败记为 -1 并跳过该项，不影响其余指标。
@@ -80,6 +93,7 @@ let OpsCheckJob = class OpsCheckJob {
         }
     }
     async collect() {
+        var _a;
         const count = async (sql) => {
             var _a, _b, _c;
             try {
@@ -92,7 +106,7 @@ let OpsCheckJob = class OpsCheckJob {
                 return -1;
             }
         };
-        const [withdraw, refund, thirdParty, compFailed, compOverdue] = await Promise.all([
+        const [withdraw, refund, thirdParty, compFailed, compOverdue, slotDrift, notifyFallback] = await Promise.all([
             count(`SELECT COUNT(*)::int AS n FROM rider_withdrawal_request
                  WHERE "withdrawState" = 'intent' AND "createdAt" < now() - interval '10 minutes'`),
             count(`SELECT COUNT(*)::int AS n FROM "order" WHERE "customFieldsHallstatus" = 'refund_failed'`),
@@ -100,14 +114,43 @@ let OpsCheckJob = class OpsCheckJob {
             count(`SELECT COUNT(*)::int AS n FROM campus_compensation_task WHERE status = 'failed'`),
             count(`SELECT COUNT(*)::int AS n FROM campus_compensation_task
                  WHERE status = 'pending' AND "nextAttemptAt" < now() - interval '30 minutes'`),
+            // R3：锁位容量与实际占位订单不一致的时段数（明细由 SlotReconcileJob 实时告警）
+            count(`SELECT COUNT(*)::int AS n FROM (${slot_reconcile_job_1.SLOT_DRIFT_SQL}) drift`),
+            // R6：模板不可用走兜底的当日次数（超过阈值才计入巡检，避免零星兜底天天告警）
+            count(`SELECT COUNT(*)::int AS n FROM campus_track_event
+                 WHERE "eventName" = 'notify_delivery' AND "createdAt" >= current_date`),
         ]);
-        return [
+        await this.logBacklogP95();
+        const metrics = [
             { label: '提现扣款意图滞留', count: withdraw },
             { label: '退款失败待人工', count: refund },
             { label: '外部运力异常', count: thirdParty },
             { label: '补偿任务失败', count: compFailed },
             { label: '补偿任务超期未执行', count: compOverdue },
+            { label: '锁位时段偏差', count: slotDrift },
         ];
+        const notifyThreshold = Math.max(1, Number((_a = process.env.CAMPUS_NOTIFY_FALLBACK_ALERT) !== null && _a !== void 0 ? _a : 20) || 20);
+        if (notifyFallback >= notifyThreshold) {
+            metrics.push({ label: '通知兜底（今日）', count: notifyFallback });
+        }
+        return metrics;
+    }
+    /** 积压滞留 P95：只写日志（不进入每日推送），用于评估各状态桶是否长期滞留 */
+    async logBacklogP95() {
+        var _a;
+        try {
+            const r = await this.connection.rawConnection.query(BACKLOG_P95_SQL);
+            const rows = Array.isArray(r) && Array.isArray(r[0]) ? r[0] : r;
+            if (!Array.isArray(rows) || !rows.length)
+                return;
+            const text = rows
+                .map((x) => { var _a, _b, _c; return `${(_a = x.bucket) !== null && _a !== void 0 ? _a : '-'}:P95 ${Number((_b = x.p95_min) !== null && _b !== void 0 ? _b : 0)}min/${Number((_c = x.n) !== null && _c !== void 0 ? _c : 0)}单`; })
+                .join('，');
+            common_1.Logger.log(`积压滞留 P95：${text}`, 'CampusOpsCheck');
+        }
+        catch (e) {
+            common_1.Logger.warn(`积压 P95 查询失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'CampusOpsCheck');
+        }
     }
 };
 exports.OpsCheckJob = OpsCheckJob;

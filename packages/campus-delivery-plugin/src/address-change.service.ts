@@ -539,6 +539,7 @@ export class AddressChangeService {
                         handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
                         thirdPartyState: 'cancelled',
                         thirdPartyDispatchAt: new Date(),
+                        exceptionResolvedAt: null,
                         campusCause: 'address_changed_repush',
                     },
                 );
