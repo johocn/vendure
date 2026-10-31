@@ -63,6 +63,8 @@ let CampusDedupeService = class CampusDedupeService {
             core_1.Logger.warn(`CAMPUS_INSTANCE_COUNT=${this.instanceCount} 但去重后端为 memory：跨实例冷却/限频会失效，` +
                 `建议设置 CAMPUS_DEDUPE_DRIVER=db`, loggerCtx);
         }
+        // 启动可观测性：部署校验据此确认显式配置生效（db 后端跨实例共享）
+        core_1.Logger.info(`跨实例去重后端：${this.driver}（实例数 ${this.instanceCount}）`, loggerCtx);
         if (this.driver !== 'memory') {
             this.cleanup = new periodic_fallback_1.PeriodicFallback({
                 name: 'campus-dedupe-cleanup',

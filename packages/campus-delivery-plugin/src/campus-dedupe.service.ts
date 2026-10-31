@@ -65,6 +65,8 @@ export class CampusDedupeService implements OnApplicationShutdown {
                 loggerCtx,
             );
         }
+        // 启动可观测性：部署校验据此确认显式配置生效（db 后端跨实例共享）
+        Logger.info(`跨实例去重后端：${this.driver}（实例数 ${this.instanceCount}）`, loggerCtx);
         if (this.driver !== 'memory') {
             this.cleanup = new PeriodicFallback({
                 name: 'campus-dedupe-cleanup',
