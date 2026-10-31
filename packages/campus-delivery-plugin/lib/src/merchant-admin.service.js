@@ -4214,7 +4214,7 @@ let MerchantAdminService = class MerchantAdminService {
                 SELECT h."operatorUserId" AS uid, a.id AS rid
                   FROM after_sales_state_history h
                   JOIN after_sales_request a ON a.id = h."requestId"
-                 WHERE h."operatorUserId" IS NOT NULL AND h."createdAt" >= $3 AND h."createdAt" < $4
+                 WHERE h."operatorUserId" IS NOT NULL AND h."createdAt" >= $2 AND h."createdAt" < $3
                    AND ${scope}
                    AND EXISTS (SELECT 1 FROM campus_after_sales_escalation e WHERE e."requestId" = a.id)
              ) x GROUP BY x.uid`, [chId, start, end]);
@@ -4227,7 +4227,7 @@ let MerchantAdminService = class MerchantAdminService {
                       JOIN campus_after_sales_review r ON r."requestId" = h."requestId"
                       JOIN after_sales_request a ON a.id = h."requestId"
                      WHERE h."operatorUserId" IS NOT NULL
-                       AND r."createdAt" >= $3 AND r."createdAt" < $4
+                       AND r."createdAt" >= $2 AND r."createdAt" < $3
                        AND ${scope}
                  ) x GROUP BY x.uid`, [chId, start, end]);
         }
