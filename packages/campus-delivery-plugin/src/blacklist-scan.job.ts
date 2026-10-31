@@ -1,5 +1,6 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
+import { withAdvisoryLock } from './advisory-lock';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PeriodicFallback } from './periodic-fallback';
 import { localDateKey } from './rider-shift-window';
@@ -41,7 +42,10 @@ export class BlacklistAutoScanJob implements OnApplicationShutdown {
             bootDelayMs: BOOT_DELAY_MS,
             loggerCtx,
         });
-        this.fallback.start(() => this.runOnce());
+        this.fallback.start(() =>
+            // 多实例互斥：拿不到锁说明其他实例正在扫描，本轮直接跳过（避免重复入库/重复飞书汇总）
+            withAdvisoryLock(this.connection, 'campus:blacklist-scan', () => this.runOnce()),
+        );
     }
 
     stop(): void {

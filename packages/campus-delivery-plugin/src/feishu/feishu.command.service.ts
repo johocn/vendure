@@ -861,7 +861,7 @@ export class FeishuCommandService {
         const found = await this.requireOrder(chat, chatId, code);
         if (!found) return;
         const newCode = await this.hall.resendHandoverCode(found.ctx, Number(found.order.id));
-        this.riderTask.resetHandoverGuard(found.order.id);
+        await this.riderTask.resetHandoverGuard(found.order.id);
         await this.audit(chatId, openId, { ...cmd, orderCode: code }, 'ok');
         await this.reply(
             chatId,

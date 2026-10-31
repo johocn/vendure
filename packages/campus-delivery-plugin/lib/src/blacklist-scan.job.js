@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BlacklistAutoScanJob = exports.BLACKLIST_CANCEL_WINDOW_DAYS = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const advisory_lock_1 = require("./advisory-lock");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const periodic_fallback_1 = require("./periodic-fallback");
 const rider_shift_window_1 = require("./rider-shift-window");
@@ -49,7 +50,9 @@ let BlacklistAutoScanJob = class BlacklistAutoScanJob {
             bootDelayMs: BOOT_DELAY_MS,
             loggerCtx,
         });
-        this.fallback.start(() => this.runOnce());
+        this.fallback.start(() => 
+        // 多实例互斥：拿不到锁说明其他实例正在扫描，本轮直接跳过（避免重复入库/重复飞书汇总）
+        (0, advisory_lock_1.withAdvisoryLock)(this.connection, 'campus:blacklist-scan', () => this.runOnce()));
     }
     stop() {
         var _a;

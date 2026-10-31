@@ -1,5 +1,6 @@
 import { OnApplicationShutdown } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 /** 单一时段对账行：容量锁定数与订单 slotLocked 数不一致 */
 export interface SlotDriftRow {
@@ -20,11 +21,15 @@ export declare const SLOT_DRIFT_SQL = "\nSELECT s.id,\n       s.\"slotDate\"::te
 export declare class SlotReconcileJob implements OnApplicationShutdown {
     private connection;
     private feishu;
+    /** M5 跨实例告警去重；未注入退回进程内 Map */
+    private dedupe?;
     private fallback;
-    /** 告警去重（进程内 24h；多实例需换 DB/Redis，见 R4） */
+    /** 告警去重（24h；M5 经 dedupe 跨实例，未注入退回进程内 Map） */
     private alertedAt;
     private static readonly ALERT_TTL_MS;
-    constructor(connection: TransactionalConnection, feishu: FeishuNotifyService);
+    constructor(connection: TransactionalConnection, feishu: FeishuNotifyService, 
+    /** M5 跨实例告警去重；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     start(intervalMs?: number): void;
     onApplicationShutdown(): void;
     /** 执行一轮对账，返回偏差行（运维/单测可直接调用） */

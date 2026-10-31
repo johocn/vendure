@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SoldOutAutoRestoreJob = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const advisory_lock_1 = require("./advisory-lock");
 const periodic_fallback_1 = require("./periodic-fallback");
 const rider_shift_window_1 = require("./rider-shift-window");
 const campus_time_1 = require("./campus-time");
@@ -42,7 +43,9 @@ let SoldOutAutoRestoreJob = class SoldOutAutoRestoreJob {
             bootDelayMs: BOOT_DELAY_MS,
             loggerCtx,
         });
-        this.fallback.start(() => this.runOnce());
+        this.fallback.start(() => 
+        // 多实例互斥：拿不到锁说明其他实例正在恢复，本轮直接跳过
+        (0, advisory_lock_1.withAdvisoryLock)(this.connection, 'campus:soldout-auto-restore', () => this.runOnce()));
     }
     stop() {
         var _a;

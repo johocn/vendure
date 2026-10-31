@@ -1,3 +1,4 @@
+import { CampusDedupeService } from '../campus-dedupe.service';
 import { FeishuCommandService } from './feishu.command.service';
 import { FeishuConfigService } from './feishu.config';
 export interface FeishuEventResult {
@@ -11,8 +12,12 @@ export interface FeishuEventResult {
 export declare class FeishuEventService {
     private cfg;
     private command;
+    /** M5 跨实例事件去重（飞书重试可能落到另一实例）；未注入退回进程内 Map */
+    private dedupe?;
     private seen;
-    constructor(cfg: FeishuConfigService, command: FeishuCommandService);
+    constructor(cfg: FeishuConfigService, command: FeishuCommandService, 
+    /** M5 跨实例事件去重（飞书重试可能落到另一实例）；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     handle(raw: any): Promise<FeishuEventResult>;
     /** 卡片按钮回调：value 里带着完整单号，直接转指令服务（先 200 再异步执行） */
     private handleCardAction;

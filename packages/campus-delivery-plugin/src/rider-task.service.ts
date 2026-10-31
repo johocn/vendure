@@ -11,6 +11,7 @@ import {
 import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { ERRAND_TIP_SURCHARGE_DESC } from './errand.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
@@ -45,7 +46,7 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 
 @Injectable()
 export class RiderTaskService {
-    /** 交接码连续错误计数 / 锁止截止时间（orderId 维度，进程内即可；过期条目在下次访问时覆盖） */
+    /** 交接码连续错误计数 / 锁止截止时间（orderId 维度；M5 经 dedupe 跨实例，未注入时退回进程内 Map） */
     private handoverFails = new Map<number, number>();
     private handoverLockUntil = new Map<number, number>();
 
@@ -57,6 +58,8 @@ export class RiderTaskService {
         private notify: CampusNotifyService,
         private privacy: PrivacyNumberService,
         private feishu?: FeishuNotifyService,
+        /** M5 跨实例交接码防爆破（多实例下失败计数与锁止共享）；未注入退回进程内 Map */
+        private dedupe?: CampusDedupeService,
     ) {}
 
     /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，真实号不出服务端。
@@ -267,22 +270,14 @@ export class RiderTaskService {
             if (!Number.isNaN(issuedAt) && Date.now() - issuedAt > HANDOVER_CODE_TTL_MS) {
                 throw new UserInputError('交接码已过期，请联系交接点重新核对');
             }
-            const lockUntil = this.handoverLockUntil.get(orderKey);
-            if (lockUntil != null && lockUntil > Date.now()) {
+            if (await this.handoverLocked(orderKey)) {
                 throw new UserInputError('交接码错误次数过多，请 10 分钟后再试');
             }
             if (String(code ?? '').trim() !== expected) {
-                const fails = (this.handoverFails.get(orderKey) ?? 0) + 1;
-                if (fails >= HANDOVER_MAX_FAILS) {
-                    this.handoverFails.delete(orderKey);
-                    this.handoverLockUntil.set(orderKey, Date.now() + HANDOVER_LOCK_MS);
-                } else {
-                    this.handoverFails.set(orderKey, fails);
-                }
+                await this.recordHandoverFail(orderKey);
                 throw new UserInputError('交接码不正确，请与交接点核对后重试');
             }
-            this.handoverFails.delete(orderKey);
-            this.handoverLockUntil.delete(orderKey);
+            await this.clearHandoverGuard(orderKey);
         }
         // 条件写（P2-3）：与用户取消/运营改派并发时，不得把已脱厅/已取消单改成 in_progress
         const res: any = await this.connection.rawConnection.query(
@@ -300,10 +295,43 @@ export class RiderTaskService {
     }
 
     /** R5 交接码重发后清空该单错误计数与锁定（新码生效，旧失败次数不应继续累计） */
-    resetHandoverGuard(orderId: ID): void {
-        const key = Number(orderId);
-        this.handoverFails.delete(key);
-        this.handoverLockUntil.delete(key);
+    async resetHandoverGuard(orderId: ID): Promise<void> {
+        await this.clearHandoverGuard(Number(orderId));
+    }
+
+    /** 是否处于交接码锁止期（跨实例：dedupe 优先，未注入退回进程内 Map） */
+    private async handoverLocked(orderKey: number): Promise<boolean> {
+        if (this.dedupe) return this.dedupe.seen(`handover_lock:${orderKey}`, HANDOVER_LOCK_MS);
+        const until = this.handoverLockUntil.get(orderKey);
+        return until != null && until > Date.now();
+    }
+
+    /** 记一次交接码错误；达到阈值转为 10 分钟锁止 */
+    private async recordHandoverFail(orderKey: number): Promise<void> {
+        if (this.dedupe) {
+            const fails = await this.dedupe.incr(`handover_fail:${orderKey}`, HANDOVER_LOCK_MS);
+            if (fails >= HANDOVER_MAX_FAILS) {
+                await this.dedupe.mark(`handover_lock:${orderKey}`, HANDOVER_LOCK_MS);
+                await this.dedupe.del(`handover_fail:${orderKey}`);
+            }
+            return;
+        }
+        const fails = (this.handoverFails.get(orderKey) ?? 0) + 1;
+        if (fails >= HANDOVER_MAX_FAILS) {
+            this.handoverFails.delete(orderKey);
+            this.handoverLockUntil.set(orderKey, Date.now() + HANDOVER_LOCK_MS);
+        } else {
+            this.handoverFails.set(orderKey, fails);
+        }
+    }
+
+    private async clearHandoverGuard(orderKey: number): Promise<void> {
+        this.handoverFails.delete(orderKey);
+        this.handoverLockUntil.delete(orderKey);
+        if (this.dedupe) {
+            await this.dedupe.del(`handover_fail:${orderKey}`);
+            await this.dedupe.del(`handover_lock:${orderKey}`);
+        }
     }
 
     /** 交接码读取（R1/R2 第二段起送必填）：仅本单骑手、assigned/in_progress 可读。

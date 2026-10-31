@@ -1,5 +1,6 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
+import { withAdvisoryLock } from './advisory-lock';
 import { PeriodicFallback } from './periodic-fallback';
 import { localDateKey } from './rider-shift-window';
 import { campusHour } from './campus-time';
@@ -32,7 +33,10 @@ export class SoldOutAutoRestoreJob implements OnApplicationShutdown {
             bootDelayMs: BOOT_DELAY_MS,
             loggerCtx,
         });
-        this.fallback.start(() => this.runOnce());
+        this.fallback.start(() =>
+            // 多实例互斥：拿不到锁说明其他实例正在恢复，本轮直接跳过
+            withAdvisoryLock(this.connection, 'campus:soldout-auto-restore', () => this.runOnce()),
+        );
     }
 
     stop(): void {

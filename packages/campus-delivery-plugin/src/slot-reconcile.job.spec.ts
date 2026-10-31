@@ -1,14 +1,21 @@
 // R3 锁位对账：偏差才告警、24h 去重、多类偏差分别告警
 import { describe, expect, it, vi } from 'vitest';
 
+import { CampusDedupeService } from './campus-dedupe.service';
 import { SlotReconcileJob } from './slot-reconcile.job';
 
-function make(rows: any[]) {
+/** 内存驱动去重后端（两个 job 共享同一实例即模拟「多实例共享同一后端」） */
+function memoryDedupe(): CampusDedupeService {
+    return new CampusDedupeService({ rawConnection: { options: { type: 'sqlite' } } } as any);
+}
+
+function make(rows: any[], dedupe?: any) {
     const query = vi.fn().mockResolvedValue([rows, []]);
     const pushEvent = vi.fn().mockResolvedValue(true);
     const job = new SlotReconcileJob(
         { rawConnection: { query } } as any,
         { pushEvent } as any,
+        dedupe,
     );
     return { job, query, pushEvent };
 }
@@ -53,5 +60,18 @@ describe('SlotReconcileJob', () => {
             'slot_reconcile:5:2026-10-31:cancel',
             'slot_reconcile:5:2026-10-31:over',
         ]);
+    });
+
+    it('多实例共享去重：同一偏差只告警一次（另一实例不再重复推送）', async () => {
+        const dedupe = memoryDedupe();
+        const rows = [
+            { id: 6, slotDate: '2026-10-31', startTime: '14:00', endTime: '14:30', lockedCount: 3, ordersLocked: 2, cancelledLocked: 0 },
+        ];
+        const a = make(rows, dedupe);
+        const b = make(rows, dedupe);
+        await a.job.runOnce(1000);
+        expect(a.pushEvent).toHaveBeenCalledTimes(1);
+        await b.job.runOnce(2000);
+        expect(b.pushEvent).not.toHaveBeenCalled();
     });
 });

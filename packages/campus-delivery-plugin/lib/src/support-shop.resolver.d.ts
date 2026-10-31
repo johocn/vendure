@@ -18,6 +18,7 @@ export declare class SupportShopResolver {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -40,6 +41,7 @@ export declare class SupportShopResolver {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;

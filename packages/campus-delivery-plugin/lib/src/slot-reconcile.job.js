@@ -13,6 +13,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SlotReconcileJob = exports.SLOT_DRIFT_SQL = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const advisory_lock_1 = require("./advisory-lock");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const periodic_fallback_1 = require("./periodic-fallback");
 /**
@@ -38,11 +40,14 @@ HAVING s."lockedCount" <> COUNT(o.id) FILTER (WHERE COALESCE(o."customFieldsSlot
                           AND o."state" = 'Cancelled') > 0
 `;
 let SlotReconcileJob = SlotReconcileJob_1 = class SlotReconcileJob {
-    constructor(connection, feishu) {
+    constructor(connection, feishu, 
+    /** M5 跨实例告警去重；未注入退回进程内 Map */
+    dedupe) {
         this.connection = connection;
         this.feishu = feishu;
+        this.dedupe = dedupe;
         this.fallback = null;
-        /** 告警去重（进程内 24h；多实例需换 DB/Redis，见 R4） */
+        /** 告警去重（24h；M5 经 dedupe 跨实例，未注入退回进程内 Map） */
         this.alertedAt = new Map();
     }
     start(intervalMs = 10 * 60000) {
@@ -50,7 +55,8 @@ let SlotReconcileJob = SlotReconcileJob_1 = class SlotReconcileJob {
             return;
         this.fallback = new periodic_fallback_1.PeriodicFallback({ name: 'slot-reconcile', intervalMs, loggerCtx: 'CampusSlot' });
         this.fallback.start(async () => {
-            await this.runOnce();
+            // 多实例互斥：拿不到锁说明其他实例正在对账，本轮直接跳过
+            await (0, advisory_lock_1.withAdvisoryLock)(this.connection, 'campus:slot-reconcile', () => this.runOnce());
         });
     }
     onApplicationShutdown() {
@@ -86,14 +92,20 @@ let SlotReconcileJob = SlotReconcileJob_1 = class SlotReconcileJob {
         return rows;
     }
     async alertOnce(now, key, title, text) {
-        const last = this.alertedAt.get(key);
-        if (last != null && now - last < SlotReconcileJob_1.ALERT_TTL_MS)
-            return;
-        this.alertedAt.set(key, now);
-        // 清理过期键，避免长期运行后 Map 增长
-        for (const [k, at] of this.alertedAt) {
-            if (now - at >= SlotReconcileJob_1.ALERT_TTL_MS)
-                this.alertedAt.delete(k);
+        if (this.dedupe) {
+            if (await this.dedupe.seenOrMark(key, SlotReconcileJob_1.ALERT_TTL_MS))
+                return;
+        }
+        else {
+            const last = this.alertedAt.get(key);
+            if (last != null && now - last < SlotReconcileJob_1.ALERT_TTL_MS)
+                return;
+            this.alertedAt.set(key, now);
+            // 清理过期键，避免长期运行后 Map 增长
+            for (const [k, at] of this.alertedAt) {
+                if (now - at >= SlotReconcileJob_1.ALERT_TTL_MS)
+                    this.alertedAt.delete(k);
+            }
         }
         await this.feishu.pushEvent('alert', title, text, undefined, key);
     }
@@ -103,6 +115,7 @@ SlotReconcileJob.ALERT_TTL_MS = 24 * 3600000;
 exports.SlotReconcileJob = SlotReconcileJob = SlotReconcileJob_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        feishu_notify_service_1.FeishuNotifyService])
+        feishu_notify_service_1.FeishuNotifyService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], SlotReconcileJob);
 //# sourceMappingURL=slot-reconcile.job.js.map

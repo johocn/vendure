@@ -1,8 +1,14 @@
 // 纯逻辑单测：状态机（assigned 可开始 / 状态不符拒）、分成计算（100% 与 80%）、照片必传、非本骑手拒
 import { describe, expect, it, vi } from 'vitest';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { RiderTaskService } from './rider-task.service';
 
-function make(order: any, cfg: any = { riderCommissionRate: 100 }, feishu?: any) {
+/** 内存驱动去重后端（单测共享同一实例即模拟「多实例共享同一后端」） */
+function memoryDedupe(): CampusDedupeService {
+    return new CampusDedupeService({ rawConnection: { options: { type: 'sqlite' } } } as any);
+}
+
+function make(order: any, cfg: any = { riderCommissionRate: 100 }, feishu?: any, dedupe?: any) {
     const riderSvc = { assertApprovedRider: vi.fn().mockResolvedValue({ id: 9 }) } as any;
     const saved: any[] = [];
     // findOne 调用次序：deliver = assertOwner(查单) → getConfig(查配置)；start = assertOwner(查单)
@@ -22,8 +28,8 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }, feishu?: any)
         // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
         rawConnection: { query: rawQuery },
     } as any;
-    // 构造参数次序：connection / rider / credit / hall / notify / privacy / feishu（第 7 位才是飞书）
-    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any, { resolve: vi.fn() } as any, feishu), repo, saved, rawQuery, feishu };
+    // 构造参数次序：connection / rider / credit / hall / notify / privacy / feishu（第 7 位才是飞书）/ dedupe
+    return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any, { resolve: vi.fn() } as any, feishu, dedupe), repo, saved, rawQuery, feishu };
 }
 
 const assigned = {
@@ -83,6 +89,28 @@ describe('RiderTaskService', () => {
             await expect(svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
         }
         await expect(svc.start({ channelId: 1 } as any, 10 as any, '1234')).rejects.toThrow('错误次数过多');
+    });
+    it('多实例共享去重：失败计数跨实例累计锁止，resetHandoverGuard 可解除', async () => {
+        const relay = {
+            ...assigned,
+            customFields: { ...assigned.customFields, handoverCode: '1234', handoverCodeAt: new Date() },
+        };
+        // 两个实例共享同一去重后端，模拟飞书重试落到另一实例
+        const dedupe = memoryDedupe();
+        const a = make(relay, undefined, undefined, dedupe);
+        const b = make(relay, undefined, undefined, dedupe);
+        // A 错 3 次 + B 错 2 次 → 合计 5 次，锁止
+        for (let i = 0; i < 3; i++) {
+            await expect(a.svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
+        }
+        for (let i = 0; i < 2; i++) {
+            await expect(b.svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
+        }
+        await expect(b.svc.start({ channelId: 1 } as any, 10 as any, '1234')).rejects.toThrow('错误次数过多');
+        await expect(a.svc.start({ channelId: 1 } as any, 10 as any, '1234')).rejects.toThrow('错误次数过多');
+        // 重发交接码后清理（在 A 上清理，B 也应立即解除）
+        await a.svc.resetHandoverGuard(10 as any);
+        await expect(b.svc.start({ channelId: 1 } as any, 10 as any, '1234')).resolves.toBeTruthy();
     });
     it('delivered 需照片且分成=配送费+小费（单条原子写终态 + 认领后入账）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };

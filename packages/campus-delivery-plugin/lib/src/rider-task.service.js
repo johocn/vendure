@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const errand_service_1 = require("./errand.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
@@ -42,7 +43,9 @@ function haversineMeters(a, b) {
     return 2 * R * Math.asin(Math.sqrt(s));
 }
 let RiderTaskService = class RiderTaskService {
-    constructor(connection, riderService, credit, hall, notify, privacy, feishu) {
+    constructor(connection, riderService, credit, hall, notify, privacy, feishu, 
+    /** M5 跨实例交接码防爆破（多实例下失败计数与锁止共享）；未注入退回进程内 Map */
+    dedupe) {
         this.connection = connection;
         this.riderService = riderService;
         this.credit = credit;
@@ -50,7 +53,8 @@ let RiderTaskService = class RiderTaskService {
         this.notify = notify;
         this.privacy = privacy;
         this.feishu = feishu;
-        /** 交接码连续错误计数 / 锁止截止时间（orderId 维度，进程内即可；过期条目在下次访问时覆盖） */
+        this.dedupe = dedupe;
+        /** 交接码连续错误计数 / 锁止截止时间（orderId 维度；M5 经 dedupe 跨实例，未注入时退回进程内 Map） */
         this.handoverFails = new Map();
         this.handoverLockUntil = new Map();
     }
@@ -247,7 +251,7 @@ let RiderTaskService = class RiderTaskService {
     /** 开始配送：assigned → in_progress。
      * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
     async start(ctx, orderId, code) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c;
         const order = await this.assertOwner(ctx, orderId, 'assigned');
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         const expected = String((_b = cf.handoverCode) !== null && _b !== void 0 ? _b : '');
@@ -257,29 +261,20 @@ let RiderTaskService = class RiderTaskService {
             if (!Number.isNaN(issuedAt) && Date.now() - issuedAt > HANDOVER_CODE_TTL_MS) {
                 throw new core_1.UserInputError('交接码已过期，请联系交接点重新核对');
             }
-            const lockUntil = this.handoverLockUntil.get(orderKey);
-            if (lockUntil != null && lockUntil > Date.now()) {
+            if (await this.handoverLocked(orderKey)) {
                 throw new core_1.UserInputError('交接码错误次数过多，请 10 分钟后再试');
             }
             if (String(code !== null && code !== void 0 ? code : '').trim() !== expected) {
-                const fails = ((_c = this.handoverFails.get(orderKey)) !== null && _c !== void 0 ? _c : 0) + 1;
-                if (fails >= HANDOVER_MAX_FAILS) {
-                    this.handoverFails.delete(orderKey);
-                    this.handoverLockUntil.set(orderKey, Date.now() + HANDOVER_LOCK_MS);
-                }
-                else {
-                    this.handoverFails.set(orderKey, fails);
-                }
+                await this.recordHandoverFail(orderKey);
                 throw new core_1.UserInputError('交接码不正确，请与交接点核对后重试');
             }
-            this.handoverFails.delete(orderKey);
-            this.handoverLockUntil.delete(orderKey);
+            await this.clearHandoverGuard(orderKey);
         }
         // 条件写（P2-3）：与用户取消/运营改派并发时，不得把已脱厅/已取消单改成 in_progress
         const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1 '
             + 'WHERE id = $2 AND "customFieldsDeliverystatus" = $3 '
             + 'AND "customFieldsDeliverystaffid" = $4 AND "customFieldsHallstatus" = $5 '
-            + `AND "state" <> 'Cancelled' RETURNING id`, ['in_progress', order.id, 'assigned', String((_d = cf.deliveryStaffId) !== null && _d !== void 0 ? _d : ''), 'grabbed']);
+            + `AND "state" <> 'Cancelled' RETURNING id`, ['in_progress', order.id, 'assigned', String((_c = cf.deliveryStaffId) !== null && _c !== void 0 ? _c : ''), 'grabbed']);
         const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
         if (!Array.isArray(rows) || !rows.length) {
             throw new core_1.UserInputError('订单已被取消或改派，无法开始配送');
@@ -287,10 +282,43 @@ let RiderTaskService = class RiderTaskService {
         return order;
     }
     /** R5 交接码重发后清空该单错误计数与锁定（新码生效，旧失败次数不应继续累计） */
-    resetHandoverGuard(orderId) {
-        const key = Number(orderId);
-        this.handoverFails.delete(key);
-        this.handoverLockUntil.delete(key);
+    async resetHandoverGuard(orderId) {
+        await this.clearHandoverGuard(Number(orderId));
+    }
+    /** 是否处于交接码锁止期（跨实例：dedupe 优先，未注入退回进程内 Map） */
+    async handoverLocked(orderKey) {
+        if (this.dedupe)
+            return this.dedupe.seen(`handover_lock:${orderKey}`, HANDOVER_LOCK_MS);
+        const until = this.handoverLockUntil.get(orderKey);
+        return until != null && until > Date.now();
+    }
+    /** 记一次交接码错误；达到阈值转为 10 分钟锁止 */
+    async recordHandoverFail(orderKey) {
+        var _a;
+        if (this.dedupe) {
+            const fails = await this.dedupe.incr(`handover_fail:${orderKey}`, HANDOVER_LOCK_MS);
+            if (fails >= HANDOVER_MAX_FAILS) {
+                await this.dedupe.mark(`handover_lock:${orderKey}`, HANDOVER_LOCK_MS);
+                await this.dedupe.del(`handover_fail:${orderKey}`);
+            }
+            return;
+        }
+        const fails = ((_a = this.handoverFails.get(orderKey)) !== null && _a !== void 0 ? _a : 0) + 1;
+        if (fails >= HANDOVER_MAX_FAILS) {
+            this.handoverFails.delete(orderKey);
+            this.handoverLockUntil.set(orderKey, Date.now() + HANDOVER_LOCK_MS);
+        }
+        else {
+            this.handoverFails.set(orderKey, fails);
+        }
+    }
+    async clearHandoverGuard(orderKey) {
+        this.handoverFails.delete(orderKey);
+        this.handoverLockUntil.delete(orderKey);
+        if (this.dedupe) {
+            await this.dedupe.del(`handover_fail:${orderKey}`);
+            await this.dedupe.del(`handover_lock:${orderKey}`);
+        }
     }
     /** 交接码读取（R1/R2 第二段起送必填）：仅本单骑手、assigned/in_progress 可读。
      *  原实现交接码只写入不暴露，骑手只能线下向交接点口头索取，取不到就卡在 grabbed 直到超时回厅。 */
@@ -468,6 +496,7 @@ exports.RiderTaskService = RiderTaskService = __decorate([
         hall_service_1.HallService,
         campus_notify_service_1.CampusNotifyService,
         privacy_number_service_1.PrivacyNumberService,
-        feishu_notify_service_1.FeishuNotifyService])
+        feishu_notify_service_1.FeishuNotifyService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], RiderTaskService);
 //# sourceMappingURL=rider-task.service.js.map

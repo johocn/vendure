@@ -1,4 +1,5 @@
 import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallService } from './hall.service';
@@ -13,10 +14,14 @@ export declare class RiderTaskService {
     private notify;
     private privacy;
     private feishu?;
-    /** 交接码连续错误计数 / 锁止截止时间（orderId 维度，进程内即可；过期条目在下次访问时覆盖） */
+    /** M5 跨实例交接码防爆破（多实例下失败计数与锁止共享）；未注入退回进程内 Map */
+    private dedupe?;
+    /** 交接码连续错误计数 / 锁止截止时间（orderId 维度；M5 经 dedupe 跨实例，未注入时退回进程内 Map） */
     private handoverFails;
     private handoverLockUntil;
-    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService, privacy: PrivacyNumberService, feishu?: FeishuNotifyService | undefined);
+    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService, privacy: PrivacyNumberService, feishu?: FeishuNotifyService | undefined, 
+    /** M5 跨实例交接码防爆破（多实例下失败计数与锁止共享）；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，真实号不出服务端。
      * 未开启号码保护时返回真实号（行为与旧版一致），前端统一用 display/callable 展示与拨号。 */
     customerContact(ctx: RequestContext, orderId: ID): Promise<import("./privacy-number.service").PrivacyContact>;
@@ -60,7 +65,12 @@ export declare class RiderTaskService {
      * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
     start(ctx: RequestContext, orderId: ID, code?: string): Promise<Order>;
     /** R5 交接码重发后清空该单错误计数与锁定（新码生效，旧失败次数不应继续累计） */
-    resetHandoverGuard(orderId: ID): void;
+    resetHandoverGuard(orderId: ID): Promise<void>;
+    /** 是否处于交接码锁止期（跨实例：dedupe 优先，未注入退回进程内 Map） */
+    private handoverLocked;
+    /** 记一次交接码错误；达到阈值转为 10 分钟锁止 */
+    private recordHandoverFail;
+    private clearHandoverGuard;
     /** 交接码读取（R1/R2 第二段起送必填）：仅本单骑手、assigned/in_progress 可读。
      *  原实现交接码只写入不暴露，骑手只能线下向交接点口头索取，取不到就卡在 grabbed 直到超时回厅。 */
     handoverCode(ctx: RequestContext, orderId: ID): Promise<string | null>;

@@ -5,8 +5,10 @@ import { FeishuClient, buildWebhookPayload, buildWebhookSignature } from './feis
 import { AUDIT_TABLE_SQL, buildRestoreSQL, FeishuCommandService, parseCommand, requiredRole } from './feishu.command.service';
 import { parseChatMap, readFeishuSettings } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
+import { FeishuEventService } from './feishu.event.service';
 import { FeishuNotifyService } from './feishu-notify.service';
 import { campusHhmm } from './feishu.digest.service';
+import { CampusDedupeService } from '../campus-dedupe.service';
 import {
     buildOrderCard,
     buildSearchCard,
@@ -734,5 +736,51 @@ describe('FeishuNotifyService 告警渠道定向', () => {
         const notify = new FeishuNotifyService(client, cards);
         await expect(notify.pushEvent('alert', '取货超时', '内容', 'UNKNOWN')).resolves.toBe(true);
         expect(client.broadcast).toHaveBeenCalledWith(expect.any(String), undefined);
+    });
+});
+
+describe('FeishuEventService 事件去重（M5 跨实例）', () => {
+    /** 内存驱动去重后端（两个 event service 共享同一实例即模拟「多实例共享同一后端」） */
+    function memoryDedupe(): CampusDedupeService {
+        return new CampusDedupeService({ rawConnection: { options: { type: 'sqlite' } } } as any);
+    }
+
+    const payload = {
+        header: { event_id: 'ev_1', event_type: 'im.message.receive_v1', token: 'tok' },
+        event: {
+            message: { message_type: 'text', content: JSON.stringify({ text: '帮助' }), chat_id: 'oc_c1' },
+            sender: { sender_id: { open_id: 'ou_u1' } },
+        },
+    };
+
+    function makeEvent(dedupe?: any) {
+        const cfg = { enabled: true, settings: { verifyToken: 'tok' } } as any;
+        const command = { handleMessage: vi.fn().mockResolvedValue(undefined), handleCardAction: vi.fn() } as any;
+        return { svc: new FeishuEventService(cfg, command, dedupe), command };
+    }
+
+    it('同一 event_id 重复回调（另一实例）→ 不再执行指令', async () => {
+        const dedupe = memoryDedupe();
+        const a = makeEvent(dedupe);
+        const b = makeEvent(dedupe);
+        expect((await a.svc.handle(JSON.parse(JSON.stringify(payload)))).status).toBe(200);
+        await Promise.resolve(); // void promise：等待异步指令调用落地
+        expect(a.command.handleMessage).toHaveBeenCalledTimes(1);
+        expect((await b.svc.handle(JSON.parse(JSON.stringify(payload)))).status).toBe(200);
+        await Promise.resolve();
+        expect(b.command.handleMessage).not.toHaveBeenCalled();
+    });
+
+    it('不同 event_id → 各自执行', async () => {
+        const dedupe = memoryDedupe();
+        const a = makeEvent(dedupe);
+        const b = makeEvent(dedupe);
+        await a.svc.handle(JSON.parse(JSON.stringify(payload)));
+        const other = JSON.parse(JSON.stringify(payload));
+        other.header.event_id = 'ev_2';
+        await b.svc.handle(other);
+        await Promise.resolve();
+        expect(a.command.handleMessage).toHaveBeenCalledTimes(1);
+        expect(b.command.handleMessage).toHaveBeenCalledTimes(1);
     });
 });

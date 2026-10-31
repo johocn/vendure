@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AfterSalesAutoAssignJob = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const advisory_lock_1 = require("./advisory-lock");
 const merchant_admin_service_1 = require("./merchant-admin.service");
 const periodic_fallback_1 = require("./periodic-fallback");
 const loggerCtx = 'CampusAfterSalesAutoAssign';
@@ -40,7 +41,9 @@ let AfterSalesAutoAssignJob = class AfterSalesAutoAssignJob {
             bootDelayMs: BOOT_DELAY_MS,
             loggerCtx,
         });
-        this.fallback.start(() => this.run());
+        this.fallback.start(() => 
+        // 多实例互斥：拿不到锁说明其他实例正在分配，本轮直接跳过（避免重复指派历史/值班预警推送）
+        (0, advisory_lock_1.withAdvisoryLock)(this.connection, 'campus:after-sales-auto-assign', () => this.run()));
     }
     stop() {
         var _a;

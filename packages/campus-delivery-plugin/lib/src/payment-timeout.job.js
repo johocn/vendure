@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
 const campus_config_service_1 = require("./campus-config.service");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const payment_timeout_entity_1 = require("./payment-timeout.entity");
@@ -43,7 +44,9 @@ const FAILED_SCAN_LIMIT = 100;
  * 飞书汇总）同样用自管定时器，部署形态一致。
  */
 let PaymentTimeoutJob = class PaymentTimeoutJob {
-    constructor(jobQueueService, connection, orderService, channelService, stockMovementService, notify, campusConfig, feishu) {
+    constructor(jobQueueService, connection, orderService, channelService, stockMovementService, notify, campusConfig, feishu, 
+    /** M5 跨实例告警去重；未注入退回进程内 Map */
+    dedupe) {
         this.jobQueueService = jobQueueService;
         this.connection = connection;
         this.orderService = orderService;
@@ -52,8 +55,9 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         this.notify = notify;
         this.campusConfig = campusConfig;
         this.feishu = feishu;
+        this.dedupe = dedupe;
         this.compensation = null;
-        /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
+        /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推；M5 经 dedupe 跨实例，未注入退回 Map） */
         this.alertedFailed = new Map();
         this.taskRepo = this.connection.rawConnection.getRepository(payment_timeout_entity_1.PaymentTimeoutTask);
     }
@@ -277,13 +281,15 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
     async alertFailedTasks() {
         var _a, _b, _c;
         const now = Date.now();
-        // GC：超过去重窗口的记录清除，保证 Map 有界
-        const expired = [];
-        for (const [id, at] of this.alertedFailed)
-            if (now - at > FAILED_ALERT_REPEAT_MS)
-                expired.push(id);
-        for (const id of expired)
-            this.alertedFailed.delete(id);
+        // GC：超过去重窗口的记录清除，保证 Map 有界（dedupe 后端由 TTL 自动过期）
+        if (!this.dedupe) {
+            const expired = [];
+            for (const [id, at] of this.alertedFailed)
+                if (now - at > FAILED_ALERT_REPEAT_MS)
+                    expired.push(id);
+            for (const id of expired)
+                this.alertedFailed.delete(id);
+        }
         const failed = await this.taskRepo.find({
             where: { status: payment_timeout_entity_1.PaymentTimeoutStatus.FAILED },
             order: { updatedAt: 'DESC' },
@@ -298,17 +304,27 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         const codeById = new Map(orders.map((o) => [Number(o.id), o.code]));
         for (const t of failed) {
             const tid = Number(t.id);
-            if (this.alertedFailed.has(tid))
+            if (this.dedupe) {
+                if (await this.dedupe.seen(`paytimeout_failed_alert:${tid}`, FAILED_ALERT_REPEAT_MS))
+                    continue;
+            }
+            else if (this.alertedFailed.has(tid)) {
                 continue;
+            }
             const code = (_a = codeById.get(Number(t.orderId))) !== null && _a !== void 0 ? _a : `#${t.orderId}`;
             const typeLabel = t.type === payment_timeout_entity_1.PaymentTimeoutType.CANCEL ? '超时取消' : '待付款提醒';
             try {
                 const sent = await this.feishu.pushEvent('payment_timeout_failed', '待付款任务失败', `订单 ${code} ${typeLabel}重试 ${t.retryCount} 次仍失败：${(_b = t.lastError) !== null && _b !== void 0 ? _b : '未知错误'}（订单可能卡在待付款）`, String(code), `paytimeout_failed:${tid}`);
                 // 送达成功才登记 24h 去重：推送失败时下一轮继续重试，避免失败一次就静默一天
-                if (sent)
-                    this.alertedFailed.set(tid, now);
-                else
+                if (sent) {
+                    if (this.dedupe)
+                        await this.dedupe.mark(`paytimeout_failed_alert:${tid}`, FAILED_ALERT_REPEAT_MS);
+                    else
+                        this.alertedFailed.set(tid, now);
+                }
+                else {
                     core_1.Logger.warn(`failed-task alert not delivered task=${tid}, will retry next sweep`, loggerCtx);
+                }
             }
             catch (e) {
                 core_1.Logger.warn(`failed-task alert push error task=${tid}: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e)}`, loggerCtx);
@@ -342,6 +358,7 @@ exports.PaymentTimeoutJob = PaymentTimeoutJob = __decorate([
         core_1.StockMovementService,
         campus_notify_service_1.CampusNotifyService,
         campus_config_service_1.CampusConfigService,
-        feishu_notify_service_1.FeishuNotifyService])
+        feishu_notify_service_1.FeishuNotifyService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], PaymentTimeoutJob);
 //# sourceMappingURL=payment-timeout.job.js.map

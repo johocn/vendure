@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@vendure/core';
 
+import { CampusDedupeService } from '../campus-dedupe.service';
 import { FeishuCommandService } from './feishu.command.service';
 import { FeishuConfigService } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
@@ -21,7 +22,12 @@ export interface FeishuEventResult {
 export class FeishuEventService {
     private seen = new Map<string, number>();
 
-    constructor(private cfg: FeishuConfigService, private command: FeishuCommandService) {}
+    constructor(
+        private cfg: FeishuConfigService,
+        private command: FeishuCommandService,
+        /** M5 跨实例事件去重（飞书重试可能落到另一实例）；未注入退回进程内 Map */
+        private dedupe?: CampusDedupeService,
+    ) {}
 
     async handle(raw: any): Promise<FeishuEventResult> {
         if (!this.cfg.enabled) return { status: 200, body: {} };
@@ -53,7 +59,7 @@ export class FeishuEventService {
         }
 
         const eventId = payload?.header?.event_id as string | undefined;
-        if (eventId && this.isDuplicate(eventId)) {
+        if (eventId && (await this.isDuplicate(eventId))) {
             return { status: 200, body: {} };
         }
 
@@ -129,7 +135,10 @@ export class FeishuEventService {
 
     // Bug 5 修复：Map 遍历时 delete 会跳过下一个元素，导致每次只清一半过期 key
     // 改成先收集要删的 key 数组，遍历完统一 delete
-    private isDuplicate(eventId: string): boolean {
+    private async isDuplicate(eventId: string): Promise<boolean> {
+        if (this.dedupe) {
+            return this.dedupe.seenOrMark(`feishu:event:${eventId}`, EVENT_DEDUPE_MS);
+        }
         const now = Date.now();
         const expired: string[] = [];
         for (const [k, at] of this.seen) {

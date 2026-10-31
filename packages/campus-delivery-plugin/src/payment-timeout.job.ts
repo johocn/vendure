@@ -14,6 +14,7 @@ import {
 import { In, Repository } from 'typeorm';
 
 import { CampusConfigService } from './campus-config.service';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PaymentTimeoutStatus, PaymentTimeoutTask, PaymentTimeoutType } from './payment-timeout.entity';
@@ -51,7 +52,7 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
     private jobQueue!: JobQueue<PaymentTimeoutJobData>;
     private taskRepo: Repository<PaymentTimeoutTask>;
     private compensation: PeriodicFallback | null = null;
-    /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
+    /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推；M5 经 dedupe 跨实例，未注入退回 Map） */
     private alertedFailed = new Map<number, number>();
 
     constructor(
@@ -63,6 +64,8 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
         private notify: CampusNotifyService,
         private campusConfig: CampusConfigService,
         private feishu: FeishuNotifyService,
+        /** M5 跨实例告警去重；未注入退回进程内 Map */
+        private dedupe?: CampusDedupeService,
     ) {
         this.taskRepo = this.connection.rawConnection.getRepository(PaymentTimeoutTask);
     }
@@ -273,10 +276,12 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
      */
     private async alertFailedTasks(): Promise<void> {
         const now = Date.now();
-        // GC：超过去重窗口的记录清除，保证 Map 有界
-        const expired: number[] = [];
-        for (const [id, at] of this.alertedFailed) if (now - at > FAILED_ALERT_REPEAT_MS) expired.push(id);
-        for (const id of expired) this.alertedFailed.delete(id);
+        // GC：超过去重窗口的记录清除，保证 Map 有界（dedupe 后端由 TTL 自动过期）
+        if (!this.dedupe) {
+            const expired: number[] = [];
+            for (const [id, at] of this.alertedFailed) if (now - at > FAILED_ALERT_REPEAT_MS) expired.push(id);
+            for (const id of expired) this.alertedFailed.delete(id);
+        }
 
         const failed = await this.taskRepo.find({
             where: { status: PaymentTimeoutStatus.FAILED } as any,
@@ -293,7 +298,11 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
 
         for (const t of failed) {
             const tid = Number(t.id);
-            if (this.alertedFailed.has(tid)) continue;
+            if (this.dedupe) {
+                if (await this.dedupe.seen(`paytimeout_failed_alert:${tid}`, FAILED_ALERT_REPEAT_MS)) continue;
+            } else if (this.alertedFailed.has(tid)) {
+                continue;
+            }
             const code = codeById.get(Number(t.orderId)) ?? `#${t.orderId}`;
             const typeLabel = t.type === PaymentTimeoutType.CANCEL ? '超时取消' : '待付款提醒';
             try {
@@ -305,8 +314,12 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
                     `paytimeout_failed:${tid}`,
                 );
                 // 送达成功才登记 24h 去重：推送失败时下一轮继续重试，避免失败一次就静默一天
-                if (sent) this.alertedFailed.set(tid, now);
-                else Logger.warn(`failed-task alert not delivered task=${tid}, will retry next sweep`, loggerCtx);
+                if (sent) {
+                    if (this.dedupe) await this.dedupe.mark(`paytimeout_failed_alert:${tid}`, FAILED_ALERT_REPEAT_MS);
+                    else this.alertedFailed.set(tid, now);
+                } else {
+                    Logger.warn(`failed-task alert not delivered task=${tid}, will retry next sweep`, loggerCtx);
+                }
             } catch (e: any) {
                 Logger.warn(`failed-task alert push error task=${tid}: ${String(e?.message ?? e)}`, loggerCtx);
             }

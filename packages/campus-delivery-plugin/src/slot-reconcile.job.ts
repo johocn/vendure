@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
+import { withAdvisoryLock } from './advisory-lock';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PeriodicFallback } from './periodic-fallback';
 
@@ -40,20 +42,23 @@ HAVING s."lockedCount" <> COUNT(o.id) FILTER (WHERE COALESCE(o."customFieldsSlot
 @Injectable()
 export class SlotReconcileJob implements OnApplicationShutdown {
     private fallback: PeriodicFallback | null = null;
-    /** 告警去重（进程内 24h；多实例需换 DB/Redis，见 R4） */
+    /** 告警去重（24h；M5 经 dedupe 跨实例，未注入退回进程内 Map） */
     private alertedAt = new Map<string, number>();
     private static readonly ALERT_TTL_MS = 24 * 3600_000;
 
     constructor(
         private connection: TransactionalConnection,
         private feishu: FeishuNotifyService,
+        /** M5 跨实例告警去重；未注入退回进程内 Map */
+        private dedupe?: CampusDedupeService,
     ) {}
 
     start(intervalMs = 10 * 60_000): void {
         if (this.fallback) return;
         this.fallback = new PeriodicFallback({ name: 'slot-reconcile', intervalMs, loggerCtx: 'CampusSlot' });
         this.fallback.start(async () => {
-            await this.runOnce();
+            // 多实例互斥：拿不到锁说明其他实例正在对账，本轮直接跳过
+            await withAdvisoryLock(this.connection, 'campus:slot-reconcile', () => this.runOnce());
         });
     }
 
@@ -94,12 +99,16 @@ export class SlotReconcileJob implements OnApplicationShutdown {
     }
 
     private async alertOnce(now: number, key: string, title: string, text: string): Promise<void> {
-        const last = this.alertedAt.get(key);
-        if (last != null && now - last < SlotReconcileJob.ALERT_TTL_MS) return;
-        this.alertedAt.set(key, now);
-        // 清理过期键，避免长期运行后 Map 增长
-        for (const [k, at] of this.alertedAt) {
-            if (now - at >= SlotReconcileJob.ALERT_TTL_MS) this.alertedAt.delete(k);
+        if (this.dedupe) {
+            if (await this.dedupe.seenOrMark(key, SlotReconcileJob.ALERT_TTL_MS)) return;
+        } else {
+            const last = this.alertedAt.get(key);
+            if (last != null && now - last < SlotReconcileJob.ALERT_TTL_MS) return;
+            this.alertedAt.set(key, now);
+            // 清理过期键，避免长期运行后 Map 增长
+            for (const [k, at] of this.alertedAt) {
+                if (now - at >= SlotReconcileJob.ALERT_TTL_MS) this.alertedAt.delete(k);
+            }
         }
         await this.feishu.pushEvent('alert', title, text, undefined, key);
     }

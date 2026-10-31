@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { PaymentTimeoutJob, PAYMENT_REMIND_MS, PAYMENT_CANCEL_MS } from './payment-timeout.job';
 import { PaymentTimeoutStatus, PaymentTimeoutType } from './payment-timeout.entity';
 
+/** 内存驱动去重后端（两个 job 共享同一实例即模拟「多实例共享同一后端」） */
+function memoryDedupe(): CampusDedupeService {
+    return new CampusDedupeService({ rawConnection: { options: { type: 'sqlite' } } } as any);
+}
+
 describe('PaymentTimeoutJob', () => {
-    function makeJob(opts: { orderState: string; dueAtPast?: boolean }) {
+    function makeJob(opts: { orderState: string; dueAtPast?: boolean }, dedupe?: any) {
         const task = {
             id: 1, orderId: 11, channelId: 7, type: PaymentTimeoutType.CANCEL,
             // dueAtPast=false → 60s 后到期（未到点）；默认 → 已到期（到点复查语义）
@@ -48,6 +54,7 @@ describe('PaymentTimeoutJob', () => {
             notify as any,
             { getConfig: vi.fn().mockResolvedValue({ h5BaseUrl: null }) } as any, // campusConfig
             feishu as any, // FeishuNotifyService（FAILED 任务告警）
+            dedupe,
         );
         return { job, taskRepo, orderRepo, task, orderService, stockMovementService, notify, feishu, order, queryRunner };
     }
@@ -213,6 +220,20 @@ describe('PaymentTimeoutJob', () => {
             taskRepo.find.mockResolvedValue([failedTask()]);
             feishu.pushEvent.mockRejectedValueOnce(new Error('feishu down'));
             await expect(job.runCompensation()).resolves.toBe(0);
+        });
+
+        it('多实例共享去重：同一 FAILED 任务只推送一次（另一实例不再重复推）', async () => {
+            const dedupe = memoryDedupe();
+            const a = makeJob({ orderState: 'ArrangingPayment' }, dedupe);
+            const b = makeJob({ orderState: 'ArrangingPayment' }, dedupe);
+            (a.job as any).jobQueue = { add: vi.fn().mockResolvedValue(undefined) };
+            (b.job as any).jobQueue = { add: vi.fn().mockResolvedValue(undefined) };
+            a.taskRepo.find.mockResolvedValue([failedTask()]);
+            b.taskRepo.find.mockResolvedValue([failedTask()]);
+            await a.job.runCompensation();
+            expect(a.feishu.pushEvent).toHaveBeenCalledTimes(1);
+            await b.job.runCompensation();
+            expect(b.feishu.pushEvent).not.toHaveBeenCalled();
         });
     });
 });

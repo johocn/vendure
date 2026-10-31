@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FeishuEventService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const campus_dedupe_service_1 = require("../campus-dedupe.service");
 const feishu_command_service_1 = require("./feishu.command.service");
 const feishu_config_1 = require("./feishu.config");
 const feishu_crypto_1 = require("./feishu.crypto");
@@ -22,9 +23,12 @@ const EVENT_DEDUPE_MS = 10 * 60000;
  * 先返回 200 再处理业务：飞书 3 秒超时会重试，重试叠加接单/退款很难看；真正的幂等由领域层保证。
  */
 let FeishuEventService = class FeishuEventService {
-    constructor(cfg, command) {
+    constructor(cfg, command, 
+    /** M5 跨实例事件去重（飞书重试可能落到另一实例）；未注入退回进程内 Map */
+    dedupe) {
         this.cfg = cfg;
         this.command = command;
+        this.dedupe = dedupe;
         this.seen = new Map();
     }
     async handle(raw) {
@@ -52,7 +56,7 @@ let FeishuEventService = class FeishuEventService {
             return { status: 403, body: {} };
         }
         const eventId = (_g = payload === null || payload === void 0 ? void 0 : payload.header) === null || _g === void 0 ? void 0 : _g.event_id;
-        if (eventId && this.isDuplicate(eventId)) {
+        if (eventId && (await this.isDuplicate(eventId))) {
             return { status: 200, body: {} };
         }
         const eventType = (_h = payload === null || payload === void 0 ? void 0 : payload.header) === null || _h === void 0 ? void 0 : _h.event_type;
@@ -127,7 +131,10 @@ let FeishuEventService = class FeishuEventService {
     }
     // Bug 5 修复：Map 遍历时 delete 会跳过下一个元素，导致每次只清一半过期 key
     // 改成先收集要删的 key 数组，遍历完统一 delete
-    isDuplicate(eventId) {
+    async isDuplicate(eventId) {
+        if (this.dedupe) {
+            return this.dedupe.seenOrMark(`feishu:event:${eventId}`, EVENT_DEDUPE_MS);
+        }
         const now = Date.now();
         const expired = [];
         for (const [k, at] of this.seen) {
@@ -145,6 +152,8 @@ let FeishuEventService = class FeishuEventService {
 exports.FeishuEventService = FeishuEventService;
 exports.FeishuEventService = FeishuEventService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [feishu_config_1.FeishuConfigService, feishu_command_service_1.FeishuCommandService])
+    __metadata("design:paramtypes", [feishu_config_1.FeishuConfigService,
+        feishu_command_service_1.FeishuCommandService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], FeishuEventService);
 //# sourceMappingURL=feishu.event.service.js.map

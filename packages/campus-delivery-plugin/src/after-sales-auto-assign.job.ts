@@ -1,5 +1,6 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Channel, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
+import { withAdvisoryLock } from './advisory-lock';
 import { MerchantAdminService } from './merchant-admin.service';
 import { PeriodicFallback } from './periodic-fallback';
 
@@ -29,7 +30,10 @@ export class AfterSalesAutoAssignJob implements OnApplicationShutdown {
             bootDelayMs: BOOT_DELAY_MS,
             loggerCtx,
         });
-        this.fallback.start(() => this.run());
+        this.fallback.start(() =>
+            // 多实例互斥：拿不到锁说明其他实例正在分配，本轮直接跳过（避免重复指派历史/值班预警推送）
+            withAdvisoryLock(this.connection, 'campus:after-sales-auto-assign', () => this.run()),
+        );
     }
 
     stop(): void {

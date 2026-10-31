@@ -1,6 +1,7 @@
 import { OnApplicationShutdown } from '@nestjs/common';
 import { ChannelService, JobQueueService, OrderService, RequestContext, StockMovementService, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PaymentTimeoutTask } from './payment-timeout.entity';
@@ -29,12 +30,16 @@ export declare class PaymentTimeoutJob implements OnApplicationShutdown {
     private notify;
     private campusConfig;
     private feishu;
+    /** M5 跨实例告警去重；未注入退回进程内 Map */
+    private dedupe?;
     private jobQueue;
     private taskRepo;
     private compensation;
-    /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
+    /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推；M5 经 dedupe 跨实例，未注入退回 Map） */
     private alertedFailed;
-    constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService, stockMovementService: StockMovementService, notify: CampusNotifyService, campusConfig: CampusConfigService, feishu: FeishuNotifyService);
+    constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService, stockMovementService: StockMovementService, notify: CampusNotifyService, campusConfig: CampusConfigService, feishu: FeishuNotifyService, 
+    /** M5 跨实例告警去重；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     init(): Promise<void>;
     /**
      * 启动补偿扫描循环（幂等）：30s 后首跑，此后每 intervalMs 一轮。

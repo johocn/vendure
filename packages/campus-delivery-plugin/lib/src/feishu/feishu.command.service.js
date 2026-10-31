@@ -825,7 +825,7 @@ let FeishuCommandService = class FeishuCommandService {
         if (!found)
             return;
         const newCode = await this.hall.resendHandoverCode(found.ctx, Number(found.order.id));
-        this.riderTask.resetHandoverGuard(found.order.id);
+        await this.riderTask.resetHandoverGuard(found.order.id);
         await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
         await this.reply(chatId, `已重发交接码：${found.order.code} → ${newCode}（10 分钟内有效，请告知交接点）`);
     }
