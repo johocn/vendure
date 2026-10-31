@@ -323,4 +323,62 @@ describe('RentalPlugin · 租赁', () => {
         // 「付租金 → PaymentSettled」段移至买断用例覆盖
         expect((await orderState(orderId)).state).toBe('Shipped');
     });
+
+    /**
+     * 权限门禁：生产 manager 角色没有 UpdateOrder，释放租赁押金改由插件自定义权限
+     * ManagePaymentSchedule 放行。这里用真实普通管理员（非 superadmin）验证成功路径，
+     * 并确认只读角色/匿名仍被拒。
+     */
+    it('权限门禁：真实店长（ManagePaymentSchedule）可释放租赁押金；只读角色与匿名被拒', async () => {
+        await adminClient.asSuperAdmin();
+        const mgrRole = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "rent-manager-e2e"
+                description: "店长（租赁押金）"
+                permissions: [ManagePaymentSchedule, ReadOrder]
+            }) { id } }
+        `)) as any;
+        await adminClient.query(gql`
+            mutation { createAdministrator(input: {
+                firstName: "店长" lastName: "丙" emailAddress: "rent-manager@test.com" password: "rent-manager-123"
+                roleIds: ["${mgrRole.createRole.id}"]
+            }) { id } }
+        `);
+        const roRole = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "rent-readonly-e2e" description: "只读（无收付款计划权限）" permissions: [ReadOrder]
+            }) { id } }
+        `)) as any;
+        await adminClient.query(gql`
+            mutation { createAdministrator(input: {
+                firstName: "只读" lastName: "丁" emailAddress: "rent-readonly@test.com" password: "rent-readonly-123"
+                roleIds: ["${roRole.createRole.id}"]
+            }) { id } }
+        `);
+
+        // 客户侧建单并付押金（高权限只用于建计划）
+        const planId = await createPlan({});
+        const orderId = await freshOrder(customerEmails[4]);
+        await startRental(orderId, planId, 1);
+        await payPeriod(orderId, 1);
+
+        // 真实店长（非 superadmin）：释放押金成功
+        await adminClient.asUserWithCredentials('rent-manager@test.com', 'rent-manager-123');
+        const released = (await adminClient.query(gql`
+            mutation { releaseRentalDeposit(orderId: "${orderId}") { status items { seq kind status } } }
+        `)) as any;
+        expect(released.releaseRentalDeposit.items[0]).toMatchObject({ kind: 'deposit', status: 'refunded' });
+
+        // 只读角色 → 仍被拒
+        await adminClient.asUserWithCredentials('rent-readonly@test.com', 'rent-readonly-123');
+        await expect(
+            adminClient.query(gql`mutation { releaseRentalDeposit(orderId: "${orderId}") { id } }`),
+        ).rejects.toThrow(/not currently authorized/);
+
+        // 匿名 → 仍被拒
+        await adminClient.asAnonymousUser();
+        await expect(
+            adminClient.query(gql`mutation { releaseRentalDeposit(orderId: "${orderId}") { id } }`),
+        ).rejects.toThrow(/not currently authorized/);
+    });
 });

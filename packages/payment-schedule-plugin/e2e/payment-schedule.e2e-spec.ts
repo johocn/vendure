@@ -477,4 +477,75 @@ describe('PaymentSchedulePlugin · 期次调度主流程', () => {
         const refundTotals = order.payments[0].refunds.map((r: any) => r.total);
         expect(refundTotals.filter((t: number) => t === 19980)).toHaveLength(2);
     });
+
+    /**
+     * 权限门禁：生产 manager 角色没有 UpdateOrder，代收 COD / 释放押金改由插件自定义
+     * 权限 ManagePaymentSchedule 放行（见 payment-schedule-plugin constants + delivery-plugin RoleSync）。
+     * 这里用真实普通管理员（非 superadmin）验证成功路径，并确认只读角色/匿名仍被拒。
+     */
+    it('权限门禁：真实店长（ManagePaymentSchedule）可确认 COD 收款；只读角色与匿名被拒', async () => {
+        await adminClient.asSuperAdmin();
+        // 角色/管理员由 superadmin 建（生产环境角色权限由 delivery-plugin RoleSync 增量补齐）
+        const mgrRole = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "ps-manager-e2e"
+                description: "店长（收付款计划）"
+                permissions: [ManagePaymentSchedule, ReadOrder, ReadCustomer]
+            }) { id } }
+        `)) as any;
+        await adminClient.query(gql`
+            mutation { createAdministrator(input: {
+                firstName: "店长" lastName: "甲" emailAddress: "ps-manager@test.com" password: "ps-manager-123"
+                roleIds: ["${mgrRole.createRole.id}"]
+            }) { id } }
+        `);
+        const roRole = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "ps-readonly-e2e" description: "只读（无收付款计划权限）" permissions: [ReadOrder]
+            }) { id } }
+        `)) as any;
+        await adminClient.query(gql`
+            mutation { createAdministrator(input: {
+                firstName: "只读" lastName: "乙" emailAddress: "ps-readonly@test.com" password: "ps-readonly-123"
+                roleIds: ["${roRole.createRole.id}"]
+            }) { id } }
+        `);
+
+        // 高权限侧造 COD 场景
+        const actId = await createActivity({ tailTriggerType: 'manual' });
+        const orderId = await applyPreSale(actId);
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${orderId}", method: "${PAY_METHOD}") { id state } }
+        `);
+        const sched = await scheduleOf(orderId);
+
+        // 真实店长（非 superadmin）：开尾款窗口 → 尾款走 COD → confirmCodReceived
+        await adminClient.asUserWithCredentials('ps-manager@test.com', 'ps-manager-123');
+        await adminClient.query(gql`mutation { openTailWindow(scheduleId: "${sched.id}") { id } }`);
+        await shopClient.query(gql`
+            mutation { paySchedulePeriod(orderId: "${orderId}", seq: 2, method: "test-cod") { id } }
+        `);
+        const confirmed = (await adminClient.query(gql`
+            mutation { confirmCodReceived(orderId: "${orderId}") { id status items { seq status } } }
+        `)) as any;
+        expect(confirmed.confirmCodReceived.items[1].status).toBe('paid');
+        expect((await scheduleOf(orderId)).items[1].status).toBe('paid');
+
+        // 运维扫描仍只给 UpdateOrder / SuperAdmin，店长不应顺带获得
+        await expect(
+            adminClient.query(gql`mutation { runScheduleScan { activated overdue shipBreaches } }`),
+        ).rejects.toThrow(/not currently authorized/);
+
+        // 无 ManagePaymentSchedule 的只读角色 → 仍被拒
+        await adminClient.asUserWithCredentials('ps-readonly@test.com', 'ps-readonly-123');
+        await expect(
+            adminClient.query(gql`mutation { confirmCodReceived(orderId: "${orderId}") { id } }`),
+        ).rejects.toThrow(/not currently authorized/);
+
+        // 匿名 → 仍被拒
+        await adminClient.asAnonymousUser();
+        await expect(
+            adminClient.query(gql`mutation { confirmCodReceived(orderId: "${orderId}") { id } }`),
+        ).rejects.toThrow(/not currently authorized/);
+    });
 });

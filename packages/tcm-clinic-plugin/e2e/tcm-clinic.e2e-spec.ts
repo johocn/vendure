@@ -330,6 +330,174 @@ describe('TcmClinicPlugin', () => {
         expect(planView.wellnessPlan.followUps.length).toBe(1);
         expect(planView.wellnessPlan.followUps[0].status).toBe('PENDING');
     });
+
+    /**
+     * 跨馆隔离回归：medicalRecords / medicalRecord(id) / auditLogs 及关联列表（档案、接诊、
+     * 康养计划、随访）按 clinicId 归属过滤。SuperAdmin 保留全量；无员工归属的账号返回空而非看全部。
+     */
+    it('跨馆隔离：馆A/馆B 员工各自只见本馆数据；无归属员工为空；superadmin 全量；匿名 FORBIDDEN', async () => {
+        await adminClient.asSuperAdmin();
+        const strip = (v: any) => Number(String(v).replace('T_', ''));
+
+        // 建馆员工角色 + 三个管理员：A 绑馆1、B 绑馆2、C 故意不绑馆
+        const roleRes = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "tcm-staff-e2e" description: "馆员工" permissions: [ReadCustomer, UpdateCustomer]
+            }) { id } }
+        `)) as any;
+        const roleId = roleRes.createRole.id;
+        const createStaffAdmin = async (firstName: string, lastName: string, email: string, password: string) => {
+            const res = (await adminClient.query(gql`
+                mutation { createAdministrator(input: {
+                    firstName: "${firstName}" lastName: "${lastName}" emailAddress: "${email}" password: "${password}"
+                    roleIds: ["${roleId}"]
+                }) { id } }
+            `)) as any;
+            return strip(res.createAdministrator.id);
+        };
+        const adminAId = await createStaffAdmin('甲', '馆', 'tcm-a@test.com', 'tcm-a-123');
+        const adminBId = await createStaffAdmin('乙', '馆', 'tcm-b@test.com', 'tcm-b-123');
+        await createStaffAdmin('无', '归属', 'tcm-c@test.com', 'tcm-c-123');
+
+        await adminClient.query(gql`
+            mutation { createClinicStaff(input: { clinicId: 1, administratorId: ${adminAId}, displayName: "馆A医生" }) { id } }
+        `);
+        await adminClient.query(gql`
+            mutation { createClinicStaff(input: { clinicId: 2, administratorId: ${adminBId}, displayName: "馆B医生" }) { id } }
+        `);
+
+        // 患者档案按 customerId 全局唯一（跨馆共享一份），故另建一名客户供馆B建档
+        const customerB = (await adminClient.query(gql`
+            mutation { createCustomer(input: { firstName: "馆B", lastName: "患者", emailAddress: "tcm-patient-b@test.com" }) { ... on Customer { id } } }
+        `)) as any;
+        const customerBId = strip(customerB.createCustomer.id);
+
+        // 馆B员工造馆B全套数据（档案/接诊/病志/康养计划/随访）
+        await adminClient.asUserWithCredentials('tcm-b@test.com', 'tcm-b-123');
+        const profileB = (await adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: 2, customerId: ${customerBId}, constitution: { type: "气虚质" } }) { id } }
+        `)) as any;
+        const profileBId = strip(profileB.createPatientProfile.id);
+        const encB = (await adminClient.query(gql`
+            mutation { createEncounter(input: { patientProfileId: ${profileBId}, clinicId: 2, type: "initial" }) { id } }
+        `)) as any;
+        const encBId = strip(encB.createEncounter.id);
+        const recB = (await adminClient.query(gql`
+            mutation { createMedicalRecord(input: { encounterId: ${encBId}, chiefComplaint: "B馆主诉", diagnosis: "B馆诊断" }) { id } }
+        `)) as any;
+        const recBId = strip(recB.createMedicalRecord.id);
+        const planB = (await adminClient.query(gql`
+            mutation { createWellnessPlan(input: { patientProfileId: ${profileBId}, clinicId: 2, title: "B馆康养方案" }) { id } }
+        `)) as any;
+        const planBId = strip(planB.createWellnessPlan.id);
+        const fuB = (await adminClient.query(gql`
+            mutation { createFollowUp(input: { patientProfileId: ${profileBId}, planId: ${planBId}, title: "B馆随访", dueAt: "2026-11-05T10:00:00.000Z" }) { id } }
+        `)) as any;
+        const fuBId = strip(fuB.createFollowUp.id);
+
+        // 馆B员工读取：只见馆2
+        const bRecords = (await adminClient.query(gql`
+            query { medicalRecords(options: {}) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(bRecords.medicalRecords.totalItems).toBe(1);
+        expect(bRecords.medicalRecords.items.map((i: any) => strip(i.clinicId))).toEqual([2]);
+        expect(bRecords.medicalRecords.items.map((i: any) => strip(i.id))).toEqual([recBId]);
+        const bProfiles = (await adminClient.query(gql`
+            query { patientProfiles(options: { take: 10 }) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(bProfiles.patientProfiles.items.every((i: any) => strip(i.clinicId) === 2)).toBe(true);
+        const bEncounters = (await adminClient.query(gql`
+            query { encounters(options: { take: 10 }) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(bEncounters.encounters.items.every((i: any) => strip(i.clinicId) === 2)).toBe(true);
+        expect(bEncounters.encounters.totalItems).toBe(1);
+        const bPlans = (await adminClient.query(gql`
+            query { wellnessPlans(options: { take: 10 }) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(bPlans.wellnessPlans.items.map((i: any) => strip(i.clinicId))).toEqual([2]);
+        const bFollowUps = (await adminClient.query(gql`
+            query { followUpTasks(options: { take: 10 }) { totalItems items { id } } }
+        `)) as any;
+        expect(bFollowUps.followUpTasks.items.map((i: any) => strip(i.id))).toEqual([fuBId]);
+
+        // 馆A员工读取：只见馆1，且拿不到馆B病志 / 档案 / 接诊 / 计划 / 随访
+        await adminClient.asUserWithCredentials('tcm-a@test.com', 'tcm-a-123');
+        const aRecords = (await adminClient.query(gql`
+            query { medicalRecords(options: {}) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(aRecords.medicalRecords.totalItems).toBeGreaterThan(0);
+        expect(aRecords.medicalRecords.items.every((i: any) => strip(i.clinicId) === 1)).toBe(true);
+        expect(aRecords.medicalRecords.items.map((i: any) => strip(i.id))).not.toContain(recBId);
+        const crossRecord = (await adminClient.query(gql`
+            query { medicalRecord(id: "${recBId}") { id clinicId } }
+        `)) as any;
+        expect(crossRecord.medicalRecord).toBeNull();
+        const aProfiles = (await adminClient.query(gql`
+            query { patientProfiles(options: { take: 10 }) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(aProfiles.patientProfiles.items.every((i: any) => strip(i.clinicId) === 1)).toBe(true);
+        expect(aProfiles.patientProfiles.items.map((i: any) => strip(i.id))).not.toContain(profileBId);
+        const aEncounters = (await adminClient.query(gql`
+            query { encounters(options: { take: 10 }) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(aEncounters.encounters.items.every((i: any) => strip(i.clinicId) === 1)).toBe(true);
+        expect(aEncounters.encounters.items.map((i: any) => strip(i.id))).not.toContain(encBId);
+        const aPlans = (await adminClient.query(gql`
+            query { wellnessPlans(options: { take: 10 }) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(aPlans.wellnessPlans.items.every((i: any) => strip(i.clinicId) === 1)).toBe(true);
+        expect(aPlans.wellnessPlans.items.map((i: any) => strip(i.id))).not.toContain(planBId);
+        const aFollowUps = (await adminClient.query(gql`
+            query { followUpTasks(options: { take: 10 }) { totalItems items { id } } }
+        `)) as any;
+        expect(aFollowUps.followUpTasks.items.map((i: any) => strip(i.id))).not.toContain(fuBId);
+
+        // 无馆归属员工：返回空，不回退为「看全部」
+        await adminClient.asUserWithCredentials('tcm-c@test.com', 'tcm-c-123');
+        const cRecords = (await adminClient.query(gql`
+            query { medicalRecords(options: {}) { totalItems items { id } } }
+        `)) as any;
+        expect(cRecords.medicalRecords.totalItems).toBe(0);
+        expect(cRecords.medicalRecords.items).toEqual([]);
+        const cProfiles = (await adminClient.query(gql`
+            query { patientProfiles(options: { take: 10 }) { totalItems } }
+        `)) as any;
+        expect(cProfiles.patientProfiles.totalItems).toBe(0);
+        const cEncounters = (await adminClient.query(gql`
+            query { encounters(options: { take: 10 }) { totalItems } }
+        `)) as any;
+        expect(cEncounters.encounters.totalItems).toBe(0);
+
+        // 审计日志：普通员工无权限（保持 SuperAdmin-only，故跨馆更无从泄漏）
+        await adminClient.asUserWithCredentials('tcm-b@test.com', 'tcm-b-123');
+        await expect(
+            adminClient.query(gql`query { auditLogs(options: {}) { totalItems } }`),
+        ).rejects.toThrow(/not currently authorized/);
+
+        // SuperAdmin：病志全量（馆1 + 馆2），审计日志可读
+        await adminClient.asSuperAdmin();
+        const allRecords = (await adminClient.query(gql`
+            query { medicalRecords(options: {}) { totalItems items { id clinicId } } }
+        `)) as any;
+        expect(allRecords.medicalRecords.totalItems).toBeGreaterThanOrEqual(2);
+        const clinicIdsSeen = allRecords.medicalRecords.items.map((i: any) => strip(i.clinicId));
+        expect(clinicIdsSeen).toContain(1);
+        expect(clinicIdsSeen).toContain(2);
+        expect(allRecords.medicalRecords.items.map((i: any) => strip(i.id))).toContain(recBId);
+        const audits = (await adminClient.query(gql`
+            query { auditLogs(options: {}) { totalItems } }
+        `)) as any;
+        expect(audits.auditLogs.totalItems).toBeGreaterThan(0);
+
+        // 匿名：仍 FORBIDDEN
+        await adminClient.asAnonymousUser();
+        await expect(
+            adminClient.query(gql`query { medicalRecords(options: {}) { totalItems } }`),
+        ).rejects.toThrow(/not currently authorized/);
+        await expect(
+            adminClient.query(gql`query { auditLogs(options: {}) { totalItems } }`),
+        ).rejects.toThrow(/not currently authorized/);
+    });
 });
 
 describe('TcmClinicPlugin retention (years=0)', () => {
