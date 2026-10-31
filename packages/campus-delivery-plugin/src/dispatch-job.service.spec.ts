@@ -1006,14 +1006,16 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(feishu.pushEvent.mock.calls.some((c: any[]) => c[1] === '外部运单取消失败')).toBe(true);
     });
 
-    // F1：回调丢失时靠 5min 对账发现 delivered —— 必须复用回调状态机落库，不能只改内存
-    it('对账命中 delivered → 调用 onDeliveryStatus 落库（防止已送达被再次取消重派）', async () => {
+    // F1 + 回调丢失演练：平台回调完全不达，只靠 5min 对账也必须走完「发现已送达 → 落库 → 不再取消重派」
+    it('回调丢失演练：仅靠对账命中 delivered → 落库且不触发取消/回落', async () => {
         const onDeliveryStatus = vi.fn().mockResolvedValue(undefined);
+        const cancel = vi.fn().mockResolvedValue({ ok: true });
         const thirdParty = {
             syncStatus: vi.fn().mockResolvedValue({ ok: true, state: 'delivered' }),
             onDeliveryStatus,
+            cancel,
         };
-        const { svc } = makeEnv({
+        const { svc, hallSvc } = makeEnv({
             openOrders: [{
                 id: 501, code: 'TP_SYNC_D',
                 customFields: {
@@ -1030,6 +1032,16 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(onDeliveryStatus).toHaveBeenCalledWith(
             expect.anything(),
             expect.objectContaining({ orderId: 501, thirdPartyNo: 'TP-1', status: 'delivered' }),
+        );
+        // 已送达绝不能再取消运单或回落重派（旧实现只改内存时会在这里重复配送）
+        expect(cancel).not.toHaveBeenCalled();
+        expect(hallSvc.transitionFrom).not.toHaveBeenCalledWith(
+            expect.anything(), 501, expect.any(Array),
+            expect.objectContaining({ hallStatus: 'open' }),
+        );
+        expect(hallSvc.transitionFrom).not.toHaveBeenCalledWith(
+            expect.anything(), 501, expect.any(Array),
+            expect.objectContaining({ campusCause: 'external_timeout' }),
         );
     });
 

@@ -583,8 +583,9 @@ describe('FeishuCommandService 卡片读操作归属校验', () => {
             },
         };
         const dispatchAdmin = { handleException: vi.fn() };
+        const cards = { create: vi.fn().mockResolvedValue({}), clearAlerts: vi.fn(), refresh: vi.fn().mockResolvedValue(true) };
         const cmd: any = new FeishuCommandService(
-            cfg as any, client, {} as any, { create: vi.fn().mockResolvedValue({}) } as any,
+            cfg as any, client, {} as any, cards as any,
             connection as any, {} as any, dispatchAdmin as any, {} as any,
         );
         cmd.reply = vi.fn();
@@ -642,6 +643,56 @@ describe('FeishuCommandService 卡片读操作归属校验', () => {
         await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'view', c: 'A2026' } });
         expect(cmd.reply).toHaveBeenCalledWith('oc_a', '操作过于频繁，请稍后再试。');
     });
+
+    // 防回归：资金动作 × 角色矩阵（审计报告 F8），新增资金按钮时必须回到这张表加一行
+    it('权限矩阵：资金动作 × 角色 —— 操作员一律拒绝，店主放行', async () => {
+        const financialActions = ['refund_all', 'refund_diff', 'coupon'];
+        for (const action of financialActions) {
+            const denied = makeCmd({ code: 'A2026', channels: [{ token: 'canteen-a' }] });
+            await denied.cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: action, c: 'A2026' } });
+            expect(denied.dispatchAdmin.handleException, `${action} 操作员应被拒绝`).not.toHaveBeenCalled();
+            expect(denied.cmd.reply).toHaveBeenCalledWith('oc_a', '无权限操作（资金操作需店主）。');
+
+            const allowed = makeCmd(
+                { code: 'A2026', channels: [{ token: 'canteen-a' }] },
+                { operators: [], owners: ['ou_op'] },
+            );
+            await allowed.cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: action, c: 'A2026' } });
+            const call = allowed.dispatchAdmin.handleException.mock.calls[0];
+            expect(call?.[2], `${action} 店主应放行`).toBe(action);
+        }
+    });
+
+    // 防回归：读操作 × 群范围矩阵（审计报告 F3），平台群只能操作单渠道订单
+    it('权限矩阵：读操作 × 群范围 —— 他店/多渠道均拒绝，本店与平台单渠道放行', async () => {
+        const cases: Array<{ name: string; chat: Record<string, any>; order: any; allowed: boolean }> = [
+            { name: '本店群 × 本店单', chat: {}, order: { code: 'A2026', channels: [{ token: 'canteen-a' }] }, allowed: true },
+            { name: '本店群 × 他店单', chat: {}, order: { code: 'B2026', channels: [{ token: 'canteen-b' }] }, allowed: false },
+            {
+                name: '平台群 × 单渠道单',
+                chat: { scope: 'platform', channel: undefined, owners: ['ou_op'] },
+                order: { code: 'A2026', channels: [{ token: 'canteen-a' }] },
+                allowed: true,
+            },
+            {
+                name: '平台群 × 多渠道单',
+                chat: { scope: 'platform', channel: undefined, owners: ['ou_op'] },
+                order: { code: 'M2026', channels: [{ token: 'canteen-a' }, { token: 'canteen-b' }] },
+                allowed: false,
+            },
+        ];
+        for (const item of cases) {
+            const { cmd } = makeCmd(item.order, item.chat);
+            const chatId = item.chat.scope === 'platform' ? 'oc_p' : 'oc_a';
+            await cmd.handleCardAction({ chatId, openId: 'ou_op', value: { a: 'status', c: item.order.code } });
+            if (item.allowed) {
+                expect(cmd.statusText, item.name).toHaveBeenCalledWith(item.order.code);
+            } else {
+                expect(cmd.statusText, item.name).not.toHaveBeenCalled();
+                expect(cmd.replyInThread, item.name).not.toHaveBeenCalled();
+            }
+        }
+    });
 });
 
 describe('FeishuNotifyService 告警渠道定向', () => {
@@ -654,5 +705,30 @@ describe('FeishuNotifyService 告警渠道定向', () => {
         const notify = new FeishuNotifyService(client, cards);
         await notify.pushEvent('alert', '取货超时', '内容', 'A2026');
         expect(client.broadcast).toHaveBeenCalledWith(expect.any(String), { channel: 'canteen-a' });
+    });
+
+    // 防回归（F9）：调用方显式 target（平台级汇总）必须优先，不能被订单定向覆盖
+    it('显式 target 优先于订单自动定向', async () => {
+        const client = { enabled: true, broadcast: vi.fn().mockResolvedValue(true) } as any;
+        const cards = {
+            appendAlert: vi.fn().mockResolvedValue(false),
+            channelTokenForOrder: vi.fn().mockResolvedValue('canteen-a'),
+        } as any;
+        const notify = new FeishuNotifyService(client, cards);
+        await notify.pushEvent('alert', '平台汇总', '内容', 'A2026', undefined, { scope: 'platform' } as any);
+        expect(cards.channelTokenForOrder).not.toHaveBeenCalled();
+        expect(client.broadcast).toHaveBeenCalledWith(expect.any(String), { scope: 'platform' });
+    });
+
+    // 防回归（F9）：订单查不到渠道时退化为原广播，绝不能抛错阻断业务
+    it('订单查不到渠道 → 退化为广播且不抛错', async () => {
+        const client = { enabled: true, broadcast: vi.fn().mockResolvedValue(true) } as any;
+        const cards = {
+            appendAlert: vi.fn().mockResolvedValue(false),
+            channelTokenForOrder: vi.fn().mockResolvedValue(undefined),
+        } as any;
+        const notify = new FeishuNotifyService(client, cards);
+        await expect(notify.pushEvent('alert', '取货超时', '内容', 'UNKNOWN')).resolves.toBe(true);
+        expect(client.broadcast).toHaveBeenCalledWith(expect.any(String), undefined);
     });
 });

@@ -171,6 +171,7 @@ const p30_after_sales_audit_duty_compensation_1 = require("./migrations/p30-afte
 const p31_notify_handover_fallback_1 = require("./migrations/p31-notify-handover-fallback");
 const p32_campus_config_missing_columns_1 = require("./migrations/p32-campus-config-missing-columns");
 const p33_channel_waimai_columns_1 = require("./migrations/p33-channel-waimai-columns");
+const p34_channel_aftersales_review_threshold_1 = require("./migrations/p34-channel-aftersales-review-threshold");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -387,6 +388,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p31_notify_handover_fallback_1.P31NotifyHandoverFallbackMigration,
             p32_campus_config_missing_columns_1.P32CampusConfigMissingColumnsMigration,
             p33_channel_waimai_columns_1.P33ChannelWaimaiColumnsMigration,
+            p34_channel_aftersales_review_threshold_1.P34ChannelAfterSalesReviewThresholdMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,

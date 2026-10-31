@@ -172,6 +172,7 @@ import { P30AfterSalesAuditDutyCompensationMigration } from './migrations/p30-af
 import { P31NotifyHandoverFallbackMigration } from './migrations/p31-notify-handover-fallback';
 import { P32CampusConfigMissingColumnsMigration } from './migrations/p32-campus-config-missing-columns';
 import { P33ChannelWaimaiColumnsMigration } from './migrations/p33-channel-waimai-columns';
+import { P34ChannelAfterSalesReviewThresholdMigration } from './migrations/p34-channel-aftersales-review-threshold';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -224,6 +225,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P31NotifyHandoverFallbackMigration,
         P32CampusConfigMissingColumnsMigration,
         P33ChannelWaimaiColumnsMigration,
+        P34ChannelAfterSalesReviewThresholdMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
