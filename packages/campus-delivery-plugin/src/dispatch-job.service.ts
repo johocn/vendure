@@ -48,6 +48,8 @@ export class DispatchJobService implements OnApplicationShutdown {
     private couponSvc?: { grantCoupon: (ctx: RequestContext, templateId: ID, customerIds: ID[]) => Promise<string[]> } | null;
     /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
     private compensationWarnAt = 0;
+    /** 外部运单取消失败连续轮次（进程内，仅用于告警升级；不落库，多实例各自计数可接受） */
+    private externalCancelFails = new Map<string, { n: number; alertedAt: number }>();
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt = 0;
     /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
@@ -298,10 +300,44 @@ export class DispatchJobService implements OnApplicationShutdown {
                     Logger.error(`scheduled release failed for order ${o.code ?? o.id}: ${e?.message}`, 'CampusDispatch');
                 }
             }
+            // scheduledFor 缺失/非法（改单清空、脏数据）：放量条件永远不成立，订单会永久停在 scheduled。
+            // 直接转 open 让大厅兜底接手，并告警核对下单数据。
+            const badScheduled = orders.filter(o => {
+                const cf = o.customFields as any;
+                if (cf.hallStatus !== 'scheduled') return false;
+                const t = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+                return Number.isNaN(t);
+            });
+            for (const o of badScheduled) {
+                try {
+                    const enteredAt = new Date();
+                    const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['scheduled'], {
+                        hallStatus: 'open',
+                        hallEnteredAt: enteredAt,
+                        campusCause: 'scheduled_missing_time',
+                    });
+                    if (!moved) continue;
+                    const cf = o.customFields as any;
+                    cf.hallStatus = 'open';
+                    cf.hallEnteredAt = enteredAt;
+                    Logger.warn(`Order ${o.code} scheduled without valid scheduledFor → hall`, 'CampusDispatch');
+                    void this.feishu?.pushEvent(
+                        'alert',
+                        '预约时间缺失，已转入大厅',
+                        `订单 ${o.code} 缺少有效预约时间（scheduledFor=${String(cf.scheduledFor ?? '')}），已直接进入抢单大厅，请核对下单/改单数据。`,
+                        o.code,
+                        `scheduled_bad:${o.code}`,
+                    );
+                } catch (e: any) {
+                    Logger.error(`bad scheduled release failed for order ${o.code ?? o.id}: ${e?.message}`, 'CampusDispatch');
+                }
+            }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
             await this.sweepRouteTimeouts(ctx, cfg, orders, now);
             // 异常上报超时未处置：自动回大厅重派，避免卡死在 exception
             await this.sweepExceptionTimeout(ctx, cfg, orders, now);
+            // 骑手已取货却久不送达：先告警，超 2×SLA 转异常单（餐在骑手手上，不能直接回厅）
+            await this.sweepRiderInProgress(ctx, cfg, orders, now);
             // 超时赔付：送达超承诺 → 自动发定向券（开关默认开，缺券模板时限频告警）
             await this.sweepTimeoutCompensation(ctx, cfg, now);
 
@@ -314,7 +350,9 @@ export class DispatchJobService implements OnApplicationShutdown {
 
             // 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
             // （跳过商家确认，campusCause 留痕；计时锚 hallEnteredAt：预约单 createdAt 可能早于放量数小时）
-            if (cfg.merchantConfirmEnabled) {
+            // 注意：兜底只看 hallStatus，不受 merchantConfirmEnabled 影响——运营关掉开关后，
+            // 存量 pending_merchant/accepted 单否则会失去唯一出口（不退款、不入厅、不告警）。
+            {
                 const merchantStale = orders.filter(o => {
                     const cf = o.customFields as any;
                     return (cf.hallStatus === 'pending_merchant' || cf.hallStatus === 'accepted')
@@ -389,10 +427,12 @@ export class DispatchJobService implements OnApplicationShutdown {
                 };
                 const stale = orders.filter(o => {
                     const cf = o.customFields as any;
-                    return cf.hallStatus === 'open' && this.orderInChannel(o, cfg) && cf.hallEnteredAt
-                        && now - new Date(cf.hallEnteredAt).getTime() > (cfg.autoAssignMinutes ?? 10) * 60_000;
-                }).sort((a, b) => new Date((a.customFields as any).hallEnteredAt).getTime()
-                         - new Date((b.customFields as any).hallEnteredAt).getTime());
+                    // 历史/外部写入可能缺 hallEnteredAt：回退 createdAt，否则这类 open 单永不强派
+                    const anchor = cf.hallEnteredAt ?? o.createdAt;
+                    return cf.hallStatus === 'open' && this.orderInChannel(o, cfg)
+                        && now - new Date(anchor).getTime() > (cfg.autoAssignMinutes ?? 10) * 60_000;
+                }).sort((a, b) => new Date((a.customFields as any).hallEnteredAt ?? a.createdAt).getTime()
+                         - new Date((b.customFields as any).hallEnteredAt ?? b.createdAt).getTime());
                 for (const o of stale) {
                     try {
                         const rider = pickRider();
@@ -413,8 +453,10 @@ export class DispatchJobService implements OnApplicationShutdown {
             // 3) T4: open 超 autoRefundMinutes 无人接 → 自动退款终态（降级阶梯最后一级）
             const staleFinal = orders.filter(o => {
                 const cf = o.customFields as any;
-                return cf.hallStatus === 'open' && cf.hallEnteredAt
-                    && now - new Date(cf.hallEnteredAt).getTime() > (cfg.autoRefundMinutes ?? 30) * 60_000;
+                // 同上：缺 hallEnteredAt 的历史单回退 createdAt，否则永不自动退款
+                const anchor = cf.hallEnteredAt ?? o.createdAt;
+                return cf.hallStatus === 'open'
+                    && now - new Date(anchor).getTime() > (cfg.autoRefundMinutes ?? 30) * 60_000;
             });
             for (const o of staleFinal) {
                 try {
@@ -489,6 +531,61 @@ export class DispatchJobService implements OnApplicationShutdown {
                 );
             } catch (e: any) {
                 Logger.error(`exception timeout sweep failed for order ${o.code ?? o.id}: ${e?.message}`, 'CampusDispatch');
+            }
+        }
+    }
+
+    /**
+     * 骑手已取货（in_progress）超 SLA 兜底：旧实现只处理 in_progress 的 SLA 告警，状态本身没有任何出口，
+     * 骑手失联/不送达时订单会永久占用骑手与单量。这里超 1×SLA 先告警联系骑手，超 2×SLA 转 exception，
+     * 之后由异常超时规则再回厅重派（不直接回厅：餐在骑手手上，需运营先确认）。
+     */
+    private async sweepRiderInProgress(
+        ctx: RequestContext,
+        cfg: CampusFulfillmentConfig,
+        orders: Order[],
+        now: number,
+    ) {
+        const slaMs = (cfg.inProgressSlaMinutes ?? 45) * 60_000;
+        for (const o of orders) {
+            const cf = o.customFields as any;
+            if (cf.deliveryStatus !== 'in_progress') continue;
+            const at = cf.assignedAt ? new Date(cf.assignedAt).getTime() : NaN;
+            if (Number.isNaN(at)) continue;
+            const elapsed = now - at;
+            if (elapsed < slaMs) continue;
+            if (elapsed < slaMs * 2) {
+                const mins = Math.round(elapsed / 60_000);
+                void this.feishu?.pushEvent(
+                    'alert',
+                    '🚴 配送超 SLA',
+                    `订单 ${o.code} 骑手已取货 ${mins} 分钟未送达（SLA ${cfg.inProgressSlaMinutes ?? 45} 分钟），请及时联系骑手；超时将自动转异常单。`,
+                    o.code,
+                    `rider_sla:${o.code}`,
+                );
+                continue;
+            }
+            try {
+                const moved = await this.hall.transitionFrom(ctx, Number(o.id), ACTIVE_HALL_STATUSES, {
+                    deliveryStatus: 'exception',
+                    exceptionType: 'rider_lost',
+                    exceptionNote: '骑手配送超 SLA 未送达，自动转异常待运营处置',
+                    exceptionReportedAt: new Date(now),
+                    campusCause: 'rider_in_progress_timeout',
+                });
+                if (!moved) continue;          // 期间已送达/已取消
+                cf.deliveryStatus = 'exception';
+                cf.exceptionReportedAt = new Date(now);
+                Logger.warn(`Order ${o.code} rider in_progress over 2×SLA → exception`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '骑手配送超时转异常',
+                    `订单 ${o.code} 骑手已取货超过 ${Math.round((slaMs * 2) / 60_000)} 分钟未送达，已转异常单；异常超时后自动回大厅重派。`,
+                    o.code,
+                    o.code,
+                );
+            } catch (e: any) {
+                Logger.error(`rider in_progress sweep failed for order ${o.code ?? o.id}: ${e?.message}`, 'CampusDispatch');
             }
         }
     }
@@ -640,8 +737,15 @@ export class DispatchJobService implements OnApplicationShutdown {
                 }
 
                 // 3) 迟迟未推送外部快递 → 回大厅（R2 出餐闸门后从出餐时刻计时，避免把备餐时间算进超时）
-                if (cf.hallStatus === 'pending_dispatch'
-                    && now - new Date(cf.assignedAt ?? cf.thirdPartyDispatchAt ?? cf.hallEnteredAt ?? o.createdAt).getTime() > pushMs) {
+                //    计时锚取「接单/出餐」与「最近一次推送/回落」中较晚者：旧实现优先 assignedAt，
+                //    R2 超时回落后重推时仍沿用出餐时刻，下一轮立刻再判超时，“换一家重推”窗口形同虚设。
+                const pushAnchor = Math.max(
+                    cf.assignedAt ? new Date(cf.assignedAt).getTime() : 0,
+                    cf.thirdPartyDispatchAt ? new Date(cf.thirdPartyDispatchAt).getTime() : 0,
+                    cf.hallEnteredAt ? new Date(cf.hallEnteredAt).getTime() : 0,
+                    new Date(o.createdAt).getTime(),
+                );
+                if (cf.hallStatus === 'pending_dispatch' && now - pushAnchor > pushMs) {
                     const enteredAt = new Date();
                     const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['pending_dispatch'], {
                         hallStatus: 'open',
@@ -669,6 +773,8 @@ export class DispatchJobService implements OnApplicationShutdown {
                 //    平台已接单/取货（accepted/pickup）不按 fallbackMs 取消，避免把在途骑手干掉；
                 //    但仍设 3×fallbackMs 硬上限，防止「接单后永不送达」永久占用。
                 const tpState = String(cf.thirdPartyState ?? '');
+                // 离开 third_party 后清理取消失败计数，避免 Map 随历史单增长
+                if (cf.hallStatus !== 'third_party') this.externalCancelFails.delete(o.code);
                 const inDelivery = tpState === 'accepted' || tpState === 'pickup';
                 // §6 异常态（平台判定运力失败/拒收/破损等）：同样不等待，先告警 + 通知顾客，再由下方 tpStale 取消回落。
                 // 去重键带外部运单号：回落重推后新运单异常会再次告警。
@@ -722,6 +828,9 @@ export class DispatchJobService implements OnApplicationShutdown {
                         }
                     }
                     if (!cancelOk) {
+                        const fail = this.externalCancelFails.get(o.code) ?? { n: 0, alertedAt: 0 };
+                        fail.n += 1;
+                        this.externalCancelFails.set(o.code, fail);
                         await this.hall.transitionFrom(ctx, Number(o.id), ['third_party'], {
                             campusCause: 'external_cancel_failed',
                         });
@@ -729,8 +838,20 @@ export class DispatchJobService implements OnApplicationShutdown {
                             `Order ${o.code} external cancel not confirmed; stay third_party and retry (no fallback to avoid duplicate delivery)`,
                             'CampusDispatch',
                         );
+                        // 连续 3 轮仍未确认取消：升级飞书异常（30min 限频），绝不自动回落（会双运单双份运费）
+                        if (fail.n >= 3 && now - fail.alertedAt > 30 * 60_000) {
+                            fail.alertedAt = now;
+                            void this.feishu?.pushEvent(
+                                'exception',
+                                '外部运单取消失败',
+                                `订单 ${o.code} 外部运单连续 ${fail.n} 轮取消未确认（${String(cf.thirdPartyNo ?? '-')}），已保持 third_party 不回落；请人工核实平台运单状态。`,
+                                o.code,
+                                `${o.code}:cancel_failed`,
+                            );
+                        }
                         continue;
                     }
+                    this.externalCancelFails.delete(o.code);
                     // cancel() 成功时内部已按路线回写本地状态（R2 待推送 / R3 大厅）；未推送（skipped）时本地补写
                     if (skipped) {
                         const patch: Record<string, unknown> = route === 'R2'

@@ -905,6 +905,107 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(feishu.pushEvent.mock.calls.filter(dedupe)).toHaveLength(1);
     });
 
+    // F5：兜底不能受 merchantConfirmEnabled 开关影响，否则关开关后存量单永久卡死
+    it('R3 商家确认开关关闭后，存量 pending_merchant 仍有超时出口', async () => {
+        const { svc, hallSvc } = makeEnv({
+            scanOrders: [{
+                id: 11, code: 'R3_STALE', createdAt: minAgo(40),
+                customFields: { hallStatus: 'pending_merchant', hallEnteredAt: minAgo(40), fulfillmentRoute: 'R3' },
+            }],
+            cfg: { merchantConfirmEnabled: false, merchantAutoOpenMinutes: 15, autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 },
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(), 11, ['pending_merchant', 'accepted'],
+            expect.objectContaining({ hallStatus: 'open', campusCause: 'merchant_timeout' }),
+        );
+    });
+
+    // F6：回落重推后计时锚要刷新，旧 assignedAt 不能让重推窗口瞬间失效
+    it('R2 回落重推后不被旧 assignedAt 立即再次判超时', async () => {
+        const { svc, hallSvc } = makeEnv({
+            scanOrders: [{
+                id: 12, code: 'R2_RETRY', createdAt: minAgo(80),
+                customFields: {
+                    hallStatus: 'pending_dispatch', fulfillmentRoute: 'R2',
+                    assignedAt: minAgo(60), thirdPartyDispatchAt: minAgo(1), hallEnteredAt: minAgo(70),
+                },
+            }],
+            cfg: { externalPushTimeoutMinutes: 10, merchantAutoOpenMinutes: 15, inProgressSlaMinutes: 45, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.transitionFrom).not.toHaveBeenCalled();
+    });
+
+    // F13：scheduledFor 缺失/脏数据 → 转入大厅并告警，不能永久停在 scheduled
+    it('scheduled 缺少有效 scheduledFor → 转 open 并告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc, hallSvc } = makeEnv({
+            scanOrders: [{
+                id: 13, code: 'SCHED_BAD', createdAt: minAgo(60),
+                customFields: { hallStatus: 'scheduled', scheduledFor: null },
+            }],
+            feishu,
+            cfg: { merchantAutoOpenMinutes: 15, autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 },
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(), 13, ['scheduled'],
+            expect.objectContaining({ hallStatus: 'open', campusCause: 'scheduled_missing_time' }),
+        );
+        expect(feishu.pushEvent).toHaveBeenCalled();
+    });
+
+    // F7：骑手已取货超 2×SLA → 转异常单，交给异常超时规则再回厅
+    it('骑手已取货超 2×SLA → 转异常单', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc, hallSvc } = makeEnv({
+            scanOrders: [{
+                id: 14, code: 'RIDER_LOST', createdAt: minAgo(120),
+                customFields: { hallStatus: 'grabbed', deliveryStatus: 'in_progress', deliveryStaffId: '7', assignedAt: minAgo(100) },
+            }],
+            feishu,
+            cfg: { inProgressSlaMinutes: 45, merchantAutoOpenMinutes: 15, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(), 14, expect.any(Array),
+            expect.objectContaining({ deliveryStatus: 'exception', exceptionType: 'rider_lost' }),
+        );
+    });
+
+    // F4：外部取消失败连续多轮 → 升级飞书异常，但绝不自动回落（避免双运单双份运费）
+    it('外部取消失败连续 3 轮 → 飞书告警且保持 third_party', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const thirdParty = {
+            syncStatus: vi.fn().mockResolvedValue({ ok: true, state: 'pending' }),
+            onDeliveryStatus: vi.fn().mockResolvedValue(undefined),
+            cancel: vi.fn().mockResolvedValue({ ok: false }),
+        };
+        const { svc, hallSvc } = makeEnv({
+            scanOrders: [{
+                id: 15, code: 'TP_CANCEL_FAIL', createdAt: minAgo(200),
+                customFields: {
+                    hallStatus: 'third_party', fulfillmentRoute: 'R3', thirdPartyState: 'pending',
+                    thirdPartyDispatchAt: minAgo(100), thirdPartyNo: 'TP-15',
+                },
+            }],
+            thirdParty,
+            feishu,
+            cfg: { externalFallbackMinutes: 20, merchantAutoOpenMinutes: 15, autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 },
+        });
+        for (let i = 0; i < 3; i++) await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(), 15, ['third_party'],
+            expect.objectContaining({ campusCause: 'external_cancel_failed' }),
+        );
+        expect(hallSvc.transitionFrom).not.toHaveBeenCalledWith(
+            expect.anything(), 15, ['third_party'],
+            expect.objectContaining({ hallStatus: 'open' }),
+        );
+        expect(feishu.pushEvent.mock.calls.some((c: any[]) => c[1] === '外部运单取消失败')).toBe(true);
+    });
+
     // F1：回调丢失时靠 5min 对账发现 delivered —— 必须复用回调状态机落库，不能只改内存
     it('对账命中 delivered → 调用 onDeliveryStatus 落库（防止已送达被再次取消重派）', async () => {
         const onDeliveryStatus = vi.fn().mockResolvedValue(undefined);

@@ -25,6 +25,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private couponSvc?;
     /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
     private compensationWarnAt;
+    /** 外部运单取消失败连续轮次（进程内，仅用于告警升级；不落库，多实例各自计数可接受） */
+    private externalCancelFails;
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt;
     /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
@@ -66,6 +68,12 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * 异常类型/说明随订单日志已留痕；campusCause=exception_timeout 供运营复盘。
      */
     private sweepExceptionTimeout;
+    /**
+     * 骑手已取货（in_progress）超 SLA 兜底：旧实现只处理 in_progress 的 SLA 告警，状态本身没有任何出口，
+     * 骑手失联/不送达时订单会永久占用骑手与单量。这里超 1×SLA 先告警联系骑手，超 2×SLA 转 exception，
+     * 之后由异常超时规则再回厅重派（不直接回厅：餐在骑手手上，需运营先确认）。
+     */
+    private sweepRiderInProgress;
     /**
      * 路线超时兜底：
      * 1) R1 pending_merchant 超 merchantAcceptMinutes → 自动转自营快递（owned_dispatched）
