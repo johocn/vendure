@@ -184,6 +184,8 @@ const adminSchema = () => gql `
         approveReviewAppeal(id: ID!, note: String): Review!
         """差评申诉驳回：评价维持原状，仅留痕"""
         rejectReviewAppeal(id: ID!, note: String): Review!
+        """撤销申诉通过：评价恢复展示并重新计入评分聚合（需填撤销原因）"""
+        revokeReviewAppeal(id: ID!, note: String): Review!
         """P4-2 预警规则保存（每渠道一条）"""
         updateReviewAlertRule(input: UpdateReviewAlertRuleInput!): ReviewAlertRule!
         """P4-2 一键回评（写回评价回复）"""

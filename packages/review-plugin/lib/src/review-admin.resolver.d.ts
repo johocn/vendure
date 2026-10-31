@@ -17,6 +17,8 @@ export declare class ReviewAdminResolver {
     approveReviewAppeal(ctx: RequestContext, id: ID, note?: string): Promise<any>;
     /** 差评申诉驳回：评价维持原状，仅留痕 */
     rejectReviewAppeal(ctx: RequestContext, id: ID, note?: string): Promise<any>;
+    /** 撤销申诉通过：评价恢复展示并重新计入评分聚合 */
+    revokeReviewAppeal(ctx: RequestContext, id: ID, note?: string): Promise<any>;
     followUps(ctx: RequestContext, review: Review): Promise<any>;
     customerName(ctx: RequestContext, review: Review): Promise<string | null>;
 }

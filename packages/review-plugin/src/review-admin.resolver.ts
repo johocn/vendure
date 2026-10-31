@@ -83,6 +83,17 @@ export class ReviewAdminResolver {
         return this.reviewService.rejectReviewAppeal(ctx, id, note);
     }
 
+    /** 撤销申诉通过：评价恢复展示并重新计入评分聚合 */
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async revokeReviewAppeal(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string,
+    ): Promise<any> {
+        return this.reviewService.revokeReviewAppeal(ctx, id, note);
+    }
+
     @ResolveField()
     async followUps(@Ctx() ctx: RequestContext, @Parent() review: Review): Promise<any> {
         return this.reviewService.getReviewFollowUps(ctx, review);

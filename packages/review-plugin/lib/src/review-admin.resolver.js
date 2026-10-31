@@ -54,6 +54,10 @@ let ReviewAdminResolver = class ReviewAdminResolver {
     async rejectReviewAppeal(ctx, id, note) {
         return this.reviewService.rejectReviewAppeal(ctx, id, note);
     }
+    /** 撤销申诉通过：评价恢复展示并重新计入评分聚合 */
+    async revokeReviewAppeal(ctx, id, note) {
+        return this.reviewService.revokeReviewAppeal(ctx, id, note);
+    }
     async followUps(ctx, review) {
         return this.reviewService.getReviewFollowUps(ctx, review);
     }
@@ -155,6 +159,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], ReviewAdminResolver.prototype, "rejectReviewAppeal", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], ReviewAdminResolver.prototype, "revokeReviewAppeal", null);
 __decorate([
     (0, graphql_1.ResolveField)(),
     __param(0, (0, core_1.Ctx)()),

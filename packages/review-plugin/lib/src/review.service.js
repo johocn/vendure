@@ -422,6 +422,41 @@ let ReviewService = class ReviewService {
         review.appealReviewedAt = new Date();
         return this.connection.getRepository(ctx, review_entity_1.Review).save(review);
     }
+    /**
+     * 撤销申诉通过（人工纠错）：把已隐藏的评价恢复展示并重新计入评分聚合，
+     * 申诉状态回退为 rejected，撤销原因与操作人追加到留痕字段。
+     */
+    async revokeReviewAppeal(ctx, id, note) {
+        var _a, _b;
+        const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
+        if (review.appealStatus !== 'approved') {
+            throw new core_2.UserInputError('仅已通过的申诉可撤销');
+        }
+        if (review.status !== HIDDEN_STATUS) {
+            throw new core_2.UserInputError('评价当前不是隐藏态，无需撤销');
+        }
+        const reason = String(note !== null && note !== void 0 ? note : '').trim();
+        if (!reason) {
+            throw new core_2.UserInputError('请填写撤销原因');
+        }
+        if (reason.length > MAX_APPEAL_REASON) {
+            throw new core_2.UserInputError(`撤销原因不能超过 ${MAX_APPEAL_REASON} 个字符`);
+        }
+        // 去掉末尾标点，避免与拼接分隔符「；」重复（如「…评价隐藏。；撤销通过：…」）
+        const prev = String((_a = review.appealResult) !== null && _a !== void 0 ? _a : '').trim().replace(/[；;。，,]+$/u, '');
+        review.appealStatus = 'rejected';
+        review.appealResult = `${prev ? `${prev}；` : ''}撤销通过：${reason}`;
+        review.appealReviewedBy = String((_b = ctx.activeUserId) !== null && _b !== void 0 ? _b : '');
+        review.appealReviewedAt = new Date();
+        review.status = VISIBLE_STATUS;
+        const saved = await this.connection.getRepository(ctx, review_entity_1.Review).save(review);
+        // 追评不进评分聚合，仅主评恢复展示时重算
+        if (!saved.parentId) {
+            await this.recomputeProductRating(ctx, saved.productId);
+        }
+        core_2.Logger.info(`Review appeal revoked for review ${review.id}`, constants_1.loggerCtx);
+        return saved;
+    }
     async getReviews(ctx, options) {
         const where = {};
         if ((options === null || options === void 0 ? void 0 : options.productId) != null) {

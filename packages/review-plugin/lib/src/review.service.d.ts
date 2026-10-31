@@ -37,6 +37,11 @@ export declare class ReviewService {
     approveReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review>;
     /** 申诉驳回：评价维持原状，仅记录审核说明留痕。 */
     rejectReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review>;
+    /**
+     * 撤销申诉通过（人工纠错）：把已隐藏的评价恢复展示并重新计入评分聚合，
+     * 申诉状态回退为 rejected，撤销原因与操作人追加到留痕字段。
+     */
+    revokeReviewAppeal(ctx: RequestContext, id: ID, note?: string | null): Promise<Review>;
     getReviews(ctx: RequestContext, options?: ReviewListOptions): Promise<PaginatedList<Review>>;
     /** C 端商品列表：仅对外可见（approved）的主评 + 追评（followUps 由 ResolveField 加载）。 */
     getProductReviews(ctx: RequestContext, productId: ID, options?: ReviewListOptions): Promise<PaginatedList<Review>>;
