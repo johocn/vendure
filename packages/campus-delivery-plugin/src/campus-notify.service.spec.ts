@@ -16,13 +16,21 @@ describe('CampusNotifyService', () => {
         lines: [{ productVariant: { name: '拿铁' } }, { productVariant: { name: '三明治' } }],
     };
 
-    function makeSvc(opts: { templateCode?: string | null; ssoId?: string | null; sms?: any }) {
+    function makeSvc(opts: {
+        templateCode?: string | null;
+        ssoId?: string | null;
+        sms?: any;
+        /** 站内信落库失败（验证 R2 补偿入队） */
+        failInApp?: boolean;
+    }) {
         const findOne = vi.fn().mockResolvedValue(
             opts.ssoId === null
                 ? { ...ORDER, customer: { customFields: { wechatOpenid: 'o-123' } } }
                 : { ...ORDER, customer: { id: 21, customFields: { ssoId: opts.ssoId ?? '3' } } },
         );
-        const msgSave = vi.fn().mockResolvedValue({ id: 11 });
+        const msgSave = opts.failInApp
+            ? vi.fn().mockRejectedValue(new Error('message table down'))
+            : vi.fn().mockResolvedValue({ id: 11 });
         const deliverySave = vi.fn().mockResolvedValue({ id: 12 });
         // 站内信实体按名称（字符串 token）解析，其余实体（Order）走 findOne
         const getRepository = vi.fn((_ctx: any, entity: any) => {
@@ -36,6 +44,7 @@ describe('CampusNotifyService', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
         const sms = opts.sms ?? { configured: false, send: vi.fn() };
+        const enqueueNotify = vi.fn().mockResolvedValue(undefined);
         const svc = new CampusNotifyService(
             { getRepository } as any,
             {
@@ -56,8 +65,10 @@ describe('CampusNotifyService', () => {
             } as any,
             // 短信兜底通道：既有用例只验证公众号链路，这里按「网关未配置」静默跳过
             sms as any,
+            { enqueueNotify } as any,
+            { create: vi.fn().mockResolvedValue({ channelId: 7 }) } as any,
         );
-        return { svc, findOne, fetchMock, msgSave, deliverySave, sms };
+        return { svc, findOne, fetchMock, msgSave, deliverySave, sms, enqueueNotify };
     }
 
     beforeEach(() => {
@@ -185,6 +196,22 @@ describe('CampusNotifyService', () => {
         expect(sms.send).not.toHaveBeenCalled();
         expect(msgSave.mock.calls[0][0]).toMatchObject({ title: '配送方式调整' });
         expect(String(msgSave.mock.calls[0][0].body)).toContain('超时转传信者配送');
+    });
+
+    // R2：站内信落库失败不能只留一条日志 → 入队补偿任务（重试耗尽才告警）
+    it('站内信写入失败 → 入队补偿任务（kind=notify，含订单/事件）', async () => {
+        const { svc, enqueueNotify } = makeSvc({ templateCode: null, failInApp: true });
+        svc.user(makeCtx(), 5, 'arrivedHandover', '东区·桂1栋交接点');
+        await vi.waitFor(() => expect(enqueueNotify).toHaveBeenCalled());
+        expect(enqueueNotify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                orderId: 5,
+                channelId: 7,
+                customerId: 21,
+                event: 'arrivedHandover',
+                orderCode: 'ORD1',
+            }),
+        );
     });
 
     it('orderCancelled → refundAmount 型 params', async () => {

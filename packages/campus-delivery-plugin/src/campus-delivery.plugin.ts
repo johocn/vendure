@@ -174,7 +174,12 @@ import { P32CampusConfigMissingColumnsMigration } from './migrations/p32-campus-
 import { P33ChannelWaimaiColumnsMigration } from './migrations/p33-channel-waimai-columns';
 import { P34ChannelAfterSalesReviewThresholdMigration } from './migrations/p34-channel-aftersales-review-threshold';
 import { P35WithdrawDeductStateMigration } from './migrations/p35-withdraw-deduct-state';
+import { P36CompensationTaskMigration } from './migrations/p36-compensation-task';
 import { WithdrawReconcileJob } from './withdraw-reconcile.job';
+import { CompensationTaskService } from './compensation-task.service';
+import { CompensationRetryJob } from './compensation-retry.job';
+import { OpsCheckJob } from './ops-check.job';
+import { CampusCompensationTask } from './compensation-task.entity';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -185,7 +190,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange, CampusSupportTicket, CampusRiderAppeal, CampusBlacklist, CampusChatConversation, CampusChatMessage, CampusRiderShift, CampusRiderSession, CampusRiderReview, CampusRiderLocation, CampusPrintJob, CampusAdCampaign, CampusLockerStation, CampusTrackEvent, CampusErrorReport, CampusCompensationTask],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
@@ -229,7 +234,11 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P33ChannelWaimaiColumnsMigration,
         P34ChannelAfterSalesReviewThresholdMigration,
         P35WithdrawDeductStateMigration,
+        P36CompensationTaskMigration,
         WithdrawReconcileJob,
+        CompensationTaskService,
+        CompensationRetryJob,
+        OpsCheckJob,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -3729,6 +3738,10 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(BlacklistAutoScanJob).start();
         // R1 提现意图对账：进程在「落库→扣款→确认」之间中断时，按流水 remark 自动收敛
         this.injector.get(WithdrawReconcileJob).start();
+        // R2 补偿任务：券/站内信失败落库后退避重试（耗尽才告警）
+        this.injector.get(CompensationRetryJob).start();
+        // R8 遗留巡检：每日把静默卡住的残留量汇总到平台群（只读 COUNT）
+        this.injector.get(OpsCheckJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
             void this.injector.get(FeishuNotifyService).onAdminNotify(event);

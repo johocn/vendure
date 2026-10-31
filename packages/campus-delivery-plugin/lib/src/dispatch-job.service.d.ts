@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { CompensationTaskService } from './compensation-task.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -18,6 +19,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private thirdParty?;
     private feishu?;
     private notify?;
+    private compensation?;
     /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
     private fallback;
     private running;
@@ -40,7 +42,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * - inflight：已接单/待商家/外部快递/自营，负责取货超时、异常 SLA、外部对账。
      */
     private static readonly SCAN_BUCKETS;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined, compensation?: CompensationTaskService | undefined);
     /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
     private shouldAlertExternalException;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */

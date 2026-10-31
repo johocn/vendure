@@ -173,7 +173,12 @@ const p32_campus_config_missing_columns_1 = require("./migrations/p32-campus-con
 const p33_channel_waimai_columns_1 = require("./migrations/p33-channel-waimai-columns");
 const p34_channel_aftersales_review_threshold_1 = require("./migrations/p34-channel-aftersales-review-threshold");
 const p35_withdraw_deduct_state_1 = require("./migrations/p35-withdraw-deduct-state");
+const p36_compensation_task_1 = require("./migrations/p36-compensation-task");
 const withdraw_reconcile_job_1 = require("./withdraw-reconcile.job");
+const compensation_task_service_1 = require("./compensation-task.service");
+const compensation_retry_job_1 = require("./compensation-retry.job");
+const ops_check_job_1 = require("./ops-check.job");
+const compensation_task_entity_1 = require("./compensation-task.entity");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -306,6 +311,10 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(blacklist_scan_job_1.BlacklistAutoScanJob).start();
         // R1 提现意图对账：进程在「落库→扣款→确认」之间中断时，按流水 remark 自动收敛
         this.injector.get(withdraw_reconcile_job_1.WithdrawReconcileJob).start();
+        // R2 补偿任务：券/站内信失败落库后退避重试（耗尽才告警）
+        this.injector.get(compensation_retry_job_1.CompensationRetryJob).start();
+        // R8 遗留巡检：每日把静默卡住的残留量汇总到平台群（只读 COUNT）
+        this.injector.get(ops_check_job_1.OpsCheckJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(notification_plugin_1.AdminNotifyEvent).subscribe(event => {
             void this.injector.get(feishu_notify_service_1.FeishuNotifyService).onAdminNotify(event);
@@ -350,7 +359,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange, support_entities_1.CampusSupportTicket, support_entities_1.CampusRiderAppeal, support_entities_1.CampusBlacklist, chat_entities_1.CampusChatConversation, chat_entities_1.CampusChatMessage, rider_ops_entities_1.CampusRiderShift, rider_ops_entities_1.CampusRiderSession, rider_ops_entities_1.CampusRiderReview, campus_rider_location_entity_1.CampusRiderLocation, campus_print_job_entity_1.CampusPrintJob, campus_ad_entity_1.CampusAdCampaign, campus_locker_entity_1.CampusLockerStation, telemetry_entities_1.CampusTrackEvent, telemetry_entities_1.CampusErrorReport, compensation_task_entity_1.CampusCompensationTask],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
@@ -394,7 +403,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p33_channel_waimai_columns_1.P33ChannelWaimaiColumnsMigration,
             p34_channel_aftersales_review_threshold_1.P34ChannelAfterSalesReviewThresholdMigration,
             p35_withdraw_deduct_state_1.P35WithdrawDeductStateMigration,
+            p36_compensation_task_1.P36CompensationTaskMigration,
             withdraw_reconcile_job_1.WithdrawReconcileJob,
+            compensation_task_service_1.CompensationTaskService,
+            compensation_retry_job_1.CompensationRetryJob,
+            ops_check_job_1.OpsCheckJob,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,

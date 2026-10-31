@@ -17,6 +17,7 @@ const core_2 = require("@vendure/core");
 const capacity_service_1 = require("./capacity.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_notify_service_1 = require("./campus-notify.service");
+const compensation_task_service_1 = require("./compensation-task.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
@@ -41,7 +42,7 @@ const LOCATION_RETENTION_DAYS = 30;
 /** 轨迹清理频率：每 6h 最多一次（DELETE 跨渠道，无需每轮都跑） */
 const LOCATION_CLEANUP_INTERVAL_MS = 6 * 3600000;
 let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
-    constructor(connection, grab, hall, capacity, credit, moduleRef, thirdParty, feishu, notify) {
+    constructor(connection, grab, hall, capacity, credit, moduleRef, thirdParty, feishu, notify, compensation) {
         this.connection = connection;
         this.grab = grab;
         this.hall = hall;
@@ -51,6 +52,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         this.thirdParty = thirdParty;
         this.feishu = feishu;
         this.notify = notify;
+        this.compensation = compensation;
         /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
         this.fallback = null;
         this.running = false;
@@ -1138,9 +1140,21 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         await coupon.grantCoupon(ctx, templateId, [order.customerId]);
                     }
                     catch (e) {
-                        // 退款/取消已成功，发券失败不能算「退款失败」：订单已是终态，券静默丢失必须告警人工补发
+                        // 退款/取消已成功，发券失败不能算「退款失败」：订单已是终态，券不能静默丢失
                         core_2.Logger.error(`T4 compensation coupon failed for order ${order.code}: ${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, 'CampusDispatch');
-                        void ((_g = this.feishu) === null || _g === void 0 ? void 0 : _g.pushEvent('alert', '无人接单补偿券发放失败', `订单 ${order.code} 已自动退款，但补偿券（模板 ${templateId}）发放失败，请人工补发。原因：${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`, order.code, `compensation_coupon_failed:${order.code}`));
+                        if (this.compensation && order.customerId) {
+                            // R2：先持久化补偿任务由定时任务退避重试；耗尽才告警（避免只有一条易漏的飞书消息）
+                            void this.compensation.enqueueCoupon({
+                                orderId: Number(order.id),
+                                channelId: Number(ctx.channelId),
+                                customerId: Number(order.customerId),
+                                templateId: String(templateId),
+                                orderCode: order.code,
+                            });
+                        }
+                        else {
+                            void ((_g = this.feishu) === null || _g === void 0 ? void 0 : _g.pushEvent('alert', '无人接单补偿券发放失败', `订单 ${order.code} 已自动退款，但补偿券（模板 ${templateId}）发放失败，请人工补发。原因：${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`, order.code, `compensation_coupon_failed:${order.code}`));
+                        }
                     }
                 }
                 core_2.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_j = cfg.autoRefundMinutes) !== null && _j !== void 0 ? _j : 30}min)`, 'CampusDispatch');
@@ -1216,6 +1230,7 @@ exports.DispatchJobService = DispatchJobService = DispatchJobService_1 = __decor
         core_1.ModuleRef,
         third_party_delivery_service_1.ThirdPartyDeliveryService,
         feishu_notify_service_1.FeishuNotifyService,
-        campus_notify_service_1.CampusNotifyService])
+        campus_notify_service_1.CampusNotifyService,
+        compensation_task_service_1.CompensationTaskService])
 ], DispatchJobService);
 //# sourceMappingURL=dispatch-job.service.js.map

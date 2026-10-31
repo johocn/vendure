@@ -13,6 +13,7 @@ import {
 import { CapacityService } from './capacity.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
+import { CompensationTaskService } from './compensation-task.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { ACTIVE_HALL_STATUSES, HallService } from './hall.service';
@@ -94,6 +95,7 @@ export class DispatchJobService implements OnApplicationShutdown {
         private thirdParty?: ThirdPartyDeliveryService,
         private feishu?: FeishuNotifyService,
         private notify?: CampusNotifyService,
+        private compensation?: CompensationTaskService,
     ) {}
 
     /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
@@ -1301,18 +1303,29 @@ export class DispatchJobService implements OnApplicationShutdown {
                     try {
                         await coupon.grantCoupon(ctx, templateId, [order.customerId as any]);
                     } catch (e: any) {
-                        // 退款/取消已成功，发券失败不能算「退款失败」：订单已是终态，券静默丢失必须告警人工补发
+                        // 退款/取消已成功，发券失败不能算「退款失败」：订单已是终态，券不能静默丢失
                         Logger.error(
                             `T4 compensation coupon failed for order ${order.code}: ${e?.message ?? e}`,
                             'CampusDispatch',
                         );
-                        void this.feishu?.pushEvent(
-                            'alert',
-                            '无人接单补偿券发放失败',
-                            `订单 ${order.code} 已自动退款，但补偿券（模板 ${templateId}）发放失败，请人工补发。原因：${e?.message ?? e}`,
-                            order.code,
-                            `compensation_coupon_failed:${order.code}`,
-                        );
+                        if (this.compensation && order.customerId) {
+                            // R2：先持久化补偿任务由定时任务退避重试；耗尽才告警（避免只有一条易漏的飞书消息）
+                            void this.compensation.enqueueCoupon({
+                                orderId: Number(order.id),
+                                channelId: Number(ctx.channelId),
+                                customerId: Number(order.customerId),
+                                templateId: String(templateId),
+                                orderCode: order.code,
+                            });
+                        } else {
+                            void this.feishu?.pushEvent(
+                                'alert',
+                                '无人接单补偿券发放失败',
+                                `订单 ${order.code} 已自动退款，但补偿券（模板 ${templateId}）发放失败，请人工补发。原因：${e?.message ?? e}`,
+                                order.code,
+                                `compensation_coupon_failed:${order.code}`,
+                            );
+                        }
                     }
                 }
                 Logger.warn(

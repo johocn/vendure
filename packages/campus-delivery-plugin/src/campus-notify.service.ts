@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Channel, Logger, Order, RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusSmsService } from './campus-sms.service';
+import { CompensationTaskService } from './compensation-task.service';
 
 /** 用户侧节点通知触点（履约 7 + 用户订单域 4 + 改址 1） */
 export type CampusNotifyEvent =
@@ -74,7 +75,14 @@ export class CampusNotifyService {
         private connection: TransactionalConnection,
         private config: CampusConfigService,
         private sms: CampusSmsService,
+        private compensation: CompensationTaskService,
+        private requestContextService: RequestContextService,
     ) {}
+
+    /** 重试任务使用的平台上下文（默认渠道），仅用于站内信落库（渠道取自任务记录） */
+    private async platformCtx(): Promise<RequestContext> {
+        return this.requestContextService.create({ apiType: 'admin' });
+    }
 
     /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果/改址新址，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页；dedupeSuffix：同一订单多次同类事件（如多次改址）的幂等键后缀 */
     user(
@@ -218,45 +226,87 @@ export class CampusNotifyService {
         event: CampusNotifyEvent,
         text?: string,
     ): Promise<void> {
+        let orderCode: string | undefined;
+        let customerId: number | undefined;
         try {
             const order = await this.connection.getRepository(ctx, Order).findOne({
                 where: { id: orderId as any },
                 relations: ['customer'],
             });
-            const customerId = order?.customer?.id;
+            customerId = order?.customer?.id == null ? undefined : Number(order.customer.id);
             if (!order || customerId == null) return;
-            const title = event === 'arrivedHandover' ? '订单已到校园交接点' : '配送方式调整';
-            const body =
-                event === 'arrivedHandover'
-                    ? `订单 ${order.code} 已到达${text || '校园交接点'}，正在安排校内接力配送。`
-                    : `订单 ${order.code} ${text || '配送方式调整'}，配送时效可能略有延迟，请留意后续通知。`;
-            const msgRepo = this.connection.getRepository(ctx, 'Message' as any);
-            const deliveryRepo = this.connection.getRepository(ctx, 'MessageDelivery' as any);
-            const message = await msgRepo.save(
-                msgRepo.create({
-                    title,
-                    body,
-                    deliveryChannel: 'inapp',
-                    audienceType: 'all',
-                    status: 'sent',
-                    totalTarget: 1,
-                    totalSent: 1,
-                    sentAt: new Date(),
-                    channels: [ctx.channel],
-                }),
-            );
-            await deliveryRepo.save(
-                deliveryRepo.create({
-                    messageId: message.id,
-                    customerId: Number(customerId),
-                    deliveryStatus: 'sent',
-                    channels: [ctx.channel],
-                }),
-            );
+            orderCode = order.code;
+            await this.writeInApp(ctx, order.code, customerId, event, text, ctx.channel);
             Logger.info(`in-app notify ${event} sent for ${order.code}`, 'CampusNotify');
         } catch (e: any) {
             Logger.warn(`in-app notify ${event} for order ${orderId} failed: ${e?.message ?? e}`, 'CampusNotify');
+            // R2：站内信落库失败不阻塞主流程，但必须持久化重试（否则顾客永久收不到）
+            void this.compensation.enqueueNotify({
+                orderId: Number(orderId),
+                channelId: ctx.channelId as number,
+                customerId,
+                orderCode,
+                event,
+                text,
+            });
         }
+    }
+
+    /** 站内信写入（正常路径与补偿重试共用）；失败由调用方决定告警/入队 */
+    private async writeInApp(
+        ctx: RequestContext,
+        orderCode: string,
+        customerId: number,
+        event: CampusNotifyEvent,
+        text: string | undefined,
+        channel: Channel | undefined,
+    ): Promise<void> {
+        const title = event === 'arrivedHandover' ? '订单已到校园交接点' : '配送方式调整';
+        const body =
+            event === 'arrivedHandover'
+                ? `订单 ${orderCode} 已到达${text || '校园交接点'}，正在安排校内接力配送。`
+                : `订单 ${orderCode} ${text || '配送方式调整'}，配送时效可能略有延迟，请留意后续通知。`;
+        const channelRef = channel ? [channel] : [];
+        const msgRepo = this.connection.getRepository(ctx, 'Message' as any);
+        const deliveryRepo = this.connection.getRepository(ctx, 'MessageDelivery' as any);
+        const message = await msgRepo.save(
+            msgRepo.create({
+                title,
+                body,
+                deliveryChannel: 'inapp',
+                audienceType: 'all',
+                status: 'sent',
+                totalTarget: 1,
+                totalSent: 1,
+                sentAt: new Date(),
+                channels: channelRef,
+            }),
+        );
+        await deliveryRepo.save(
+            deliveryRepo.create({
+                messageId: message.id,
+                customerId,
+                deliveryStatus: 'sent',
+                channels: channelRef,
+            }),
+        );
+    }
+
+    /** 补偿任务重放：用平台上下文重做一次站内信写入（渠道取自任务记录，保证与原消息一致） */
+    async retryInApp(orderId: number, channelId: number, event: CampusNotifyEvent, text?: string): Promise<void> {
+        const pc = await this.platformCtx();
+        const order = await this.connection.getRepository(pc, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['customer'],
+        });
+        const customerId = order?.customer?.id == null ? undefined : Number(order.customer.id);
+        // 订单/顾客已不存在：视为已无法补偿，返回即让任务标记 done，避免无限重试
+        if (!order || customerId == null) return;
+        const channel = (await this.connection
+            .getRepository(pc, Channel)
+            .findOne({ where: { id: channelId as any } })) ?? undefined;
+        await this.writeInApp(pc, order.code, customerId, event, text, channel);
+        Logger.info(`in-app notify ${event} retried for ${order.code}`, 'CampusNotify');
     }
 
     /** 短信兜底：公众号模板消息不可用（未配模板/无 ssoId/发送失败）时补发一条短信；未配网关静默跳过 */
