@@ -498,10 +498,17 @@ export class DispatchAdminService {
         for (const picked of await refundablePayments(this.connection, Number(order.id))) {
             await this.refundAmount(ctx, order, picked.remaining, `exception full refund (${order.code})`);
         }
-        const cancelled = await orderSvc.cancelOrder(ctx, {
+        let cancelled = await orderSvc.cancelOrder(ctx, {
             orderId: order.id as any,
             reason: `exception full refund cancel (${order.code})`,
         } as any);
+        // 退款已发生，取消失败会让订单停在 Processing；重试一次后交给人工（勿重复退款）
+        if (cancelled && (cancelled as any).errorCode) {
+            cancelled = await orderSvc.cancelOrder(ctx, {
+                orderId: order.id as any,
+                reason: `exception full refund cancel retry (${order.code})`,
+            } as any);
+        }
         if (cancelled && (cancelled as any).errorCode) {
             throw new Error(`cancelOrder failed: ${(cancelled as any).errorCode}`);
         }

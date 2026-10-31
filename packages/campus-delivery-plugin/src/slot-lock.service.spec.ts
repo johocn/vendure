@@ -45,20 +45,21 @@ describe('SlotLockService.lock', () => {
         expect(qb.execute).toHaveBeenCalledOnce();
     });
 
-    it('已锁位（支付事件重放/并发二次入厅）→ 幂等跳过，不再递增容量', async () => {
+    it('已锁位（支付事件重放/并发二次入厅）→ 归还本次多占容量并返回 true', async () => {
         const { svc, qb, rawQuery } = make({ claimRows: [[]] });
         const ok = await svc.lock({ channelId: 1 } as any, order);
         expect(ok).toBe(true);
         expect(rawQuery).toHaveBeenCalledOnce();
-        expect(qb.execute).not.toHaveBeenCalled();
+        // 先 +1 占位、认领失败后 GREATEST(-1) 归还，净增 0
+        expect(qb.execute).toHaveBeenCalledTimes(2);
+        expect(qb.set).toHaveBeenLastCalledWith({ lockedCount: expect.anything() });
     });
 
-    it('容量满（affected=0）→ 返回 false 并回滚认领标记（取消时不得归还名额）', async () => {
+    it('容量满（affected=0）→ 返回 false，且不写订单标记', async () => {
         const { svc, rawQuery } = make({ affected: 0, slot: { id: 5, capacity: 20, lockedCount: 20 } });
         const ok = await svc.lock({ channelId: 1 } as any, order);
         expect(ok).toBe(false);
-        expect(rawQuery).toHaveBeenCalledTimes(2);
-        expect(rawQuery.mock.calls[1][0]).toContain('"customFieldsSlotlocked" = false');
+        expect(rawQuery).not.toHaveBeenCalled();
     });
 
     it('未选时段返回 true（跳过），不写标记', async () => {

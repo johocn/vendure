@@ -18,10 +18,11 @@ let SlotLockService = class SlotLockService {
         this.connection = connection;
     }
     /**
-     * 支付成功后锁位：UPDATE ... WHERE lockedCount < capacity 乐观锁，affected=0 即满。
+     * 支付成功后锁位：先原子「容量 +1」（UPDATE ... WHERE lockedCount < capacity），
+     * 再原子认领订单 slotLocked(false→true)；认领失败=支付事件重放/并发二次入厅，归还本次多占容量后返回 true。
+     * 先占容量再接单可消除旧实现的竞态窗口：旧实现先认领标记、后判容量，若容量已满再回滚标记，
+     * 期间并发事件看到「已认领」会错误返回 true，最终订单未占位却按已锁位入厅（时段超额）。
      * 返回 false 时调用方标 campusCause='slot_full' 进调度告警，不阻断订单。
-     * 幂等：先原子认领订单 slotLocked(false→true)，认领失败=已锁过（支付事件重放/并发二次入厅），
-     * 直接返回 true 不再递增容量；若容量已满则回滚认领，避免取消时误减造成容量虚增。
      */
     async lock(ctx, order) {
         var _a, _b, _c;
@@ -34,13 +35,6 @@ let SlotLockService = class SlotLockService {
             return true; // 时段被管理员删除：不阻断，靠 T3 告警人工跟进
         }
         const orderId = Number((_b = order === null || order === void 0 ? void 0 : order.id) !== null && _b !== void 0 ? _b : NaN);
-        if (Number.isFinite(orderId)) {
-            const claim = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsSlotlocked" = true '
-                + 'WHERE id = $1 AND COALESCE("customFieldsSlotlocked", false) = false RETURNING id', [orderId]);
-            const claimed = Array.isArray(claim) && Array.isArray(claim[0]) ? claim[0] : claim;
-            if (!Array.isArray(claimed) || !claimed.length)
-                return true; // 已锁位：幂等跳过
-        }
         // 容量条件直接用列比较：先用读到快照做条件时，管理员并发调低 capacity 会超额锁位
         const res = await this.connection
             .getRepository(ctx, delivery_slot_entity_1.DeliverySlot)
@@ -49,12 +43,24 @@ let SlotLockService = class SlotLockService {
             .set({ lockedCount: () => '"lockedCount" + 1' })
             .where('id = :id AND "lockedCount" < "capacity"', { id: slot.id })
             .execute();
-        const ok = ((_c = res.affected) !== null && _c !== void 0 ? _c : 0) > 0;
-        if (!ok && Number.isFinite(orderId)) {
-            // 时段已满：回滚认领标记（未真正占位，取消时不得释放名额）
-            await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsSlotlocked" = false WHERE id = $1', [orderId]);
+        if (((_c = res.affected) !== null && _c !== void 0 ? _c : 0) <= 0)
+            return false; // 时段已满：未写订单标记，无需回滚
+        if (Number.isFinite(orderId)) {
+            const claim = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsSlotlocked" = true '
+                + 'WHERE id = $1 AND COALESCE("customFieldsSlotlocked", false) = false RETURNING id', [orderId]);
+            const claimed = Array.isArray(claim) && Array.isArray(claim[0]) ? claim[0] : claim;
+            if (!Array.isArray(claimed) || !claimed.length) {
+                // 已锁位（重放/并发）：本次多占的容量必须归还，否则取消只释放一次会虚增容量
+                await this.connection
+                    .getRepository(ctx, delivery_slot_entity_1.DeliverySlot)
+                    .createQueryBuilder()
+                    .update(delivery_slot_entity_1.DeliverySlot)
+                    .set({ lockedCount: () => 'GREATEST("lockedCount" - 1, 0)' })
+                    .where('id = :id', { id: slot.id })
+                    .execute();
+            }
         }
-        return ok;
+        return true;
     }
     /**
      * 释放锁位（取消/退款/未支付超时）：订单离开履约链路时归还容量。

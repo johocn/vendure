@@ -1067,7 +1067,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * 失败降级：同样写 campusCause='no_rider' + hallStatus='no_rider_final' 留人工，Logger 留痕，不抛出。
      */
     async refundNoRider(ctx, order, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const mark = () => this.hall.updateOrder(ctx, order.id, {
             customFields: { campusCause: 'no_rider', hallStatus: 'no_rider_final' },
         });
@@ -1075,6 +1075,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         const runner = this.connection.rawConnection.createQueryRunner();
         await runner.connect();
         const lockKey = `campus:refund:${order.id}`;
+        // 退款是否已真实发生（catch 里区分「退款失败」与「已退款仅取消失败」）
+        let refundedAny = false;
         try {
             const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
             const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
@@ -1111,13 +1113,21 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         throw new Error(`refundOrder failed: ${(_e = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _e !== void 0 ? _e : 'no result'}`);
                     }
                     await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, orderSvc, ctx, created.id);
+                    refundedAny = true;
                 }
                 // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
                 // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult
-                const cancelled = await orderSvc.cancelOrder(ctx, {
+                let cancelled = await orderSvc.cancelOrder(ctx, {
                     orderId: order.id,
                     reason: `no_rider auto cancel (${order.code})`,
                 });
+                // 钱已退时取消失败会让「已退款单」继续处于 Processing，重试一次再降级告警
+                if (cancelled && cancelled.errorCode) {
+                    cancelled = await orderSvc.cancelOrder(ctx, {
+                        orderId: order.id,
+                        reason: `no_rider auto cancel retry (${order.code})`,
+                    });
+                }
                 if (cancelled && cancelled.errorCode) {
                     throw new Error(`cancelOrder failed: ${cancelled.errorCode}`);
                 }
@@ -1146,7 +1156,12 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         campusCause: 'refund_failed',
                     });
                     if (marked) {
-                        void ((_k = this.feishu) === null || _k === void 0 ? void 0 : _k.pushEvent('exception', '无人接单自动退款失败', `订单 ${order.code} 超时无骑手且自动退款失败，请人工退款/取消。原因：${(_l = e === null || e === void 0 ? void 0 : e.message) !== null && _l !== void 0 ? _l : e}`, order.code, `refund_failed:${order.code}`));
+                        // 已退款但取消失败：只需人工/重试取消，绝不能再退一次
+                        const title = refundedAny ? '已退款但取消失败' : '无人接单自动退款失败';
+                        const detail = refundedAny
+                            ? `订单 ${order.code} 已全额退款，但订单取消失败（仍为 Processing），请人工取消订单，勿重复退款。原因：${(_k = e === null || e === void 0 ? void 0 : e.message) !== null && _k !== void 0 ? _k : e}`
+                            : `订单 ${order.code} 超时无骑手且自动退款失败，请人工退款/取消。原因：${(_l = e === null || e === void 0 ? void 0 : e.message) !== null && _l !== void 0 ? _l : e}`;
+                        void ((_m = this.feishu) === null || _m === void 0 ? void 0 : _m.pushEvent('exception', title, detail, order.code, `refund_failed:${order.code}`));
                     }
                 }
                 catch (e2) {
@@ -1158,7 +1173,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             try {
                 await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
             }
-            catch (_m) {
+            catch (_o) {
                 // 释放失败交给连接回收兜底
             }
             await runner.release();
