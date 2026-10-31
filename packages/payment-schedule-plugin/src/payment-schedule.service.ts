@@ -528,11 +528,15 @@ export class PaymentScheduleService {
         return rows.map(r => r.id as number);
     }
 
-    /** 单条计划是否属于当前请求渠道（用于非 channelScheduleIds 取数的连带操作） */
-    private async isScheduleInChannel(ctx: RequestContext, scheduleId: number): Promise<boolean> {
+    /** 单条计划是否属于指定渠道（默认取当前请求渠道；事件路径须显式传入活动所属渠道） */
+    private async isScheduleInChannel(
+        ctx: RequestContext,
+        scheduleId: number,
+        channelId: ID = ctx.channelId,
+    ): Promise<boolean> {
         const count = await this.scheduleRepo(ctx)
             .createQueryBuilder('s')
-            .innerJoin('s.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
+            .innerJoin('s.channels', 'channel', 'channel.id = :cid', { cid: channelId })
             .where('s.id = :id', { id: scheduleId })
             .getCount();
         return count > 0;
@@ -603,10 +607,17 @@ export class PaymentScheduleService {
             const { GroupBuyActivity } = require('@vendure/group-buy-plugin');
             return await this.connection.rawConnection.getRepository(GroupBuyActivity).findOne({
                 where: { id: activityId },
+                relations: { channels: true },
             });
         } catch {
             return null;
         }
+    }
+
+    /** 活动所属渠道 id 列表（事件路径没有可靠的 ctx.channelId，以活动自身关联为准） */
+    private async activityChannelIds(activityId: number): Promise<number[]> {
+        const activity = await this.findGroupBuyActivity(activityId);
+        return (activity?.channels ?? []).map((c: any) => Number(c.id));
     }
 
     /** 团购不成团：已付期次全额原路退，未付 → waived，调度 breached(group_buy_failed)，订单取消 */
@@ -655,9 +666,22 @@ export class PaymentScheduleService {
 
     /** 事件入口：团购成团（事件与扫描双通道，事件先行即时解锁） */
     async handleGroupBuyCompleted(ctx: RequestContext, activityId: number): Promise<number> {
+        // 事件路径不依赖 ctx.channelId：以活动自身关联渠道为准，只解锁该渠道的期次
+        const channelIds = await this.activityChannelIds(activityId);
+        if (channelIds.length !== 1) {
+            Logger.warn(
+                `GroupBuyActivity ${activityId} is associated with ${channelIds.length} channels; skip auto-activation to avoid cross-channel writes`,
+                loggerCtx,
+            );
+            return 0;
+        }
+        const channelId = channelIds[0];
         const items = await this.itemRepo(ctx).find({ where: { groupBuyActivityId: Number(activityId), status: 'locked' } });
         let n = 0;
         for (const item of items) {
+            if (!(await this.isScheduleInChannel(ctx, item.scheduleId, channelId))) {
+                continue;
+            }
             item.status = 'payable';
             item.dueAt = new Date();
             await this.itemRepo(ctx).save(item);

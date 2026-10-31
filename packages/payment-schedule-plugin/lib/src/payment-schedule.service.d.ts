@@ -119,7 +119,7 @@ export declare class PaymentScheduleService {
      */
     cancelSchedule(ctx: RequestContext, orderId: ID, confirmForfeit: boolean): Promise<ScheduleWithItems>;
     private channelScheduleIds;
-    /** 单条计划是否属于当前请求渠道（用于非 channelScheduleIds 取数的连带操作） */
+    /** 单条计划是否属于指定渠道（默认取当前请求渠道；事件路径须显式传入活动所属渠道） */
     private isScheduleInChannel;
     /** 触发扫描：locked → payable（date 到点 / interval 到点 / group_buy 活动完成或失败） */
     processTriggers(ctx: RequestContext, now?: Date): Promise<{
@@ -129,6 +129,8 @@ export declare class PaymentScheduleService {
     /** group_buy 触发器：软依赖团购活动状态（completed→解锁；expired/过期→按不成团处理） */
     private handleGroupBuyTrigger;
     private findGroupBuyActivity;
+    /** 活动所属渠道 id 列表（事件路径没有可靠的 ctx.channelId，以活动自身关联为准） */
+    private activityChannelIds;
     /** 团购不成团：已付期次全额原路退，未付 → waived，调度 breached(group_buy_failed)，订单取消 */
     failSchedulesForGroupBuy(ctx: RequestContext, activityId: number, now?: Date): Promise<number>;
     /** 事件入口：团购成团（事件与扫描双通道，事件先行即时解锁） */

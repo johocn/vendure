@@ -2,12 +2,18 @@ import { createTestEnvironment, registerInitializer, SimpleGraphQLClient, SqljsI
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { LanguageCode, mergeConfig, PaymentMethodHandler, Injector } from '@vendure/core';
+import { LanguageCode, mergeConfig, PaymentMethodHandler, Injector, RequestContext, Channel, TransactionalConnection } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
-import { PaymentSchedulePlugin, PaymentScheduleJob } from '@vendure/payment-schedule-plugin';
+import {
+    PaymentSchedulePlugin,
+    PaymentScheduleJob,
+    PaymentScheduleService,
+    OrderPaymentSchedule,
+    OrderScheduleItem,
+} from '@vendure/payment-schedule-plugin';
+import { GroupBuyActivity, GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { PreSalePlugin } from '@vendure/pre-sale-plugin';
-import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { singleStageRefundablePaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
 import { proceedToArrangingPayment } from '../../core/e2e/utils/test-order-utils';
 
@@ -431,6 +437,96 @@ describe('PaymentSchedulePlugin · 期次调度主流程', () => {
         await tick();
         const sched = await scheduleOf(orderId);
         expect(sched.items[1].status).toBe('payable');
+    });
+
+    /**
+     * H：团购成团事件以「活动自身关联渠道」为准解锁期次（不依赖事件 ctx.channelId），
+     * 其它渠道的期次必须保持不变；同一渠道的正常流转不受影响。
+     */
+    it('团购成团事件：只解锁活动所属渠道的期次，跨渠道期次不变', async () => {
+        await adminClient.asSuperAdmin();
+        const ch1Id = ((await adminClient.query(gql`query { channels { items { id code } } }`)) as any).channels.items[0]
+            .id as string;
+
+        // 渠道1：活动 A + 期次 A（期望正常解锁）
+        const gbA = await createGroupBuyActivity({ targetCount: 1, endAt: ts(60) });
+        const actA = await createActivity({ tailTriggerType: 'group_buy', groupBuyActivityId: numericId(gbA) });
+        const orderA = await applyPreSale(actA);
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${orderA}", method: "${PAY_METHOD}") { id state } }
+        `);
+
+        // 渠道1：活动 B + 期次 B（随后整体迁到渠道2，模拟另一渠道的数据）
+        const gbB = await createGroupBuyActivity({ targetCount: 1, endAt: ts(60) });
+        const actB = await createActivity({ tailTriggerType: 'group_buy', groupBuyActivityId: numericId(gbB) });
+        const orderB = await applyPreSale(actB);
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${orderB}", method: "${PAY_METHOD}") { id state } }
+        `);
+
+        const zoneId = ((await adminClient.query(gql`query { zones { items { id } } }`)) as any).zones.items[0].id;
+        await adminClient.query(gql`
+            mutation { createChannel(input: {
+                code: "ps-ch2-gb" token: "ps-ch2-gb-token"
+                defaultLanguageCode: en
+                pricesIncludeTax: true
+                defaultCurrencyCode: USD
+                defaultTaxZoneId: "${zoneId}"
+                defaultShippingZoneId: "${zoneId}"
+            }) { ... on Channel { id } } }
+        `);
+
+        const raw = server.app.get(TransactionalConnection).rawConnection;
+        // 手工构造 RequestContext 需带上税区/运费区关系，否则订单取价报 no-active-tax-zone
+        const channelRelations = { defaultTaxZone: true, defaultShippingZone: true } as const;
+        const ch1 = await raw.getRepository(Channel).findOne({ where: { id: numericId(ch1Id) }, relations: channelRelations });
+        const ch2 = await raw
+            .getRepository(Channel)
+            .findOne({ where: { code: 'ps-ch2-gb' }, relations: channelRelations });
+        expect(ch1 && ch2).toBeTruthy();
+
+        const activityRepo = raw.getRepository(GroupBuyActivity);
+        const activityB = await activityRepo.findOne({
+            where: { id: numericId(gbB) },
+            relations: { channels: true },
+        });
+        activityB!.channels = [ch2!];
+        await activityRepo.save(activityB!);
+
+        const scheduleRepo = raw.getRepository(OrderPaymentSchedule);
+        const scheduleB = await scheduleRepo.findOne({ where: { orderId: numericId(orderB) } });
+        scheduleB!.channelId = ch2!.id as number;
+        scheduleB!.channels = [ch2!];
+        await scheduleRepo.save(scheduleB!);
+
+        const itemRepo = raw.getRepository(OrderScheduleItem);
+        const itemStatus = async (scheduleId: number, seq: number) =>
+            (await itemRepo.findOne({ where: { scheduleId, seq } }))?.status;
+
+        const svc = server.app.get(PaymentScheduleService);
+        const ctxCh1 = new RequestContext({
+            apiType: 'admin',
+            channel: ch1!,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
+        const ctxCh2 = new RequestContext({
+            apiType: 'admin',
+            channel: ch2!,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
+
+        // 只触发活动 B（属渠道2）→ B 解锁；渠道1 的 A 保持不变
+        const nB = await svc.handleGroupBuyCompleted(ctxCh2, numericId(gbB));
+        expect(nB).toBe(1);
+        expect(await itemStatus(scheduleB!.id as number, 2)).toBe('payable');
+        expect((await scheduleOf(orderA)).items[1].status).toBe('locked');
+
+        // 再触发活动 A（渠道1）→ 本渠道期次正常流转
+        const nA = await svc.handleGroupBuyCompleted(ctxCh1, numericId(gbA));
+        expect(nA).toBe(1);
+        expect((await scheduleOf(orderA)).items[1].status).toBe('payable');
     });
 
     it('团购失败：已付期次全额退 + 调度 breached(group_buy_failed) + 订单取消', async () => {
