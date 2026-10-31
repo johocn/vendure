@@ -1,5 +1,14 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, Customer, RequestContext, Transaction, TransactionalConnection, UserInputError } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    Customer,
+    Permission,
+    RequestContext,
+    Transaction,
+    TransactionalConnection,
+    UserInputError,
+} from '@vendure/core';
 import { In, MoreThanOrEqual } from 'typeorm';
 
 import { TcmClinic } from '../entities/tcm-clinic.entity';
@@ -37,6 +46,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async clinics(
         @Ctx() ctx: RequestContext,
         @Args('options') _options: any,
@@ -47,12 +57,14 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createClinic(@Ctx() ctx: RequestContext, @Args('input') input: CreateClinicInput): Promise<TcmClinic> {
         return this.clinicService.createClinic(ctx, input);
     }
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createClinicStaff(
         @Ctx() ctx: RequestContext,
         @Args('input') input: { clinicId: number; administratorId: number; displayName: string; role?: string },
@@ -62,6 +74,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createPatientProfile(
         @Ctx() ctx: RequestContext,
         @Args('input') input: { clinicId: number; customerId: number; constitution?: Record<string, any> },
@@ -72,6 +85,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createEncounter(
         @Ctx() ctx: RequestContext,
         @Args('input') input: { patientProfileId: number; clinicId: number; type?: string },
@@ -82,18 +96,21 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async startEncounter(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmEncounter> {
         return this.encounterService.transition(ctx, Number(String(id).replace('T_', '')), 'ACTIVE');
     }
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async completeEncounter(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmEncounter> {
         return this.encounterService.transition(ctx, Number(String(id).replace('T_', '')), 'COMPLETED');
     }
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createMedicalRecord(
         @Ctx() ctx: RequestContext,
         @Args('input') input: MedicalRecordInput,
@@ -120,6 +137,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async updateMedicalRecord(
         @Ctx() ctx: RequestContext,
         @Args('id') id: string | number,
@@ -154,6 +172,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async medicalRecords(
         @Ctx() ctx: RequestContext,
         @Args('options') options?: ListOptions,
@@ -163,6 +182,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.SuperAdmin)
     async auditLogs(
         @Ctx() ctx: RequestContext,
         @Args('options') options?: ListOptions,
@@ -172,6 +192,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createWellnessPlan(
         @Ctx() ctx: RequestContext,
         @Args('input')
@@ -189,6 +210,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async transitionWellnessPlan(
         @Ctx() ctx: RequestContext,
         @Args('id') id: string | number,
@@ -207,6 +229,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async addPlanItem(
         @Ctx() ctx: RequestContext,
         @Args('input') input: { planId: number; title: string; frequency?: string; productVariantId?: number },
@@ -224,6 +247,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async createFollowUp(
         @Ctx() ctx: RequestContext,
         @Args('input')
@@ -237,6 +261,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async completeFollowUp(
         @Ctx() ctx: RequestContext,
         @Args('id') id: string | number,
@@ -257,6 +282,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Mutation()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async cancelFollowUp(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmFollowUpTask> {
         const taskId = Number(String(id).replace('T_', ''));
         const task = await this.connection
@@ -272,6 +298,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async wellnessPlans(
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number },
@@ -292,6 +319,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async followUpTasks(
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number },
@@ -321,12 +349,14 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.Authenticated)
     async myStaff(@Ctx() ctx: RequestContext): Promise<TcmClinicStaff[]> {
         return this.staffService.staffOf(ctx, ctx.activeUserId as number);
     }
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async patientProfiles(
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number },
@@ -346,6 +376,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async patientProfile(
         @Ctx() ctx: RequestContext,
         @Args('id') id: string | number,
@@ -358,6 +389,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async encounters(
         @Ctx() ctx: RequestContext,
         @Args('options') options?: { skip?: number; take?: number; since?: Date },
@@ -380,6 +412,7 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async encounter(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmEncounter | null> {
         const enc = await this.connection
             .getRepository(ctx, TcmEncounter)
@@ -391,12 +424,14 @@ export class TcmAdminResolver {
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async medicalRecord(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<any | null> {
         return this.recordService.findOneView(ctx, Number(String(id).replace('T_', '')));
     }
 
     @Transaction()
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async wellnessPlan(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<any | null> {
         const plan = await this.connection
             .getRepository(ctx, TcmWellnessPlan)

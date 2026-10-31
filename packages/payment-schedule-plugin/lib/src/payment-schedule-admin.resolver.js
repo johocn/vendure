@@ -62,6 +62,7 @@ let PaymentScheduleAdminResolver = class PaymentScheduleAdminResolver {
 exports.PaymentScheduleAdminResolver = PaymentScheduleAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -70,6 +71,7 @@ __decorate([
 ], PaymentScheduleAdminResolver.prototype, "paymentSchedules", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -79,6 +81,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('scheduleId')),
     __metadata("design:type", Function),
@@ -88,6 +91,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('scheduleId')),
     __metadata("design:type", Function),
@@ -97,6 +101,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -106,6 +111,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -115,6 +121,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),

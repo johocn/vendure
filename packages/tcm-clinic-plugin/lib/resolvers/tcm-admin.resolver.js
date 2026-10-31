@@ -294,6 +294,7 @@ exports.TcmAdminResolver = TcmAdminResolver;
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -303,6 +304,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -312,6 +314,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -321,6 +324,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -330,6 +334,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -339,6 +344,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -348,6 +354,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -357,6 +364,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -366,6 +374,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('input')),
@@ -376,6 +385,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -385,6 +395,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -394,6 +405,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -403,6 +415,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('to')),
@@ -413,6 +426,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -422,6 +436,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -431,6 +446,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('followUpEncounterId')),
@@ -441,6 +457,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -450,6 +467,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -459,6 +477,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -468,6 +487,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -476,6 +496,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -485,6 +506,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -494,6 +516,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options')),
     __metadata("design:type", Function),
@@ -503,6 +526,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -512,6 +536,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -521,6 +546,7 @@ __decorate([
 __decorate([
     (0, core_1.Transaction)(),
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCustomer, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),

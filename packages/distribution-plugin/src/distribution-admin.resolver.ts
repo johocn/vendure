@@ -1,5 +1,14 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, ListQueryOptions, PaginatedList, RequestContext, Transaction } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    ID,
+    ListQueryOptions,
+    PaginatedList,
+    Permission,
+    RequestContext,
+    Transaction,
+} from '@vendure/core';
 
 import { CommissionRecord } from './commission-record.entity';
 import { CommissionService } from './commission.service';
@@ -17,6 +26,7 @@ export class DistributionAdminResolver {
     ) {}
 
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async distributors(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: ListQueryOptions<Distributor>,
@@ -25,6 +35,7 @@ export class DistributionAdminResolver {
     }
 
     @Query()
+    @Allow(Permission.ReadCustomer, Permission.SuperAdmin)
     async commissionRecords(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: ListQueryOptions<CommissionRecord>,
@@ -33,6 +44,7 @@ export class DistributionAdminResolver {
     }
 
     @Query()
+    @Allow(Permission.SuperAdmin)
     async withdrawalRequests(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: ListQueryOptions<WithdrawalRequest>,
@@ -42,6 +54,7 @@ export class DistributionAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async approveDistributor(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -51,6 +64,7 @@ export class DistributionAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(Permission.UpdateCustomer, Permission.SuperAdmin)
     async freezeDistributor(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -60,6 +74,7 @@ export class DistributionAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(Permission.SuperAdmin)
     async approveWithdrawal(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -69,6 +84,7 @@ export class DistributionAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(Permission.SuperAdmin)
     async rejectWithdrawal(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -78,6 +94,7 @@ export class DistributionAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(Permission.SuperAdmin)
     async markWithdrawalPaid(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,

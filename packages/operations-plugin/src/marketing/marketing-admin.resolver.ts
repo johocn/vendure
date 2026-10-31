@@ -43,6 +43,7 @@ export class MarketingAdminResolver {
     // ===== FlashSale (prefixed to avoid clash with FlashSalePlugin) =====
 
     @Query()
+    @Allow(OperationsPermissions.ManageFlashSale as Permission)
     async marketingFlashSaleActivities(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: ListQueryOptions<any>,
@@ -51,6 +52,7 @@ export class MarketingAdminResolver {
     }
 
     @Query()
+    @Allow(OperationsPermissions.ManageFlashSale as Permission)
     async marketingFlashSaleActivity(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -60,18 +62,21 @@ export class MarketingAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(OperationsPermissions.ManageFlashSale as Permission)
     async createFlashSale(@Ctx() ctx: RequestContext, @Args('input') input: any) {
         return this.flashSaleMarketingService.create(ctx, input);
     }
 
     @Mutation()
     @Transaction()
+    @Allow(OperationsPermissions.ManageFlashSale as Permission)
     async updateFlashSale(@Ctx() ctx: RequestContext, @Args('input') input: any) {
         return this.flashSaleMarketingService.update(ctx, input);
     }
 
     @Mutation()
     @Transaction()
+    @Allow(OperationsPermissions.ManageFlashSale as Permission)
     async deleteFlashSale(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
         return this.flashSaleMarketingService.delete(ctx, id);
     }
@@ -79,6 +84,7 @@ export class MarketingAdminResolver {
     // ===== GroupBuy (prefixed to avoid clash with GroupBuyPlugin) =====
 
     @Query()
+    @Allow(OperationsPermissions.ManageGroupBuy as Permission)
     async marketingGroupBuyActivities(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: ListQueryOptions<any>,
@@ -87,6 +93,7 @@ export class MarketingAdminResolver {
     }
 
     @Query()
+    @Allow(OperationsPermissions.ManageGroupBuy as Permission)
     async marketingGroupBuyActivity(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -96,18 +103,21 @@ export class MarketingAdminResolver {
 
     @Mutation()
     @Transaction()
+    @Allow(OperationsPermissions.ManageGroupBuy as Permission)
     async createGroupBuy(@Ctx() ctx: RequestContext, @Args('input') input: any) {
         return this.groupBuyMarketingService.create(ctx, input);
     }
 
     @Mutation()
     @Transaction()
+    @Allow(OperationsPermissions.ManageGroupBuy as Permission)
     async updateGroupBuy(@Ctx() ctx: RequestContext, @Args('input') input: any) {
         return this.groupBuyMarketingService.update(ctx, input);
     }
 
     @Mutation()
     @Transaction()
+    @Allow(OperationsPermissions.ManageGroupBuy as Permission)
     async deleteGroupBuy(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
         return this.groupBuyMarketingService.delete(ctx, id);
     }

@@ -82,6 +82,7 @@ __decorate([
 ], MarketingAdminResolver.prototype, "marketingOverview", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageFlashSale),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -90,6 +91,7 @@ __decorate([
 ], MarketingAdminResolver.prototype, "marketingFlashSaleActivities", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageFlashSale),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -99,6 +101,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageFlashSale),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -108,6 +111,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageFlashSale),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -117,6 +121,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageFlashSale),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -125,6 +130,7 @@ __decorate([
 ], MarketingAdminResolver.prototype, "deleteFlashSale", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageGroupBuy),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -133,6 +139,7 @@ __decorate([
 ], MarketingAdminResolver.prototype, "marketingGroupBuyActivities", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageGroupBuy),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -142,6 +149,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageGroupBuy),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -151,6 +159,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageGroupBuy),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -160,6 +169,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ManageGroupBuy),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
