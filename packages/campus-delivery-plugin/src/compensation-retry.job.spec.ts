@@ -19,8 +19,8 @@ function make(tasks: any[] = []) {
         { pushEvent } as any,
         { create: vi.fn().mockResolvedValue(pc) } as any,
         { get: vi.fn() } as any,
-        { grantCoupon },
     );
+    job.couponOverride = { grantCoupon };
     return { job, due, claim, markDone, markFailed, retryInApp, pushEvent, grantCoupon };
 }
 

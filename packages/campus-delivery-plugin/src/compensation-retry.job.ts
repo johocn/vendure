@@ -24,6 +24,9 @@ export interface CouponExecutor {
 @Injectable()
 export class CompensationRetryJob implements OnApplicationShutdown {
     private fallback: PeriodicFallback | null = null;
+    /** 可选：直接指定补偿券执行器（单测/裁剪部署用；生产为 null 走动态解析）。
+     *  注意不能作为构造参数：接口类型在运行时为 Object，Nest 会尝试注入并启动失败。 */
+    couponOverride: CouponExecutor | null = null;
 
     constructor(
         private tasks: CompensationTaskService,
@@ -31,8 +34,6 @@ export class CompensationRetryJob implements OnApplicationShutdown {
         private feishu: FeishuNotifyService,
         private requestContextService: RequestContextService,
         private moduleRef: ModuleRef,
-        /** 可选：直接注入补偿券执行器（单测/裁剪部署用；生产为 undefined 走动态解析） */
-        private couponOverride?: CouponExecutor,
     ) {}
 
     start(intervalMs = 60_000): void {

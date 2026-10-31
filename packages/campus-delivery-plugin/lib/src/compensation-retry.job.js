@@ -26,16 +26,16 @@ const BACKOFF_MINUTES = [1, 5, 15, 60];
  * 重试耗尽只告警一次（dedupeKey=compensation_exhausted:<任务键>）。
  */
 let CompensationRetryJob = class CompensationRetryJob {
-    constructor(tasks, notify, feishu, requestContextService, moduleRef, 
-    /** 可选：直接注入补偿券执行器（单测/裁剪部署用；生产为 undefined 走动态解析） */
-    couponOverride) {
+    constructor(tasks, notify, feishu, requestContextService, moduleRef) {
         this.tasks = tasks;
         this.notify = notify;
         this.feishu = feishu;
         this.requestContextService = requestContextService;
         this.moduleRef = moduleRef;
-        this.couponOverride = couponOverride;
         this.fallback = null;
+        /** 可选：直接指定补偿券执行器（单测/裁剪部署用；生产为 null 走动态解析）。
+         *  注意不能作为构造参数：接口类型在运行时为 Object，Nest 会尝试注入并启动失败。 */
+        this.couponOverride = null;
     }
     start(intervalMs = 60000) {
         if (this.fallback)
@@ -144,6 +144,6 @@ exports.CompensationRetryJob = CompensationRetryJob = __decorate([
         campus_notify_service_1.CampusNotifyService,
         feishu_notify_service_1.FeishuNotifyService,
         core_2.RequestContextService,
-        core_1.ModuleRef, Object])
+        core_1.ModuleRef])
 ], CompensationRetryJob);
 //# sourceMappingURL=compensation-retry.job.js.map

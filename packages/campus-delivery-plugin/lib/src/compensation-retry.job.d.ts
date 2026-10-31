@@ -19,12 +19,11 @@ export declare class CompensationRetryJob implements OnApplicationShutdown {
     private feishu;
     private requestContextService;
     private moduleRef;
-    /** 可选：直接注入补偿券执行器（单测/裁剪部署用；生产为 undefined 走动态解析） */
-    private couponOverride?;
     private fallback;
-    constructor(tasks: CompensationTaskService, notify: CampusNotifyService, feishu: FeishuNotifyService, requestContextService: RequestContextService, moduleRef: ModuleRef, 
-    /** 可选：直接注入补偿券执行器（单测/裁剪部署用；生产为 undefined 走动态解析） */
-    couponOverride?: CouponExecutor | undefined);
+    /** 可选：直接指定补偿券执行器（单测/裁剪部署用；生产为 null 走动态解析）。
+     *  注意不能作为构造参数：接口类型在运行时为 Object，Nest 会尝试注入并启动失败。 */
+    couponOverride: CouponExecutor | null;
+    constructor(tasks: CompensationTaskService, notify: CampusNotifyService, feishu: FeishuNotifyService, requestContextService: RequestContextService, moduleRef: ModuleRef);
     start(intervalMs?: number): void;
     onApplicationShutdown(): void;
     /** 处理一批到期任务（运维/单测可直接调用） */
