@@ -106,14 +106,14 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesRefunds(ctx: RequestContext, from?: string | null, to?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesRefundList>;
     /** 售后自动化任务（§85）：本店超时/自动同意/退款重试任务 */
     campusMerchantAfterSalesTasks(ctx: RequestContext, status?: string | null, skip?: number | null, take?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesTaskList>;
-    /** 导出 CSV（§85）：kind=requests|refunds，前端保存为文件 */
-    campusMerchantAfterSalesExport(ctx: RequestContext, from: string, to: string, kind: string): Promise<string>;
+    /** 导出 CSV（§85、§97）：kind=requests|refunds|escalations，可选按状态/类型/关键词/处理人筛选，前端保存为文件 */
+    campusMerchantAfterSalesExport(ctx: RequestContext, from: string, to: string, kind: string, state?: string | null, type?: string | null, keyword?: string | null, assigneeUserId?: string | null): Promise<string>;
     /** 高频售后顾客 Top N（§85） */
     campusMerchantAfterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesTopCustomer[]>;
     /** 售后内部备注（§86）：仅本店可见 */
     campusMerchantAfterSalesNotes(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesNote[]>;
-    /** 快捷回复模板（§87）：本店渠道共用 */
-    campusMerchantAfterSalesReplyTemplates(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate[]>;
+    /** 快捷回复模板（§87、§97）：本店渠道，可按分类与关键词检索 */
+    campusMerchantAfterSalesReplyTemplates(ctx: RequestContext, category?: string | null, keyword?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate[]>;
     /** 售后工作台摘要（§88） */
     campusMerchantAfterSalesWorkbench(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesWorkbench>;
     /** 售后标签列表（§88） */
@@ -164,8 +164,8 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesBatchRemind(ctx: RequestContext, ids: ID[], note?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
     /** 批量内部备注（§92）：上限 50 单，逐单结果 */
     campusMerchantAfterSalesBatchNote(ctx: RequestContext, ids: ID[], content: string): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
-    /** 保存快捷回复模板（§87）：id 为空=新增 */
-    campusMerchantSaveAfterSalesReplyTemplate(ctx: RequestContext, id: ID | null, content: string): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate>;
+    /** 保存快捷回复模板（§87、§97）：id 为空=新增，可设分类/关键词/排序 */
+    campusMerchantSaveAfterSalesReplyTemplate(ctx: RequestContext, id: ID | null, content: string, category?: string | null, keywords?: string | null, sortOrder?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate>;
     /** 删除快捷回复模板（§87） */
     campusMerchantDeleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 手动排程退款重试（§87）：仅 RefundFailed */

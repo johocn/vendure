@@ -286,6 +286,12 @@ export interface MerchantAfterSalesReplyTemplate {
     id: string;
     content: string;
     createdAt: Date;
+    /** 分类标签（§97 知识库），未分类为 null */
+    category: string | null;
+    /** 检索关键词（空格分隔，§97） */
+    keywords: string | null;
+    /** 排序权重：越小越靠前（§97） */
+    sortOrder: number;
 }
 /** 退款流水（§84）：按退款时间倒序 */
 export interface MerchantAfterSalesRefundRow {
@@ -591,6 +597,23 @@ export interface MerchantAfterSalesStaffRow {
     firstActionAvgMinutes: number;
     /** 完结操作距申请的平均分钟（无完结为 0） */
     resolveAvgMinutes: number;
+    /** 经手单中当前仍超时未处理的单数（§97） */
+    overdueCount: number;
+    /** 经手单中已升级平台仲裁的单数（§97） */
+    escalatedCount: number;
+    /** 完结率（百分比 0-100，§97） */
+    resolveRate: number;
+}
+/** 售后 CSV 导出筛选（§97）：空值表示不筛选 */
+export interface MerchantAfterSalesExportFilter {
+    /** 售后单状态或升级工单状态 */
+    state?: string | null;
+    /** 售后类型（refund_only / return_refund / exchange） */
+    type?: string | null;
+    /** 订单号 / 申请原因 / 驳回原因模糊检索 */
+    keyword?: string | null;
+    /** 指派处理人 User id */
+    assigneeUserId?: string | null;
 }
 /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
 export interface MerchantAfterSalesWorkbench {
@@ -1134,10 +1157,10 @@ export declare class MerchantAdminService {
      */
     afterSalesRunTask(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesTaskRow>;
     /**
-     * 售后明细 / 退款流水导出（§85）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
-     * 供前端保存为 .csv；日期为校园日（UTC+8）。
+     * 售后明细 / 退款流水 / 升级工单导出（§85、§97）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 供前端保存为 .csv；日期为校园日（UTC+8）。filter 支持状态/类型/关键词/处理人筛选。
      */
-    afterSalesExport(ctx: RequestContext, from: string, to: string, kind: string): Promise<string>;
+    afterSalesExport(ctx: RequestContext, from: string, to: string, kind: string, filter?: MerchantAfterSalesExportFilter | null): Promise<string>;
     /** 高频售后顾客 Top N（§85）：区间内售后次数/退款额，附黑名单状态，手机号脱敏 */
     afterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesTopCustomer[]>;
     /** 一键拉黑高频售后顾客（§85）：仅限在本店有售后记录的顾客，已存在则不重复插入 */
@@ -1150,10 +1173,13 @@ export declare class MerchantAdminService {
     deleteAfterSalesNote(ctx: RequestContext, id: ID, noteId: ID): Promise<boolean>;
     /** 批量催办顾客（§86）：单批上限 20，逐单结果；仍受同单 60 秒冷却约束 */
     afterSalesBatchRemind(ctx: RequestContext, ids: ID[], note?: string | null): Promise<MerchantAfterSalesBatchResult[]>;
-    /** 快捷回复模板列表（§87）：本店渠道，按创建先后 */
-    afterSalesReplyTemplates(ctx: RequestContext): Promise<MerchantAfterSalesReplyTemplate[]>;
-    /** 新增 / 修改快捷回复模板（§87）：单店上限 30 条，单条最多 200 字 */
-    saveAfterSalesReplyTemplate(ctx: RequestContext, id: ID | null | undefined, content: string): Promise<MerchantAfterSalesReplyTemplate>;
+    /** 快捷回复模板列表（§87、§97）：本店渠道，支持按分类与关键词检索，排序权重小者靠前 */
+    afterSalesReplyTemplates(ctx: RequestContext, options?: {
+        category?: string | null;
+        keyword?: string | null;
+    }): Promise<MerchantAfterSalesReplyTemplate[]>;
+    /** 新增 / 修改快捷回复模板（§87、§97）：单店上限 30 条，单条最多 200 字，可设分类/关键词/排序 */
+    saveAfterSalesReplyTemplate(ctx: RequestContext, id: ID | null | undefined, content: string, category?: string | null, keywords?: string | null, sortOrder?: number | null): Promise<MerchantAfterSalesReplyTemplate>;
     /** 删除快捷回复模板（§87） */
     deleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 手动为退款失败单排程重试（§87）：复用/复位任务到 PENDING，1 分钟后由兜底扫描执行 */

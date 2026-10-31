@@ -162,6 +162,7 @@ const p23_after_sales_review_1 = require("./migrations/p23-after-sales-review");
 const p24_after_sales_risk_followup_1 = require("./migrations/p24-after-sales-risk-followup");
 const p25_after_sales_sla_followup_monthly_1 = require("./migrations/p25-after-sales-sla-followup-monthly");
 const p26_after_sales_escalation_automation_1 = require("./migrations/p26-after-sales-escalation-automation");
+const p27_after_sales_template_category_1 = require("./migrations/p27-after-sales-template-category");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -262,16 +263,20 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
                     .catch(err => core_1.Logger.warn(`schedule payment timeout failed: ${String(err)}`, 'PaymentTimeout'));
             }
         });
-        // 售后进度：Approved / Refunded / RefundFailed 三个用户侧节点（其余状态不推）
+        // 售后进度（§97）：覆盖顾客关心的全部节点，其余状态不推
         this.eventBus.ofType(after_sales_plugin_1.AfterSalesStateTransitionEvent).subscribe(e => {
             const text = e.toState === 'Approved' ? '售后审核通过'
-                : e.toState === 'Refunded' ? '退款已到账'
-                    : e.toState === 'RefundFailed' ? '退款失败，请联系客服'
-                        : null;
+                : e.toState === 'Rejected' ? '售后申请被拒绝'
+                    : e.toState === 'Received' ? '商家已收到退货'
+                        : e.toState === 'Refunded' ? '退款已到账'
+                            : e.toState === 'RefundFailed' ? '退款失败，请联系客服'
+                                : e.toState === 'ExchangeShipped' ? '换货已发出，请留意物流'
+                                    : e.toState === 'Closed' ? '售后已结束'
+                                        : null;
             if (!text)
                 return;
-            // dedupe 后缀用目标状态：同一售后单 Approved→Refunded 多条进度各推一条（固定键会把后续节点吞掉）
-            void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url, e.toState));
+            // dedupe 用「来源状态→目标状态」：同一售后单各进度各推一条，且 Closed 的两种来源不互相吞掉
+            void this.h5BaseUrl(e.ctx).then(url => { var _a; return this.notify.user(e.ctx, e.orderId, 'afterSales', text, url, `${(_a = e.fromState) !== null && _a !== void 0 ? _a : ''}->${e.toState}`); });
         });
         // 工单与售后打通：退款到账自动关闭关联工单（运营不再重复跟单）
         this.eventBus.ofType(after_sales_plugin_1.AfterSalesStateTransitionEvent).subscribe(e => {
@@ -364,6 +369,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p24_after_sales_risk_followup_1.P24AfterSalesRiskFollowupMigration,
             p25_after_sales_sla_followup_monthly_1.P25AfterSalesSlaFollowupMonthlyMigration,
             p26_after_sales_escalation_automation_1.P26AfterSalesEscalationAutomationMigration,
+            p27_after_sales_template_category_1.P27AfterSalesTemplateCategoryMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -1147,6 +1153,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     firstActionAvgMinutes: Int!
                     """完结操作距申请的平均分钟（无完结为 0）"""
                     resolveAvgMinutes: Int!
+                    """经手单中当前仍超时未处理的单数（§97）"""
+                    overdueCount: Int!
+                    """经手单中已升级平台仲裁的单数（§97）"""
+                    escalatedCount: Int!
+                    """完结率（百分比 0-100，§97）"""
+                    resolveRate: Int!
                 }
 
                 """售后工作台摘要（§88）：一次返回各待办入口与最老待处理时长"""
@@ -1303,6 +1315,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     id: ID!
                     content: String!
                     createdAt: DateTime!
+                    """分类标签（§97 知识库），未分类为 null"""
+                    category: String
+                    """检索关键词（空格分隔，§97）"""
+                    keywords: String
+                    """排序权重：越小越靠前（§97）"""
+                    sortOrder: Int!
                 }
 
                 """退款流水（§84）：按退款时间倒序"""
@@ -2306,14 +2324,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesRefunds(from: String, to: String, skip: Int, take: Int): CampusMerchantAfterSalesRefundList!
                     """售后自动化任务（§85）：本店超时/自动同意/退款重试任务"""
                     campusMerchantAfterSalesTasks(status: String, skip: Int, take: Int): CampusMerchantAfterSalesTaskList!
-                    """导出售后明细/退款流水 CSV（§85）：kind=requests|refunds"""
-                    campusMerchantAfterSalesExport(from: String!, to: String!, kind: String!): String!
+                    """导出售后明细/退款流水/升级工单 CSV（§85、§97）：kind=requests|refunds|escalations，可选筛选"""
+                    campusMerchantAfterSalesExport(from: String!, to: String!, kind: String!, state: String, type: String, keyword: String, assigneeUserId: String): String!
                     """高频售后顾客 Top N（§85）：附黑名单状态"""
                     campusMerchantAfterSalesTopCustomers(from: String!, to: String!, limit: Int): [CampusMerchantAfterSalesTopCustomer!]!
                     """售后内部备注（§86）：仅本店可见"""
                     campusMerchantAfterSalesNotes(id: ID!): [CampusMerchantAfterSalesNote!]!
-                    """快捷回复模板（§87）：本店渠道"""
-                    campusMerchantAfterSalesReplyTemplates: [CampusMerchantAfterSalesReplyTemplate!]!
+                    """快捷回复模板（§87、§97）：本店渠道，可按分类/关键词检索"""
+                    campusMerchantAfterSalesReplyTemplates(category: String, keyword: String): [CampusMerchantAfterSalesReplyTemplate!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2649,8 +2667,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesEscalationResolve(id: ID!, resolution: String): [CampusMerchantAfterSalesEscalation!]!
                     """批量关闭售后单（§95）：单批上限 50，逐单返回结果"""
                     campusMerchantAfterSalesBatchClose(ids: [ID!]!, reason: String!): [CampusMerchantAfterSalesBatchResult!]!
-                    """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
-                    campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
+                    """保存快捷回复模板（§87、§97）：id 为空=新增，单店上限 30 条，可设分类/关键词/排序"""
+                    campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!, category: String, keywords: String, sortOrder: Int): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
                     campusMerchantDeleteAfterSalesReplyTemplate(id: ID!): Boolean!
                     """手动排程退款重试（§87）：仅 RefundFailed，复位任务 1 分钟后执行"""

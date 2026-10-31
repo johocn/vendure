@@ -496,7 +496,7 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesTasks(ctx, { status, skip, take });
     }
 
-    /** 导出 CSV（§85）：kind=requests|refunds，前端保存为文件 */
+    /** 导出 CSV（§85、§97）：kind=requests|refunds|escalations，可选按状态/类型/关键词/处理人筛选，前端保存为文件 */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantAfterSalesExport(
@@ -504,8 +504,12 @@ export class MerchantAdminResolver {
         @Args('from') from: string,
         @Args('to') to: string,
         @Args('kind') kind: string,
+        @Args({ name: 'state', type: () => String, nullable: true }) state?: string | null,
+        @Args({ name: 'type', type: () => String, nullable: true }) type?: string | null,
+        @Args({ name: 'keyword', type: () => String, nullable: true }) keyword?: string | null,
+        @Args({ name: 'assigneeUserId', type: () => String, nullable: true }) assigneeUserId?: string | null,
     ) {
-        return this.merchant.afterSalesExport(ctx, from, to, kind);
+        return this.merchant.afterSalesExport(ctx, from, to, kind, { state, type, keyword, assigneeUserId });
     }
 
     /** 高频售后顾客 Top N（§85） */
@@ -527,11 +531,15 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesNotes(ctx, id);
     }
 
-    /** 快捷回复模板（§87）：本店渠道共用 */
+    /** 快捷回复模板（§87、§97）：本店渠道，可按分类与关键词检索 */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)
-    async campusMerchantAfterSalesReplyTemplates(@Ctx() ctx: RequestContext) {
-        return this.merchant.afterSalesReplyTemplates(ctx);
+    async campusMerchantAfterSalesReplyTemplates(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'category', type: () => String, nullable: true }) category?: string | null,
+        @Args({ name: 'keyword', type: () => String, nullable: true }) keyword?: string | null,
+    ) {
+        return this.merchant.afterSalesReplyTemplates(ctx, { category, keyword });
     }
 
     /** 售后工作台摘要（§88） */
@@ -790,15 +798,18 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesBatchNote(ctx, ids, content);
     }
 
-    /** 保存快捷回复模板（§87）：id 为空=新增 */
+    /** 保存快捷回复模板（§87、§97）：id 为空=新增，可设分类/关键词/排序 */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantSaveAfterSalesReplyTemplate(
         @Ctx() ctx: RequestContext,
         @Args({ name: 'id', type: () => String, nullable: true }) id: ID | null,
         @Args('content') content: string,
+        @Args({ name: 'category', type: () => String, nullable: true }) category?: string | null,
+        @Args({ name: 'keywords', type: () => String, nullable: true }) keywords?: string | null,
+        @Args({ name: 'sortOrder', type: () => Int, nullable: true }) sortOrder?: number | null,
     ) {
-        return this.merchant.saveAfterSalesReplyTemplate(ctx, id, content);
+        return this.merchant.saveAfterSalesReplyTemplate(ctx, id, content, category, keywords, sortOrder);
     }
 
     /** 删除快捷回复模板（§87） */

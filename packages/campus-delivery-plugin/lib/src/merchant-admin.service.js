@@ -1894,6 +1894,11 @@ let MerchantAdminService = class MerchantAdminService {
                 + '("channelId", "requestId", reason, priority, "createdBy") '
                 + 'VALUES ($1, $2, $3, $4, $5)', [chId, nid, text, p, ctx.activeUserId ? Number(ctx.activeUserId) : null]);
         }
+        // §97 顾客端进度推送：升级平台仲裁告知顾客，减少追问
+        const req = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({ where: { id: nid } });
+        if ((req === null || req === void 0 ? void 0 : req.orderId) != null) {
+            this.notify.user(ctx, req.orderId, 'afterSales', p === 'urgent' ? '售后已升级平台紧急仲裁' : '售后已升级平台仲裁', undefined, `escalate_${nid}_${Date.now()}`);
+        }
         return this.afterSalesEscalations(nid);
     }
     /** 关闭平台仲裁工单（§96）：平台/商家填写处理结论后置为 Resolved */
@@ -1909,7 +1914,13 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError('升级工单不存在');
         await raw.query('UPDATE campus_after_sales_escalation SET status = \'Resolved\', "resolvedAt" = now(), '
             + 'resolution = $3, "updatedAt" = now() WHERE id = $1 AND "channelId" = $2', [Number(id), chId, text || null]);
-        return this.afterSalesEscalations(Number(escList[0].requestId));
+        const rid = Number(escList[0].requestId);
+        // §97 顾客端进度推送：仲裁工单关闭告知顾客
+        const req = await this.connection.getRepository(ctx, after_sales_plugin_1.AfterSalesRequest).findOne({ where: { id: rid } });
+        if ((req === null || req === void 0 ? void 0 : req.orderId) != null) {
+            this.notify.user(ctx, req.orderId, 'afterSales', '平台已处理您升级的售后问题', undefined, `resolve_${Number(id)}_${Date.now()}`);
+        }
+        return this.afterSalesEscalations(rid);
     }
     /**
      * 售后自动分配（§96）：渠道开启后，把未指派的未完结售后单指派给当前未完结量最少的处理人。
@@ -2108,11 +2119,11 @@ let MerchantAdminService = class MerchantAdminService {
         return this.toTaskRow(fresh !== null && fresh !== void 0 ? fresh : task);
     }
     /**
-     * 售后明细 / 退款流水导出（§85）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
-     * 供前端保存为 .csv；日期为校园日（UTC+8）。
+     * 售后明细 / 退款流水 / 升级工单导出（§85、§97）：CSV 文本（UTF-8 BOM + 中文表头），单次上限 5000 行，
+     * 供前端保存为 .csv；日期为校园日（UTC+8）。filter 支持状态/类型/关键词/处理人筛选。
      */
-    async afterSalesExport(ctx, from, to, kind) {
-        var _a;
+    async afterSalesExport(ctx, from, to, kind, filter) {
+        var _a, _b, _c, _d, _e;
         const start = this.campusDayStart(from);
         const end = this.campusDayEnd(to);
         if (!start || !end)
@@ -2122,21 +2133,49 @@ let MerchantAdminService = class MerchantAdminService {
         if (end.getTime() - start.getTime() > 366 * 86400000)
             throw new core_2.UserInputError('导出区间最长一年');
         const k = String(kind !== null && kind !== void 0 ? kind : '').trim();
-        if (k !== 'requests' && k !== 'refunds')
+        if (!['requests', 'refunds', 'escalations'].includes(k))
             throw new core_2.UserInputError('导出类型无效');
+        const f = filter !== null && filter !== void 0 ? filter : {};
+        const state = String((_a = f.state) !== null && _a !== void 0 ? _a : '').trim();
+        const type = String((_b = f.type) !== null && _b !== void 0 ? _b : '').trim();
+        const keyword = String((_c = f.keyword) !== null && _c !== void 0 ? _c : '').trim();
+        const assignee = String((_d = f.assigneeUserId) !== null && _d !== void 0 ? _d : '').trim();
+        if (assignee && !Number.isFinite(Number(assignee)))
+            throw new core_2.UserInputError('处理人参数无效');
         const chId = Number(ctx.channelId);
         const raw = this.connection.rawConnection;
         const scope = 'EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
             + 'AND oc."channelId" = $1 WHERE o.id = a."orderId")';
+        // 追加筛选参数：基础参数占 $1-$3，扩展参数从 $4 起
+        const buildConds = (stateCol) => {
+            const conds = [];
+            const params = [];
+            const add = (clause, value) => {
+                params.push(value);
+                conds.push(clause(params.length + 3));
+            };
+            if (state)
+                add(i => `${stateCol} = $${i}`, state);
+            if (type)
+                add(i => `a.type = $${i}`, type);
+            if (keyword)
+                add(i => `(o.code ILIKE $${i} OR a.reason ILIKE $${i} OR a."rejectReason" ILIKE $${i})`, `%${keyword}%`);
+            if (assignee) {
+                add(i => 'EXISTS (SELECT 1 FROM campus_after_sales_assignee l '
+                    + `WHERE l."channelId" = $1 AND l."requestId" = a.id AND l."assigneeUserId" = $${i}::int)`, Number(assignee));
+            }
+            return { sql: conds.length ? ` AND ${conds.join(' AND ')}` : '', params };
+        };
         try {
             if (k === 'requests') {
+                const c = buildConds('a.state');
                 const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.state, a.reason, a."rejectReason",
                             a."createdAt", COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount,
                             a."refundedAt"
                        FROM after_sales_request a
                        LEFT JOIN "order" o ON o.id = a."orderId"
-                      WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}
-                      ORDER BY a."createdAt" DESC LIMIT 5000`, [chId, start, end]);
+                      WHERE a."createdAt" >= $2 AND a."createdAt" < $3 AND ${scope}${c.sql}
+                      ORDER BY a."createdAt" DESC LIMIT 5000`, [chId, start, end, ...c.params]);
                 const header = ['售后单号', '订单号', '类型', '状态', '申请原因', '驳回/关闭原因', '申请时间', '退款金额(元)', '退款时间'];
                 const lines = (Array.isArray(rows) ? rows : []).map(r => [
                     r.id, r.orderCode, r.type, r.state, r.reason, r.rejectReason,
@@ -2144,12 +2183,32 @@ let MerchantAdminService = class MerchantAdminService {
                 ]);
                 return this.toCsv(header, lines);
             }
+            if (k === 'escalations') {
+                const c = buildConds('e.status');
+                const rows = await raw.query(`SELECT e.id, e."requestId", o.code AS "orderCode", e.reason, e.priority, e.status,
+                            e."createdAt", e."resolvedAt", e.resolution,
+                            TRIM(COALESCE(ad."firstName", '') || COALESCE(ad."lastName", '')) AS operator
+                       FROM campus_after_sales_escalation e
+                       JOIN after_sales_request a ON a.id = e."requestId"
+                       LEFT JOIN "order" o ON o.id = a."orderId"
+                       LEFT JOIN administrator ad ON ad."userId" = e."createdBy"
+                      WHERE e."channelId" = $1 AND e."createdAt" >= $2 AND e."createdAt" < $3 AND ${scope}${c.sql}
+                      ORDER BY e."createdAt" DESC LIMIT 5000`, [chId, start, end, ...c.params]);
+                const header = ['售后单号', '订单号', '升级原因', '优先级', '工单状态', '提交时间', '提交人', '关闭时间', '处理结论'];
+                const lines = (Array.isArray(rows) ? rows : []).map(r => [
+                    r.requestId, r.orderCode, r.reason, r.priority, r.status,
+                    this.campusDateTime(r.createdAt), r.operator || null,
+                    this.campusDateTime(r.resolvedAt), r.resolution,
+                ]);
+                return this.toCsv(header, lines);
+            }
+            const c = buildConds('a.state');
             const rows = await raw.query(`SELECT a.id, o.code AS "orderCode", a.type, a.reason, a."refundTransactionId",
                         COALESCE(a."actualRefundAmount", a."refundAmount")::int AS amount, a."refundedAt"
                    FROM after_sales_request a
                    LEFT JOIN "order" o ON o.id = a."orderId"
-                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}
-                  ORDER BY a."refundedAt" DESC LIMIT 5000`, [chId, start, end]);
+                  WHERE a.state = 'Refunded' AND a."refundedAt" >= $2 AND a."refundedAt" < $3 AND ${scope}${c.sql}
+                  ORDER BY a."refundedAt" DESC LIMIT 5000`, [chId, start, end, ...c.params]);
             const header = ['售后单号', '订单号', '类型', '申请原因', '退款金额(元)', '退款时间', '退款流水号'];
             const lines = (Array.isArray(rows) ? rows : []).map(r => [
                 r.id, r.orderCode, r.type, r.reason, this.yuan(r.amount),
@@ -2160,7 +2219,7 @@ let MerchantAdminService = class MerchantAdminService {
         catch (e) {
             if (e instanceof core_2.UserInputError)
                 throw e;
-            throw new core_2.UserInputError(`导出失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+            throw new core_2.UserInputError(`导出失败：${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`);
         }
     }
     /** 高频售后顾客 Top N（§85）：区间内售后次数/退款额，附黑名单状态，手机号脱敏 */
@@ -2299,10 +2358,23 @@ let MerchantAdminService = class MerchantAdminService {
         }
         return results;
     }
-    /** 快捷回复模板列表（§87）：本店渠道，按创建先后 */
-    async afterSalesReplyTemplates(ctx) {
-        const rows = await this.connection.rawConnection.query('SELECT id, content, "createdAt" FROM campus_after_sales_reply_template '
-            + 'WHERE "channelId" = $1 ORDER BY id ASC LIMIT 50', [Number(ctx.channelId)]);
+    /** 快捷回复模板列表（§87、§97）：本店渠道，支持按分类与关键词检索，排序权重小者靠前 */
+    async afterSalesReplyTemplates(ctx, options) {
+        var _a, _b;
+        const conds = ['"channelId" = $1'];
+        const params = [Number(ctx.channelId)];
+        const category = String((_a = options === null || options === void 0 ? void 0 : options.category) !== null && _a !== void 0 ? _a : '').trim();
+        if (category) {
+            params.push(category);
+            conds.push(`category = $${params.length}`);
+        }
+        const keyword = String((_b = options === null || options === void 0 ? void 0 : options.keyword) !== null && _b !== void 0 ? _b : '').trim();
+        if (keyword) {
+            params.push(`%${keyword}%`);
+            conds.push(`(content ILIKE $${params.length} OR COALESCE(keywords, '') ILIKE $${params.length})`);
+        }
+        const rows = await this.connection.rawConnection.query(`SELECT id, content, "createdAt", category, keywords, "sortOrder" FROM campus_after_sales_reply_template `
+            + `WHERE ${conds.join(' AND ')} ORDER BY "sortOrder" ASC, id ASC LIMIT 50`, params);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         return (Array.isArray(list) ? list : []).map(r => {
             var _a;
@@ -2310,40 +2382,60 @@ let MerchantAdminService = class MerchantAdminService {
                 id: String(r.id),
                 content: String((_a = r.content) !== null && _a !== void 0 ? _a : ''),
                 createdAt: new Date(r.createdAt),
+                category: r.category ? String(r.category) : null,
+                keywords: r.keywords ? String(r.keywords) : null,
+                sortOrder: Number(r.sortOrder) || 0,
             });
         });
     }
-    /** 新增 / 修改快捷回复模板（§87）：单店上限 30 条，单条最多 200 字 */
-    async saveAfterSalesReplyTemplate(ctx, id, content) {
-        var _a, _b, _c, _d;
+    /** 新增 / 修改快捷回复模板（§87、§97）：单店上限 30 条，单条最多 200 字，可设分类/关键词/排序 */
+    async saveAfterSalesReplyTemplate(ctx, id, content, category, keywords, sortOrder) {
+        var _a, _b;
         const text = String(content !== null && content !== void 0 ? content : '').trim();
         if (!text)
             throw new core_2.UserInputError('请填写模板内容');
         if (text.length > 200)
             throw new core_2.UserInputError('模板最多 200 字');
+        const cat = String(category !== null && category !== void 0 ? category : '').trim().slice(0, 50) || null;
+        const kw = String(keywords !== null && keywords !== void 0 ? keywords : '').trim().slice(0, 200) || null;
+        const order = sortOrder == null ? 0 : Math.floor(Number(sortOrder));
+        if (!Number.isFinite(order) || order < 0 || order > 999)
+            throw new core_2.UserInputError('排序权重应为 0-999');
         const raw = this.connection.rawConnection;
         const chId = Number(ctx.channelId);
+        const pick = (r, fallback) => {
+            var _a;
+            return ({
+                id: String(r.id),
+                content: String((_a = r.content) !== null && _a !== void 0 ? _a : fallback),
+                createdAt: new Date(r.createdAt),
+                category: r.category ? String(r.category) : null,
+                keywords: r.keywords ? String(r.keywords) : null,
+                sortOrder: Number(r.sortOrder) || 0,
+            });
+        };
         if (id != null) {
-            const rows = await raw.query('UPDATE campus_after_sales_reply_template SET content = $1, "updatedAt" = now() '
-                + 'WHERE id = $2 AND "channelId" = $3 RETURNING id, content, "createdAt"', [text, Number(id), chId]);
+            const rows = await raw.query('UPDATE campus_after_sales_reply_template SET content = $1, category = $2, keywords = $3, '
+                + '"sortOrder" = $4, "updatedAt" = now() '
+                + 'WHERE id = $5 AND "channelId" = $6 RETURNING id, content, "createdAt", category, keywords, "sortOrder"', [text, cat, kw, order, Number(id), chId]);
             const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
             const r = list === null || list === void 0 ? void 0 : list[0];
             if (!r)
                 throw new core_2.UserInputError('模板不存在或不属于当前店铺');
-            return { id: String(r.id), content: String((_a = r.content) !== null && _a !== void 0 ? _a : text), createdAt: new Date(r.createdAt) };
+            return pick(r, text);
         }
         const countRows = await raw.query('SELECT COUNT(*)::int AS n FROM campus_after_sales_reply_template WHERE "channelId" = $1', [chId]);
         const countList = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
-        if (Number((_c = (_b = countList === null || countList === void 0 ? void 0 : countList[0]) === null || _b === void 0 ? void 0 : _b.n) !== null && _c !== void 0 ? _c : 0) >= 30) {
+        if (Number((_b = (_a = countList === null || countList === void 0 ? void 0 : countList[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0) >= 30) {
             throw new core_2.UserInputError('快捷回复模板最多 30 条，请先删除不用的模板');
         }
-        const rows = await raw.query('INSERT INTO campus_after_sales_reply_template ("channelId", content) VALUES ($1, $2) '
-            + 'RETURNING id, content, "createdAt"', [chId, text]);
+        const rows = await raw.query('INSERT INTO campus_after_sales_reply_template ("channelId", content, category, keywords, "sortOrder") '
+            + 'VALUES ($1, $2, $3, $4, $5) RETURNING id, content, "createdAt", category, keywords, "sortOrder"', [chId, text, cat, kw, order]);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
         const r = list === null || list === void 0 ? void 0 : list[0];
         if (!r)
             throw new core_2.UserInputError('模板保存失败');
-        return { id: String(r.id), content: String((_d = r.content) !== null && _d !== void 0 ? _d : text), createdAt: new Date(r.createdAt) };
+        return pick(r, text);
     }
     /** 删除快捷回复模板（§87） */
     async deleteAfterSalesReplyTemplate(ctx, id) {
@@ -3466,17 +3558,51 @@ let MerchantAdminService = class MerchantAdminService {
         for (const r of (Array.isArray(resolveRows) ? resolveRows : [])) {
             resolveMap.set(Number(r.uid), Number(r.avg) || 0);
         }
+        // §97：经手单中当前仍超时未处理的单数（暂停 SLA 的单不计）
+        const timeoutHours = this.afterSalesTimeoutHours(ctx);
+        const overdueRows = await raw.query(`SELECT x.uid, COUNT(DISTINCT x.rid)::int AS n FROM (
+                SELECT h."operatorUserId" AS uid, a.id AS rid
+                  FROM after_sales_state_history h
+                  JOIN after_sales_request a ON a.id = h."requestId"
+                 WHERE h."operatorUserId" IS NOT NULL AND h."createdAt" >= $3 AND h."createdAt" < $4
+                   AND ${scope}
+                   AND a.state = 'Pending' AND a."slaPausedAt" IS NULL
+                   AND a."createdAt" + make_interval(hours => $2)
+                       + (COALESCE(a."slaPausedMs", 0) / 1000) * interval '1 second' <= now()
+             ) x GROUP BY x.uid`, [chId, timeoutHours, start, end]);
+        // §97：经手单中已升级平台仲裁的单数
+        const escalatedRows = await raw.query(`SELECT x.uid, COUNT(DISTINCT x.rid)::int AS n FROM (
+                SELECT h."operatorUserId" AS uid, a.id AS rid
+                  FROM after_sales_state_history h
+                  JOIN after_sales_request a ON a.id = h."requestId"
+                 WHERE h."operatorUserId" IS NOT NULL AND h."createdAt" >= $3 AND h."createdAt" < $4
+                   AND ${scope}
+                   AND EXISTS (SELECT 1 FROM campus_after_sales_escalation e WHERE e."requestId" = a.id)
+             ) x GROUP BY x.uid`, [chId, start, end]);
+        const toMap = (rows) => {
+            const m = new Map();
+            for (const r of (Array.isArray(rows) ? rows : []))
+                m.set(Number(r.uid), Number(r.n) || 0);
+            return m;
+        };
+        const overdueMap = toMap(overdueRows);
+        const escalatedMap = toMap(escalatedRows);
         return (Array.isArray(countRows) ? countRows : [])
             .map(r => {
-            var _a, _b, _c;
-            return ({
+            var _a, _b, _c, _d, _e;
+            const handled = Number(r.handled) || 0;
+            const resolved = Number(r.resolved) || 0;
+            return {
                 operatorUserId: String(r.uid),
                 operatorName: String((_a = r.name) !== null && _a !== void 0 ? _a : '').trim() || `操作人 #${String(r.uid)}`,
-                handled: Number(r.handled) || 0,
-                resolved: Number(r.resolved) || 0,
+                handled,
+                resolved,
                 firstActionAvgMinutes: (_b = firstMap.get(Number(r.uid))) !== null && _b !== void 0 ? _b : 0,
                 resolveAvgMinutes: (_c = resolveMap.get(Number(r.uid))) !== null && _c !== void 0 ? _c : 0,
-            });
+                overdueCount: (_d = overdueMap.get(Number(r.uid))) !== null && _d !== void 0 ? _d : 0,
+                escalatedCount: (_e = escalatedMap.get(Number(r.uid))) !== null && _e !== void 0 ? _e : 0,
+                resolveRate: handled > 0 ? Math.round((resolved / handled) * 100) : 0,
+            };
         })
             .sort((a, b) => b.handled - a.handled);
     }
@@ -3859,6 +3985,8 @@ let MerchantAdminService = class MerchantAdminService {
             throw new core_2.UserInputError('售后插件未安装，暂不能留言');
         try {
             const msg = await svc.addMessage(ctx, id, 'admin', String(content !== null && content !== void 0 ? content : ''), images !== null && images !== void 0 ? images : null);
+            // §97 顾客端进度推送：商家回复留言单独触达，dedupe 用留言 id（同一单多次回复各推一条）
+            this.notify.user(ctx, request.orderId, 'afterSales', '商家已回复您的售后留言', undefined, `msg${msg.id}`);
             return {
                 id: String(msg.id),
                 senderType: String(msg.senderType),
