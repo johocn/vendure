@@ -52,7 +52,12 @@ let PaymentScheduleAdminResolver = class PaymentScheduleAdminResolver {
         const result = await this.scheduleService.releaseDepositForRental(ctx, orderId);
         return this.scheduleService.presentSchedule(result);
     }
-    /** 手动触发调度扫描（运维工具 + e2e 依赖；与每分钟 ScheduledTask 等价） */
+    /**
+     * 手动触发调度扫描（与每分钟 ScheduledTask 等价的同一套 service 方法）。
+     * 扫描范围由 ctx.channelId 限定（processTriggers / processOverdue / processShipDeadlines
+     * 均按 channelScheduleIds(ctx) 取数），店长手动触发只会影响自己渠道的数据。
+     * 定时任务走 PaymentScheduleJob.runAllChannels（逐渠道），不经过本 resolver 的 @Allow。
+     */
     async runScheduleScan(ctx) {
         const triggers = await this.scheduleService.processTriggers(ctx);
         const overdues = await this.scheduleService.processOverdue(ctx);
@@ -122,7 +127,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(constants_1.ManagePaymentSchedulePermissionDefinition.Permission, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),

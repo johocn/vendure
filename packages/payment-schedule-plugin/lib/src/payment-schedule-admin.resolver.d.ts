@@ -10,7 +10,12 @@ export declare class PaymentScheduleAdminResolver {
     confirmSellerBreach(ctx: RequestContext, scheduleId: ID): Promise<any>;
     confirmCodReceived(ctx: RequestContext, orderId: ID): Promise<any>;
     releaseRentalDeposit(ctx: RequestContext, orderId: ID): Promise<any>;
-    /** 手动触发调度扫描（运维工具 + e2e 依赖；与每分钟 ScheduledTask 等价） */
+    /**
+     * 手动触发调度扫描（与每分钟 ScheduledTask 等价的同一套 service 方法）。
+     * 扫描范围由 ctx.channelId 限定（processTriggers / processOverdue / processShipDeadlines
+     * 均按 channelScheduleIds(ctx) 取数），店长手动触发只会影响自己渠道的数据。
+     * 定时任务走 PaymentScheduleJob.runAllChannels（逐渠道），不经过本 resolver 的 @Allow。
+     */
     runScheduleScan(ctx: RequestContext): Promise<{
         activated: number;
         overdue: number;

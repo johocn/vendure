@@ -119,6 +119,8 @@ export declare class PaymentScheduleService {
      */
     cancelSchedule(ctx: RequestContext, orderId: ID, confirmForfeit: boolean): Promise<ScheduleWithItems>;
     private channelScheduleIds;
+    /** 单条计划是否属于当前请求渠道（用于非 channelScheduleIds 取数的连带操作） */
+    private isScheduleInChannel;
     /** 触发扫描：locked → payable（date 到点 / interval 到点 / group_buy 活动完成或失败） */
     processTriggers(ctx: RequestContext, now?: Date): Promise<{
         activated: number;

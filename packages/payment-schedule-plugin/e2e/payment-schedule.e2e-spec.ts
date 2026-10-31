@@ -2,10 +2,10 @@ import { createTestEnvironment, registerInitializer, SimpleGraphQLClient, SqljsI
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { LanguageCode, mergeConfig, PaymentMethodHandler } from '@vendure/core';
+import { LanguageCode, mergeConfig, PaymentMethodHandler, Injector } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
-import { PaymentSchedulePlugin } from '@vendure/payment-schedule-plugin';
+import { PaymentSchedulePlugin, PaymentScheduleJob } from '@vendure/payment-schedule-plugin';
 import { PreSalePlugin } from '@vendure/pre-sale-plugin';
 import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { singleStageRefundablePaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
@@ -481,9 +481,10 @@ describe('PaymentSchedulePlugin · 期次调度主流程', () => {
     /**
      * 权限门禁：生产 manager 角色没有 UpdateOrder，代收 COD / 释放押金改由插件自定义
      * 权限 ManagePaymentSchedule 放行（见 payment-schedule-plugin constants + delivery-plugin RoleSync）。
+     * runScheduleScan 同样收敛到 ManagePaymentSchedule，但扫描范围仍限定在请求渠道内。
      * 这里用真实普通管理员（非 superadmin）验证成功路径，并确认只读角色/匿名仍被拒。
      */
-    it('权限门禁：真实店长（ManagePaymentSchedule）可确认 COD 收款；只读角色与匿名被拒', async () => {
+    it('权限门禁：真实店长（ManagePaymentSchedule）可确认 COD 收款 + 触发本渠道扫描；只读角色与匿名被拒', async () => {
         await adminClient.asSuperAdmin();
         // 角色/管理员由 superadmin 建（生产环境角色权限由 delivery-plugin RoleSync 增量补齐）
         const mgrRole = (await adminClient.query(gql`
@@ -531,21 +532,94 @@ describe('PaymentSchedulePlugin · 期次调度主流程', () => {
         expect(confirmed.confirmCodReceived.items[1].status).toBe('paid');
         expect((await scheduleOf(orderId)).items[1].status).toBe('paid');
 
-        // 运维扫描仍只给 UpdateOrder / SuperAdmin，店长不应顺带获得
+        // 店长（ManagePaymentSchedule）现在可手动触发调度扫描（等价于每分钟 ScheduledTask 的同一套 service）
+        const mgrScan = await runScan();
+        expect(typeof mgrScan.activated).toBe('number');
+
+        // —— 渠道隔离：渠道1 两条已到期 date 计划，店长扫描只解锁本渠道 ——
+        await adminClient.asSuperAdmin();
+        const ch1OrderA = await applyPreSale(await createActivity({ tailTriggerType: 'date', tailStartAt: ts(-1) }));
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${ch1OrderA}", method: "${PAY_METHOD}") { id state } }
+        `);
+        const ch1OrderB = await applyPreSale(await createActivity({ tailTriggerType: 'date', tailStartAt: ts(-1) }));
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${ch1OrderB}", method: "${PAY_METHOD}") { id state } }
+        `);
+        await adminClient.asUserWithCredentials('ps-manager@test.com', 'ps-manager-123');
+        const mgrScan1 = await runScan();
+        expect(mgrScan1.activated).toBeGreaterThanOrEqual(2);
+        expect((await scheduleOf(ch1OrderA)).items[1].status).toBe('payable');
+        expect((await scheduleOf(ch1OrderB)).items[1].status).toBe('payable');
+
+        // —— 另建渠道2 + 渠道2 店长：其扫描不得影响渠道1 的计划 ——
+        await adminClient.asSuperAdmin();
+        const channelMeta = (await adminClient.query(gql`
+            query { channels { items { code token } } }
+        `)) as any;
+        const defaultChannelToken = channelMeta.channels.items[0].token as string;
+        const zoneId = ((await adminClient.query(gql`query { zones { items { id } } }`)) as any).zones.items[0].id;
+        await adminClient.query(gql`
+            mutation { createChannel(input: {
+                code: "ps-ch2" token: "ps-ch2-token"
+                defaultLanguageCode: en
+                pricesIncludeTax: true
+                defaultCurrencyCode: USD
+                defaultTaxZoneId: "${zoneId}"
+                defaultShippingZoneId: "${zoneId}"
+            }) { ... on Channel { id token } } }
+        `);
+        adminClient.setChannelToken('ps-ch2-token');
+        const ch2Role = (await adminClient.query(gql`
+            mutation { createRole(input: {
+                code: "ps-ch2-manager-e2e" description: "渠道2店长" permissions: [ManagePaymentSchedule]
+            }) { id } }
+        `)) as any;
+        await adminClient.query(gql`
+            mutation { createAdministrator(input: {
+                firstName: "店长" lastName: "丙" emailAddress: "ps-ch2-manager@test.com" password: "ps-ch2-manager-123"
+                roleIds: ["${ch2Role.createRole.id}"]
+            }) { id } }
+        `);
+        // 回渠道1：造一条仍为 locked 的计划
+        adminClient.setChannelToken(defaultChannelToken);
+        const ch1OrderC = await applyPreSale(await createActivity({ tailTriggerType: 'date', tailStartAt: ts(-1) }));
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${ch1OrderC}", method: "${PAY_METHOD}") { id state } }
+        `);
+        expect((await scheduleOf(ch1OrderC)).items[1].status).toBe('locked');
+
+        // 渠道2 店长扫描 → 只扫渠道2（0 条），渠道1 的 locked 计划不受影响
+        await adminClient.asUserWithCredentials('ps-ch2-manager@test.com', 'ps-ch2-manager-123');
+        const ch2Scan = await runScan();
+        expect(ch2Scan.activated).toBe(0);
+        expect((await scheduleOf(ch1OrderC)).items[1].status).toBe('locked');
+
+        // 回渠道1 超管扫描 → 该计划正常解锁（证明未因渠道2 扫描而失效）
+        await adminClient.asSuperAdmin();
+        adminClient.setChannelToken(defaultChannelToken);
+        const saScan = await runScan();
+        expect(saScan.activated).toBeGreaterThanOrEqual(1);
+        expect((await scheduleOf(ch1OrderC)).items[1].status).toBe('payable');
+
+        // 定时任务路径：ScheduledTask → PaymentScheduleJob.runAllChannels（不经 resolver @Allow），
+        // 权限改动不应影响其逐渠道扫描
+        const job = server.app.get(PaymentScheduleJob);
+        const jobResult = await job.runAllChannels(new Injector(server.app as any));
+        expect(typeof jobResult.activated).toBe('number');
+        expect(typeof jobResult.overdue).toBe('number');
+        expect(typeof jobResult.shipBreaches).toBe('number');
+
+        // 无 ManagePaymentSchedule 的只读角色 → 拒绝
+        await adminClient.asUserWithCredentials('ps-readonly@test.com', 'ps-readonly-123');
         await expect(
             adminClient.query(gql`mutation { runScheduleScan { activated overdue shipBreaches } }`),
         ).rejects.toThrow(/not currently authorized/);
 
-        // 无 ManagePaymentSchedule 的只读角色 → 仍被拒
-        await adminClient.asUserWithCredentials('ps-readonly@test.com', 'ps-readonly-123');
-        await expect(
-            adminClient.query(gql`mutation { confirmCodReceived(orderId: "${orderId}") { id } }`),
-        ).rejects.toThrow(/not currently authorized/);
-
-        // 匿名 → 仍被拒
+        // 匿名 → 拒绝
         await adminClient.asAnonymousUser();
         await expect(
-            adminClient.query(gql`mutation { confirmCodReceived(orderId: "${orderId}") { id } }`),
+            adminClient.query(gql`mutation { runScheduleScan { activated overdue shipBreaches } }`),
         ).rejects.toThrow(/not currently authorized/);
     });
 });

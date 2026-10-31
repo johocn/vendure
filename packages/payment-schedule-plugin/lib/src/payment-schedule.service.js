@@ -437,6 +437,15 @@ let PaymentScheduleService = class PaymentScheduleService {
             .getMany();
         return rows.map(r => r.id);
     }
+    /** 单条计划是否属于当前请求渠道（用于非 channelScheduleIds 取数的连带操作） */
+    async isScheduleInChannel(ctx, scheduleId) {
+        const count = await this.scheduleRepo(ctx)
+            .createQueryBuilder('s')
+            .innerJoin('s.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
+            .where('s.id = :id', { id: scheduleId })
+            .getCount();
+        return count > 0;
+    }
     /** 触发扫描：locked → payable（date 到点 / interval 到点 / group_buy 活动完成或失败） */
     async processTriggers(ctx, now = new Date()) {
         const ids = await this.channelScheduleIds(ctx);
@@ -515,6 +524,10 @@ let PaymentScheduleService = class PaymentScheduleService {
         for (const scheduleId of scheduleIds) {
             const schedule = await this.scheduleRepo(ctx).findOne({ where: { id: scheduleId } });
             if (!schedule || !OPEN_SCHEDULE_STATUSES.includes(schedule.status))
+                continue;
+            // 渠道约束：本方法可能被当前渠道的扫描触发（handleGroupBuyTrigger），
+            // 团购活动失败的连带退款必须限定在 ctx.channelId 内，避免跨渠道误退款。
+            if (!(await this.isScheduleInChannel(ctx, scheduleId)))
                 continue;
             const all = await this.findItems(ctx, scheduleId);
             const order = await this.orderWithPayments(ctx, schedule.orderId);
