@@ -42,7 +42,8 @@ export class AfterSalesReviewShopResolver {
         @Args('requestId') requestId: ID,
         @Args({ name: 'score', type: () => Int }) score: number,
         @Args({ name: 'comment', type: () => String, nullable: true }) comment?: string | null,
+        @Args({ name: 'tags', type: () => [String], nullable: true }) tags?: string[] | null,
     ) {
-        return this.reviews.submit(ctx, requestId, score, comment);
+        return this.reviews.submit(ctx, requestId, score, comment, tags);
     }
 }

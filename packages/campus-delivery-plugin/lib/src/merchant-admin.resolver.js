@@ -242,6 +242,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantAfterSalesReplyTemplates(ctx, category, keyword) {
         return this.merchant.afterSalesReplyTemplates(ctx, { category, keyword });
     }
+    /** 商品维度售后分析（§98）：区间内按商品聚合售后率与退款额 */
+    async campusMerchantAfterSalesProductAnalysis(ctx, from, to) {
+        return this.merchant.afterSalesProductAnalysis(ctx, from, to);
+    }
+    /** 退货物流轨迹（§98）：运单信息 + 系统/商家节点合并时间线 */
+    async campusMerchantAfterSalesReturnLogistics(ctx, id) {
+        return this.merchant.afterSalesReturnLogistics(ctx, id);
+    }
+    /** 售后自动分流规则（§98）：按优先级升序 */
+    async campusMerchantAfterSalesAutoRules(ctx) {
+        return this.merchant.afterSalesAutoRules(ctx);
+    }
     /** 售后工作台摘要（§88） */
     async campusMerchantAfterSalesWorkbench(ctx) {
         return this.merchant.afterSalesWorkbench(ctx);
@@ -356,6 +368,29 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 删除快捷回复模板（§87） */
     async campusMerchantDeleteAfterSalesReplyTemplate(ctx, id) {
         return this.merchant.deleteAfterSalesReplyTemplate(ctx, id);
+    }
+    /** 登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception */
+    async campusMerchantAfterSalesRecordReturnLogistics(ctx, id, status, description) {
+        return this.merchant.afterSalesRecordReturnLogistics(ctx, id, status, description);
+    }
+    /** 保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate */
+    async campusMerchantSaveAfterSalesAutoRule(ctx, id, name, action, priority, enabled, matchType, matchReason, minAmount, maxAmount, rejectReason) {
+        return this.merchant.saveAfterSalesAutoRule(ctx, {
+            id,
+            name,
+            action,
+            priority,
+            enabled,
+            matchType,
+            matchReason,
+            minAmount,
+            maxAmount,
+            rejectReason,
+        });
+    }
+    /** 删除售后自动分流规则（§98） */
+    async campusMerchantDeleteAfterSalesAutoRule(ctx, id) {
+        return this.merchant.deleteAfterSalesAutoRule(ctx, id);
     }
     /** 手动排程退款重试（§87）：仅 RefundFailed */
     async campusMerchantAfterSalesScheduleRefundRetry(ctx, id) {
@@ -978,6 +1013,33 @@ __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from')),
+    __param(2, (0, graphql_1.Args)('to')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesProductAnalysis", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesReturnLogistics", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesAutoRules", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
@@ -1240,6 +1302,44 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantDeleteAfterSalesReplyTemplate", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('status')),
+    __param(3, (0, graphql_1.Args)({ name: 'description', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesRecordReturnLogistics", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'id', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)('name')),
+    __param(3, (0, graphql_1.Args)('action')),
+    __param(4, (0, graphql_1.Args)({ name: 'priority', type: () => graphql_1.Int, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'enabled', type: () => Boolean, nullable: true })),
+    __param(6, (0, graphql_1.Args)({ name: 'matchType', type: () => String, nullable: true })),
+    __param(7, (0, graphql_1.Args)({ name: 'matchReason', type: () => String, nullable: true })),
+    __param(8, (0, graphql_1.Args)({ name: 'minAmount', type: () => graphql_1.Int, nullable: true })),
+    __param(9, (0, graphql_1.Args)({ name: 'maxAmount', type: () => graphql_1.Int, nullable: true })),
+    __param(10, (0, graphql_1.Args)({ name: 'rejectReason', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String, Object, Object, Object, Object, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantSaveAfterSalesAutoRule", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantDeleteAfterSalesAutoRule", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

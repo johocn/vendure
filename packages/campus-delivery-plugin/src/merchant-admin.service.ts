@@ -668,6 +668,10 @@ export interface MerchantAfterSalesStaffRow {
     escalatedCount: number;
     /** 完结率（百分比 0-100，§97） */
     resolveRate: number;
+    /** 经手单收到的满意度评分数（§98，按评价时间归集） */
+    reviewCount: number;
+    /** 经手单满意度平均分（保留 1 位小数，无评分为 0，§98） */
+    reviewAvgScore: number;
 }
 
 /** 售后 CSV 导出筛选（§97）：空值表示不筛选 */
@@ -680,6 +684,71 @@ export interface MerchantAfterSalesExportFilter {
     keyword?: string | null;
     /** 指派处理人 User id */
     assigneeUserId?: string | null;
+}
+
+/** 商品维度售后行（§98）：按商品聚合件数口径售后率与退款额（区别于 §92 的订单数口径） */
+export interface MerchantAfterSalesProductRateRow {
+    productId: string;
+    productName: string;
+    /** 区间内下单件数（不含已取消订单） */
+    soldQuantity: number;
+    /** 区间内售后单数 */
+    requestCount: number;
+    /** 区间内已退款单数 */
+    refundCount: number;
+    /** 区间内退款金额（分） */
+    refundAmount: number;
+    /** 售后率（百分比，保留 1 位小数） */
+    afterSalesRate: number;
+}
+
+/** 商品维度售后分析（§98）：Top 列表 + 区间汇总 */
+export interface MerchantAfterSalesProductRateAnalysis {
+    items: MerchantAfterSalesProductRateRow[];
+    totalRequests: number;
+    totalRefundAmount: number;
+    totalSold: number;
+}
+
+/** 退货物流轨迹节点（§98） */
+export interface MerchantAfterSalesReturnLogisticsEvent {
+    /** approved / shipped / picked_up / in_transit / delivered / exception / closed */
+    status: string;
+    description: string;
+    occurredAt: Date;
+    /** system=系统按状态派生 / merchant=商家登记 */
+    source: string;
+}
+
+/** 退货物流（§98）：运单信息 + 轨迹时间线 */
+export interface MerchantAfterSalesReturnLogistics {
+    requestId: string;
+    orderCode: string;
+    type: string;
+    state: string;
+    trackingNo: string | null;
+    carrier: string | null;
+    events: MerchantAfterSalesReturnLogisticsEvent[];
+}
+
+/** 售后自动分流规则（§98） */
+export interface MerchantAfterSalesAutoRule {
+    id: string;
+    name: string;
+    /** 匹配优先级：越小越先命中 */
+    priority: number;
+    enabled: boolean;
+    /** * 或售后类型 */
+    matchType: string;
+    /** 申请原因关键词（空=不限） */
+    matchReason: string | null;
+    minAmount: number | null;
+    maxAmount: number | null;
+    /** approve / reject / escalate */
+    action: string;
+    /** 驳回时给顾客看的原因（仅 reject） */
+    rejectReason: string | null;
+    createdAt: Date;
 }
 
 /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
@@ -3235,6 +3304,293 @@ export class MerchantAdminService {
         }
     }
 
+    /** 商品维度售后分析（§98）：区间内按商品聚合下单件数、售后单数与退款额，售后率=售后单/下单件 */
+    async afterSalesProductAnalysis(
+        ctx: RequestContext,
+        from: string,
+        to: string,
+    ): Promise<MerchantAfterSalesProductRateAnalysis> {
+        const start = this.campusDayStart(from);
+        const end = this.campusDayEnd(to);
+        if (!start || !end) throw new UserInputError('日期格式无效，应为 YYYY-MM-DD');
+        if (start.getTime() > end.getTime()) throw new UserInputError('开始日期不能晚于结束日期');
+        if (end.getTime() - start.getTime() > 366 * 86_400_000) throw new UserInputError('查询区间最长一年');
+        const chId = Number(ctx.channelId);
+        const rows: any = await this.connection.rawConnection.query(
+            `WITH sold AS (
+                SELECT pv."productId" AS pid, SUM(ol.quantity)::int AS sold
+                  FROM order_line ol
+                  JOIN "order" o ON o.id = ol."orderId"
+                  JOIN product_variant pv ON pv.id = ol."productVariantId"
+                 WHERE o."createdAt" >= $2 AND o."createdAt" < $3 AND o.state <> 'cancelled'
+                   AND EXISTS (SELECT 1 FROM order_channels_channel oc
+                                WHERE oc."orderId" = o.id AND oc."channelId" = $1)
+                 GROUP BY pv."productId"
+             ), reqs AS (
+                SELECT pv."productId" AS pid,
+                       COUNT(*)::int AS requests,
+                       COUNT(*) FILTER (WHERE a.state = 'Refunded')::int AS refunded,
+                       COALESCE(SUM(COALESCE(a."actualRefundAmount", a."refundAmount")), 0)::int AS amount
+                  FROM after_sales_request a
+                  JOIN "order" o ON o.id = a."orderId"
+                  JOIN order_line ol ON ol.id = a."orderLineId"
+                  JOIN product_variant pv ON pv.id = ol."productVariantId"
+                 WHERE a."createdAt" >= $2 AND a."createdAt" < $3
+                   AND EXISTS (SELECT 1 FROM order_channels_channel oc
+                                WHERE oc."orderId" = o.id AND oc."channelId" = $1)
+                 GROUP BY pv."productId"
+             )
+             SELECT p.id AS "productId", COALESCE(pt.name, '商品 #' || p.id) AS name,
+                    COALESCE(s.sold, 0)::int AS "soldQuantity",
+                    r.requests, r.refunded, r.amount
+               FROM reqs r
+               JOIN product p ON p.id = r.pid
+               LEFT JOIN product_translation pt ON pt."baseId" = p.id AND pt."languageCode" = 'zh_Hans'
+               LEFT JOIN sold s ON s.pid = p.id
+              ORDER BY r.requests DESC, r.amount DESC
+              LIMIT 30`,
+            [chId, start, end],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const items: MerchantAfterSalesProductRateRow[] = (Array.isArray(list) ? list : []).map(r => {
+            const soldQuantity = Number(r.soldQuantity) || 0;
+            const requestCount = Number(r.requests) || 0;
+            return {
+                productId: String(r.productId),
+                productName: String(r.name ?? ''),
+                soldQuantity,
+                requestCount,
+                refundCount: Number(r.refunded) || 0,
+                refundAmount: Number(r.amount) || 0,
+                afterSalesRate: soldQuantity > 0 ? Math.round((requestCount / soldQuantity) * 1000) / 10 : 0,
+            };
+        });
+        return {
+            items,
+            totalRequests: items.reduce((s, x) => s + x.requestCount, 0),
+            totalRefundAmount: items.reduce((s, x) => s + x.refundAmount, 0),
+            totalSold: items.reduce((s, x) => s + x.soldQuantity, 0),
+        };
+    }
+
+    /** 退货物流轨迹（§98）：运单信息 + 系统派生节点与商家登记节点合并时间线 */
+    async afterSalesReturnLogistics(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesReturnLogistics> {
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        const raw = this.connection.rawConnection;
+        const historyRows: any = await raw.query(
+            'SELECT "toState", "createdAt" FROM after_sales_state_history '
+            + 'WHERE "requestId" = $1 AND "toState" IN (\'Approved\', \'Returning\', \'Received\', \'Closed\') '
+            + 'ORDER BY "createdAt" ASC, id ASC',
+            [Number(request.id)],
+        );
+        const manualRows: any = await raw.query(
+            'SELECT status, description, "occurredAt" FROM campus_after_sales_return_logistics '
+            + 'WHERE "channelId" = $1 AND "requestId" = $2 ORDER BY "occurredAt" ASC, id ASC LIMIT 20',
+            [Number(ctx.channelId), Number(request.id)],
+        );
+        const events: MerchantAfterSalesReturnLogisticsEvent[] = [];
+        const list = (res: any): any[] => (Array.isArray(res) && Array.isArray(res[0]) ? res[0] : Array.isArray(res) ? res : []);
+        const seen = new Set<string>();
+        for (const h of list(historyRows)) {
+            const to = String(h.toState);
+            const event: MerchantAfterSalesReturnLogisticsEvent | null =
+                to === 'Approved' ? { status: 'approved', description: '审核通过，等待顾客寄回', occurredAt: new Date(h.createdAt), source: 'system' }
+                : to === 'Returning' ? { status: 'shipped', description: '顾客已寄出（等待揽收）', occurredAt: new Date(h.createdAt), source: 'system' }
+                : to === 'Received' ? { status: 'delivered', description: '商家已签收退货', occurredAt: new Date(h.createdAt), source: 'system' }
+                : to === 'Closed' ? { status: 'closed', description: '售后已关闭', occurredAt: new Date(h.createdAt), source: 'system' }
+                : null;
+            if (event) {
+                seen.add(event.status);
+                events.push(event);
+            }
+        }
+        for (const m of list(manualRows)) {
+            // 商家登记的签收节点覆盖系统派生的同状态节点，避免重复
+            if (String(m.status) === 'delivered') seen.delete('delivered');
+            events.push({
+                status: String(m.status),
+                description: String(m.description ?? ''),
+                occurredAt: new Date(m.occurredAt),
+                source: 'merchant',
+            });
+        }
+        const filtered = events
+            .filter(e => e.status !== 'delivered' || !seen.has('delivered') || e.source === 'merchant')
+            .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+        return {
+            requestId: String(request.id),
+            orderCode: String((request as any).order?.code ?? ''),
+            type: String(request.type),
+            state: String(request.state),
+            trackingNo: request.returnTrackingNo ?? null,
+            carrier: request.returnCarrier ?? null,
+            events: filtered,
+        };
+    }
+
+    /** 登记退货物流节点（§98）：商家按快递扫描节点补录，status=picked_up/in_transit/delivered/exception */
+    async afterSalesRecordReturnLogistics(
+        ctx: RequestContext,
+        id: ID,
+        status: string,
+        description?: string | null,
+    ): Promise<MerchantAfterSalesReturnLogistics> {
+        const request = await this.assertChannelAfterSales(ctx, id, []);
+        const st = String(status ?? '').trim();
+        if (!['picked_up', 'in_transit', 'delivered', 'exception'].includes(st)) {
+            throw new UserInputError('物流状态无效');
+        }
+        const text = String(description ?? '').trim();
+        if (text.length > 200) throw new UserInputError('物流说明最多 200 字');
+        await this.connection.rawConnection.query(
+            'INSERT INTO campus_after_sales_return_logistics '
+            + '("channelId", "requestId", status, description, "createdBy") VALUES ($1, $2, $3, $4, $5)',
+            [Number(ctx.channelId), Number(request.id), st, text || null, ctx.activeUserId ? Number(ctx.activeUserId) : null],
+        );
+        return this.afterSalesReturnLogistics(ctx, id);
+    }
+
+    /** 售后自动分流规则列表（§98）：本店渠道，按优先级升序 */
+    async afterSalesAutoRules(ctx: RequestContext): Promise<MerchantAfterSalesAutoRule[]> {
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT id, name, priority, enabled, "matchType", "matchReason", "minAmount", "maxAmount", '
+            + 'action, "rejectReason", "createdAt" FROM campus_after_sales_auto_rule '
+            + 'WHERE "channelId" = $1 ORDER BY priority ASC, id ASC LIMIT 50',
+            [Number(ctx.channelId)],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).map(r => this.toAutoRule(r));
+    }
+
+    /** 保存售后自动分流规则（§98）：id 为空=新增；action=approve/reject/escalate */
+    async saveAfterSalesAutoRule(
+        ctx: RequestContext,
+        input: {
+            id?: ID | null;
+            name: string;
+            priority?: number | null;
+            enabled?: boolean | null;
+            matchType?: string | null;
+            matchReason?: string | null;
+            minAmount?: number | null;
+            maxAmount?: number | null;
+            action: string;
+            rejectReason?: string | null;
+        },
+    ): Promise<MerchantAfterSalesAutoRule> {
+        const name = String(input.name ?? '').trim();
+        if (!name) throw new UserInputError('请填写规则名称');
+        if (name.length > 100) throw new UserInputError('规则名称最多 100 字');
+        const action = String(input.action ?? '').trim();
+        if (!['approve', 'reject', 'escalate'].includes(action)) throw new UserInputError('动作无效');
+        const matchType = String(input.matchType ?? '*').trim() || '*';
+        if (!['*', 'refund_only', 'return_refund', 'exchange'].includes(matchType)) throw new UserInputError('匹配类型无效');
+        const matchReason = String(input.matchReason ?? '').trim().slice(0, 200) || null;
+        const rejectReason = String(input.rejectReason ?? '').trim().slice(0, 200) || null;
+        if (action === 'reject' && !rejectReason) throw new UserInputError('驳回动作需填写顾客可见原因');
+        const priority = input.priority == null ? 0 : Math.floor(Number(input.priority));
+        if (!Number.isFinite(priority) || priority < 0 || priority > 999) throw new UserInputError('优先级应为 0-999');
+        const minAmount = input.minAmount == null ? null : Math.floor(Number(input.minAmount));
+        const maxAmount = input.maxAmount == null ? null : Math.floor(Number(input.maxAmount));
+        if (minAmount != null && (!Number.isFinite(minAmount) || minAmount < 0)) throw new UserInputError('最小金额无效');
+        if (maxAmount != null && (!Number.isFinite(maxAmount) || maxAmount < 0)) throw new UserInputError('最大金额无效');
+        if (minAmount != null && maxAmount != null && minAmount > maxAmount) throw new UserInputError('最小金额不能大于最大金额');
+        const enabled = input.enabled == null ? true : Boolean(input.enabled);
+        const raw = this.connection.rawConnection;
+        const chId = Number(ctx.channelId);
+        if (input.id != null) {
+            const rows: any = await raw.query(
+                'UPDATE campus_after_sales_auto_rule SET name = $1, priority = $2, enabled = $3, "matchType" = $4, '
+                + '"matchReason" = $5, "minAmount" = $6, "maxAmount" = $7, action = $8, "rejectReason" = $9, '
+                + '"updatedAt" = now() WHERE id = $10 AND "channelId" = $11 RETURNING *',
+                [name, priority, enabled, matchType, matchReason, minAmount, maxAmount, action, rejectReason, Number(input.id), chId],
+            );
+            const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+            const r = list?.[0];
+            if (!r) throw new UserInputError('规则不存在或不属于当前店铺');
+            return this.toAutoRule(r);
+        }
+        const countRows: any = await raw.query(
+            'SELECT COUNT(*)::int AS n FROM campus_after_sales_auto_rule WHERE "channelId" = $1',
+            [chId],
+        );
+        const countList: any[] = Array.isArray(countRows) && Array.isArray(countRows[0]) ? countRows[0] : countRows;
+        if (Number(countList?.[0]?.n ?? 0) >= 30) throw new UserInputError('分流规则最多 30 条');
+        const rows: any = await raw.query(
+            'INSERT INTO campus_after_sales_auto_rule ("channelId", name, priority, enabled, "matchType", '
+            + '"matchReason", "minAmount", "maxAmount", action, "rejectReason") '
+            + 'VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+            [chId, name, priority, enabled, matchType, matchReason, minAmount, maxAmount, action, rejectReason],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const r = list?.[0];
+        if (!r) throw new UserInputError('规则保存失败');
+        return this.toAutoRule(r);
+    }
+
+    /** 删除售后自动分流规则（§98） */
+    async deleteAfterSalesAutoRule(ctx: RequestContext, id: ID): Promise<boolean> {
+        const rows: any = await this.connection.rawConnection.query(
+            'DELETE FROM campus_after_sales_auto_rule WHERE id = $1 AND "channelId" = $2 RETURNING id',
+            [Number(id), Number(ctx.channelId)],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        return (Array.isArray(list) ? list : []).length > 0;
+    }
+
+    /**
+     * 执行自动分流规则（§98）：扫描本店近 7 日未分流过的 Pending 单，按优先级首个命中规则执行
+     * approve / reject / escalate，执行后写 autoRuleAppliedAt 防重复（失败也标记，避免每轮重试放大退款风险）。
+     */
+    async applyAfterSalesAutoRules(ctx: RequestContext, limit = 50): Promise<number> {
+        const rules = (await this.afterSalesAutoRules(ctx)).filter(r => r.enabled);
+        if (!rules.length) return 0;
+        const chId = Number(ctx.channelId);
+        const rows: any = await this.connection.rawConnection.query(
+            'SELECT a.id, a.type, a.reason, a."refundAmount" AS amount '
+            + 'FROM after_sales_request a '
+            + 'WHERE a.state = \'Pending\' AND a."autoRuleAppliedAt" IS NULL '
+            + 'AND a."createdAt" >= now() - interval \'7 days\' '
+            + 'AND EXISTS (SELECT 1 FROM "order" o JOIN order_channels_channel oc ON oc."orderId" = o.id '
+            + 'AND oc."channelId" = $1 WHERE o.id = a."orderId") '
+            + 'ORDER BY a."createdAt" ASC LIMIT $2',
+            [chId, Math.min(100, Math.max(1, Math.floor(limit) || 50))],
+        );
+        const list: any[] = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const svc = this.getAfterSales();
+        if (!svc) return 0;
+        let applied = 0;
+        for (const r of (Array.isArray(list) ? list : [])) {
+            const type = String(r.type);
+            const reason = String(r.reason ?? '');
+            const amount = Number(r.amount) || 0;
+            const rule = rules.find(x =>
+                (x.matchType === '*' || x.matchType === type)
+                && (!x.matchReason || reason.includes(x.matchReason))
+                && (x.minAmount == null || amount >= x.minAmount)
+                && (x.maxAmount == null || amount <= x.maxAmount));
+            if (!rule) continue;
+            try {
+                if (rule.action === 'approve') {
+                    await svc.approveRequest(ctx, Number(r.id));
+                } else if (rule.action === 'reject') {
+                    await svc.rejectRequest(ctx, Number(r.id), rule.rejectReason ?? '不符合售后条件');
+                } else {
+                    await this.afterSalesEscalate(ctx, Number(r.id), `自动分流：${rule.name}`, 'normal');
+                }
+                applied++;
+            } catch (e: any) {
+                Logger.warn(`自动分流执行失败 request=${r.id} rule=${rule.id}: ${e?.message ?? e}`, 'CampusAfterSalesRule');
+            } finally {
+                await this.connection.rawConnection.query(
+                    'UPDATE after_sales_request SET "autoRuleAppliedAt" = now(), "autoRuleId" = $2 WHERE id = $1',
+                    [Number(r.id), Number(rule.id)],
+                ).catch(() => null);
+            }
+        }
+        return applied;
+    }
+
     /** 高频售后顾客 Top N（§85）：区间内售后次数/退款额，附黑名单状态，手机号脱敏 */
     async afterSalesTopCustomers(
         ctx: RequestContext,
@@ -4739,6 +5095,24 @@ export class MerchantAdminService {
              ) x GROUP BY x.uid`,
             [chId, start, end],
         );
+        // §98：经手单收到的满意度评分（评价表缺失时降级为 0）
+        let reviewRows: any = [];
+        try {
+            reviewRows = await raw.query(
+                `SELECT x.uid, COUNT(*)::int AS n, AVG(x.score) AS avg FROM (
+                    SELECT h."operatorUserId" AS uid, r.id AS rid, r.score
+                      FROM after_sales_state_history h
+                      JOIN campus_after_sales_review r ON r."requestId" = h."requestId"
+                      JOIN after_sales_request a ON a.id = h."requestId"
+                     WHERE h."operatorUserId" IS NOT NULL
+                       AND r."createdAt" >= $3 AND r."createdAt" < $4
+                       AND ${scope}
+                 ) x GROUP BY x.uid`,
+                [chId, start, end],
+            );
+        } catch {
+            reviewRows = [];
+        }
         const toMap = (rows: any): Map<number, number> => {
             const m = new Map<number, number>();
             for (const r of (Array.isArray(rows) ? rows : [])) m.set(Number(r.uid), Number(r.n) || 0);
@@ -4746,6 +5120,11 @@ export class MerchantAdminService {
         };
         const overdueMap = toMap(overdueRows);
         const escalatedMap = toMap(escalatedRows);
+        const reviewCountMap = toMap(reviewRows);
+        const reviewAvgMap = new Map<number, number>();
+        for (const r of (Array.isArray(reviewRows) ? reviewRows : [])) {
+            reviewAvgMap.set(Number(r.uid), Math.round((Number(r.avg) || 0) * 10) / 10);
+        }
         return (Array.isArray(countRows) ? countRows : [])
             .map(r => {
                 const handled = Number(r.handled) || 0;
@@ -4760,6 +5139,8 @@ export class MerchantAdminService {
                     overdueCount: overdueMap.get(Number(r.uid)) ?? 0,
                     escalatedCount: escalatedMap.get(Number(r.uid)) ?? 0,
                     resolveRate: handled > 0 ? Math.round((resolved / handled) * 100) : 0,
+                    reviewCount: reviewCountMap.get(Number(r.uid)) ?? 0,
+                    reviewAvgScore: reviewAvgMap.get(Number(r.uid)) ?? 0,
                 };
             })
             .sort((a, b) => b.handled - a.handled);
@@ -5410,6 +5791,23 @@ export class MerchantAdminService {
             throw new UserInputError(`驳回售后失败：${e?.message ?? e}`);
         }
         return this.afterSalesOne(ctx, id);
+    }
+
+    /** 分流规则行映射（§98）：DB 原始行 → 接口结构 */
+    private toAutoRule(r: any): MerchantAfterSalesAutoRule {
+        return {
+            id: String(r.id),
+            name: String(r.name ?? ''),
+            priority: Number(r.priority) || 0,
+            enabled: Boolean(r.enabled),
+            matchType: String(r.matchType ?? '*'),
+            matchReason: r.matchReason == null ? null : String(r.matchReason),
+            minAmount: r.minAmount == null ? null : Number(r.minAmount),
+            maxAmount: r.maxAmount == null ? null : Number(r.maxAmount),
+            action: String(r.action ?? ''),
+            rejectReason: r.rejectReason == null ? null : String(r.rejectReason),
+            createdAt: new Date(r.createdAt),
+        };
     }
 
     /** 售后单必须属于当前店铺，且状态在允许集合内（空集合=不校验状态） */

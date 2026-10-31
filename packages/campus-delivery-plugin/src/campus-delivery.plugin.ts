@@ -66,6 +66,7 @@ import { AfterSalesSlaAlertJob } from './after-sales-sla-alert.job';
 import { AfterSalesFollowUpRemindJob } from './after-sales-followup-remind.job';
 import { AfterSalesMonthlyPushJob } from './after-sales-monthly-push.job';
 import { AfterSalesAutoAssignJob } from './after-sales-auto-assign.job';
+import { AfterSalesAutoRuleJob } from './after-sales-auto-rule.job';
 import { AfterSalesAnomalyAlertJob } from './after-sales-anomaly-alert.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
@@ -164,6 +165,7 @@ import { P24AfterSalesRiskFollowupMigration } from './migrations/p24-after-sales
 import { P25AfterSalesSlaFollowupMonthlyMigration } from './migrations/p25-after-sales-sla-followup-monthly';
 import { P26AfterSalesEscalationAutomationMigration } from './migrations/p26-after-sales-escalation-automation';
 import { P27AfterSalesTemplateCategoryMigration } from './migrations/p27-after-sales-template-category';
+import { P28AfterSalesProductAndRulesMigration } from './migrations/p28-after-sales-product-and-rules';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -210,6 +212,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P25AfterSalesSlaFollowupMonthlyMigration,
         P26AfterSalesEscalationAutomationMigration,
         P27AfterSalesTemplateCategoryMigration,
+        P28AfterSalesProductAndRulesMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -225,6 +228,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         AfterSalesFollowUpRemindJob,
         AfterSalesMonthlyPushJob,
         AfterSalesAutoAssignJob,
+        AfterSalesAutoRuleJob,
         AfterSalesAnomalyAlertJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
@@ -929,7 +933,13 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     createdAt: DateTime!
                 }
 
-                """退款后满意度汇总（§93）"""
+                """评价标签计数（§98）"""
+                type CampusMerchantAfterSalesReviewTagCount {
+                    tag: String!
+                    count: Int!
+                }
+
+                """退款后满意度汇总（§93、§98）"""
                 type CampusMerchantAfterSalesReviewSummary {
                     total: Int!
                     """平均分（保留 1 位小数，无评分为 0）"""
@@ -940,6 +950,71 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     lowScoreCount: Int!
                     """低分待跟进明细（最近 20 条）"""
                     lowScores: [CampusMerchantAfterSalesLowReview!]!
+                    """评价标签 Top（§98）：按出现次数降序，最多 10 项"""
+                    topTags: [CampusMerchantAfterSalesReviewTagCount!]!
+                }
+
+                """商品维度售后行（§98，件数口径）"""
+                type CampusMerchantAfterSalesProductRateRow {
+                    productId: ID!
+                    productName: String!
+                    """区间内下单件数（不含已取消订单）"""
+                    soldQuantity: Int!
+                    """区间内售后单数"""
+                    requestCount: Int!
+                    """区间内已退款单数"""
+                    refundCount: Int!
+                    """区间内退款金额（分）"""
+                    refundAmount: Int!
+                    """售后率（百分比，保留 1 位小数）"""
+                    afterSalesRate: Float!
+                }
+
+                """商品维度售后分析（§98，件数口径）"""
+                type CampusMerchantAfterSalesProductRateAnalysis {
+                    items: [CampusMerchantAfterSalesProductRateRow!]!
+                    totalRequests: Int!
+                    totalRefundAmount: Int!
+                    totalSold: Int!
+                }
+
+                """退货物流轨迹节点（§98）"""
+                type CampusMerchantAfterSalesReturnLogisticsEvent {
+                    """approved / shipped / picked_up / in_transit / delivered / exception / closed"""
+                    status: String!
+                    description: String!
+                    occurredAt: DateTime!
+                    """system=系统按状态派生 / merchant=商家登记"""
+                    source: String!
+                }
+
+                """退货物流（§98）：运单信息 + 轨迹时间线"""
+                type CampusMerchantAfterSalesReturnLogistics {
+                    requestId: ID!
+                    orderCode: String!
+                    type: String!
+                    state: String!
+                    trackingNo: String
+                    carrier: String
+                    events: [CampusMerchantAfterSalesReturnLogisticsEvent!]!
+                }
+
+                """售后自动分流规则（§98）"""
+                type CampusMerchantAfterSalesAutoRule {
+                    id: ID!
+                    name: String!
+                    """匹配优先级：越小越先命中"""
+                    priority: Int!
+                    enabled: Boolean!
+                    """* 或售后类型"""
+                    matchType: String!
+                    matchReason: String
+                    minAmount: Int
+                    maxAmount: Int
+                    """approve / reject / escalate"""
+                    action: String!
+                    rejectReason: String
+                    createdAt: DateTime!
                 }
 
                 """售后处理统计（§81）：入口红点 + 今日处理量/退款额"""
@@ -999,6 +1074,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     escalatedCount: Int!
                     """完结率（百分比 0-100，§97）"""
                     resolveRate: Int!
+                    """经手单收到的满意度评分数（§98）"""
+                    reviewCount: Int!
+                    """经手单满意度平均分（1 位小数，无评分为 0，§98）"""
+                    reviewAvgScore: Float!
                 }
 
                 """售后工作台摘要（§88）：一次返回各待办入口与最老待处理时长"""
@@ -2172,6 +2251,12 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantAfterSalesNotes(id: ID!): [CampusMerchantAfterSalesNote!]!
                     """快捷回复模板（§87、§97）：本店渠道，可按分类/关键词检索"""
                     campusMerchantAfterSalesReplyTemplates(category: String, keyword: String): [CampusMerchantAfterSalesReplyTemplate!]!
+                    """商品维度售后分析（§98）：区间内按商品聚合售后率与退款额"""
+                    campusMerchantAfterSalesProductAnalysis(from: String!, to: String!): CampusMerchantAfterSalesProductRateAnalysis!
+                    """退货物流轨迹（§98）：运单信息 + 系统/商家节点合并时间线"""
+                    campusMerchantAfterSalesReturnLogistics(id: ID!): CampusMerchantAfterSalesReturnLogistics!
+                    """售后自动分流规则（§98）：按优先级升序"""
+                    campusMerchantAfterSalesAutoRules: [CampusMerchantAfterSalesAutoRule!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2511,6 +2596,12 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!, category: String, keywords: String, sortOrder: Int): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
                     campusMerchantDeleteAfterSalesReplyTemplate(id: ID!): Boolean!
+                    """登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception"""
+                    campusMerchantAfterSalesRecordReturnLogistics(id: ID!, status: String!, description: String): CampusMerchantAfterSalesReturnLogistics!
+                    """保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate"""
+                    campusMerchantSaveAfterSalesAutoRule(id: ID, name: String!, action: String!, priority: Int, enabled: Boolean, matchType: String, matchReason: String, minAmount: Int, maxAmount: Int, rejectReason: String): CampusMerchantAfterSalesAutoRule!
+                    """删除售后自动分流规则（§98）"""
+                    campusMerchantDeleteAfterSalesAutoRule(id: ID!): Boolean!
                     """手动排程退款重试（§87）：仅 RefundFailed，复位任务 1 分钟后执行"""
                     campusMerchantAfterSalesScheduleRefundRetry(id: ID!): CampusMerchantAfterSalesTask!
                     """保存售后标签（§88）：id 为空=新增，单店上限 20 个"""
@@ -3282,7 +3373,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
                     """退款后满意度回访（§93）：仅本人已退款完成的售后单，1-5 分"""
-                    campusSubmitAfterSalesReview(requestId: ID!, score: Int!, comment: String): CampusAfterSalesReviewResult!
+                    campusSubmitAfterSalesReview(requestId: ID!, score: Int!, comment: String, tags: [String!]): CampusAfterSalesReviewResult!
                     """P4-4 批量埋点上报（匿名可用），返回入库条数"""
                     campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
                     """P4-4 前端错误上报（匿名可用）"""
@@ -3408,6 +3499,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(AfterSalesMonthlyPushJob).start();
         // 售后自动分配（§96）：5 分钟把未指派售后单派给未完结量最少的处理人
         this.injector.get(AfterSalesAutoAssignJob).start();
+        this.injector.get(AfterSalesAutoRuleJob).start();
         // 售后异常预警推送（§96）：30 分钟检查近 7 日退款率/超时待处理，超阈值推店铺群
         this.injector.get(AfterSalesAnomalyAlertJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
@@ -3465,7 +3557,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             const text = e.toState === 'Approved' ? '售后审核通过'
                 : e.toState === 'Rejected' ? '售后申请被拒绝'
                 : e.toState === 'Received' ? '商家已收到退货'
-                : e.toState === 'Refunded' ? '退款已到账'
+                : e.toState === 'Refunded' ? '退款已到账，欢迎评价本次售后处理'
                 : e.toState === 'RefundFailed' ? '退款失败，请联系客服'
                 : e.toState === 'ExchangeShipped' ? '换货已发出，请留意物流'
                 : e.toState === 'Closed' ? '售后已结束'

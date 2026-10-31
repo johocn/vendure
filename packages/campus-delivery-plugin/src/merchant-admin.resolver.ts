@@ -542,6 +542,31 @@ export class MerchantAdminResolver {
         return this.merchant.afterSalesReplyTemplates(ctx, { category, keyword });
     }
 
+    /** 商品维度售后分析（§98）：区间内按商品聚合售后率与退款额 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesProductAnalysis(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+    ) {
+        return this.merchant.afterSalesProductAnalysis(ctx, from, to);
+    }
+
+    /** 退货物流轨迹（§98）：运单信息 + 系统/商家节点合并时间线 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesReturnLogistics(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesReturnLogistics(ctx, id);
+    }
+
+    /** 售后自动分流规则（§98）：按优先级升序 */
+    @Query()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesAutoRules(@Ctx() ctx: RequestContext) {
+        return this.merchant.afterSalesAutoRules(ctx);
+    }
+
     /** 售后工作台摘要（§88） */
     @Query()
     @Allow(CampusPermissions.CampusMerchant as any)
@@ -817,6 +842,55 @@ export class MerchantAdminResolver {
     @Allow(CampusPermissions.CampusMerchant as any)
     async campusMerchantDeleteAfterSalesReplyTemplate(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
         return this.merchant.deleteAfterSalesReplyTemplate(ctx, id);
+    }
+
+    /** 登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesRecordReturnLogistics(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('status') status: string,
+        @Args({ name: 'description', type: () => String, nullable: true }) description?: string | null,
+    ) {
+        return this.merchant.afterSalesRecordReturnLogistics(ctx, id, status, description);
+    }
+
+    /** 保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantSaveAfterSalesAutoRule(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'id', type: () => String, nullable: true }) id: ID | null,
+        @Args('name') name: string,
+        @Args('action') action: string,
+        @Args({ name: 'priority', type: () => Int, nullable: true }) priority?: number | null,
+        @Args({ name: 'enabled', type: () => Boolean, nullable: true }) enabled?: boolean | null,
+        @Args({ name: 'matchType', type: () => String, nullable: true }) matchType?: string | null,
+        @Args({ name: 'matchReason', type: () => String, nullable: true }) matchReason?: string | null,
+        @Args({ name: 'minAmount', type: () => Int, nullable: true }) minAmount?: number | null,
+        @Args({ name: 'maxAmount', type: () => Int, nullable: true }) maxAmount?: number | null,
+        @Args({ name: 'rejectReason', type: () => String, nullable: true }) rejectReason?: string | null,
+    ) {
+        return this.merchant.saveAfterSalesAutoRule(ctx, {
+            id,
+            name,
+            action,
+            priority,
+            enabled,
+            matchType,
+            matchReason,
+            minAmount,
+            maxAmount,
+            rejectReason,
+        });
+    }
+
+    /** 删除售后自动分流规则（§98） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantDeleteAfterSalesAutoRule(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.deleteAfterSalesAutoRule(ctx, id);
     }
 
     /** 手动排程退款重试（§87）：仅 RefundFailed */

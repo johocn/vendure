@@ -15,7 +15,7 @@ export interface MerchantAfterSalesLowReview {
     followedUp: boolean;
     createdAt: Date;
 }
-/** 退款后满意度汇总（§93） */
+/** 满意度汇总（§93、§98） */
 export interface MerchantAfterSalesReviewSummary {
     total: number;
     /** 平均分（保留 1 位小数，无评分为 0） */
@@ -26,13 +26,18 @@ export interface MerchantAfterSalesReviewSummary {
     lowScoreCount: number;
     /** 低分待跟进明细（最近 20 条，含已跟进） */
     lowScores: MerchantAfterSalesLowReview[];
+    /** 评价标签 Top（§98）：按出现次数降序，最多 10 项 */
+    topTags: Array<{
+        tag: string;
+        count: number;
+    }>;
 }
 /** 售后满意度回访（§93）：顾客提交评分 / 商家汇总与低分跟进 */
 export declare class AfterSalesReviewService {
     private connection;
     constructor(connection: TransactionalConnection);
-    /** 顾客提交评分（§93）：仅本人且已退款完成的售后单，重复提交覆盖旧评分 */
-    submit(ctx: RequestContext, requestId: ID, score: number, comment?: string | null): Promise<{
+    /** 顾客提交评分（§93、§98）：仅本人且已退款完成的售后单，重复提交覆盖旧评分；tags 为可选标签 */
+    submit(ctx: RequestContext, requestId: ID, score: number, comment?: string | null, tags?: string[] | null): Promise<{
         ok: boolean;
         score: number;
     }>;

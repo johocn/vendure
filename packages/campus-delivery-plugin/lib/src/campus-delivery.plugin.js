@@ -65,6 +65,7 @@ const after_sales_sla_alert_job_1 = require("./after-sales-sla-alert.job");
 const after_sales_followup_remind_job_1 = require("./after-sales-followup-remind.job");
 const after_sales_monthly_push_job_1 = require("./after-sales-monthly-push.job");
 const after_sales_auto_assign_job_1 = require("./after-sales-auto-assign.job");
+const after_sales_auto_rule_job_1 = require("./after-sales-auto-rule.job");
 const after_sales_anomaly_alert_job_1 = require("./after-sales-anomaly-alert.job");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
@@ -163,6 +164,7 @@ const p24_after_sales_risk_followup_1 = require("./migrations/p24-after-sales-ri
 const p25_after_sales_sla_followup_monthly_1 = require("./migrations/p25-after-sales-sla-followup-monthly");
 const p26_after_sales_escalation_automation_1 = require("./migrations/p26-after-sales-escalation-automation");
 const p27_after_sales_template_category_1 = require("./migrations/p27-after-sales-template-category");
+const p28_after_sales_product_and_rules_1 = require("./migrations/p28-after-sales-product-and-rules");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -213,6 +215,7 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(after_sales_monthly_push_job_1.AfterSalesMonthlyPushJob).start();
         // 售后自动分配（§96）：5 分钟把未指派售后单派给未完结量最少的处理人
         this.injector.get(after_sales_auto_assign_job_1.AfterSalesAutoAssignJob).start();
+        this.injector.get(after_sales_auto_rule_job_1.AfterSalesAutoRuleJob).start();
         // 售后异常预警推送（§96）：30 分钟检查近 7 日退款率/超时待处理，超阈值推店铺群
         this.injector.get(after_sales_anomaly_alert_job_1.AfterSalesAnomalyAlertJob).start();
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
@@ -268,7 +271,7 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
             const text = e.toState === 'Approved' ? '售后审核通过'
                 : e.toState === 'Rejected' ? '售后申请被拒绝'
                     : e.toState === 'Received' ? '商家已收到退货'
-                        : e.toState === 'Refunded' ? '退款已到账'
+                        : e.toState === 'Refunded' ? '退款已到账，欢迎评价本次售后处理'
                             : e.toState === 'RefundFailed' ? '退款失败，请联系客服'
                                 : e.toState === 'ExchangeShipped' ? '换货已发出，请留意物流'
                                     : e.toState === 'Closed' ? '售后已结束'
@@ -370,6 +373,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p25_after_sales_sla_followup_monthly_1.P25AfterSalesSlaFollowupMonthlyMigration,
             p26_after_sales_escalation_automation_1.P26AfterSalesEscalationAutomationMigration,
             p27_after_sales_template_category_1.P27AfterSalesTemplateCategoryMigration,
+            p28_after_sales_product_and_rules_1.P28AfterSalesProductAndRulesMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -385,6 +389,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             after_sales_followup_remind_job_1.AfterSalesFollowUpRemindJob,
             after_sales_monthly_push_job_1.AfterSalesMonthlyPushJob,
             after_sales_auto_assign_job_1.AfterSalesAutoAssignJob,
+            after_sales_auto_rule_job_1.AfterSalesAutoRuleJob,
             after_sales_anomaly_alert_job_1.AfterSalesAnomalyAlertJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
@@ -1089,7 +1094,13 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     createdAt: DateTime!
                 }
 
-                """退款后满意度汇总（§93）"""
+                """评价标签计数（§98）"""
+                type CampusMerchantAfterSalesReviewTagCount {
+                    tag: String!
+                    count: Int!
+                }
+
+                """退款后满意度汇总（§93、§98）"""
                 type CampusMerchantAfterSalesReviewSummary {
                     total: Int!
                     """平均分（保留 1 位小数，无评分为 0）"""
@@ -1100,6 +1111,71 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     lowScoreCount: Int!
                     """低分待跟进明细（最近 20 条）"""
                     lowScores: [CampusMerchantAfterSalesLowReview!]!
+                    """评价标签 Top（§98）：按出现次数降序，最多 10 项"""
+                    topTags: [CampusMerchantAfterSalesReviewTagCount!]!
+                }
+
+                """商品维度售后行（§98，件数口径）"""
+                type CampusMerchantAfterSalesProductRateRow {
+                    productId: ID!
+                    productName: String!
+                    """区间内下单件数（不含已取消订单）"""
+                    soldQuantity: Int!
+                    """区间内售后单数"""
+                    requestCount: Int!
+                    """区间内已退款单数"""
+                    refundCount: Int!
+                    """区间内退款金额（分）"""
+                    refundAmount: Int!
+                    """售后率（百分比，保留 1 位小数）"""
+                    afterSalesRate: Float!
+                }
+
+                """商品维度售后分析（§98，件数口径）"""
+                type CampusMerchantAfterSalesProductRateAnalysis {
+                    items: [CampusMerchantAfterSalesProductRateRow!]!
+                    totalRequests: Int!
+                    totalRefundAmount: Int!
+                    totalSold: Int!
+                }
+
+                """退货物流轨迹节点（§98）"""
+                type CampusMerchantAfterSalesReturnLogisticsEvent {
+                    """approved / shipped / picked_up / in_transit / delivered / exception / closed"""
+                    status: String!
+                    description: String!
+                    occurredAt: DateTime!
+                    """system=系统按状态派生 / merchant=商家登记"""
+                    source: String!
+                }
+
+                """退货物流（§98）：运单信息 + 轨迹时间线"""
+                type CampusMerchantAfterSalesReturnLogistics {
+                    requestId: ID!
+                    orderCode: String!
+                    type: String!
+                    state: String!
+                    trackingNo: String
+                    carrier: String
+                    events: [CampusMerchantAfterSalesReturnLogisticsEvent!]!
+                }
+
+                """售后自动分流规则（§98）"""
+                type CampusMerchantAfterSalesAutoRule {
+                    id: ID!
+                    name: String!
+                    """匹配优先级：越小越先命中"""
+                    priority: Int!
+                    enabled: Boolean!
+                    """* 或售后类型"""
+                    matchType: String!
+                    matchReason: String
+                    minAmount: Int
+                    maxAmount: Int
+                    """approve / reject / escalate"""
+                    action: String!
+                    rejectReason: String
+                    createdAt: DateTime!
                 }
 
                 """售后处理统计（§81）：入口红点 + 今日处理量/退款额"""
@@ -1159,6 +1235,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     escalatedCount: Int!
                     """完结率（百分比 0-100，§97）"""
                     resolveRate: Int!
+                    """经手单收到的满意度评分数（§98）"""
+                    reviewCount: Int!
+                    """经手单满意度平均分（1 位小数，无评分为 0，§98）"""
+                    reviewAvgScore: Float!
                 }
 
                 """售后工作台摘要（§88）：一次返回各待办入口与最老待处理时长"""
@@ -2332,6 +2412,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesNotes(id: ID!): [CampusMerchantAfterSalesNote!]!
                     """快捷回复模板（§87、§97）：本店渠道，可按分类/关键词检索"""
                     campusMerchantAfterSalesReplyTemplates(category: String, keyword: String): [CampusMerchantAfterSalesReplyTemplate!]!
+                    """商品维度售后分析（§98）：区间内按商品聚合售后率与退款额"""
+                    campusMerchantAfterSalesProductAnalysis(from: String!, to: String!): CampusMerchantAfterSalesProductRateAnalysis!
+                    """退货物流轨迹（§98）：运单信息 + 系统/商家节点合并时间线"""
+                    campusMerchantAfterSalesReturnLogistics(id: ID!): CampusMerchantAfterSalesReturnLogistics!
+                    """售后自动分流规则（§98）：按优先级升序"""
+                    campusMerchantAfterSalesAutoRules: [CampusMerchantAfterSalesAutoRule!]!
                     """最近云打印任务（P1-4）"""
                     campusMerchantPrintJobs(limit: Int): [CampusPrintJob!]!
                     """沽清次日自动恢复（§66）：开关与待恢复件数"""
@@ -2671,6 +2757,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!, category: String, keywords: String, sortOrder: Int): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
                     campusMerchantDeleteAfterSalesReplyTemplate(id: ID!): Boolean!
+                    """登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception"""
+                    campusMerchantAfterSalesRecordReturnLogistics(id: ID!, status: String!, description: String): CampusMerchantAfterSalesReturnLogistics!
+                    """保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate"""
+                    campusMerchantSaveAfterSalesAutoRule(id: ID, name: String!, action: String!, priority: Int, enabled: Boolean, matchType: String, matchReason: String, minAmount: Int, maxAmount: Int, rejectReason: String): CampusMerchantAfterSalesAutoRule!
+                    """删除售后自动分流规则（§98）"""
+                    campusMerchantDeleteAfterSalesAutoRule(id: ID!): Boolean!
                     """手动排程退款重试（§87）：仅 RefundFailed，复位任务 1 分钟后执行"""
                     campusMerchantAfterSalesScheduleRefundRetry(id: ID!): CampusMerchantAfterSalesTask!
                     """保存售后标签（§88）：id 为空=新增，单店上限 20 个"""
@@ -3442,7 +3534,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusCreateRiderAppeal(reason: String!, orderId: ID, images: [String!]): CampusMyRiderAppeal!
                     campusRateRider(orderId: ID!, rating: Int!, tags: [String!], comment: String): CampusRateRiderResult!
                     """退款后满意度回访（§93）：仅本人已退款完成的售后单，1-5 分"""
-                    campusSubmitAfterSalesReview(requestId: ID!, score: Int!, comment: String): CampusAfterSalesReviewResult!
+                    campusSubmitAfterSalesReview(requestId: ID!, score: Int!, comment: String, tags: [String!]): CampusAfterSalesReviewResult!
                     """P4-4 批量埋点上报（匿名可用），返回入库条数"""
                     campusTrackEvents(input: CampusTrackEventBatchInput!): Int!
                     """P4-4 前端错误上报（匿名可用）"""

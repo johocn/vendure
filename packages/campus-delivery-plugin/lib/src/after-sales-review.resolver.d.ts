@@ -13,7 +13,7 @@ export declare class AfterSalesReviewAdminResolver {
 export declare class AfterSalesReviewShopResolver {
     private reviews;
     constructor(reviews: AfterSalesReviewService);
-    campusSubmitAfterSalesReview(ctx: RequestContext, requestId: ID, score: number, comment?: string | null): Promise<{
+    campusSubmitAfterSalesReview(ctx: RequestContext, requestId: ID, score: number, comment?: string | null, tags?: string[] | null): Promise<{
         ok: boolean;
         score: number;
     }>;

@@ -603,6 +603,10 @@ export interface MerchantAfterSalesStaffRow {
     escalatedCount: number;
     /** 完结率（百分比 0-100，§97） */
     resolveRate: number;
+    /** 经手单收到的满意度评分数（§98，按评价时间归集） */
+    reviewCount: number;
+    /** 经手单满意度平均分（保留 1 位小数，无评分为 0，§98） */
+    reviewAvgScore: number;
 }
 /** 售后 CSV 导出筛选（§97）：空值表示不筛选 */
 export interface MerchantAfterSalesExportFilter {
@@ -614,6 +618,66 @@ export interface MerchantAfterSalesExportFilter {
     keyword?: string | null;
     /** 指派处理人 User id */
     assigneeUserId?: string | null;
+}
+/** 商品维度售后行（§98）：按商品聚合件数口径售后率与退款额（区别于 §92 的订单数口径） */
+export interface MerchantAfterSalesProductRateRow {
+    productId: string;
+    productName: string;
+    /** 区间内下单件数（不含已取消订单） */
+    soldQuantity: number;
+    /** 区间内售后单数 */
+    requestCount: number;
+    /** 区间内已退款单数 */
+    refundCount: number;
+    /** 区间内退款金额（分） */
+    refundAmount: number;
+    /** 售后率（百分比，保留 1 位小数） */
+    afterSalesRate: number;
+}
+/** 商品维度售后分析（§98）：Top 列表 + 区间汇总 */
+export interface MerchantAfterSalesProductRateAnalysis {
+    items: MerchantAfterSalesProductRateRow[];
+    totalRequests: number;
+    totalRefundAmount: number;
+    totalSold: number;
+}
+/** 退货物流轨迹节点（§98） */
+export interface MerchantAfterSalesReturnLogisticsEvent {
+    /** approved / shipped / picked_up / in_transit / delivered / exception / closed */
+    status: string;
+    description: string;
+    occurredAt: Date;
+    /** system=系统按状态派生 / merchant=商家登记 */
+    source: string;
+}
+/** 退货物流（§98）：运单信息 + 轨迹时间线 */
+export interface MerchantAfterSalesReturnLogistics {
+    requestId: string;
+    orderCode: string;
+    type: string;
+    state: string;
+    trackingNo: string | null;
+    carrier: string | null;
+    events: MerchantAfterSalesReturnLogisticsEvent[];
+}
+/** 售后自动分流规则（§98） */
+export interface MerchantAfterSalesAutoRule {
+    id: string;
+    name: string;
+    /** 匹配优先级：越小越先命中 */
+    priority: number;
+    enabled: boolean;
+    /** * 或售后类型 */
+    matchType: string;
+    /** 申请原因关键词（空=不限） */
+    matchReason: string | null;
+    minAmount: number | null;
+    maxAmount: number | null;
+    /** approve / reject / escalate */
+    action: string;
+    /** 驳回时给顾客看的原因（仅 reject） */
+    rejectReason: string | null;
+    createdAt: Date;
 }
 /** 售后工作台摘要（§88）：一次返回各待办入口计数与最老待处理时长 */
 export interface MerchantAfterSalesWorkbench {
@@ -1161,6 +1225,34 @@ export declare class MerchantAdminService {
      * 供前端保存为 .csv；日期为校园日（UTC+8）。filter 支持状态/类型/关键词/处理人筛选。
      */
     afterSalesExport(ctx: RequestContext, from: string, to: string, kind: string, filter?: MerchantAfterSalesExportFilter | null): Promise<string>;
+    /** 商品维度售后分析（§98）：区间内按商品聚合下单件数、售后单数与退款额，售后率=售后单/下单件 */
+    afterSalesProductAnalysis(ctx: RequestContext, from: string, to: string): Promise<MerchantAfterSalesProductRateAnalysis>;
+    /** 退货物流轨迹（§98）：运单信息 + 系统派生节点与商家登记节点合并时间线 */
+    afterSalesReturnLogistics(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesReturnLogistics>;
+    /** 登记退货物流节点（§98）：商家按快递扫描节点补录，status=picked_up/in_transit/delivered/exception */
+    afterSalesRecordReturnLogistics(ctx: RequestContext, id: ID, status: string, description?: string | null): Promise<MerchantAfterSalesReturnLogistics>;
+    /** 售后自动分流规则列表（§98）：本店渠道，按优先级升序 */
+    afterSalesAutoRules(ctx: RequestContext): Promise<MerchantAfterSalesAutoRule[]>;
+    /** 保存售后自动分流规则（§98）：id 为空=新增；action=approve/reject/escalate */
+    saveAfterSalesAutoRule(ctx: RequestContext, input: {
+        id?: ID | null;
+        name: string;
+        priority?: number | null;
+        enabled?: boolean | null;
+        matchType?: string | null;
+        matchReason?: string | null;
+        minAmount?: number | null;
+        maxAmount?: number | null;
+        action: string;
+        rejectReason?: string | null;
+    }): Promise<MerchantAfterSalesAutoRule>;
+    /** 删除售后自动分流规则（§98） */
+    deleteAfterSalesAutoRule(ctx: RequestContext, id: ID): Promise<boolean>;
+    /**
+     * 执行自动分流规则（§98）：扫描本店近 7 日未分流过的 Pending 单，按优先级首个命中规则执行
+     * approve / reject / escalate，执行后写 autoRuleAppliedAt 防重复（失败也标记，避免每轮重试放大退款风险）。
+     */
+    applyAfterSalesAutoRules(ctx: RequestContext, limit?: number): Promise<number>;
     /** 高频售后顾客 Top N（§85）：区间内售后次数/退款额，附黑名单状态，手机号脱敏 */
     afterSalesTopCustomers(ctx: RequestContext, from: string, to: string, limit?: number | null): Promise<MerchantAfterSalesTopCustomer[]>;
     /** 一键拉黑高频售后顾客（§85）：仅限在本店有售后记录的顾客，已存在则不重复插入 */
@@ -1300,6 +1392,8 @@ export declare class MerchantAdminService {
     private afterSalesTimeoutHours;
     /** 驳回售后（§81）：理由必填（顾客在 C 端可见），仅 Pending 可驳回 */
     afterSalesReject(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
+    /** 分流规则行映射（§98）：DB 原始行 → 接口结构 */
+    private toAutoRule;
     /** 售后单必须属于当前店铺，且状态在允许集合内（空集合=不校验状态） */
     private assertChannelAfterSales;
     private afterSalesOne;

@@ -60,8 +60,8 @@ let AfterSalesReviewShopResolver = class AfterSalesReviewShopResolver {
     constructor(reviews) {
         this.reviews = reviews;
     }
-    async campusSubmitAfterSalesReview(ctx, requestId, score, comment) {
-        return this.reviews.submit(ctx, requestId, score, comment);
+    async campusSubmitAfterSalesReview(ctx, requestId, score, comment, tags) {
+        return this.reviews.submit(ctx, requestId, score, comment, tags);
     }
 };
 exports.AfterSalesReviewShopResolver = AfterSalesReviewShopResolver;
@@ -72,8 +72,9 @@ __decorate([
     __param(1, (0, graphql_1.Args)('requestId')),
     __param(2, (0, graphql_1.Args)({ name: 'score', type: () => graphql_1.Int })),
     __param(3, (0, graphql_1.Args)({ name: 'comment', type: () => String, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'tags', type: () => [String], nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Object, Object]),
     __metadata("design:returntype", Promise)
 ], AfterSalesReviewShopResolver.prototype, "campusSubmitAfterSalesReview", null);
 exports.AfterSalesReviewShopResolver = AfterSalesReviewShopResolver = __decorate([

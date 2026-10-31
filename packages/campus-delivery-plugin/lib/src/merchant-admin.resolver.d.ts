@@ -114,6 +114,12 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesNotes(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesNote[]>;
     /** 快捷回复模板（§87、§97）：本店渠道，可按分类与关键词检索 */
     campusMerchantAfterSalesReplyTemplates(ctx: RequestContext, category?: string | null, keyword?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate[]>;
+    /** 商品维度售后分析（§98）：区间内按商品聚合售后率与退款额 */
+    campusMerchantAfterSalesProductAnalysis(ctx: RequestContext, from: string, to: string): Promise<import("./merchant-admin.service").MerchantAfterSalesProductRateAnalysis>;
+    /** 退货物流轨迹（§98）：运单信息 + 系统/商家节点合并时间线 */
+    campusMerchantAfterSalesReturnLogistics(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesReturnLogistics>;
+    /** 售后自动分流规则（§98）：按优先级升序 */
+    campusMerchantAfterSalesAutoRules(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesAutoRule[]>;
     /** 售后工作台摘要（§88） */
     campusMerchantAfterSalesWorkbench(ctx: RequestContext): Promise<import("./merchant-admin.service").MerchantAfterSalesWorkbench>;
     /** 售后标签列表（§88） */
@@ -168,6 +174,12 @@ export declare class MerchantAdminResolver {
     campusMerchantSaveAfterSalesReplyTemplate(ctx: RequestContext, id: ID | null, content: string, category?: string | null, keywords?: string | null, sortOrder?: number | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReplyTemplate>;
     /** 删除快捷回复模板（§87） */
     campusMerchantDeleteAfterSalesReplyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
+    /** 登记退货物流节点（§98）：status=picked_up/in_transit/delivered/exception */
+    campusMerchantAfterSalesRecordReturnLogistics(ctx: RequestContext, id: ID, status: string, description?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesReturnLogistics>;
+    /** 保存售后自动分流规则（§98）：id 为空=新增，action=approve/reject/escalate */
+    campusMerchantSaveAfterSalesAutoRule(ctx: RequestContext, id: ID | null, name: string, action: string, priority?: number | null, enabled?: boolean | null, matchType?: string | null, matchReason?: string | null, minAmount?: number | null, maxAmount?: number | null, rejectReason?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesAutoRule>;
+    /** 删除售后自动分流规则（§98） */
+    campusMerchantDeleteAfterSalesAutoRule(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 手动排程退款重试（§87）：仅 RefundFailed */
     campusMerchantAfterSalesScheduleRefundRetry(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesTaskRow>;
     /** 保存售后标签（§88）：id 为空=新增 */

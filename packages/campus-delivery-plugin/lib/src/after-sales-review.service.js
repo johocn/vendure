@@ -35,8 +35,8 @@ let AfterSalesReviewService = class AfterSalesReviewService {
     constructor(connection) {
         this.connection = connection;
     }
-    /** 顾客提交评分（§93）：仅本人且已退款完成的售后单，重复提交覆盖旧评分 */
-    async submit(ctx, requestId, score, comment) {
+    /** 顾客提交评分（§93、§98）：仅本人且已退款完成的售后单，重复提交覆盖旧评分；tags 为可选标签 */
+    async submit(ctx, requestId, score, comment, tags) {
         const uid = ctx.activeUserId;
         if (!uid)
             throw new core_1.UserInputError('请先登录后再评价');
@@ -46,6 +46,14 @@ let AfterSalesReviewService = class AfterSalesReviewService {
         const text = String(comment !== null && comment !== void 0 ? comment : '').trim();
         if (text.length > 200)
             throw new core_1.UserInputError('评价内容最多 200 字');
+        const tagList = (tags !== null && tags !== void 0 ? tags : [])
+            .map(t => String(t !== null && t !== void 0 ? t : '').trim())
+            .filter(Boolean);
+        if (tagList.length > 5)
+            throw new core_1.UserInputError('评价标签最多 5 个');
+        if (tagList.some(t => t.length > 12))
+            throw new core_1.UserInputError('单个评价标签最多 12 字');
+        const tagsText = tagList.length ? JSON.stringify(tagList) : null;
         const rows = await this.connection.rawConnection.query('SELECT a.id, a.state, a."customerId", oc."channelId" AS "channelId" '
             + 'FROM after_sales_request a '
             + 'JOIN "order" o ON o.id = a."orderId" '
@@ -58,15 +66,15 @@ let AfterSalesReviewService = class AfterSalesReviewService {
             throw new core_1.UserInputError('售后单不存在或不属于当前用户');
         if (String(row.state) !== 'Refunded')
             throw new core_1.UserInputError('仅退款完成的售后单可评价');
-        await this.connection.rawConnection.query('INSERT INTO campus_after_sales_review ("channelId", "requestId", "customerId", score, comment) '
-            + 'VALUES ($1, $2, $3, $4, $5) '
+        await this.connection.rawConnection.query('INSERT INTO campus_after_sales_review ("channelId", "requestId", "customerId", score, comment, tags) '
+            + 'VALUES ($1, $2, $3, $4, $5, $6) '
             + 'ON CONFLICT ("requestId") DO UPDATE SET score = EXCLUDED.score, '
-            + 'comment = EXCLUDED.comment, "createdAt" = now(), "followedUp" = false', [Number(row.channelId), Number(requestId), Number(row.customerId), s, text || null]);
+            + 'comment = EXCLUDED.comment, tags = EXCLUDED.tags, "createdAt" = now(), "followedUp" = false', [Number(row.channelId), Number(requestId), Number(row.customerId), s, text || null, tagsText]);
         return { ok: true, score: s };
     }
     /** 满意度汇总（§93）：区间内均分/分档/低分待跟进，最长一年 */
     async summary(ctx, from, to) {
-        var _a, _b;
+        var _a, _b, _c;
         const start = campusDayStart(from);
         const end = campusDayEnd(to);
         if (!start || !end)
@@ -113,16 +121,40 @@ let AfterSalesReviewService = class AfterSalesReviewService {
                     createdAt: new Date(r.createdAt),
                 });
             });
+            // §98：评价标签 Top（tags 为 JSON 数组文本，解析失败按无标签）
+            const tagRows = await raw.query('SELECT tags FROM campus_after_sales_review WHERE "channelId" = $1 '
+                + 'AND "createdAt" >= $2 AND "createdAt" < $3 AND tags IS NOT NULL LIMIT 5000', [chId, start, end]);
+            const tagCounts = new Map();
+            for (const r of this.rows(tagRows)) {
+                try {
+                    const parsed = JSON.parse(String(r.tags));
+                    if (!Array.isArray(parsed))
+                        continue;
+                    for (const t of parsed) {
+                        const tag = String(t !== null && t !== void 0 ? t : '').trim();
+                        if (tag)
+                            tagCounts.set(tag, ((_b = tagCounts.get(tag)) !== null && _b !== void 0 ? _b : 0) + 1);
+                    }
+                }
+                catch (_d) {
+                    // 忽略脏数据
+                }
+            }
+            const topTags = Array.from(tagCounts.entries())
+                .map(([tag, count]) => ({ tag, count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 10);
             return {
                 total,
                 avgScore,
                 distribution,
                 lowScoreCount: Number(agg.low) || 0,
                 lowScores,
+                topTags,
             };
         }
         catch (e) {
-            throw new core_1.UserInputError(`满意度汇总失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`);
+            throw new core_1.UserInputError(`满意度汇总失败：${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`);
         }
     }
     /** 标记低分已跟进（§93）：仅本店渠道记录 */
