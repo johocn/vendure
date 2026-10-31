@@ -4420,7 +4420,7 @@ export class MerchantAdminService {
             const rows: any = await this.connection.rawConnection.query(
                 'SELECT DISTINCT ad."userId" AS id, ad."firstName", ad."lastName", u.identifier '
                 + 'FROM administrator ad '
-                + 'JOIN user u ON u.id = ad."userId" '
+                + 'JOIN "user" u ON u.id = ad."userId" '
                 + 'JOIN user_roles_role urr ON urr."userId" = ad."userId" '
                 + 'JOIN role r ON r.id = urr."roleId" '
                 + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $1 '
