@@ -80,6 +80,11 @@ export const campusCustomFields: CustomFields = {
         { name: 'waimaiDailyPushEnabled', type: 'boolean', nullable: true, defaultValue: false },
         { name: 'waimaiDailyPushTime', type: 'string', nullable: true }, // 'HH:MM'，空=21:30
         { name: 'waimaiDailyPushLastDate', type: 'string', nullable: true }, // 幂等键：已推送的校园日 'YYYY-MM-DD'
+        // 售后月度摘要推送（§95）：每月指定日把上月售后汇总推到店铺群
+        { name: 'waimaiAfterSalesMonthlyPushEnabled', type: 'boolean', nullable: true, defaultValue: false },
+        { name: 'waimaiAfterSalesMonthlyPushDay', type: 'int', nullable: true }, // 1-28，空=1
+        { name: 'waimaiAfterSalesMonthlyPushTime', type: 'string', nullable: true }, // 'HH:MM'，空=21:30
+        { name: 'waimaiAfterSalesMonthlyPushLastMonth', type: 'string', nullable: true }, // 幂等键：已推送的月份 'YYYY-MM'
     ],
     Product: [
         { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0

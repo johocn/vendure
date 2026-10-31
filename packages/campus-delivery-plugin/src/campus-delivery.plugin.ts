@@ -63,6 +63,8 @@ import { DailyReportPushJob } from './daily-report-push.job';
 import { P12DailyLimitMigration } from './migrations/p12-daily-limit';
 import { SoldOutAutoRestoreJob } from './soldout-auto-restore.job';
 import { AfterSalesSlaAlertJob } from './after-sales-sla-alert.job';
+import { AfterSalesFollowUpRemindJob } from './after-sales-followup-remind.job';
+import { AfterSalesMonthlyPushJob } from './after-sales-monthly-push.job';
 import { TasteProfileShopResolver } from './taste-profile-shop.resolver';
 import { CloudPrintService } from './cloud-print.service';
 import { CampusPrintJob } from './campus-print-job.entity';
@@ -157,6 +159,7 @@ import { P21AfterSalesSlaAlertMigration } from './migrations/p21-after-sales-sla
 import { P22AfterSalesAssignLogMigration } from './migrations/p22-after-sales-assign-log';
 import { P23AfterSalesReviewMigration } from './migrations/p23-after-sales-review';
 import { P24AfterSalesRiskFollowupMigration } from './migrations/p24-after-sales-risk-followup';
+import { P25AfterSalesSlaFollowupMonthlyMigration } from './migrations/p25-after-sales-sla-followup-monthly';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -200,6 +203,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P22AfterSalesAssignLogMigration,
         P23AfterSalesReviewMigration,
         P24AfterSalesRiskFollowupMigration,
+        P25AfterSalesSlaFollowupMonthlyMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -212,6 +216,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         DailyReportPushJob,
         SoldOutAutoRestoreJob,
         AfterSalesSlaAlertJob,
+        AfterSalesFollowUpRemindJob,
+        AfterSalesMonthlyPushJob,
         AddWithdrawPayoutMigration,
         AddRiderLocationMigration,
         AddressChangeService,
@@ -688,6 +694,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     assigneeName: String
                     """风险标记原因（未标记/已解除为空，§94）"""
                     riskReason: String
+                    """SLA 计时已暂停（§95）：等待顾客配合期间不判超时/临期"""
+                    slaPaused: Boolean!
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -958,6 +966,10 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     overdue: Int!
                     """临期未处理"""
                     dueSoon: Int!
+                    """SLA 计时已暂停的待处理单（§95）"""
+                    slaPaused: Int!
+                    """回访到期未跟进单数（§95）"""
+                    followUpDue: Int!
                     """最早一笔待处理单申请时间"""
                     oldestPendingAt: DateTime
                     """最老待处理单已等待小时数"""
@@ -1193,6 +1205,12 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     dailyPushEnabled: Boolean!
                     """日报推送时间 HH:MM（默认 21:30）"""
                     dailyPushTime: String!
+                    """售后月度摘要推送开关（§95）"""
+                    monthlyPushEnabled: Boolean!
+                    """月度推送日（1-28，默认 1）"""
+                    monthlyPushDay: Int!
+                    """月度推送时间 HH:MM（默认 21:30）"""
+                    monthlyPushTime: String!
                 }
 
                 """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
@@ -2408,6 +2426,12 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantAfterSalesRiskClear(id: ID!): CampusMerchantAfterSalesItem!
                     """新增顾客回访记录（§94）：method=phone/wechat/onsite/other，result=reached/unreached/refused/other"""
                     campusMerchantAfterSalesAddFollowUp(id: ID!, method: String!, result: String!, note: String, nextAt: String): [CampusMerchantAfterSalesFollowUp!]!
+                    """暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期"""
+                    campusMerchantAfterSalesPauseSla(id: ID!): CampusMerchantAfterSalesItem!
+                    """恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间"""
+                    campusMerchantAfterSalesResumeSla(id: ID!): CampusMerchantAfterSalesItem!
+                    """批量关闭售后单（§95）：单批上限 50，逐单返回结果"""
+                    campusMerchantAfterSalesBatchClose(ids: [ID!]!, reason: String!): [CampusMerchantAfterSalesBatchResult!]!
                     """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
@@ -2433,6 +2457,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
                     """每日日报推送设置（§86）：enabled=开关，time=HH:MM（空=21:30）"""
                     campusMerchantUpdateDailyPush(enabled: Boolean!, time: String): MerchantStoreProfile!
+                    """售后月度摘要推送（§95）：每月指定日（1-28）把上月售后汇总推到店铺群"""
+                    campusMerchantUpdateAfterSalesMonthlyPush(enabled: Boolean!, day: Int, time: String): MerchantStoreProfile!
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
@@ -3299,6 +3325,10 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(AutoAcceptJob).start();
         // 每日日报推送（§86）：30 分钟扫描到点渠道，把昨日日报推到店铺群（同一天只推一条）
         this.injector.get(DailyReportPushJob).start();
+        // 回访到期提醒（§95）：10 分钟扫描到期回访，向商家发站内信（同一条只提醒一次）
+        this.injector.get(AfterSalesFollowUpRemindJob).start();
+        // 售后月度摘要推送（§95）：每月指定日把上月售后汇总推到店铺群（同月只推一条）
+        this.injector.get(AfterSalesMonthlyPushJob).start();
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));

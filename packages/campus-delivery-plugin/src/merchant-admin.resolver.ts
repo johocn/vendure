@@ -84,6 +84,18 @@ export class MerchantAdminResolver {
         return this.merchant.updateDailyPush(ctx, !!enabled, time);
     }
 
+    /** 售后月度摘要推送设置（§95）：每月指定日（1-28）把上月售后汇总推到店铺群 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantUpdateAfterSalesMonthlyPush(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'enabled', type: () => Boolean }) enabled: boolean,
+        @Args({ name: 'day', type: () => Number, nullable: true }) day?: number | null,
+        @Args({ name: 'time', type: () => String, nullable: true }) time?: string | null,
+    ) {
+        return this.merchant.updateAfterSalesMonthlyPush(ctx, !!enabled, day, time);
+    }
+
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     @Mutation()
@@ -360,6 +372,31 @@ export class MerchantAdminResolver {
         @Args({ name: 'nextAt', type: () => String, nullable: true }) nextAt?: string | null,
     ) {
         return this.merchant.afterSalesAddFollowUp(ctx, id, method, result, note, nextAt);
+    }
+
+    /** 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesPauseSla(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesPauseSla(ctx, id);
+    }
+
+    /** 恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesResumeSla(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.merchant.afterSalesResumeSla(ctx, id);
+    }
+
+    /** 批量关闭售后单（§95）：单批上限 50，逐单返回结果 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAfterSalesBatchClose(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'ids', type: () => [String] }) ids: ID[],
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.afterSalesBatchClose(ctx, ids, reason);
     }
 
     /** 售后寄回地址（§83）：本店渠道配置 */

@@ -63,13 +63,14 @@ let AfterSalesSlaAlertJob = class AfterSalesSlaAlertJob {
         try {
             rows = await raw.query(`SELECT a.id AS "requestId", oc."channelId" AS "channelId",
                         a."createdAt" AS "createdAt",
+                        COALESCE(a."slaPausedMs", 0) AS "slaPausedMs",
                         COALESCE(ch."customFieldsAfterSalesTimeoutHours", ${DEFAULT_TIMEOUT_HOURS}) AS "timeoutHours",
                         COALESCE(ch."customFieldsAfterSalesDueSoonHours", ${DEFAULT_DUE_SOON_HOURS}) AS "dueSoonHours"
                    FROM after_sales_request a
                    JOIN "order" o ON o.id = a."orderId"
                    JOIN order_channels_channel oc ON oc."orderId" = o.id
                    JOIN channel ch ON ch.id = oc."channelId"
-                  WHERE a.state = 'Pending' AND o."customFieldsHallstatus" IS NOT NULL
+                  WHERE a.state = 'Pending' AND a."slaPausedAt" IS NULL AND o."customFieldsHallstatus" IS NOT NULL
                   ORDER BY a."createdAt" ASC
                   LIMIT ${MAX_PER_RUN}`);
         }
@@ -87,7 +88,8 @@ let AfterSalesSlaAlertJob = class AfterSalesSlaAlertJob {
             const createdAt = new Date(r.createdAt).getTime();
             const timeoutHours = Number(r.timeoutHours) || DEFAULT_TIMEOUT_HOURS;
             const dueSoonHours = Number(r.dueSoonHours) || 0;
-            const deadline = createdAt + timeoutHours * 3600000;
+            // §95：已累计暂停时长顺延截止时间
+            const deadline = createdAt + timeoutHours * 3600000 + (Number(r.slaPausedMs) || 0);
             const kind = now >= deadline
                 ? 'overdue'
                 : (dueSoonHours > 0 && deadline - now <= dueSoonHours * 3600000 ? 'dueSoon' : null);

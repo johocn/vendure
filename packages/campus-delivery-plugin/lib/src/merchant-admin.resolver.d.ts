@@ -15,6 +15,8 @@ export declare class MerchantAdminResolver {
     campusMerchantUpdateStore(ctx: RequestContext, businessHours?: string | null, storeNotice?: string | null, storePhone?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 每日日报推送设置（§86）：营业结束后把昨日日报推到店铺群；time 为 HH:MM，空=21:30 */
     campusMerchantUpdateDailyPush(ctx: RequestContext, enabled: boolean, time?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
+    /** 售后月度摘要推送设置（§95）：每月指定日（1-28）把上月售后汇总推到店铺群 */
+    campusMerchantUpdateAfterSalesMonthlyPush(ctx: RequestContext, enabled: boolean, day?: number | null, time?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     campusMerchantSetClosureDates(ctx: RequestContext, dates?: string | null): Promise<import("./merchant-admin.service").MerchantStoreProfile>;
@@ -82,6 +84,12 @@ export declare class MerchantAdminResolver {
     campusMerchantAfterSalesRiskClear(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
     /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
     campusMerchantAfterSalesAddFollowUp(ctx: RequestContext, id: ID, method: string, result: string, note?: string | null, nextAt?: string | null): Promise<import("./merchant-admin.service").MerchantAfterSalesFollowUpRow[]>;
+    /** 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期 */
+    campusMerchantAfterSalesPauseSla(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间 */
+    campusMerchantAfterSalesResumeSla(ctx: RequestContext, id: ID): Promise<import("./merchant-admin.service").MerchantAfterSalesRow>;
+    /** 批量关闭售后单（§95）：单批上限 50，逐单返回结果 */
+    campusMerchantAfterSalesBatchClose(ctx: RequestContext, ids: ID[], reason: string): Promise<import("./merchant-admin.service").MerchantAfterSalesBatchResult[]>;
     /** 售后寄回地址（§83）：本店渠道配置 */
     campusMerchantAfterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     /** 售后规则（§84）：处理时限/超时自动同意/退款自动重试 */

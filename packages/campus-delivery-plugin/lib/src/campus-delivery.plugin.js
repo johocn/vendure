@@ -62,6 +62,8 @@ const daily_report_push_job_1 = require("./daily-report-push.job");
 const p12_daily_limit_1 = require("./migrations/p12-daily-limit");
 const soldout_auto_restore_job_1 = require("./soldout-auto-restore.job");
 const after_sales_sla_alert_job_1 = require("./after-sales-sla-alert.job");
+const after_sales_followup_remind_job_1 = require("./after-sales-followup-remind.job");
+const after_sales_monthly_push_job_1 = require("./after-sales-monthly-push.job");
 const taste_profile_shop_resolver_1 = require("./taste-profile-shop.resolver");
 const cloud_print_service_1 = require("./cloud-print.service");
 const campus_print_job_entity_1 = require("./campus-print-job.entity");
@@ -156,6 +158,7 @@ const p21_after_sales_sla_alert_1 = require("./migrations/p21-after-sales-sla-al
 const p22_after_sales_assign_log_1 = require("./migrations/p22-after-sales-assign-log");
 const p23_after_sales_review_1 = require("./migrations/p23-after-sales-review");
 const p24_after_sales_risk_followup_1 = require("./migrations/p24-after-sales-risk-followup");
+const p25_after_sales_sla_followup_monthly_1 = require("./migrations/p25-after-sales-sla-followup-monthly");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -200,6 +203,10 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(auto_accept_job_1.AutoAcceptJob).start();
         // 每日日报推送（§86）：30 分钟扫描到点渠道，把昨日日报推到店铺群（同一天只推一条）
         this.injector.get(daily_report_push_job_1.DailyReportPushJob).start();
+        // 回访到期提醒（§95）：10 分钟扫描到期回访，向商家发站内信（同一条只提醒一次）
+        this.injector.get(after_sales_followup_remind_job_1.AfterSalesFollowUpRemindJob).start();
+        // 售后月度摘要推送（§95）：每月指定日把上月售后汇总推到店铺群（同月只推一条）
+        this.injector.get(after_sales_monthly_push_job_1.AfterSalesMonthlyPushJob).start();
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
@@ -348,6 +355,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p22_after_sales_assign_log_1.P22AfterSalesAssignLogMigration,
             p23_after_sales_review_1.P23AfterSalesReviewMigration,
             p24_after_sales_risk_followup_1.P24AfterSalesRiskFollowupMigration,
+            p25_after_sales_sla_followup_monthly_1.P25AfterSalesSlaFollowupMonthlyMigration,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,
@@ -360,6 +368,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             daily_report_push_job_1.DailyReportPushJob,
             soldout_auto_restore_job_1.SoldOutAutoRestoreJob,
             after_sales_sla_alert_job_1.AfterSalesSlaAlertJob,
+            after_sales_followup_remind_job_1.AfterSalesFollowUpRemindJob,
+            after_sales_monthly_push_job_1.AfterSalesMonthlyPushJob,
             add_withdraw_payout_1.AddWithdrawPayoutMigration,
             add_rider_location_1.AddRiderLocationMigration,
             address_change_service_1.AddressChangeService,
@@ -836,6 +846,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     assigneeName: String
                     """风险标记原因（未标记/已解除为空，§94）"""
                     riskReason: String
+                    """SLA 计时已暂停（§95）：等待顾客配合期间不判超时/临期"""
+                    slaPaused: Boolean!
                 }
 
                 """售后状态计数（§81）：列表页签角标"""
@@ -1106,6 +1118,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     overdue: Int!
                     """临期未处理"""
                     dueSoon: Int!
+                    """SLA 计时已暂停的待处理单（§95）"""
+                    slaPaused: Int!
+                    """回访到期未跟进单数（§95）"""
+                    followUpDue: Int!
                     """最早一笔待处理单申请时间"""
                     oldestPendingAt: DateTime
                     """最老待处理单已等待小时数"""
@@ -1341,6 +1357,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     dailyPushEnabled: Boolean!
                     """日报推送时间 HH:MM（默认 21:30）"""
                     dailyPushTime: String!
+                    """售后月度摘要推送开关（§95）"""
+                    monthlyPushEnabled: Boolean!
+                    """月度推送日（1-28，默认 1）"""
+                    monthlyPushDay: Int!
+                    """月度推送时间 HH:MM（默认 21:30）"""
+                    monthlyPushTime: String!
                 }
 
                 """休业日期（§70 营业日历）：date=校园时区自然日 YYYY-MM-DD"""
@@ -2556,6 +2578,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantAfterSalesRiskClear(id: ID!): CampusMerchantAfterSalesItem!
                     """新增顾客回访记录（§94）：method=phone/wechat/onsite/other，result=reached/unreached/refused/other"""
                     campusMerchantAfterSalesAddFollowUp(id: ID!, method: String!, result: String!, note: String, nextAt: String): [CampusMerchantAfterSalesFollowUp!]!
+                    """暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期"""
+                    campusMerchantAfterSalesPauseSla(id: ID!): CampusMerchantAfterSalesItem!
+                    """恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间"""
+                    campusMerchantAfterSalesResumeSla(id: ID!): CampusMerchantAfterSalesItem!
+                    """批量关闭售后单（§95）：单批上限 50，逐单返回结果"""
+                    campusMerchantAfterSalesBatchClose(ids: [ID!]!, reason: String!): [CampusMerchantAfterSalesBatchResult!]!
                     """保存快捷回复模板（§87）：id 为空=新增，单店上限 30 条"""
                     campusMerchantSaveAfterSalesReplyTemplate(id: ID, content: String!): CampusMerchantAfterSalesReplyTemplate!
                     """删除快捷回复模板（§87）"""
@@ -2581,6 +2609,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantUpdateStore(businessHours: String, storeNotice: String, storePhone: String): MerchantStoreProfile!
                     """每日日报推送设置（§86）：enabled=开关，time=HH:MM（空=21:30）"""
                     campusMerchantUpdateDailyPush(enabled: Boolean!, time: String): MerchantStoreProfile!
+                    """售后月度摘要推送（§95）：每月指定日（1-28）把上月售后汇总推到店铺群"""
+                    campusMerchantUpdateAfterSalesMonthlyPush(enabled: Boolean!, day: Int, time: String): MerchantStoreProfile!
                     """营业日历（§70）：dates 为 JSON：[{date:'YYYY-MM-DD', note?}]，空=关闭"""
                     campusMerchantSetClosureDates(dates: String): MerchantStoreProfile!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!

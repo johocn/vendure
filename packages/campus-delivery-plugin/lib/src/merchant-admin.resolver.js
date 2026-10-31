@@ -58,6 +58,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantUpdateDailyPush(ctx, enabled, time) {
         return this.merchant.updateDailyPush(ctx, !!enabled, time);
     }
+    /** 售后月度摘要推送设置（§95）：每月指定日（1-28）把上月售后汇总推到店铺群 */
+    async campusMerchantUpdateAfterSalesMonthlyPush(ctx, enabled, day, time) {
+        return this.merchant.updateAfterSalesMonthlyPush(ctx, !!enabled, day, time);
+    }
     /** 营业日历（§70）：整体替换休业日期列表，当天 C 端「今日休业」并拦截下单。
      * dates 入参为 JSON 字符串：[{date:'YYYY-MM-DD', note?}]，空/[]=关闭；非法条目由服务层拒绝。 */
     async campusMerchantSetClosureDates(ctx, dates) {
@@ -171,6 +175,18 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     /** 新增顾客回访记录（§94）：电话/线上沟通留痕，可预约下次跟进 */
     async campusMerchantAfterSalesAddFollowUp(ctx, id, method, result, note, nextAt) {
         return this.merchant.afterSalesAddFollowUp(ctx, id, method, result, note, nextAt);
+    }
+    /** 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄期间不计超时/临期 */
+    async campusMerchantAfterSalesPauseSla(ctx, id) {
+        return this.merchant.afterSalesPauseSla(ctx, id);
+    }
+    /** 恢复售后 SLA 计时（§95）：暂停时长累计后顺延截止时间 */
+    async campusMerchantAfterSalesResumeSla(ctx, id) {
+        return this.merchant.afterSalesResumeSla(ctx, id);
+    }
+    /** 批量关闭售后单（§95）：单批上限 50，逐单返回结果 */
+    async campusMerchantAfterSalesBatchClose(ctx, ids, reason) {
+        return this.merchant.afterSalesBatchClose(ctx, ids, reason);
     }
     /** 售后寄回地址（§83）：本店渠道配置 */
     async campusMerchantAfterSalesReturnAddress(ctx) {
@@ -494,6 +510,17 @@ __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'enabled', type: () => Boolean })),
+    __param(2, (0, graphql_1.Args)({ name: 'day', type: () => Number, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'time', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Boolean, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantUpdateAfterSalesMonthlyPush", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'dates', type: () => String, nullable: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
@@ -768,6 +795,34 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantAfterSalesAddFollowUp", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesPauseSla", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesResumeSla", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'ids', type: () => [String] })),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAfterSalesBatchClose", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

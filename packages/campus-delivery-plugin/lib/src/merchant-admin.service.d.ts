@@ -168,6 +168,8 @@ export interface MerchantAfterSalesRow {
     assigneeName: string | null;
     /** 风险标记原因（§94）：未标记或已解除为 null */
     riskReason: string | null;
+    /** SLA 计时已暂停（§95）：等待顾客配合期间不判超时/临期 */
+    slaPaused: boolean;
 }
 /** 换货发货结果复用列表行；批量处理逐单结果 */
 export interface MerchantAfterSalesBatchResult {
@@ -571,6 +573,10 @@ export interface MerchantAfterSalesWorkbench {
     overdue: number;
     /** 临期未处理 */
     dueSoon: number;
+    /** SLA 计时已暂停的待处理单（§95） */
+    slaPaused: number;
+    /** 回访到期未跟进单数（§95） */
+    followUpDue: number;
     /** 最早一笔待处理单的申请时间（无待处理为 null） */
     oldestPendingAt: Date | null;
     /** 最老待处理单已等待小时数 */
@@ -641,6 +647,12 @@ export interface MerchantStoreProfile {
     dailyPushEnabled: boolean;
     /** 日报推送时间 'HH:MM'，默认 21:30 */
     dailyPushTime: string;
+    /** 售后月度摘要推送开关（§95） */
+    monthlyPushEnabled: boolean;
+    /** 月度推送日（1-28，默认 1） */
+    monthlyPushDay: number;
+    /** 月度推送时间 'HH:MM'，默认 21:30 */
+    monthlyPushTime: string;
 }
 /** KDS 出餐屏（P1-4）：一单一张票，按等待时长分级提醒 */
 export interface KitchenTicketLine {
@@ -802,6 +814,12 @@ export declare class MerchantAdminService {
      * - 关闭只改开关，历史 lastDate 保留，重开当天若已推过则不再推（幂等键按「已推送的昨日」记）。
      */
     updateDailyPush(ctx: RequestContext, enabled: boolean, time?: string | null): Promise<MerchantStoreProfile>;
+    /**
+     * 售后月度摘要推送设置（§95）：开关 + 每月推送日（1-28）+ 推送时间。
+     * - 时间按校园时区解释，格式 HH:MM，空=沿用 21:30；推送日空=每月 1 日。
+     * - 每月只推一次（按上月 'YYYY-MM' 幂等），改设置不会重复推。
+     */
+    updateAfterSalesMonthlyPush(ctx: RequestContext, enabled: boolean, day?: number | null, time?: string | null): Promise<MerchantStoreProfile>;
     /** 营业日历（§70）：整体替换休业日期列表（传空数组=关闭休业日历），返回最新门店资料 */
     updateClosureDates(ctx: RequestContext, dates: Array<{
         date?: string | null;
@@ -1007,6 +1025,18 @@ export declare class MerchantAdminService {
     }): Promise<MerchantAfterSalesRules>;
     /** 商家关闭待处理售后（§84）：Pending → Closed，原因必填并回显顾客 */
     afterSalesClose(ctx: RequestContext, id: ID, reason: string): Promise<MerchantAfterSalesRow>;
+    /**
+     * 暂停售后 SLA 计时（§95）：等待顾客补充资料/回寄等场景，暂停期间不判超时与临期。
+     * 幂等：已暂停时重复调用直接返回当前行。
+     */
+    afterSalesPauseSla(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /**
+     * 恢复售后 SLA 计时（§95）：把本次暂停时长累计进 slaPausedMs，截止时间随之后移。
+     * 幂等：未暂停时重复调用无副作用。
+     */
+    afterSalesResumeSla(ctx: RequestContext, id: ID): Promise<MerchantAfterSalesRow>;
+    /** 批量关闭待处理售后（§95）：单批上限 50，逐单返回结果 */
+    afterSalesBatchClose(ctx: RequestContext, ids: ID[], reason: string): Promise<MerchantAfterSalesBatchResult[]>;
     /** 商家催办顾客（§84）：60 秒内同单一次，站内信经事件解耦投递 */
     afterSalesRemind(ctx: RequestContext, id: ID, note?: string | null): Promise<MerchantAfterSalesRow>;
     /** 退款流水（§84）：按退款时间倒序分页，日期为校园日（UTC+8），可省略不限 */
@@ -1110,6 +1140,8 @@ export declare class MerchantAdminService {
     private afterSalesFollowUps;
     /** 风险原因映射（§94）：Key=requestId，仅返回 active=true 的标记 */
     private afterSalesRiskReasons;
+    /** SLA 暂停状态映射（§95）：Key=requestId，pausedMs 为已累计暂停毫秒 */
+    private afterSalesSlaPauses;
     afterSalesExportSelection(ctx: RequestContext, ids: ID[], kind: string): Promise<string>;
     /** 处理人负载（§91）：按处理人聚合未完结单，附超时/临期；userId=0 为未指派 */
     afterSalesAssigneeLoad(ctx: RequestContext): Promise<MerchantAfterSalesAssigneeLoad[]>;
