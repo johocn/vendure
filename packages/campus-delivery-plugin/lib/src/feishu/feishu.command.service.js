@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
 const campus_building_entity_1 = require("../campus-building.entity");
+const campus_dedupe_service_1 = require("../campus-dedupe.service");
 const campus_fulfillment_config_entity_1 = require("../campus-fulfillment-config.entity");
 const campus_time_1 = require("../campus-time");
 const delivery_stats_service_1 = require("../delivery-stats.service");
@@ -132,7 +133,9 @@ CREATE TABLE IF NOT EXISTS feishu_audit_log (
  * 所有操作记审计日志，回复里不出现顾客手机号/详细地址。
  */
 let FeishuCommandService = class FeishuCommandService {
-    constructor(cfg, client, cards, requestContextService, connection, merchant, dispatchAdmin, deliveryStats, hall, riderTask) {
+    constructor(cfg, client, cards, requestContextService, connection, merchant, dispatchAdmin, deliveryStats, hall, riderTask, 
+    /** M4 跨实例限流/待确认状态（多实例下同一指令不会在多个进程各自放行）；未注入退回进程内 Map */
+    dedupe) {
         this.cfg = cfg;
         this.client = client;
         this.cards = cards;
@@ -143,6 +146,7 @@ let FeishuCommandService = class FeishuCommandService {
         this.deliveryStats = deliveryStats;
         this.hall = hall;
         this.riderTask = riderTask;
+        this.dedupe = dedupe;
         this.rate = new Map();
         this.pendingReject = new Map();
         this.pendingRestore = new Map();
@@ -157,7 +161,7 @@ let FeishuCommandService = class FeishuCommandService {
             core_1.Logger.warn(`未配置的群 chat_id=${chatId}，忽略指令`, loggerCtx);
             return;
         }
-        if (this.isRateLimited(chatId)) {
+        if (await this.isRateLimited(chatId)) {
             await this.reply(chatId, '操作过于频繁，请稍后再试。');
             return;
         }
@@ -272,7 +276,7 @@ let FeishuCommandService = class FeishuCommandService {
             cardAction: action,
         };
         // 卡片回调与文本指令共用同一限流器（防脚本连点/误触连发）
-        if (this.isRateLimited(chatId)) {
+        if (await this.isRateLimited(chatId)) {
             await this.audit(chatId, openId, cmd, 'rate-limited-card');
             await this.reply(chatId, '操作过于频繁，请稍后再试。');
             return;
@@ -835,7 +839,13 @@ let FeishuCommandService = class FeishuCommandService {
         if (!code)
             return;
         this.cleanupConfirmations();
-        this.pendingReject.set(`${chatId}:${code}`, { reason: cmd.reason, openId, at: Date.now() });
+        const pending = { reason: cmd.reason, openId, at: Date.now() };
+        if (this.dedupe) {
+            await this.dedupe.setJson(`feishu:pending_reject:${chatId}:${code}`, pending, CONFIRM_TTL_MS);
+        }
+        else {
+            this.pendingReject.set(`${chatId}:${code}`, pending);
+        }
         await this.reply(chatId, `即将拒单 ${code}（全额退款并取消订单）。确认请回复「确认拒单 ${code}」。`);
     }
     async confirmReject(chat, chatId, openId, cmd) {
@@ -848,13 +858,18 @@ let FeishuCommandService = class FeishuCommandService {
         if (!code)
             return;
         this.cleanupConfirmations();
-        const key = `${chatId}:${code}`;
-        const pending = this.pendingReject.get(key);
+        const storeKey = `feishu:pending_reject:${chatId}:${code}`;
+        const pending = this.dedupe
+            ? await this.dedupe.getJson(storeKey)
+            : this.pendingReject.get(`${chatId}:${code}`);
         if (!pending || pending.openId !== openId) {
             await this.reply(chatId, '确认已过期，请重新发送「拒单 <单号> <原因>」。');
             return;
         }
-        this.pendingReject.delete(key);
+        if (this.dedupe)
+            await this.dedupe.del(storeKey);
+        else
+            this.pendingReject.delete(`${chatId}:${code}`);
         const found = await this.requireOrder(chat, chatId, code);
         if (!found)
             return;
@@ -872,7 +887,13 @@ let FeishuCommandService = class FeishuCommandService {
         if (!code)
             return;
         this.cleanupConfirmations();
-        this.pendingRestore.set(`${chatId}:${code}`, { openId, at: Date.now() });
+        const pending = { openId, at: Date.now() };
+        if (this.dedupe) {
+            await this.dedupe.setJson(`feishu:pending_restore:${chatId}:${code}`, pending, CONFIRM_TTL_MS);
+        }
+        else {
+            this.pendingRestore.set(`${chatId}:${code}`, pending);
+        }
         await this.reply(chatId, `⚠️ 即将恢复 ${code}（hallStatus→open，重新进调度队）。确认请回复「确认恢复 ${code}」，5 分钟内有效。`);
     }
     async confirmRestore(chat, chatId, openId, cmd) {
@@ -885,13 +906,18 @@ let FeishuCommandService = class FeishuCommandService {
         if (!code)
             return;
         this.cleanupConfirmations();
-        const key = `${chatId}:${code}`;
-        const pending = this.pendingRestore.get(key);
+        const storeKey = `feishu:pending_restore:${chatId}:${code}`;
+        const pending = this.dedupe
+            ? await this.dedupe.getJson(storeKey)
+            : this.pendingRestore.get(`${chatId}:${code}`);
         if (!pending || pending.openId !== openId) {
             await this.reply(chatId, '确认已过期，请重新发送「恢复 <单号>」。');
             return;
         }
-        this.pendingRestore.delete(key);
+        if (this.dedupe)
+            await this.dedupe.del(storeKey);
+        else
+            this.pendingRestore.delete(`${chatId}:${code}`);
         const found = await this.requireOrder(chat, chatId, code);
         if (!found)
             return;
@@ -996,8 +1022,11 @@ let FeishuCommandService = class FeishuCommandService {
     isOwner(chat, openId) {
         return chat.owners.includes(openId);
     }
-    isRateLimited(chatId) {
+    async isRateLimited(chatId) {
         var _a;
+        if (this.dedupe) {
+            return (await this.dedupe.incr(`feishu:rate:${chatId}`, 60000)) > RATE_LIMIT_PER_MIN;
+        }
         const now = Date.now();
         const arr = ((_a = this.rate.get(chatId)) !== null && _a !== void 0 ? _a : []).filter(t => now - t < 60000);
         arr.push(now);
@@ -1006,6 +1035,9 @@ let FeishuCommandService = class FeishuCommandService {
     }
     /** 安全 GC：数组收集 key + 遍历完统一 delete（避免 Bug 5 模式——遍历时 delete 跳元素） */
     cleanupConfirmations() {
+        // dedupe 后端由 TTL 自动过期，无需遍历清理
+        if (this.dedupe)
+            return;
         const now = Date.now();
         const expiredReject = [];
         for (const [k, v] of this.pendingReject)
@@ -1077,6 +1109,7 @@ exports.FeishuCommandService = FeishuCommandService = __decorate([
         dispatch_admin_service_1.DispatchAdminService,
         delivery_stats_service_1.DeliveryStatsService,
         hall_service_1.HallService,
-        rider_task_service_1.RiderTaskService])
+        rider_task_service_1.RiderTaskService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], FeishuCommandService);
 //# sourceMappingURL=feishu.command.service.js.map

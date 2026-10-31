@@ -1,9 +1,13 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Logger, TransactionalConnection } from '@vendure/core';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PeriodicFallback } from './periodic-fallback';
 
 export type CapacitySeverity = 'critical' | 'warning';
+
+/** 级别状态保留 24h（需跨冷却窗口，才能识别后续升级/恢复；冷却本身另外计时） */
+const SEVERITY_TTL_MS = 24 * 3600_000;
 
 export interface CapacityAlertSettings {
     /** 总开关（CAPACITY_ALERT_ENABLED，默认开） */
@@ -85,15 +89,17 @@ export interface BacklogStat {
 @Injectable()
 export class CapacityAlertJob implements OnApplicationShutdown {
     private fallback: PeriodicFallback | null = null;
-    /** channelId → 上次告警时间（冷却用） */
+    /** channelId → 上次告警时间（冷却用；无 dedupe 时的进程内兜底） */
     private alerted = new Map<number, number>();
-    /** channelId → 当前级别（用于升级立即推 / 恢复通知） */
+    /** channelId → 当前级别（用于升级立即推 / 恢复通知；无 dedupe 时的进程内兜底） */
     private severity = new Map<number, CapacitySeverity>();
     private settings: CapacityAlertSettings = readCapacityAlertSettings();
 
     constructor(
         private connection: TransactionalConnection,
         private feishu: FeishuNotifyService,
+        /** M4 跨实例冷却/级别；未注入时退回进程内 Map（单测/旧装配兼容） */
+        private dedupe?: CampusDedupeService,
     ) {}
 
     /** 运维/单测覆盖阈值（start 时会用环境变量重置） */
@@ -150,23 +156,22 @@ export class CapacityAlertJob implements OnApplicationShutdown {
             const severity = this.severityOf(riders, backlog.count);
 
             if (!severity) {
-                if (this.severity.has(channelId)) {
-                    this.severity.delete(channelId);
-                    this.alerted.delete(channelId);
+                const prev = await this.currentSeverity(channelId);
+                if (prev) {
+                    await this.clearAlert(channelId);
                     await this.pushRecovered(channelId, code, name, riders, backlog.count);
                 }
                 continue;
             }
 
             // 级别升级（紧张 → 无骑手）不受冷却限制，避免「更严重的情况被上一轮普通告警压住」
-            const escalated = this.severity.get(channelId) === 'warning' && severity === 'critical';
-            if (!escalated && !this.canAlert(channelId)) continue;
+            const escalated = (await this.currentSeverity(channelId)) === 'warning' && severity === 'critical';
+            if (!escalated && !(await this.canAlert(channelId))) continue;
 
             const atAll = severity === 'critical' && this.settings.atAll;
             if (!this.feishu.enabled) {
                 // 飞书未启用：只记录（保留冷却，避免每 5 分钟刷日志）
-                this.alerted.set(channelId, Date.now());
-                this.severity.set(channelId, severity);
+                await this.markAlerted(channelId, severity);
                 Logger.warn(
                     `运力预警（飞书未启用，仅记录）channel=${channelId}(${code}) severity=${severity} `
                     + `backlog=${backlog.count} riders=${riders}`,
@@ -188,8 +193,7 @@ export class CapacityAlertJob implements OnApplicationShutdown {
             });
             // 只有送达成功才占冷却窗口：失败下一轮仍会重试
             if (ok) {
-                this.alerted.set(channelId, Date.now());
-                this.severity.set(channelId, severity);
+                await this.markAlerted(channelId, severity);
             }
             Logger.warn(
                 `运力预警 channel=${channelId}(${code}) severity=${severity} backlog=${backlog.count} `
@@ -266,9 +270,34 @@ export class CapacityAlertJob implements OnApplicationShutdown {
         return { count, oldestMinutes };
     }
 
-    private canAlert(channelId: number): boolean {
-        const last = this.alerted.get(channelId) ?? 0;
-        return Date.now() - last >= this.settings.cooldownMs;
+    private async canAlert(channelId: number): Promise<boolean> {
+        if (!this.dedupe) {
+            const last = this.alerted.get(channelId) ?? 0;
+            return Date.now() - last >= this.settings.cooldownMs;
+        }
+        return !(await this.dedupe.seen(`capacity:alert:${channelId}`, this.settings.cooldownMs));
+    }
+
+    /** 记冷却 + 当前级别（送达成功后调用；多实例共享） */
+    private async markAlerted(channelId: number, severity: CapacitySeverity): Promise<void> {
+        this.alerted.set(channelId, Date.now());
+        this.severity.set(channelId, severity);
+        if (!this.dedupe) return;
+        await this.dedupe.mark(`capacity:alert:${channelId}`, this.settings.cooldownMs);
+        await this.dedupe.setJson(`capacity:severity:${channelId}`, severity, SEVERITY_TTL_MS);
+    }
+
+    private async currentSeverity(channelId: number): Promise<CapacitySeverity | null> {
+        if (!this.dedupe) return this.severity.get(channelId) ?? null;
+        return this.dedupe.getJson<CapacitySeverity>(`capacity:severity:${channelId}`);
+    }
+
+    private async clearAlert(channelId: number): Promise<void> {
+        this.severity.delete(channelId);
+        this.alerted.delete(channelId);
+        if (!this.dedupe) return;
+        await this.dedupe.del(`capacity:severity:${channelId}`);
+        await this.dedupe.del(`capacity:alert:${channelId}`);
     }
 
     /** 去重键时间槽：冷却为 0 时按分钟分桶（避免除零） */

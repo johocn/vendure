@@ -4,6 +4,7 @@ import { Injector, Logger, Order, RequestContext, TransactionalConnection, UserI
 import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusBuilding } from './campus-building.entity';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CapacityService } from './capacity.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
@@ -31,7 +32,7 @@ export class HallService {
     /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
     static readonly SCHEDULE_RELEASE_MIN = 30;
 
-    /** R5 交接码重发限流：同单 10 分钟一次（进程内，pm2 单实例足够；多实例需换 DB/Redis） */
+    /** R5 交接码重发限流：同单 10 分钟一次（M4 经 dedupe 跨实例；未注入时退回进程内 Map） */
     static readonly HANDOVER_RESEND_INTERVAL_MS = 10 * 60_000;
     private handoverResendAt = new Map<number, number>();
 
@@ -42,6 +43,8 @@ export class HallService {
         private capacity: CapacityService,
         private feishu?: FeishuNotifyService,
         private notify?: CampusNotifyService,
+        /** M4 跨实例限频（多实例部署时同单重发不串号）；未注入退回进程内 Map */
+        private dedupe?: CampusDedupeService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -297,10 +300,7 @@ export class HallService {
      */
     async resendHandoverCode(ctx: RequestContext, orderId: number): Promise<string> {
         const key = Number(orderId);
-        const last = this.handoverResendAt.get(key);
-        if (last != null && Date.now() - last < HallService.HANDOVER_RESEND_INTERVAL_MS) {
-            throw new UserInputError('交接码重发过于频繁，请 10 分钟后再试');
-        }
+        await this.claimResendWindow(key);
         const handoverCode = String(Math.floor(1000 + Math.random() * 9000));
         const res: any = await this.connection.rawConnection.query(
             'UPDATE "order" SET "customFieldsHandovercode" = $1, "customFieldsHandovercodeat" = $2 '
@@ -309,11 +309,29 @@ export class HallService {
         );
         const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
         if (!Array.isArray(rows) || !rows.length) {
+            // 状态不符不占用限流窗口（与原「成功后登记」语义一致）
+            await this.dedupe?.del(`handover_resend:${key}`);
             throw new UserInputError('订单当前不在待交接状态，无法重发交接码');
         }
         this.handoverResendAt.set(key, Date.now());
         Logger.info(`订单 #${key} 交接码已重发（脱敏）`, 'CampusHall');
         return handoverCode;
+    }
+
+    /** 同单 10min 限流：dedupe 走原子计数（跨实例），未注入退回进程内 Map */
+    private async claimResendWindow(orderId: number): Promise<void> {
+        if (!this.dedupe) {
+            const last = this.handoverResendAt.get(orderId);
+            if (last != null && Date.now() - last < HallService.HANDOVER_RESEND_INTERVAL_MS) {
+                throw new UserInputError('交接码重发过于频繁，请 10 分钟后再试');
+            }
+            return;
+        }
+        const n = await this.dedupe.incr(
+            `handover_resend:${orderId}`,
+            HallService.HANDOVER_RESEND_INTERVAL_MS,
+        );
+        if (n > 1) throw new UserInputError('交接码重发过于频繁，请 10 分钟后再试');
     }
 
     /** R5 顾客侧重发：先校验订单归属当前登录顾客，再复用同一条件写。 */

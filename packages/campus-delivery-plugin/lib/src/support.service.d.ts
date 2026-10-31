@@ -65,6 +65,8 @@ export declare class SupportService {
         id: number | null;
         created: boolean;
     }>;
+    /** 当前值班人（§100 值班排班；表不存在/查询失败按无人值班处理，不阻断建单） */
+    private resolveDutyAssignee;
     myTickets(ctx: RequestContext, skip?: number, take?: number): Promise<CampusSupportTicket[] | ({
         afterSalesRequestId: number | null;
         afterSalesState: null;
@@ -77,6 +79,7 @@ export declare class SupportService {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -99,6 +102,7 @@ export declare class SupportService {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -112,7 +116,7 @@ export declare class SupportService {
     })[]>;
     /** 工单行 + 售后摘要（无关联时各字段为 null） */
     private withAfterSalesView;
-    adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number, source?: string): Promise<{
+    adminTickets(ctx: RequestContext, status?: string, skip?: number, take?: number, source?: string, assigneeId?: ID): Promise<{
         items: ({
             customerName: string;
             customerPhone: string | null;
@@ -127,6 +131,7 @@ export declare class SupportService {
             orderId: number | null;
             source: string;
             dedupeKey: string | null;
+            assigneeId: number | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -151,6 +156,7 @@ export declare class SupportService {
             orderId: number | null;
             source: string;
             dedupeKey: string | null;
+            assigneeId: number | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -180,6 +186,7 @@ export declare class SupportService {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -202,6 +209,7 @@ export declare class SupportService {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -229,6 +237,7 @@ export declare class SupportService {
         afterSalesRequestId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;

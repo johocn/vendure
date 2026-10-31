@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Logger } from '@vendure/core';
 import { AdminNotifyEvent } from '@vendure/notification-plugin';
 
+import { CampusDedupeService } from '../campus-dedupe.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { formatPush } from './feishu.templates';
@@ -28,6 +29,8 @@ export class FeishuNotifyService {
     constructor(
         private client: FeishuClient,
         private cards: FeishuCardService,
+        /** M4 跨实例去重（多实例下同一告警只推一次）；未注入时退回进程内 Map */
+        private dedupe?: CampusDedupeService,
     ) {}
 
     async onAdminNotify(event: AdminNotifyEvent): Promise<void> {
@@ -35,14 +38,14 @@ export class FeishuNotifyService {
         const dedupeKey = event.orderCode || event.orderId != null
             ? `${event.scene}:${event.orderId != null ? String(event.orderId) : event.orderCode}`
             : undefined;
-        if (dedupeKey && this.isDuplicate(dedupeKey)) return;
+        if (dedupeKey && (await this.isDuplicate(dedupeKey))) return;
         // 订单级消息只发「本店群 + 平台群」：A 店单号/楼栋/金额不得出现在 B 店群
         const channelToken = event.ctx.channel?.token;
 
         if (event.scene === 'shop_new_order' && event.orderCode) {
             try {
                 if (await this.cards.broadcastOrderCard(event.orderCode, channelToken)) {
-                    if (dedupeKey) this.mark(dedupeKey);
+                    if (dedupeKey) await this.mark(dedupeKey);
                     return;
                 }
             } catch (e: any) {
@@ -64,7 +67,7 @@ export class FeishuNotifyService {
         // 卡片降级文本同样按渠道定向（无渠道时维持原全量广播，避免通知静默丢失）
         const target = event.scene === 'shop_new_order' && channelToken ? { channel: channelToken } : undefined;
         if (await this.deliver(text, event.scene, target)) {
-            if (dedupeKey) this.mark(dedupeKey);
+            if (dedupeKey) await this.mark(dedupeKey);
         }
     }
 
@@ -73,9 +76,9 @@ export class FeishuNotifyService {
     async push(scene: string, dedupeKey: string | undefined, text: string, target?: FeishuPushTarget): Promise<boolean> {
         if (!this.client.enabled) return true;
         const key = dedupeKey ? `${scene}:${dedupeKey}` : undefined;
-        if (key && this.isDuplicate(key)) return true;
+        if (key && (await this.isDuplicate(key))) return true;
         const ok = await this.deliver(text, scene, target);
-        if (ok && key) this.mark(key);
+        if (ok && key) await this.mark(key);
         return ok;
     }
 
@@ -92,7 +95,7 @@ export class FeishuNotifyService {
         // 缺省键必须带事件标题：同一订单 2 分钟内可能连发多个不同事件（如取货超时告警 + 回厅），
         // 只用 orderCode 会把后到的那条吞掉。显式传键的调用方保持原语义。
         const key = dedupeKey ?? (orderCode ? `${orderCode}:${title}` : undefined);
-        if (key && this.isDuplicate(key)) return true;
+        if (key && (await this.isDuplicate(key))) return true;
 
         // P2.1 同单告警合并：有 orderCode 时先尝试 PATCH 已有订单卡片追加告警行，找不到再降级广播文本
         if (orderCode) {
@@ -101,7 +104,7 @@ export class FeishuNotifyService {
             const alertDedupeKey = key ?? dedupeKey;
             if (await this.cards.appendAlert(orderCode, alertText, alertDedupeKey)) {
                 // 已合并到卡片，不再额外发文本
-                if (key) this.mark(key);
+                if (key) await this.mark(key);
                 return true;
             }
         }
@@ -117,7 +120,7 @@ export class FeishuNotifyService {
         }
 
         const ok = await this.push(scene, key, formatPush({ scene, title, content, orderCode, at: Date.now() }), target);
-        if (ok && key) this.mark(key);
+        if (ok && key) await this.mark(key);
         return ok;
     }
 
@@ -138,12 +141,17 @@ export class FeishuNotifyService {
     }
 
     /** 送达成功后才登记去重键：发送失败不应占用去重窗口，否则失败一次会静默整整一个窗口。 */
-    private mark(key: string): void {
+    private async mark(key: string): Promise<void> {
+        if (this.dedupe) {
+            await this.dedupe.mark(key, DEDUPE_MS);
+            return;
+        }
         this.recent.set(key, Date.now());
     }
 
     // Bug 6 修复：同 Bug 5，Map 遍历时 delete 跳过元素导致泄漏；改数组收集再统一 delete
-    private isDuplicate(key: string): boolean {
+    private async isDuplicate(key: string): Promise<boolean> {
+        if (this.dedupe) return this.dedupe.seen(key, DEDUPE_MS);
         const now = Date.now();
         const expired: string[] = [];
         for (const [k, at] of this.recent) {

@@ -6,7 +6,7 @@ export declare class SupportAdminResolver {
     private support;
     private riderOps;
     constructor(support: SupportService, riderOps: RiderOpsService);
-    campusSupportTickets(ctx: RequestContext, status?: string, source?: string, skip?: number, take?: number): Promise<{
+    campusSupportTickets(ctx: RequestContext, status?: string, source?: string, assigneeId?: ID, skip?: number, take?: number): Promise<{
         items: ({
             customerName: string;
             customerPhone: string | null;
@@ -21,6 +21,7 @@ export declare class SupportAdminResolver {
             orderId: number | null;
             source: string;
             dedupeKey: string | null;
+            assigneeId: number | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -45,6 +46,7 @@ export declare class SupportAdminResolver {
             orderId: number | null;
             source: string;
             dedupeKey: string | null;
+            assigneeId: number | null;
             category: string;
             content: string;
             images: string[] | null;
@@ -68,6 +70,7 @@ export declare class SupportAdminResolver {
         afterSalesRequestId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -89,6 +92,7 @@ export declare class SupportAdminResolver {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;
@@ -111,6 +115,7 @@ export declare class SupportAdminResolver {
         orderId: number | null;
         source: string;
         dedupeKey: string | null;
+        assigneeId: number | null;
         category: string;
         content: string;
         images: string[] | null;

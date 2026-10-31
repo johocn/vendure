@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FeishuNotifyService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const campus_dedupe_service_1 = require("../campus-dedupe.service");
 const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
 const feishu_templates_1 = require("./feishu.templates");
@@ -24,9 +25,12 @@ const DEDUPE_MS = 2 * 60000;
  * 未启用、未配置、发送失败一律静默降级，绝不阻塞订单主流程。
  */
 let FeishuNotifyService = class FeishuNotifyService {
-    constructor(client, cards) {
+    constructor(client, cards, 
+    /** M4 跨实例去重（多实例下同一告警只推一次）；未注入时退回进程内 Map */
+    dedupe) {
         this.client = client;
         this.cards = cards;
+        this.dedupe = dedupe;
         this.recent = new Map();
     }
     async onAdminNotify(event) {
@@ -36,7 +40,7 @@ let FeishuNotifyService = class FeishuNotifyService {
         const dedupeKey = event.orderCode || event.orderId != null
             ? `${event.scene}:${event.orderId != null ? String(event.orderId) : event.orderCode}`
             : undefined;
-        if (dedupeKey && this.isDuplicate(dedupeKey))
+        if (dedupeKey && (await this.isDuplicate(dedupeKey)))
             return;
         // 订单级消息只发「本店群 + 平台群」：A 店单号/楼栋/金额不得出现在 B 店群
         const channelToken = (_a = event.ctx.channel) === null || _a === void 0 ? void 0 : _a.token;
@@ -44,7 +48,7 @@ let FeishuNotifyService = class FeishuNotifyService {
             try {
                 if (await this.cards.broadcastOrderCard(event.orderCode, channelToken)) {
                     if (dedupeKey)
-                        this.mark(dedupeKey);
+                        await this.mark(dedupeKey);
                     return;
                 }
             }
@@ -67,7 +71,7 @@ let FeishuNotifyService = class FeishuNotifyService {
         const target = event.scene === 'shop_new_order' && channelToken ? { channel: channelToken } : undefined;
         if (await this.deliver(text, event.scene, target)) {
             if (dedupeKey)
-                this.mark(dedupeKey);
+                await this.mark(dedupeKey);
         }
     }
     /** 内部事件（异常/超时/支付取消）直接推群；按业务键 2 分钟去重。
@@ -76,11 +80,11 @@ let FeishuNotifyService = class FeishuNotifyService {
         if (!this.client.enabled)
             return true;
         const key = dedupeKey ? `${scene}:${dedupeKey}` : undefined;
-        if (key && this.isDuplicate(key))
+        if (key && (await this.isDuplicate(key)))
             return true;
         const ok = await this.deliver(text, scene, target);
         if (ok && key)
-            this.mark(key);
+            await this.mark(key);
         return ok;
     }
     /** 返回是否已送达/已合并到卡片：false 表示本次推送失败，调用方应保留重试机会。 */
@@ -90,7 +94,7 @@ let FeishuNotifyService = class FeishuNotifyService {
         // 缺省键必须带事件标题：同一订单 2 分钟内可能连发多个不同事件（如取货超时告警 + 回厅），
         // 只用 orderCode 会把后到的那条吞掉。显式传键的调用方保持原语义。
         const key = dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : (orderCode ? `${orderCode}:${title}` : undefined);
-        if (key && this.isDuplicate(key))
+        if (key && (await this.isDuplicate(key)))
             return true;
         // P2.1 同单告警合并：有 orderCode 时先尝试 PATCH 已有订单卡片追加告警行，找不到再降级广播文本
         if (orderCode) {
@@ -100,7 +104,7 @@ let FeishuNotifyService = class FeishuNotifyService {
             if (await this.cards.appendAlert(orderCode, alertText, alertDedupeKey)) {
                 // 已合并到卡片，不再额外发文本
                 if (key)
-                    this.mark(key);
+                    await this.mark(key);
                 return true;
             }
         }
@@ -117,7 +121,7 @@ let FeishuNotifyService = class FeishuNotifyService {
         }
         const ok = await this.push(scene, key, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }), target);
         if (ok && key)
-            this.mark(key);
+            await this.mark(key);
         return ok;
     }
     /** 飞书通道是否可用（未启用时业务侧只记录日志、不外发） */
@@ -138,11 +142,17 @@ let FeishuNotifyService = class FeishuNotifyService {
         }
     }
     /** 送达成功后才登记去重键：发送失败不应占用去重窗口，否则失败一次会静默整整一个窗口。 */
-    mark(key) {
+    async mark(key) {
+        if (this.dedupe) {
+            await this.dedupe.mark(key, DEDUPE_MS);
+            return;
+        }
         this.recent.set(key, Date.now());
     }
     // Bug 6 修复：同 Bug 5，Map 遍历时 delete 跳过元素导致泄漏；改数组收集再统一 delete
-    isDuplicate(key) {
+    async isDuplicate(key) {
+        if (this.dedupe)
+            return this.dedupe.seen(key, DEDUPE_MS);
         const now = Date.now();
         const expired = [];
         for (const [k, at] of this.recent) {
@@ -159,6 +169,7 @@ exports.FeishuNotifyService = FeishuNotifyService;
 exports.FeishuNotifyService = FeishuNotifyService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [feishu_client_1.FeishuClient,
-        feishu_card_service_1.FeishuCardService])
+        feishu_card_service_1.FeishuCardService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], FeishuNotifyService);
 //# sourceMappingURL=feishu-notify.service.js.map

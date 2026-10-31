@@ -1,5 +1,6 @@
 import { OnApplicationShutdown } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 export type CapacitySeverity = 'critical' | 'warning';
 export interface CapacityAlertSettings {
@@ -44,13 +45,17 @@ export interface BacklogStat {
 export declare class CapacityAlertJob implements OnApplicationShutdown {
     private connection;
     private feishu;
+    /** M4 跨实例冷却/级别；未注入时退回进程内 Map（单测/旧装配兼容） */
+    private dedupe?;
     private fallback;
-    /** channelId → 上次告警时间（冷却用） */
+    /** channelId → 上次告警时间（冷却用；无 dedupe 时的进程内兜底） */
     private alerted;
-    /** channelId → 当前级别（用于升级立即推 / 恢复通知） */
+    /** channelId → 当前级别（用于升级立即推 / 恢复通知；无 dedupe 时的进程内兜底） */
     private severity;
     private settings;
-    constructor(connection: TransactionalConnection, feishu: FeishuNotifyService);
+    constructor(connection: TransactionalConnection, feishu: FeishuNotifyService, 
+    /** M4 跨实例冷却/级别；未注入时退回进程内 Map（单测/旧装配兼容） */
+    dedupe?: CampusDedupeService | undefined);
     /** 运维/单测覆盖阈值（start 时会用环境变量重置） */
     configure(partial: Partial<CapacityAlertSettings>): void;
     start(overrides?: Partial<CapacityAlertSettings>): void;
@@ -65,6 +70,10 @@ export declare class CapacityAlertJob implements OnApplicationShutdown {
     private countOnlineRiders;
     private countBacklog;
     private canAlert;
+    /** 记冷却 + 当前级别（送达成功后调用；多实例共享） */
+    private markAlerted;
+    private currentSeverity;
+    private clearAlert;
     /** 去重键时间槽：冷却为 0 时按分钟分桶（避免除零） */
     private bucket;
     /** 原始查询结果归一化（pg 驱动返回 [rows, count] 两层数组） */

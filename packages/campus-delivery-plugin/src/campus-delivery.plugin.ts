@@ -177,6 +177,8 @@ import { P34ChannelAfterSalesReviewThresholdMigration } from './migrations/p34-c
 import { P35WithdrawDeductStateMigration } from './migrations/p35-withdraw-deduct-state';
 import { P36CompensationTaskMigration } from './migrations/p36-compensation-task';
 import { P37SupportTicketSystemMigration } from './migrations/p37-support-ticket-system';
+import { P38SupportAssigneeDedupeMigration } from './migrations/p38-support-assignee-dedupe';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { WithdrawReconcileJob } from './withdraw-reconcile.job';
 import { CompensationTaskService } from './compensation-task.service';
 import { CompensationRetryJob } from './compensation-retry.job';
@@ -239,6 +241,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P35WithdrawDeductStateMigration,
         P36CompensationTaskMigration,
         P37SupportTicketSystemMigration,
+        P38SupportAssigneeDedupeMigration,
+        CampusDedupeService,
         WithdrawReconcileJob,
         CompensationTaskService,
         CompensationRetryJob,
@@ -1865,6 +1869,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     customerId: ID
                     """来源：customer（顾客提交）/ third_party_exception（外部运单异常自动建单）"""
                     source: String!
+                    """值班人管理员 userId（系统工单建单时按本店值班表自动指派；无值班/顾客工单为 null）"""
+                    assigneeId: ID
                     customerName: String
                     customerPhone: String
                     orderCode: String
@@ -2341,7 +2347,7 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
-                    campusSupportTickets(status: String, source: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusSupportTickets(status: String, source: String, assigneeId: ID, skip: Int, take: Int): CampusSupportTicketList!
                     """R2 补偿任务列表（失败任务排查；status=pending/done/failed）"""
                     campusCompensationTasks(status: String, skip: Int, take: Int): CampusCompensationTaskList!
                     campusChatConversations(status: String, unreadOnly: Boolean, skip: Int, take: Int): CampusChatConversationList!

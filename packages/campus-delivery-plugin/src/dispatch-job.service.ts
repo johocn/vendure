@@ -11,6 +11,7 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 import { CapacityService } from './capacity.service';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
 import { CompensationTaskService } from './compensation-task.service';
@@ -99,10 +100,18 @@ export class DispatchJobService implements OnApplicationShutdown {
         private compensation?: CompensationTaskService,
         /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
         private support?: SupportService,
+        /** M4 跨实例去重/计数（多实例下告警限频与取消失败计数共享）；未注入退回进程内 Map */
+        private dedupe?: CampusDedupeService,
     ) {}
 
-    /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
-    private shouldAlertExternalException(key: string): boolean {
+    /** 外部异常告警去重：按「单号:运单号」保留 24h（DB 去重表跨实例；无 dedupe 时退回进程内 Map） */
+    private async shouldAlertExternalException(key: string): Promise<boolean> {
+        if (this.dedupe) {
+            return !(await this.dedupe.seenOrMark(
+                `dispatch:exception_alert:${key}`,
+                DispatchJobService.EXTERNAL_EXCEPTION_ALERT_TTL_MS,
+            ));
+        }
         const now = Date.now();
         const at = this.externalExceptionAlertedAt.get(key);
         if (at != null) {
@@ -110,6 +119,26 @@ export class DispatchJobService implements OnApplicationShutdown {
             this.externalExceptionAlertedAt.delete(key);
         }
         this.externalExceptionAlertedAt.set(key, now);
+        return true;
+    }
+
+    /** 取消失败计数 +1（多实例共享；返回连续失败轮次） */
+    private async bumpCancelFail(code: string): Promise<number> {
+        const fail = this.externalCancelFails.get(code) ?? { n: 0, alertedAt: 0 };
+        fail.n += 1;
+        this.externalCancelFails.set(code, fail);
+        if (!this.dedupe) return fail.n;
+        return this.dedupe.incr(`dispatch:cancel_fail:${code}`, 24 * 3600_000);
+    }
+
+    /** 取消失败升级告警限频（30min；多实例共享） */
+    private async shouldAlertCancelFail(code: string, now: number): Promise<boolean> {
+        if (this.dedupe) {
+            return !(await this.dedupe.seenOrMark(`dispatch:cancel_alert:${code}`, 30 * 60_000));
+        }
+        const fail = this.externalCancelFails.get(code);
+        if (fail && now - fail.alertedAt <= 30 * 60_000) return false;
+        if (fail) fail.alertedAt = now;
         return true;
     }
 
@@ -816,7 +845,10 @@ export class DispatchJobService implements OnApplicationShutdown {
                 //    但仍设 3×fallbackMs 硬上限，防止「接单后永不送达」永久占用。
                 const tpState = String(cf.thirdPartyState ?? '');
                 // 离开 third_party 后清理取消失败计数，避免 Map 随历史单增长
-                if (cf.hallStatus !== 'third_party') this.externalCancelFails.delete(o.code);
+                if (cf.hallStatus !== 'third_party') {
+                    this.externalCancelFails.delete(o.code);
+                    await this.dedupe?.del(`dispatch:cancel_fail:${o.code}`);
+                }
                 const inDelivery = tpState === 'accepted' || tpState === 'pickup';
                 // §6 异常态（平台判定运力失败/拒收/破损等）：同样不等待，先告警 + 通知顾客，再由下方 tpStale 取消回落。
                 // 去重键带外部运单号：回落重推后新运单异常会再次告警。
@@ -825,10 +857,11 @@ export class DispatchJobService implements OnApplicationShutdown {
                 const exceptionResolved = !!(cf as any).exceptionResolvedAt;
                 if (tpState !== 'exception') {
                     this.externalExceptionAlertedAt.delete(exceptionKey);
+                    await this.dedupe?.del(`dispatch:exception_alert:${exceptionKey}`);
                 } else if (
                     !exceptionResolved
                     && cf.hallStatus === 'third_party'
-                    && this.shouldAlertExternalException(exceptionKey)
+                    && (await this.shouldAlertExternalException(exceptionKey))
                 ) {
                     Logger.warn(`Order ${o.code} external courier exception (${String(cf.thirdPartyNo ?? '-')})`, 'CampusDispatch');
                     const ticketId = await this.createExceptionTicket(ctx, {
@@ -881,9 +914,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                         }
                     }
                     if (!cancelOk) {
-                        const fail = this.externalCancelFails.get(o.code) ?? { n: 0, alertedAt: 0 };
-                        fail.n += 1;
-                        this.externalCancelFails.set(o.code, fail);
+                        const failN = await this.bumpCancelFail(o.code);
                         await this.hall.transitionFrom(ctx, Number(o.id), ['third_party'], {
                             campusCause: 'external_cancel_failed',
                         });
@@ -892,20 +923,19 @@ export class DispatchJobService implements OnApplicationShutdown {
                             'CampusDispatch',
                         );
                         // 连续 3 轮仍未确认取消：升级飞书异常（30min 限频），绝不自动回落（会双运单双份运费）
-                        if (fail.n >= 3 && now - fail.alertedAt > 30 * 60_000) {
-                            fail.alertedAt = now;
+                        if (failN >= 3 && (await this.shouldAlertCancelFail(o.code, now))) {
                             const ticketId = !exceptionResolved
                                 ? await this.createExceptionTicket(ctx, {
                                       dedupeKey: `third_party_cancel:${exceptionKey}`,
                                       order: o,
                                       cf,
-                                      content: `外部运单取消失败：平台 ${String(cf.thirdPartyProvider ?? '-')}，运单 ${String(cf.thirdPartyNo ?? '-')}，连续 ${fail.n} 轮取消未确认。订单保持 third_party 不回落（防双运单双份运费），请人工核实平台运单状态后关闭本工单。`,
+                                      content: `外部运单取消失败：平台 ${String(cf.thirdPartyProvider ?? '-')}，运单 ${String(cf.thirdPartyNo ?? '-')}，连续 ${failN} 轮取消未确认。订单保持 third_party 不回落（防双运单双份运费），请人工核实平台运单状态后关闭本工单。`,
                                   })
                                 : null;
                             void this.feishu?.pushEvent(
                                 'exception',
                                 '外部运单取消失败',
-                                `订单 ${o.code} 外部运单连续 ${fail.n} 轮取消未确认（${String(cf.thirdPartyNo ?? '-')}），已保持 third_party 不回落；${ticketId ? `已建工单 #${ticketId}` : '请人工核实平台运单状态'}。`,
+                                `订单 ${o.code} 外部运单连续 ${failN} 轮取消未确认（${String(cf.thirdPartyNo ?? '-')}），已保持 third_party 不回落；${ticketId ? `已建工单 #${ticketId}` : '请人工核实平台运单状态'}。`,
                                 o.code,
                                 `${o.code}:cancel_failed`,
                             );
@@ -913,6 +943,7 @@ export class DispatchJobService implements OnApplicationShutdown {
                         continue;
                     }
                     this.externalCancelFails.delete(o.code);
+                    await this.dedupe?.del(`dispatch:cancel_fail:${o.code}`);
                     // cancel() 成功时内部已按路线回写本地状态（R2 待推送 / R3 大厅）；未推送（skipped）时本地补写
                     if (skipped) {
                         const patch: Record<string, unknown> = route === 'R2'

@@ -1,4 +1,5 @@
 import { AdminNotifyEvent } from '@vendure/notification-plugin';
+import { CampusDedupeService } from '../campus-dedupe.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 /** 推送目标：店铺定向（channel=渠道 code，平台群始终接收）+ 严重告警 @所有人 */
@@ -15,8 +16,12 @@ export interface FeishuPushTarget {
 export declare class FeishuNotifyService {
     private client;
     private cards;
+    /** M4 跨实例去重（多实例下同一告警只推一次）；未注入时退回进程内 Map */
+    private dedupe?;
     private recent;
-    constructor(client: FeishuClient, cards: FeishuCardService);
+    constructor(client: FeishuClient, cards: FeishuCardService, 
+    /** M4 跨实例去重（多实例下同一告警只推一次）；未注入时退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     onAdminNotify(event: AdminNotifyEvent): Promise<void>;
     /** 内部事件（异常/超时/支付取消）直接推群；按业务键 2 分钟去重。
      * 返回是否送达（未启用/去重命中记为 true，避免调用方无意义重试）。 */

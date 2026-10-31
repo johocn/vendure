@@ -1,6 +1,7 @@
 import { ModuleRef } from '@nestjs/core';
 import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CapacityService } from './capacity.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
@@ -20,12 +21,16 @@ export declare class HallService {
     private capacity;
     private feishu?;
     private notify?;
+    /** M4 跨实例限频（多实例部署时同单重发不串号）；未注入退回进程内 Map */
+    private dedupe?;
     /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
     static readonly SCHEDULE_RELEASE_MIN = 30;
-    /** R5 交接码重发限流：同单 10 分钟一次（进程内，pm2 单实例足够；多实例需换 DB/Redis） */
+    /** R5 交接码重发限流：同单 10 分钟一次（M4 经 dedupe 跨实例；未注入时退回进程内 Map） */
     static readonly HANDOVER_RESEND_INTERVAL_MS: number;
     private handoverResendAt;
-    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined);
+    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined, 
+    /** M4 跨实例限频（多实例部署时同单重发不串号）；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */
@@ -59,6 +64,8 @@ export declare class HallService {
      * 限流：同单 10 分钟一次；返回新码（调用方自行决定是否展示，日志不落明文）。
      */
     resendHandoverCode(ctx: RequestContext, orderId: number): Promise<string>;
+    /** 同单 10min 限流：dedupe 走原子计数（跨实例），未注入退回进程内 Map */
+    private claimResendWindow;
     /** R5 顾客侧重发：先校验订单归属当前登录顾客，再复用同一条件写。 */
     resendHandoverCodeForCustomer(ctx: RequestContext, orderId: number): Promise<string>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。

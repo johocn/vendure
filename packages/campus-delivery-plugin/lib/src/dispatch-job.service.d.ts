@@ -2,6 +2,7 @@ import { OnApplicationShutdown } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { CompensationTaskService } from './compensation-task.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
@@ -23,6 +24,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private compensation?;
     /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
     private support?;
+    /** M4 跨实例去重/计数（多实例下告警限频与取消失败计数共享）；未注入退回进程内 Map */
+    private dedupe?;
     /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
     private fallback;
     private running;
@@ -47,9 +50,15 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private static readonly SCAN_BUCKETS;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined, compensation?: CompensationTaskService | undefined, 
     /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
-    support?: SupportService | undefined);
-    /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
+    support?: SupportService | undefined, 
+    /** M4 跨实例去重/计数（多实例下告警限频与取消失败计数共享）；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
+    /** 外部异常告警去重：按「单号:运单号」保留 24h（DB 去重表跨实例；无 dedupe 时退回进程内 Map） */
     private shouldAlertExternalException;
+    /** 取消失败计数 +1（多实例共享；返回连续失败轮次） */
+    private bumpCancelFail;
+    /** 取消失败升级告警限频（30min；多实例共享） */
+    private shouldAlertCancelFail;
     /** R7：外部运单异常建工单（幂等由 dedupeKey 保证）；建单失败不影响告警主流程 */
     private createExceptionTicket;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */

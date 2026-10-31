@@ -17,6 +17,7 @@ const core_2 = require("@vendure/core");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_building_entity_1 = require("./campus-building.entity");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const capacity_service_1 = require("./capacity.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
@@ -37,13 +38,16 @@ const orderColumn = (field) => `"customFields${field.charAt(0).toUpperCase()}${f
  * 支付闸门：由插件订阅 PaymentStateTransitionEvent（Authorized/Settled）触发，未支付订单不进大厅、不可被抢。
  */
 let HallService = HallService_1 = class HallService {
-    constructor(connection, slotLock, moduleRef, capacity, feishu, notify) {
+    constructor(connection, slotLock, moduleRef, capacity, feishu, notify, 
+    /** M4 跨实例限频（多实例部署时同单重发不串号）；未注入退回进程内 Map */
+    dedupe) {
         this.connection = connection;
         this.slotLock = slotLock;
         this.moduleRef = moduleRef;
         this.capacity = capacity;
         this.feishu = feishu;
         this.notify = notify;
+        this.dedupe = dedupe;
         this.handoverResendAt = new Map();
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -255,21 +259,34 @@ let HallService = HallService_1 = class HallService {
      * 限流：同单 10 分钟一次；返回新码（调用方自行决定是否展示，日志不落明文）。
      */
     async resendHandoverCode(ctx, orderId) {
+        var _a;
         const key = Number(orderId);
-        const last = this.handoverResendAt.get(key);
-        if (last != null && Date.now() - last < HallService_1.HANDOVER_RESEND_INTERVAL_MS) {
-            throw new core_2.UserInputError('交接码重发过于频繁，请 10 分钟后再试');
-        }
+        await this.claimResendWindow(key);
         const handoverCode = String(Math.floor(1000 + Math.random() * 9000));
         const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsHandovercode" = $1, "customFieldsHandovercodeat" = $2 '
             + 'WHERE id = $3 AND "customFieldsHallstatus" = $4 AND "state" <> $5 RETURNING id', [handoverCode, new Date(), key, 'open', 'Cancelled']);
         const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
         if (!Array.isArray(rows) || !rows.length) {
+            // 状态不符不占用限流窗口（与原「成功后登记」语义一致）
+            await ((_a = this.dedupe) === null || _a === void 0 ? void 0 : _a.del(`handover_resend:${key}`));
             throw new core_2.UserInputError('订单当前不在待交接状态，无法重发交接码');
         }
         this.handoverResendAt.set(key, Date.now());
         core_2.Logger.info(`订单 #${key} 交接码已重发（脱敏）`, 'CampusHall');
         return handoverCode;
+    }
+    /** 同单 10min 限流：dedupe 走原子计数（跨实例），未注入退回进程内 Map */
+    async claimResendWindow(orderId) {
+        if (!this.dedupe) {
+            const last = this.handoverResendAt.get(orderId);
+            if (last != null && Date.now() - last < HallService_1.HANDOVER_RESEND_INTERVAL_MS) {
+                throw new core_2.UserInputError('交接码重发过于频繁，请 10 分钟后再试');
+            }
+            return;
+        }
+        const n = await this.dedupe.incr(`handover_resend:${orderId}`, HallService_1.HANDOVER_RESEND_INTERVAL_MS);
+        if (n > 1)
+            throw new core_2.UserInputError('交接码重发过于频繁，请 10 分钟后再试');
     }
     /** R5 顾客侧重发：先校验订单归属当前登录顾客，再复用同一条件写。 */
     async resendHandoverCodeForCustomer(ctx, orderId) {
@@ -369,7 +386,7 @@ let HallService = HallService_1 = class HallService {
 exports.HallService = HallService;
 /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
 HallService.SCHEDULE_RELEASE_MIN = 30;
-/** R5 交接码重发限流：同单 10 分钟一次（进程内，pm2 单实例足够；多实例需换 DB/Redis） */
+/** R5 交接码重发限流：同单 10 分钟一次（M4 经 dedupe 跨实例；未注入时退回进程内 Map） */
 HallService.HANDOVER_RESEND_INTERVAL_MS = 10 * 60000;
 exports.HallService = HallService = HallService_1 = __decorate([
     (0, common_1.Injectable)(),
@@ -378,6 +395,7 @@ exports.HallService = HallService = HallService_1 = __decorate([
         core_1.ModuleRef,
         capacity_service_1.CapacityService,
         feishu_notify_service_1.FeishuNotifyService,
-        campus_notify_service_1.CampusNotifyService])
+        campus_notify_service_1.CampusNotifyService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], HallService);
 //# sourceMappingURL=hall.service.js.map

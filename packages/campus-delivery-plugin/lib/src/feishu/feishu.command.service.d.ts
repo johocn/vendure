@@ -1,4 +1,5 @@
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
+import { CampusDedupeService } from '../campus-dedupe.service';
 import { DeliveryStatsService } from '../delivery-stats.service';
 import { DispatchAdminService } from '../dispatch-admin.service';
 import { HallService } from '../hall.service';
@@ -50,12 +51,16 @@ export declare class FeishuCommandService {
     private deliveryStats;
     private hall;
     private riderTask;
+    /** M4 跨实例限流/待确认状态（多实例下同一指令不会在多个进程各自放行）；未注入退回进程内 Map */
+    private dedupe?;
     private rate;
     private pendingReject;
     private pendingRestore;
     /** audit 表建表单飞 Promise（零 migration，首次写库时自动建表） */
     private auditReady?;
-    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService, hall: HallService, riderTask: RiderTaskService);
+    constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService, hall: HallService, riderTask: RiderTaskService, 
+    /** M4 跨实例限流/待确认状态（多实例下同一指令不会在多个进程各自放行）；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     handleMessage(input: {
         chatId: string;
         openId: string;

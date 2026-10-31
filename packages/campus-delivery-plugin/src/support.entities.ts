@@ -18,6 +18,8 @@ export class CampusSupportTicket extends VendureEntity {
     @Column({ type: 'varchar', default: 'customer' }) source: string;
     /** 系统工单幂等键（顾客工单为 null）：同一异常只建一张 */
     @Column({ type: 'varchar', nullable: true }) dedupeKey: string | null;
+    /** 值班人管理员 userId（系统工单建单时按本店值班表自动指派；无值班/顾客工单为 null） */
+    @Column({ type: 'int', nullable: true }) assigneeId: number | null;
     /** order / delivery / refund / invoice / other */
     @Column() category: string;
     @Column({ type: 'text' }) content: string;

@@ -14,6 +14,8 @@ export declare class CampusSupportTicket extends VendureEntity {
     source: string;
     /** 系统工单幂等键（顾客工单为 null）：同一异常只建一张 */
     dedupeKey: string | null;
+    /** 值班人管理员 userId（系统工单建单时按本店值班表自动指派；无值班/顾客工单为 null） */
+    assigneeId: number | null;
     /** order / delivery / refund / invoice / other */
     category: string;
     content: string;

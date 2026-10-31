@@ -176,6 +176,8 @@ const p34_channel_aftersales_review_threshold_1 = require("./migrations/p34-chan
 const p35_withdraw_deduct_state_1 = require("./migrations/p35-withdraw-deduct-state");
 const p36_compensation_task_1 = require("./migrations/p36-compensation-task");
 const p37_support_ticket_system_1 = require("./migrations/p37-support-ticket-system");
+const p38_support_assignee_dedupe_1 = require("./migrations/p38-support-assignee-dedupe");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const withdraw_reconcile_job_1 = require("./withdraw-reconcile.job");
 const compensation_task_service_1 = require("./compensation-task.service");
 const compensation_retry_job_1 = require("./compensation-retry.job");
@@ -410,6 +412,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p35_withdraw_deduct_state_1.P35WithdrawDeductStateMigration,
             p36_compensation_task_1.P36CompensationTaskMigration,
             p37_support_ticket_system_1.P37SupportTicketSystemMigration,
+            p38_support_assignee_dedupe_1.P38SupportAssigneeDedupeMigration,
+            campus_dedupe_service_1.CampusDedupeService,
             withdraw_reconcile_job_1.WithdrawReconcileJob,
             compensation_task_service_1.CompensationTaskService,
             compensation_retry_job_1.CompensationRetryJob,
@@ -2036,6 +2040,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     customerId: ID
                     """来源：customer（顾客提交）/ third_party_exception（外部运单异常自动建单）"""
                     source: String!
+                    """值班人管理员 userId（系统工单建单时按本店值班表自动指派；无值班/顾客工单为 null）"""
+                    assigneeId: ID
                     customerName: String
                     customerPhone: String
                     orderCode: String
@@ -2512,7 +2518,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
-                    campusSupportTickets(status: String, source: String, skip: Int, take: Int): CampusSupportTicketList!
+                    campusSupportTickets(status: String, source: String, assigneeId: ID, skip: Int, take: Int): CampusSupportTicketList!
                     """R2 补偿任务列表（失败任务排查；status=pending/done/failed）"""
                     campusCompensationTasks(status: String, skip: Int, take: Int): CampusCompensationTaskList!
                     campusChatConversations(status: String, unreadOnly: Boolean, skip: Int, take: Int): CampusChatConversationList!

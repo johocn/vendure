@@ -15,6 +15,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const capacity_service_1 = require("./capacity.service");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_notify_service_1 = require("./campus-notify.service");
 const compensation_task_service_1 = require("./compensation-task.service");
@@ -45,7 +46,9 @@ const LOCATION_CLEANUP_INTERVAL_MS = 6 * 3600000;
 let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     constructor(connection, grab, hall, capacity, credit, moduleRef, thirdParty, feishu, notify, compensation, 
     /** R7：外部运单异常自动建工单（同插件服务，平台 ctx 可用） */
-    support) {
+    support, 
+    /** M4 跨实例去重/计数（多实例下告警限频与取消失败计数共享）；未注入退回进程内 Map */
+    dedupe) {
         this.connection = connection;
         this.grab = grab;
         this.hall = hall;
@@ -57,6 +60,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         this.notify = notify;
         this.compensation = compensation;
         this.support = support;
+        this.dedupe = dedupe;
         /** 统一兜底调度器（单飞 / unref / 优雅关闭由 PeriodicFallback 统一保证） */
         this.fallback = null;
         this.running = false;
@@ -69,8 +73,11 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         /** §6 外部运单异常态告警去重 key（单号:外部运单号）→ 首次告警时间，状态恢复后移除 */
         this.externalExceptionAlertedAt = new Map();
     }
-    /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
-    shouldAlertExternalException(key) {
+    /** 外部异常告警去重：按「单号:运单号」保留 24h（DB 去重表跨实例；无 dedupe 时退回进程内 Map） */
+    async shouldAlertExternalException(key) {
+        if (this.dedupe) {
+            return !(await this.dedupe.seenOrMark(`dispatch:exception_alert:${key}`, DispatchJobService_1.EXTERNAL_EXCEPTION_ALERT_TTL_MS));
+        }
         const now = Date.now();
         const at = this.externalExceptionAlertedAt.get(key);
         if (at != null) {
@@ -79,6 +86,28 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             this.externalExceptionAlertedAt.delete(key);
         }
         this.externalExceptionAlertedAt.set(key, now);
+        return true;
+    }
+    /** 取消失败计数 +1（多实例共享；返回连续失败轮次） */
+    async bumpCancelFail(code) {
+        var _a;
+        const fail = (_a = this.externalCancelFails.get(code)) !== null && _a !== void 0 ? _a : { n: 0, alertedAt: 0 };
+        fail.n += 1;
+        this.externalCancelFails.set(code, fail);
+        if (!this.dedupe)
+            return fail.n;
+        return this.dedupe.incr(`dispatch:cancel_fail:${code}`, 24 * 3600000);
+    }
+    /** 取消失败升级告警限频（30min；多实例共享） */
+    async shouldAlertCancelFail(code, now) {
+        if (this.dedupe) {
+            return !(await this.dedupe.seenOrMark(`dispatch:cancel_alert:${code}`, 30 * 60000));
+        }
+        const fail = this.externalCancelFails.get(code);
+        if (fail && now - fail.alertedAt <= 30 * 60000)
+            return false;
+        if (fail)
+            fail.alertedAt = now;
         return true;
     }
     /** R7：外部运单异常建工单（幂等由 dedupeKey 保证）；建单失败不影响告警主流程 */
@@ -578,7 +607,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * 6) owned_dispatched 超 merchantAutoOpenMinutes 未送达交接点 → 回大厅并清空骑手
      */
     async sweepRouteTimeouts(ctx, cfg, orders, now) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23;
         const minutes = (v, def) => (v !== null && v !== void 0 ? v : def) * 60000;
         const acceptMs = minutes(cfg.merchantAcceptMinutes, 5);
         const deliverMs = minutes(cfg.merchantAutoOpenMinutes, 15);
@@ -705,29 +734,32 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 //    但仍设 3×fallbackMs 硬上限，防止「接单后永不送达」永久占用。
                 const tpState = String((_u = cf.thirdPartyState) !== null && _u !== void 0 ? _u : '');
                 // 离开 third_party 后清理取消失败计数，避免 Map 随历史单增长
-                if (cf.hallStatus !== 'third_party')
+                if (cf.hallStatus !== 'third_party') {
                     this.externalCancelFails.delete(o.code);
+                    await ((_v = this.dedupe) === null || _v === void 0 ? void 0 : _v.del(`dispatch:cancel_fail:${o.code}`));
+                }
                 const inDelivery = tpState === 'accepted' || tpState === 'pickup';
                 // §6 异常态（平台判定运力失败/拒收/破损等）：同样不等待，先告警 + 通知顾客，再由下方 tpStale 取消回落。
                 // 去重键带外部运单号：回落重推后新运单异常会再次告警。
-                const exceptionKey = `${o.code}:${String((_v = cf.thirdPartyNo) !== null && _v !== void 0 ? _v : '')}`;
+                const exceptionKey = `${o.code}:${String((_w = cf.thirdPartyNo) !== null && _w !== void 0 ? _w : '')}`;
                 // R7：工单关闭后回写 exceptionResolvedAt → 同一异常不再重复告警/建单
                 const exceptionResolved = !!cf.exceptionResolvedAt;
                 if (tpState !== 'exception') {
                     this.externalExceptionAlertedAt.delete(exceptionKey);
+                    await ((_x = this.dedupe) === null || _x === void 0 ? void 0 : _x.del(`dispatch:exception_alert:${exceptionKey}`));
                 }
                 else if (!exceptionResolved
                     && cf.hallStatus === 'third_party'
-                    && this.shouldAlertExternalException(exceptionKey)) {
-                    core_2.Logger.warn(`Order ${o.code} external courier exception (${String((_w = cf.thirdPartyNo) !== null && _w !== void 0 ? _w : '-')})`, 'CampusDispatch');
+                    && (await this.shouldAlertExternalException(exceptionKey))) {
+                    core_2.Logger.warn(`Order ${o.code} external courier exception (${String((_y = cf.thirdPartyNo) !== null && _y !== void 0 ? _y : '-')})`, 'CampusDispatch');
                     const ticketId = await this.createExceptionTicket(ctx, {
                         dedupeKey: `third_party:${exceptionKey}`,
                         order: o,
                         cf,
-                        content: `外部运单异常：平台 ${String((_x = cf.thirdPartyProvider) !== null && _x !== void 0 ? _x : '-')}，运单 ${String((_y = cf.thirdPartyNo) !== null && _y !== void 0 ? _y : '-')}，订单卡在 third_party。请核实运单状态与外部平台沟通，处置后关闭本工单。`,
+                        content: `外部运单异常：平台 ${String((_z = cf.thirdPartyProvider) !== null && _z !== void 0 ? _z : '-')}，运单 ${String((_0 = cf.thirdPartyNo) !== null && _0 !== void 0 ? _0 : '-')}，订单卡在 third_party。请核实运单状态与外部平台沟通，处置后关闭本工单。`,
                     });
-                    void ((_z = this.feishu) === null || _z === void 0 ? void 0 : _z.pushEvent('exception', '外部运单异常', `订单 ${o.code} 外部运单${cf.thirdPartyNo ? ` ${cf.thirdPartyNo}` : ''} 状态异常，${ticketId ? `已建工单 #${ticketId}` : '请尽快人工核实'}；超时将自动取消并回落。`, o.code, `${o.code}:external_exception`));
-                    (_0 = this.notify) === null || _0 === void 0 ? void 0 : _0.user(ctx, Number(o.id), 'deliveryFallback', '运力异常，重新派送', (_1 = cfg.h5BaseUrl) !== null && _1 !== void 0 ? _1 : undefined);
+                    void ((_1 = this.feishu) === null || _1 === void 0 ? void 0 : _1.pushEvent('exception', '外部运单异常', `订单 ${o.code} 外部运单${cf.thirdPartyNo ? ` ${cf.thirdPartyNo}` : ''} 状态异常，${ticketId ? `已建工单 #${ticketId}` : '请尽快人工核实'}；超时将自动取消并回落。`, o.code, `${o.code}:external_exception`));
+                    (_2 = this.notify) === null || _2 === void 0 ? void 0 : _2.user(ctx, Number(o.id), 'deliveryFallback', '运力异常，重新派送', (_3 = cfg.h5BaseUrl) !== null && _3 !== void 0 ? _3 : undefined);
                 }
                 const tpElapsed = cf.thirdPartyDispatchAt
                     ? now - new Date(cf.thirdPartyDispatchAt).getTime()
@@ -739,7 +771,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 if (cf.hallStatus === 'third_party' && tpAlertMs > 0 && tpElapsed >= tpAlertMs && tpElapsed < fallbackMs) {
                     const mins = Math.round(tpElapsed / 60000);
                     const dedupeKey = `third_party_alert:${o.code}`;
-                    void ((_2 = this.feishu) === null || _2 === void 0 ? void 0 : _2.pushEvent('alert', '📦 外部快递在途超时', `订单 ${o.code} 外部快递已在途 ${mins} 分钟（状态：${tpState || '未知'}），${(_3 = cfg.externalFallbackMinutes) !== null && _3 !== void 0 ? _3 : 20} 分钟后将自动回落。`, o.code, dedupeKey));
+                    void ((_4 = this.feishu) === null || _4 === void 0 ? void 0 : _4.pushEvent('alert', '📦 外部快递在途超时', `订单 ${o.code} 外部快递已在途 ${mins} 分钟（状态：${tpState || '未知'}），${(_5 = cfg.externalFallbackMinutes) !== null && _5 !== void 0 ? _5 : 20} 分钟后将自动回落。`, o.code, dedupeKey));
                 }
                 if (cf.hallStatus === 'third_party' && tpStale) {
                     // 取消失败绝不回落/重推：外部运单仍有效，回落后再推会产生双运单双份运费。
@@ -759,29 +791,27 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         }
                     }
                     if (!cancelOk) {
-                        const fail = (_4 = this.externalCancelFails.get(o.code)) !== null && _4 !== void 0 ? _4 : { n: 0, alertedAt: 0 };
-                        fail.n += 1;
-                        this.externalCancelFails.set(o.code, fail);
+                        const failN = await this.bumpCancelFail(o.code);
                         await this.hall.transitionFrom(ctx, Number(o.id), ['third_party'], {
                             campusCause: 'external_cancel_failed',
                         });
                         core_2.Logger.error(`Order ${o.code} external cancel not confirmed; stay third_party and retry (no fallback to avoid duplicate delivery)`, 'CampusDispatch');
                         // 连续 3 轮仍未确认取消：升级飞书异常（30min 限频），绝不自动回落（会双运单双份运费）
-                        if (fail.n >= 3 && now - fail.alertedAt > 30 * 60000) {
-                            fail.alertedAt = now;
+                        if (failN >= 3 && (await this.shouldAlertCancelFail(o.code, now))) {
                             const ticketId = !exceptionResolved
                                 ? await this.createExceptionTicket(ctx, {
                                     dedupeKey: `third_party_cancel:${exceptionKey}`,
                                     order: o,
                                     cf,
-                                    content: `外部运单取消失败：平台 ${String((_5 = cf.thirdPartyProvider) !== null && _5 !== void 0 ? _5 : '-')}，运单 ${String((_6 = cf.thirdPartyNo) !== null && _6 !== void 0 ? _6 : '-')}，连续 ${fail.n} 轮取消未确认。订单保持 third_party 不回落（防双运单双份运费），请人工核实平台运单状态后关闭本工单。`,
+                                    content: `外部运单取消失败：平台 ${String((_6 = cf.thirdPartyProvider) !== null && _6 !== void 0 ? _6 : '-')}，运单 ${String((_7 = cf.thirdPartyNo) !== null && _7 !== void 0 ? _7 : '-')}，连续 ${failN} 轮取消未确认。订单保持 third_party 不回落（防双运单双份运费），请人工核实平台运单状态后关闭本工单。`,
                                 })
                                 : null;
-                            void ((_7 = this.feishu) === null || _7 === void 0 ? void 0 : _7.pushEvent('exception', '外部运单取消失败', `订单 ${o.code} 外部运单连续 ${fail.n} 轮取消未确认（${String((_8 = cf.thirdPartyNo) !== null && _8 !== void 0 ? _8 : '-')}），已保持 third_party 不回落；${ticketId ? `已建工单 #${ticketId}` : '请人工核实平台运单状态'}。`, o.code, `${o.code}:cancel_failed`));
+                            void ((_8 = this.feishu) === null || _8 === void 0 ? void 0 : _8.pushEvent('exception', '外部运单取消失败', `订单 ${o.code} 外部运单连续 ${failN} 轮取消未确认（${String((_9 = cf.thirdPartyNo) !== null && _9 !== void 0 ? _9 : '-')}），已保持 third_party 不回落；${ticketId ? `已建工单 #${ticketId}` : '请人工核实平台运单状态'}。`, o.code, `${o.code}:cancel_failed`));
                         }
                         continue;
                     }
                     this.externalCancelFails.delete(o.code);
+                    await ((_10 = this.dedupe) === null || _10 === void 0 ? void 0 : _10.del(`dispatch:cancel_fail:${o.code}`));
                     // cancel() 成功时内部已按路线回写本地状态（R2 待推送 / R3 大厅）；未推送（skipped）时本地补写
                     if (skipped) {
                         const patch = route === 'R2'
@@ -799,11 +829,11 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     }
                     cf.thirdPartyState = 'cancelled';
                     core_2.Logger.warn(`Order ${o.code} external fallback (${route})`, 'CampusDispatch');
-                    void ((_9 = this.feishu) === null || _9 === void 0 ? void 0 : _9.pushEvent('exception', '外部快递超时回落', `订单 ${o.code} 外部快递 ${(_10 = cfg.externalFallbackMinutes) !== null && _10 !== void 0 ? _10 : 20} 分钟未接单/取货，已回落（${route}）。`, o.code, `${o.code}:fallback`));
+                    void ((_11 = this.feishu) === null || _11 === void 0 ? void 0 : _11.pushEvent('exception', '外部快递超时回落', `订单 ${o.code} 外部快递 ${(_12 = cfg.externalFallbackMinutes) !== null && _12 !== void 0 ? _12 : 20} 分钟未接单/取货，已回落（${route}）。`, o.code, `${o.code}:fallback`));
                 }
                 // 5) 自营快递池久无人接单 → 回抢单大厅（传信者兜底）
                 if (cf.hallStatus === 'owned_pool'
-                    && now - new Date((_11 = cf.hallEnteredAt) !== null && _11 !== void 0 ? _11 : o.createdAt).getTime() > deliverMs) {
+                    && now - new Date((_13 = cf.hallEnteredAt) !== null && _13 !== void 0 ? _13 : o.createdAt).getTime() > deliverMs) {
                     const enteredAt = new Date();
                     const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['owned_pool'], {
                         hallStatus: 'open',
@@ -815,8 +845,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     if (!moved)
                         continue;
                     core_2.Logger.warn(`Order ${o.code} owned pool timeout → hall`, 'CampusDispatch');
-                    void ((_12 = this.feishu) === null || _12 === void 0 ? void 0 : _12.pushEvent('exception', '自营快递无人接单', `订单 ${o.code} 自营快递池 ${(_13 = cfg.merchantAutoOpenMinutes) !== null && _13 !== void 0 ? _13 : 15} 分钟无人接单，已回抢单大厅。`, o.code, o.code));
-                    (_14 = this.notify) === null || _14 === void 0 ? void 0 : _14.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', (_15 = cfg.h5BaseUrl) !== null && _15 !== void 0 ? _15 : undefined);
+                    void ((_14 = this.feishu) === null || _14 === void 0 ? void 0 : _14.pushEvent('exception', '自营快递无人接单', `订单 ${o.code} 自营快递池 ${(_15 = cfg.merchantAutoOpenMinutes) !== null && _15 !== void 0 ? _15 : 15} 分钟无人接单，已回抢单大厅。`, o.code, o.code));
+                    (_16 = this.notify) === null || _16 === void 0 ? void 0 : _16.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', (_17 = cfg.h5BaseUrl) !== null && _17 !== void 0 ? _17 : undefined);
                     cf.hallStatus = 'open';
                     cf.hallEnteredAt = enteredAt;
                     continue;
@@ -838,8 +868,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     if (!moved)
                         continue;
                     core_2.Logger.warn(`Order ${o.code} owned courier timeout → hall`, 'CampusDispatch');
-                    void ((_16 = this.feishu) === null || _16 === void 0 ? void 0 : _16.pushEvent('exception', '自营快递送达超时', `订单 ${o.code} 自营快递 ${(_17 = cfg.merchantAutoOpenMinutes) !== null && _17 !== void 0 ? _17 : 15} 分钟未送达交接点，已回抢单大厅。`, o.code, o.code));
-                    (_18 = this.notify) === null || _18 === void 0 ? void 0 : _18.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', (_19 = cfg.h5BaseUrl) !== null && _19 !== void 0 ? _19 : undefined);
+                    void ((_18 = this.feishu) === null || _18 === void 0 ? void 0 : _18.pushEvent('exception', '自营快递送达超时', `订单 ${o.code} 自营快递 ${(_19 = cfg.merchantAutoOpenMinutes) !== null && _19 !== void 0 ? _19 : 15} 分钟未送达交接点，已回抢单大厅。`, o.code, o.code));
+                    (_20 = this.notify) === null || _20 === void 0 ? void 0 : _20.user(ctx, Number(o.id), 'deliveryFallback', '超时转传信者配送', (_21 = cfg.h5BaseUrl) !== null && _21 !== void 0 ? _21 : undefined);
                     cf.hallStatus = 'open';
                     cf.hallEnteredAt = enteredAt;
                 }
@@ -862,7 +892,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                                 cf.thirdPartyState = res.state;
                                 await this.thirdParty.onDeliveryStatus(ctx, {
                                     orderId: Number(o.id),
-                                    thirdPartyNo: String((_20 = cf.thirdPartyNo) !== null && _20 !== void 0 ? _20 : ''),
+                                    thirdPartyNo: String((_22 = cf.thirdPartyNo) !== null && _22 !== void 0 ? _22 : ''),
                                     status: res.state,
                                 });
                                 core_2.Logger.info(`Order ${o.code} external status synced → ${res.state}`, 'CampusDispatch');
@@ -875,7 +905,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 }
             }
             catch (e) {
-                core_2.Logger.error(`route timeout sweep failed for order ${(_21 = o.code) !== null && _21 !== void 0 ? _21 : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                core_2.Logger.error(`route timeout sweep failed for order ${(_23 = o.code) !== null && _23 !== void 0 ? _23 : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
             }
         }
     }
@@ -1276,6 +1306,7 @@ exports.DispatchJobService = DispatchJobService = DispatchJobService_1 = __decor
         feishu_notify_service_1.FeishuNotifyService,
         campus_notify_service_1.CampusNotifyService,
         compensation_task_service_1.CompensationTaskService,
-        support_service_1.SupportService])
+        support_service_1.SupportService,
+        campus_dedupe_service_1.CampusDedupeService])
 ], DispatchJobService);
 //# sourceMappingURL=dispatch-job.service.js.map

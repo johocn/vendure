@@ -20,6 +20,8 @@ function make(overrides?: {
     afterSalesSvc?: any;
     /** onAfterSalesStateChange 的待关闭工单 */
     openTickets?: any[];
+    /** 值班表原始行（G3 自动指派：weekday/startMin/endMin/userId/userName） */
+    dutyRows?: any[];
 }) {
     const customer = {
         id: 5,
@@ -99,6 +101,9 @@ function make(overrides?: {
     const connection = {
         getRepository: vi.fn((_ctx: any, entity: any) =>
             repos[typeof entity === 'string' ? entity : entity.name] ?? {}),
+        rawConnection: {
+            query: vi.fn().mockResolvedValue([overrides?.dutyRows ?? []]),
+        },
     } as any;
 
     // Injector 只调 moduleRef.get：桩返回售后 Service（未传 = 未安装售后插件，联动降级）
@@ -411,6 +416,38 @@ describe('SupportService 系统工单（R7）', () => {
         }));
         await expect(svc.adminTickets(ctx, undefined, undefined, undefined, 'bad'))
             .rejects.toThrow('工单来源不合法');
+    });
+
+    it('系统工单按值班表自动指派值班人（飞书文案带值班人）', async () => {
+        vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-29T10:00:00+08:00').getTime());
+        const { svc, repos, feishu } = make({
+            dutyRows: [{ weekday: 4, startMin: 480, endMin: 720, userId: 7, userName: '李四' }],
+        });
+        repos.CampusSupportTicket.findOne.mockResolvedValue(null);
+        await svc.createSystemTicket(ctx, input);
+        expect(repos.CampusSupportTicket.save.mock.calls[0][0]).toMatchObject({ assigneeId: 7 });
+        await vi.waitFor(() => expect(feishu.pushEvent).toHaveBeenCalledTimes(1));
+        expect(feishu.pushEvent.mock.calls[0][2]).toContain('值班：李四');
+        vi.restoreAllMocks();
+    });
+
+    it('无值班人 → assigneeId=null，飞书提示人工认领', async () => {
+        const { svc, repos, feishu } = make();
+        repos.CampusSupportTicket.findOne.mockResolvedValue(null);
+        await svc.createSystemTicket(ctx, input);
+        expect(repos.CampusSupportTicket.save.mock.calls[0][0]).toMatchObject({ assigneeId: null });
+        await vi.waitFor(() => expect(feishu.pushEvent).toHaveBeenCalledTimes(1));
+        expect(feishu.pushEvent.mock.calls[0][2]).toContain('未排班（请人工认领）');
+    });
+
+    it('管理端可按 assigneeId 过滤；非法值拒绝', async () => {
+        const { svc, repos } = make();
+        await svc.adminTickets(ctx, undefined, undefined, undefined, undefined, '7');
+        expect(repos.CampusSupportTicket.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+            where: { channelId: 1, assigneeId: 7 },
+        }));
+        await expect(svc.adminTickets(ctx, undefined, undefined, undefined, undefined, 'abc'))
+            .rejects.toThrow('值班人 id 不合法');
     });
 });
 

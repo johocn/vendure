@@ -15,10 +15,11 @@ export class SupportAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args({ name: 'status', type: () => String, nullable: true }) status?: string,
         @Args({ name: 'source', type: () => String, nullable: true }) source?: string,
+        @Args({ name: 'assigneeId', type: () => GqlID, nullable: true }) assigneeId?: ID,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number,
     ) {
-        return this.support.adminTickets(ctx, status, skip, take, source);
+        return this.support.adminTickets(ctx, status, skip, take, source, assigneeId);
     }
 
     @Mutation()

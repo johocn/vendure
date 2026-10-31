@@ -19,6 +19,7 @@ const typeorm_1 = require("typeorm");
 const support_entities_1 = require("./support.entities");
 const rider_credit_service_1 = require("./rider-credit.service");
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
+const after_sales_duty_1 = require("./after-sales-duty");
 const loggerCtx = 'CampusSupport';
 exports.TICKET_CATEGORIES = ['order', 'delivery', 'refund', 'invoice', 'other'];
 exports.TICKET_STATUSES = ['open', 'replied', 'closed'];
@@ -263,14 +264,17 @@ let SupportService = SupportService_1 = class SupportService {
      * 返回已存在/新建的工单 id，调用方据此在告警文案中带上工单号。
      */
     async createSystemTicket(ctx, input) {
-        var _a, _b;
+        var _a, _b, _c, _d;
         const repo = this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket);
         const existing = await repo.findOne({ where: { dedupeKey: input.dedupeKey } });
         if (existing)
             return { id: Number(existing.id), created: false };
+        const channelId = (_a = input.channelId) !== null && _a !== void 0 ? _a : ctx.channelId;
+        // G3 自动指派值班：系统工单按本店「售后值班表」落到当班管理员，飞书文案带上值班人
+        const duty = await this.resolveDutyAssignee(channelId);
         try {
             const ticket = await repo.save({
-                channelId: (_a = input.channelId) !== null && _a !== void 0 ? _a : ctx.channelId,
+                channelId,
                 customerId: null,
                 orderCode: input.orderCode,
                 orderId: input.orderId,
@@ -281,16 +285,52 @@ let SupportService = SupportService_1 = class SupportService {
                 status: 'open',
                 source: input.source,
                 dedupeKey: input.dedupeKey,
+                assigneeId: (_b = duty === null || duty === void 0 ? void 0 : duty.id) !== null && _b !== void 0 ? _b : null,
             });
-            void this.pushFeishu('support_ticket', '系统工单：外部运单异常', [`订单：${input.orderCode}`, `来源：${input.source}`, `内容：${input.content.slice(0, 160)}`].join('\n'), input.orderCode, `ticket:${ticket.id}`);
+            const dutyLine = duty ? `值班：${(_c = duty.name) !== null && _c !== void 0 ? _c : duty.id}` : '值班：未排班（请人工认领）';
+            void this.pushFeishu('support_ticket', '系统工单：外部运单异常', [
+                `订单：${input.orderCode}`,
+                `来源：${input.source}`,
+                dutyLine,
+                `内容：${input.content.slice(0, 160)}`,
+            ].join('\n'), input.orderCode, `ticket:${ticket.id}`);
             return { id: Number(ticket.id), created: true };
         }
         catch (e) {
             // 并发下唯一索引冲突：视为已存在，回查返回，不阻断调度
             const again = await repo.findOne({ where: { dedupeKey: input.dedupeKey } });
             if (!again)
-                core_2.Logger.warn(`系统工单建单失败：${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, loggerCtx);
+                core_2.Logger.warn(`系统工单建单失败：${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, loggerCtx);
             return { id: again ? Number(again.id) : null, created: false };
+        }
+    }
+    /** 当前值班人（§100 值班排班；表不存在/查询失败按无人值班处理，不阻断建单） */
+    async resolveDutyAssignee(channelId) {
+        var _a, _b, _c;
+        try {
+            const rows = await this.connection.rawConnection.query(`SELECT d.weekday, d."startMin", d."endMin", d."userId",
+                        TRIM(COALESCE(ad."firstName", '') || COALESCE(ad."lastName", '')) AS "userName"
+                   FROM campus_after_sales_duty d
+                   LEFT JOIN administrator ad ON ad."userId" = d."userId"
+                  WHERE d."channelId" = $1`, [Number(channelId)]);
+            const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
+            if (!list.length)
+                return null;
+            const entries = list.map(r => ({
+                weekday: Number(r.weekday),
+                startMin: Number(r.startMin),
+                endMin: Number(r.endMin),
+                userId: Number(r.userId),
+            }));
+            const uid = (0, after_sales_duty_1.dutyAssigneeAt)(entries, Date.now());
+            if (!uid)
+                return null;
+            const name = (_a = list.find(r => Number(r.userId) === uid)) === null || _a === void 0 ? void 0 : _a.userName;
+            return { id: uid, name: name ? String(name).trim() || null : null };
+        }
+        catch (e) {
+            (_b = core_2.Logger.debug) === null || _b === void 0 ? void 0 : _b.call(core_2.Logger, `读取值班表失败：${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, loggerCtx);
+            return null;
         }
     }
     async myTickets(ctx, skip, take) {
@@ -317,7 +357,7 @@ let SupportService = SupportService_1 = class SupportService {
             // 无显式关联但按订单反查到售后单时，回显解析出的 id，便于前端跳转
             afterSalesRequestId: (_a = ticket.afterSalesRequestId) !== null && _a !== void 0 ? _a : (row ? Number(row.id) : null) });
     }
-    async adminTickets(ctx, status, skip, take, source) {
+    async adminTickets(ctx, status, skip, take, source, assigneeId) {
         const where = { channelId: ctx.channelId };
         if (status) {
             if (!exports.TICKET_STATUSES.includes(status))
@@ -328,6 +368,13 @@ let SupportService = SupportService_1 = class SupportService {
             if (!exports.TICKET_SOURCES.includes(source))
                 throw new core_2.UserInputError('工单来源不合法');
             where.source = source;
+        }
+        // G3 系统工单自动指派：运营可按值班人过滤（只看「我的工单」）
+        if (assigneeId != null) {
+            const id = Number(assigneeId);
+            if (!Number.isInteger(id) || id <= 0)
+                throw new core_2.UserInputError('值班人 id 不合法');
+            where.assigneeId = id;
         }
         const [items, total] = await this.connection.getRepository(ctx, support_entities_1.CampusSupportTicket).findAndCount({
             where: where,
