@@ -156,7 +156,7 @@ let RechargeCardService = class RechargeCardService {
             throw e;
         }
     }
-    async deductBalance(ctx, customerId, amount, orderId, paymentId) {
+    async deductBalance(ctx, customerId, amount, orderId, paymentId, remark) {
         const amt = Math.floor(amount);
         if (!Number.isFinite(amt) || amt <= 0) {
             throw new core_1.UserInputError('Invalid amount');
@@ -166,6 +166,7 @@ let RechargeCardService = class RechargeCardService {
             const result = await this.applyBalanceChange(ctx, customerId, -amt, balance_transaction_entity_1.BalanceTransactionType.CONSUME, {
                 orderId: orderId !== null && orderId !== void 0 ? orderId : null,
                 paymentId: paymentId !== null && paymentId !== void 0 ? paymentId : null,
+                remark: remark !== null && remark !== void 0 ? remark : null,
             });
             await this.connection.commitOpenTransaction(ctx);
             return result;

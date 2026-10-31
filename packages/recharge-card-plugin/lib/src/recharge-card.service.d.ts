@@ -36,7 +36,7 @@ export declare class RechargeCardService {
     private resolveCustomerId;
     getBalance(ctx: RequestContext, customerId?: any): Promise<number>;
     addBalance(ctx: RequestContext, customerId: any, amount: number, orderId?: ID | null, paymentId?: ID | null, type?: BalanceTransactionType): Promise<number>;
-    deductBalance(ctx: RequestContext, customerId: any, amount: number, orderId?: ID | null, paymentId?: ID | null): Promise<number>;
+    deductBalance(ctx: RequestContext, customerId: any, amount: number, orderId?: ID | null, paymentId?: ID | null, remark?: string | null): Promise<number>;
     createRechargeOrder(ctx: RequestContext, amount: number, remark?: string): Promise<RechargeOrder>;
     payRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder>;
     cancelRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder>;

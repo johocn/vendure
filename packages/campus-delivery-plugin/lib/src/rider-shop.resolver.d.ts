@@ -36,7 +36,7 @@ export declare class RiderShopResolver {
     /** 本人提现申请记录 */
     riderWithdrawRequests(ctx: RequestContext, skip?: number, take?: number): Promise<import("./rider-withdrawal.entity").RiderWithdrawalRequest[]>;
     /** 提现申请：金额（分）+ 收款渠道 + 账号，提交即冻结 */
-    riderWithdraw(ctx: RequestContext, amount: number, channel: string, account: string): Promise<any>;
+    riderWithdraw(ctx: RequestContext, amount: number, channel: string, account: string): Promise<import("./rider-withdrawal.entity").RiderWithdrawalRequest | null>;
     /** 骑手上下线开关（大厅轮询页 15s 轮询续命） */
     campusRiderOnline(ctx: RequestContext, online: boolean): Promise<{
         online: boolean;

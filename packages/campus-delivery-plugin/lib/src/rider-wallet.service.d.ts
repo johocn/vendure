@@ -32,7 +32,15 @@ export declare class RiderWalletService {
         amount: number;
         channel: string;
         account: string;
-    }): Promise<any>;
+    }): Promise<RiderWithdrawalRequest | null>;
+    /**
+     * R1 提现意图对账（定时任务调用）：intent 超过 10 分钟仍存在时，
+     * 以余额流水 remark=withdraw:<id> 判定是否真实扣款：有流水→确认；无流水→作废（不退款）。
+     */
+    reconcileWithdrawIntents(): Promise<{
+        confirmed: number;
+        failed: number;
+    }>;
     /** 管理端：提现申请列表（status=ALL 或具体状态；平台级，不限定选店渠道） */
     adminList(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<RiderWithdrawalRequest[]>;
     /** 管理端：通过打款（金额已在申请时扣减；必须登记打款流水号，凭证可选） */

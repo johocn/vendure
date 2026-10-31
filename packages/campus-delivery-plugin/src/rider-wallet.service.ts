@@ -127,9 +127,10 @@ export class RiderWalletService {
         if (!port) throw new UserInputError('余额功能未开通');
         // F2 并发防重：余额端口的 add/deduct 自带事务提交（startTransaction+commitOpenTransaction），
         // 不能与外层事务同 ctx 嵌套，故用 rawConnection 独立事务 + Customer 行悲观锁把
-        // 「防重检查→余额校验→扣款→落库」对同骑手串行化：并发双请求只有一个能通过 PENDING 检查。
-        // 残余风险（与历史一致且窗口极小）：扣款成功后 raw 事务提交失败 → 已扣无单，需人工对账。
-        return this.connection.rawConnection.transaction(async (em) => {
+        // 「防重检查→余额校验→落库」对同骑手串行化：并发双请求只有一个能通过 PENDING 检查。
+        // R1 三段式：先提交「意图单」(withdrawState=intent)，再扣款（流水 remark=withdraw:<id>），最后确认。
+        // 意图单先落库使「已扣款但未确认」可被对账任务按流水 remark 还原，避免静默资损。
+        const saved = await this.connection.rawConnection.transaction(async (em) => {
             // 裸 SQL 行锁：Customer 实体 findOne+lock 会 LEFT JOIN channels 等关联表，
             // PG 拒绝对外连接可空侧 FOR UPDATE，故用单表 SELECT ... FOR UPDATE
             await em.query('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [rider.id]);
@@ -139,25 +140,86 @@ export class RiderWalletService {
             if (pending > 0) throw new UserInputError('您有审核中的提现申请，请等待审核完成');
             const available = await port.getBalance(pc, rider.id as number);
             if (amount > available) throw new UserInputError('超过可提现余额');
-            await port.deductBalance(pc, rider.id as number, amount);
-            try {
-                return await em.getRepository(RiderWithdrawalRequest).save({
-                    customerId: rider.id,
-                    channelId: pc.channelId,
-                    amount,
-                    channel: channelText,
-                    account: accountText,
-                    status: 'PENDING',
-                } as any);
-            } catch (e: any) {
-                // 余额端口的事务已提交，此处失败会导致「已扣款但无申请」，必须留可检索的补单线索
-                Logger.error(
-                    `WITHDRAW_DEDUCTED_NO_REQUEST rider=${rider.id} amount=${amount} channel=${channelText} account=${accountText}: ${e?.message ?? e}. 需人工补建提现申请或退回余额`,
-                    'CampusWallet',
-                );
-                throw e;
-            }
+            return await em.getRepository(RiderWithdrawalRequest).save({
+                customerId: rider.id,
+                channelId: pc.channelId,
+                amount,
+                channel: channelText,
+                account: accountText,
+                status: 'PENDING',
+                withdrawState: 'intent',
+            } as any);
         });
+        const ref = `withdraw:${saved.id}`;
+        try {
+            await port.deductBalance(pc, rider.id as number, amount, ref);
+        } catch (e: any) {
+            // 扣款未发生：作废意图单（不退回，撤销 PENDING 占位即可让骑手重新申请）
+            await this.connection
+                .getRepository(pc, RiderWithdrawalRequest)
+                .createQueryBuilder()
+                .update(RiderWithdrawalRequest)
+                .set({ withdrawState: 'deduct_failed', status: 'REJECTED', remark: '扣款失败，申请自动取消' } as any)
+                .where('id = :id', { id: saved.id })
+                .andWhere('"withdrawState" = :ws', { ws: 'intent' })
+                .execute()
+                .catch(() => undefined);
+            Logger.error(`提现扣款失败（申请 ${saved.id} 已作废）：${e?.message ?? e}`, 'RiderWallet');
+            throw e;
+        }
+        // 确认扣款：失败则留在 intent，由对账任务按流水 remark 自动确认/作废
+        const confirmedRes = await this.connection
+            .getRepository(pc, RiderWithdrawalRequest)
+            .createQueryBuilder()
+            .update(RiderWithdrawalRequest)
+            .set({ withdrawState: 'confirmed' } as any)
+            .where('id = :id', { id: saved.id })
+            .andWhere('"withdrawState" = :ws', { ws: 'intent' })
+            .execute();
+        if (!(confirmedRes?.affected ?? 0)) {
+            Logger.warn(`提现申请 ${saved.id} 扣款后确认失败（已扣款，等待对账任务收敛）`, 'RiderWallet');
+        }
+        return this.connection
+            .getRepository(pc, RiderWithdrawalRequest)
+            .findOne({ where: { id: saved.id as any } });
+    }
+
+    /**
+     * R1 提现意图对账（定时任务调用）：intent 超过 10 分钟仍存在时，
+     * 以余额流水 remark=withdraw:<id> 判定是否真实扣款：有流水→确认；无流水→作废（不退款）。
+     */
+    async reconcileWithdrawIntents(): Promise<{ confirmed: number; failed: number }> {
+        const pc = await this.platformCtx();
+        const repo = this.connection.getRepository(pc, RiderWithdrawalRequest);
+        const staleBefore = new Date(Date.now() - 10 * 60_000);
+        const rows = await repo.find({
+            where: { withdrawState: 'intent', status: 'PENDING', createdAt: LessThan(staleBefore) } as any,
+            take: 50,
+        });
+        let confirmed = 0;
+        let failed = 0;
+        for (const row of rows) {
+            const tx = await this.connection.getRepository(pc, BalanceTransaction).findOne({
+                where: { customerId: row.customerId, channelId: pc.channelId as any, remark: `withdraw:${row.id}` } as any,
+            });
+            const patch: any = tx
+                ? { withdrawState: 'confirmed' }
+                : { withdrawState: 'deduct_failed', status: 'REJECTED', remark: '扣款未发生，申请自动作废' };
+            const res = await repo
+                .createQueryBuilder()
+                .update(RiderWithdrawalRequest)
+                .set(patch)
+                .where('id = :id', { id: row.id })
+                .andWhere('"withdrawState" = :ws', { ws: 'intent' })
+                .execute();
+            if (!(res?.affected ?? 0)) continue; // 已被并发处理
+            if (tx) confirmed++;
+            else failed++;
+        }
+        if (confirmed || failed) {
+            Logger.warn(`提现对账：确认 ${confirmed} 笔，作废 ${failed} 笔`, 'RiderWallet');
+        }
+        return { confirmed, failed };
     }
 
     /** 管理端：提现申请列表（status=ALL 或具体状态；平台级，不限定选店渠道） */
@@ -197,6 +259,8 @@ export class RiderWalletService {
             } as any)
             .where('id = :id', { id: req.id })
             .andWhere('status = :s', { s: 'PENDING' })
+            // R1：仅扣款已确认的申请可打款（intent 期间余额尚未扣，直接打款会造成双向资金错配）
+            .andWhere('("withdrawState" IS NULL OR "withdrawState" = :ws)', { ws: 'confirmed' })
             .execute();
         if (!(claim?.affected ?? 0)) throw new UserInputError('该申请已处理');
         return repo.findOne({ where: { id: req.id as any } });
@@ -221,6 +285,8 @@ export class RiderWalletService {
             } as any)
             .where('id = :id', { id: req.id })
             .andWhere('status = :s', { s: 'PENDING' })
+            // R1：扣款未确认时不能退回（否则会凭空加钱）
+            .andWhere('("withdrawState" IS NULL OR "withdrawState" = :ws)', { ws: 'confirmed' })
             .execute();
         if (!(claim?.affected ?? 0)) throw new UserInputError('该申请已处理');
         const port = getCouponBalancePort();
@@ -298,6 +364,9 @@ export class RiderWalletService {
         const req = await this.connection.getRepository(pc, RiderWithdrawalRequest).findOne({ where: { id } });
         if (!req) throw new UserInputError('提现申请不存在');
         if (req.status !== 'PENDING') throw new UserInputError('该申请已处理');
+        if (req.withdrawState && req.withdrawState !== 'confirmed') {
+            throw new UserInputError('扣款尚未确认，请稍后重试');
+        }
         return req;
     }
 

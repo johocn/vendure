@@ -175,6 +175,7 @@ export class RechargeCardService {
         amount: number,
         orderId?: ID | null,
         paymentId?: ID | null,
+        remark?: string | null,
     ): Promise<number> {
         const amt = Math.floor(amount);
         if (!Number.isFinite(amt) || amt <= 0) {
@@ -185,6 +186,7 @@ export class RechargeCardService {
             const result = await this.applyBalanceChange(ctx, customerId, -amt, BalanceTransactionType.CONSUME, {
                 orderId: orderId ?? null,
                 paymentId: paymentId ?? null,
+                remark: remark ?? null,
             });
             await this.connection.commitOpenTransaction(ctx);
             return result;

@@ -173,6 +173,8 @@ import { P31NotifyHandoverFallbackMigration } from './migrations/p31-notify-hand
 import { P32CampusConfigMissingColumnsMigration } from './migrations/p32-campus-config-missing-columns';
 import { P33ChannelWaimaiColumnsMigration } from './migrations/p33-channel-waimai-columns';
 import { P34ChannelAfterSalesReviewThresholdMigration } from './migrations/p34-channel-aftersales-review-threshold';
+import { P35WithdrawDeductStateMigration } from './migrations/p35-withdraw-deduct-state';
+import { WithdrawReconcileJob } from './withdraw-reconcile.job';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -226,6 +228,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P32CampusConfigMissingColumnsMigration,
         P33ChannelWaimaiColumnsMigration,
         P34ChannelAfterSalesReviewThresholdMigration,
+        P35WithdrawDeductStateMigration,
+        WithdrawReconcileJob,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,
@@ -3723,6 +3727,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.injector.get(CapacityAlertJob).start();
         // P3-2 黑名单自动规则：每日扫顾客主动取消次数达标者（阈值 0 = 关闭）
         this.injector.get(BlacklistAutoScanJob).start();
+        // R1 提现意图对账：进程在「落库→扣款→确认」之间中断时，按流水 remark 自动收敛
+        this.injector.get(WithdrawReconcileJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
             void this.injector.get(FeishuNotifyService).onAdminNotify(event);

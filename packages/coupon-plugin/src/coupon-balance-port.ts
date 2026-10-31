@@ -6,8 +6,8 @@ import { RequestContext } from '@vendure/core';
  */
 export interface CouponBalancePort {
     getBalance(ctx: RequestContext, customerId: number): Promise<number>;
-    /** 扣减余额（不足时抛 UserInputError） */
-    deductBalance(ctx: RequestContext, customerId: number, amount: number): Promise<number>;
+    /** 扣减余额（不足时抛 UserInputError）；ref 写入余额流水 remark，供跨库对账（如提现意图） */
+    deductBalance(ctx: RequestContext, customerId: number, amount: number, ref?: string | null): Promise<number>;
     /** 增加余额（退款补偿用） */
     addBalance(ctx: RequestContext, customerId: number, amount: number): Promise<number>;
 }

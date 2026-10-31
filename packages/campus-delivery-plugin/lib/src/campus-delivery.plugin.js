@@ -172,6 +172,8 @@ const p31_notify_handover_fallback_1 = require("./migrations/p31-notify-handover
 const p32_campus_config_missing_columns_1 = require("./migrations/p32-campus-config-missing-columns");
 const p33_channel_waimai_columns_1 = require("./migrations/p33-channel-waimai-columns");
 const p34_channel_aftersales_review_threshold_1 = require("./migrations/p34-channel-aftersales-review-threshold");
+const p35_withdraw_deduct_state_1 = require("./migrations/p35-withdraw-deduct-state");
+const withdraw_reconcile_job_1 = require("./withdraw-reconcile.job");
 const after_sales_review_service_1 = require("./after-sales-review.service");
 const after_sales_review_resolver_1 = require("./after-sales-review.resolver");
 // 待付款补偿扫描：原用 Vendure ScheduledTask，但生产为单进程（pm2 只跑 API、无 worker，
@@ -302,6 +304,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.injector.get(capacity_alert_job_1.CapacityAlertJob).start();
         // P3-2 黑名单自动规则：每日扫顾客主动取消次数达标者（阈值 0 = 关闭）
         this.injector.get(blacklist_scan_job_1.BlacklistAutoScanJob).start();
+        // R1 提现意图对账：进程在「落库→扣款→确认」之间中断时，按流水 remark 自动收敛
+        this.injector.get(withdraw_reconcile_job_1.WithdrawReconcileJob).start();
         // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
         this.eventBus.ofType(notification_plugin_1.AdminNotifyEvent).subscribe(event => {
             void this.injector.get(feishu_notify_service_1.FeishuNotifyService).onAdminNotify(event);
@@ -389,6 +393,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             p32_campus_config_missing_columns_1.P32CampusConfigMissingColumnsMigration,
             p33_channel_waimai_columns_1.P33ChannelWaimaiColumnsMigration,
             p34_channel_aftersales_review_threshold_1.P34ChannelAfterSalesReviewThresholdMigration,
+            p35_withdraw_deduct_state_1.P35WithdrawDeductStateMigration,
+            withdraw_reconcile_job_1.WithdrawReconcileJob,
             after_sales_review_service_1.AfterSalesReviewService,
             p11_soldout_auto_restore_1.P11SoldOutAutoRestoreMigration,
             p12_daily_limit_1.P12DailyLimitMigration,

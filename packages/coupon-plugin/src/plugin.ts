@@ -1028,7 +1028,7 @@ export class CouponPlugin implements OnApplicationBootstrap {
             const svc = this.injector.get(RechargeCardService);
             setCouponBalancePort({
                 getBalance: (ctx, cid) => svc.getBalance(ctx, cid),
-                deductBalance: (ctx, cid, amt) => svc.deductBalance(ctx, cid, amt),
+                deductBalance: (ctx, cid, amt, ref) => svc.deductBalance(ctx, cid, amt, null, null, ref),
                 addBalance: (ctx, cid, amt) => svc.addBalance(ctx, cid, amt, null, null),
             });
             Logger.info('Coupon balance port registered (recharge-card)', loggerCtx);

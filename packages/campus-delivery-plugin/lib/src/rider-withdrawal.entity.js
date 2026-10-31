@@ -43,6 +43,10 @@ __decorate([
     __metadata("design:type", String)
 ], RiderWithdrawalRequest.prototype, "status", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true, default: 'confirmed' }),
+    __metadata("design:type", Object)
+], RiderWithdrawalRequest.prototype, "withdrawState", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], RiderWithdrawalRequest.prototype, "remark", void 0);

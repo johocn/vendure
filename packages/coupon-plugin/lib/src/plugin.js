@@ -170,7 +170,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
             const svc = this.injector.get(RechargeCardService);
             (0, coupon_balance_port_1.setCouponBalancePort)({
                 getBalance: (ctx, cid) => svc.getBalance(ctx, cid),
-                deductBalance: (ctx, cid, amt) => svc.deductBalance(ctx, cid, amt),
+                deductBalance: (ctx, cid, amt, ref) => svc.deductBalance(ctx, cid, amt, null, null, ref),
                 addBalance: (ctx, cid, amt) => svc.addBalance(ctx, cid, amt, null, null),
             });
             core_2.Logger.info('Coupon balance port registered (recharge-card)', constants_1.loggerCtx);

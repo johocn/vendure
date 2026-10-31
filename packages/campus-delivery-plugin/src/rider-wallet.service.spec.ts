@@ -50,8 +50,10 @@ function make() {
         findOne: vi.fn().mockResolvedValue({ id: 9 }),
         count: vi.fn().mockResolvedValue(0),
         save: vi.fn().mockImplementation((v: any) => {
-            saved.push(v);
-            return Promise.resolve(v);
+            // 意图单落库后拿到自增 id（扣款流水 remark=withdraw:<id> 的对账锚点）
+            const row = { ...v, id: 7 };
+            saved.push(row);
+            return Promise.resolve(row);
         }),
     };
     const em = {
@@ -95,19 +97,50 @@ describe('RiderWalletService', () => {
         expect(mocks.port.deductBalance).not.toHaveBeenCalled();
     });
 
-    it('withdraw 成功：事务内锁 Customer 行 + PENDING 检查后扣款冻结落库（资金走默认渠道上下文）', async () => {
-        const { svc, saved, em } = make();
+    it('withdraw 成功：事务内锁 Customer 行 + PENDING 检查后先落意图单，再带 ref 扣款并确认', async () => {
+        const { svc, saved, em, repo, qb } = make();
         mocks.port.getBalance.mockResolvedValue(5000);
         mocks.port.deductBalance.mockResolvedValue(3000);
+        repo.findOne.mockResolvedValue({
+            id: 7, customerId: 9, amount: 2000, status: 'PENDING', withdrawState: 'confirmed', channelId: 1,
+        });
         const req = await svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' });
         // F2：先裸 SQL 行锁（SELECT ... FOR UPDATE）串行化同骑手并发
         expect(em.query).toHaveBeenCalledWith('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [9]);
-        expect(mocks.port.deductBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
-        expect(req.status).toBe('PENDING');
-        expect(req.amount).toBe(2000);
-        expect(req.customerId).toBe(9);
-        expect(req.channelId).toBe(1);
+        // R1：意图单先落库（intent），扣款流水 remark 作为对账锚点
         expect(saved).toHaveLength(1);
+        expect(saved[0].withdrawState).toBe('intent');
+        expect(mocks.port.deductBalance).toHaveBeenCalledWith(platformCtx, 9, 2000, 'withdraw:7');
+        // 扣款成功后 CAS 确认（限定 intent，避免覆盖并发对账结果）
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({ withdrawState: 'confirmed' }));
+        expect(req!.status).toBe('PENDING');
+        expect(req!.amount).toBe(2000);
+        expect(req!.customerId).toBe(9);
+        expect(req!.channelId).toBe(1);
+    });
+
+    it('withdraw 扣款失败：意图单作废（deduct_failed + REJECTED）并抛出', async () => {
+        const { svc, qb } = make();
+        mocks.port.getBalance.mockResolvedValue(5000);
+        mocks.port.deductBalance.mockRejectedValueOnce(new Error('余额不足'));
+        await expect(svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' }))
+            .rejects.toThrow('余额不足');
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({
+            withdrawState: 'deduct_failed', status: 'REJECTED',
+        }));
+        expect(qb.andWhere).toHaveBeenCalledWith('"withdrawState" = :ws', { ws: 'intent' });
+    });
+
+    it('withdraw 扣款成功但确认失败：不抛错，留待对账任务收敛', async () => {
+        const { svc, repo, qb } = make();
+        mocks.port.getBalance.mockResolvedValue(5000);
+        mocks.port.deductBalance.mockResolvedValue(3000);
+        // 第一次 execute 是确认写（模拟被并发处理），返回 affected=0
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        repo.findOne.mockResolvedValue({ id: 7, customerId: 9, amount: 2000, status: 'PENDING', withdrawState: 'intent', channelId: 1 });
+        const req = await svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' });
+        expect(mocks.port.deductBalance).toHaveBeenCalledWith(platformCtx, 9, 2000, 'withdraw:7');
+        expect(req!.withdrawState).toBe('intent');
     });
 
     it('reject 解冻退回：先原子认领（REJECTED）再 addBalance(+amount)（资金走默认渠道上下文）', async () => {
@@ -288,5 +321,54 @@ describe('RiderWalletService', () => {
             { id: 5, status: 'FAILED' },
             { status: 'PAID' },
         );
+    });
+
+    // R1：intent 期间余额尚未确认扣减，禁止打款/驳回（否则错配资金）
+    it('审核门槛：扣款未确认（intent）时 approve 拒绝，reject 的条件写排除 intent', async () => {
+        const { svc, repo, qb } = make();
+        repo.findOne.mockResolvedValue({
+            id: 5, customerId: 9, amount: 2000, status: 'PENDING', withdrawState: 'intent', channelId: 1,
+        });
+        await expect(svc.adminApprove(ctx, 5 as any, '已打款', 'TXN-001')).rejects.toThrow('扣款尚未确认');
+        // reject 无法在读取阶段拒绝（并发态由条件写兜底）：模拟条件写未命中
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        await expect(svc.adminReject(ctx, 5 as any, '信息不符')).rejects.toThrow('该申请已处理');
+        expect(qb.andWhere).toHaveBeenCalledWith(
+            '("withdrawState" IS NULL OR "withdrawState" = :ws)',
+            { ws: 'confirmed' },
+        );
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    // R1 对账：intent 超时行按流水 remark 还原真实扣款结果
+    it('对账：有 withdraw 流水 → 确认（confirmed）', async () => {
+        const { svc, repo, qb } = make();
+        repo.find.mockResolvedValueOnce([{ id: 21, customerId: 9 }]);
+        repo.findOne.mockResolvedValueOnce({ id: 100, remark: 'withdraw:21' });
+        const res = await svc.reconcileWithdrawIntents();
+        expect(res).toEqual({ confirmed: 1, failed: 0 });
+        expect(qb.set).toHaveBeenCalledWith({ withdrawState: 'confirmed' });
+        expect(qb.andWhere).toHaveBeenCalledWith('"withdrawState" = :ws', { ws: 'intent' });
+    });
+
+    it('对账：无 withdraw 流水 → 作废（deduct_failed + REJECTED），不退回余额', async () => {
+        const { svc, repo, qb } = make();
+        repo.find.mockResolvedValueOnce([{ id: 22, customerId: 9 }]);
+        repo.findOne.mockResolvedValueOnce(null);
+        const res = await svc.reconcileWithdrawIntents();
+        expect(res).toEqual({ confirmed: 0, failed: 1 });
+        expect(qb.set).toHaveBeenCalledWith({
+            withdrawState: 'deduct_failed', status: 'REJECTED', remark: '扣款未发生，申请自动作废',
+        });
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    it('对账：并发已被处理（affected=0）→ 不计入统计', async () => {
+        const { svc, repo, qb } = make();
+        repo.find.mockResolvedValueOnce([{ id: 23, customerId: 9 }]);
+        repo.findOne.mockResolvedValueOnce({ id: 101, remark: 'withdraw:23' });
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        const res = await svc.reconcileWithdrawIntents();
+        expect(res).toEqual({ confirmed: 0, failed: 0 });
     });
 });
