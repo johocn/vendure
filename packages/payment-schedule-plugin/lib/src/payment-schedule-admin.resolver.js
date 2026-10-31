@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentScheduleAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const constants_1 = require("./constants");
 const payment_schedule_service_1 = require("./payment-schedule.service");
 let PaymentScheduleAdminResolver = class PaymentScheduleAdminResolver {
     constructor(scheduleService) {
@@ -81,7 +82,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(constants_1.ManagePaymentSchedulePermissionDefinition.Permission, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('scheduleId')),
     __metadata("design:type", Function),
@@ -91,7 +92,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(constants_1.ManagePaymentSchedulePermissionDefinition.Permission, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('scheduleId')),
     __metadata("design:type", Function),
@@ -101,7 +102,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(constants_1.ManagePaymentSchedulePermissionDefinition.Permission, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -111,7 +112,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(constants_1.ManagePaymentSchedulePermissionDefinition.Permission, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),

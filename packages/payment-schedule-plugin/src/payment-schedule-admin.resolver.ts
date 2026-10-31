@@ -10,6 +10,7 @@ import {
     Transaction,
 } from '@vendure/core';
 
+import { ManagePaymentSchedulePermissionDefinition } from './constants';
 import { OrderPaymentSchedule } from './order-payment-schedule.entity';
 import { PaymentScheduleService } from './payment-schedule.service';
 
@@ -45,7 +46,7 @@ export class PaymentScheduleAdminResolver {
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateOrder, Permission.SuperAdmin)
+    @Allow(ManagePaymentSchedulePermissionDefinition.Permission, Permission.SuperAdmin)
     async openTailWindow(@Ctx() ctx: RequestContext, @Args('scheduleId') scheduleId: ID): Promise<any> {
         const result = await this.scheduleService.openTailWindow(ctx, Number(scheduleId));
         return this.scheduleService.presentSchedule(result);
@@ -53,7 +54,7 @@ export class PaymentScheduleAdminResolver {
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateOrder, Permission.SuperAdmin)
+    @Allow(ManagePaymentSchedulePermissionDefinition.Permission, Permission.SuperAdmin)
     async confirmSellerBreach(@Ctx() ctx: RequestContext, @Args('scheduleId') scheduleId: ID): Promise<any> {
         const result = await this.scheduleService.confirmSellerBreach(ctx, Number(scheduleId));
         return this.scheduleService.presentSchedule(result);
@@ -61,7 +62,7 @@ export class PaymentScheduleAdminResolver {
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateOrder, Permission.SuperAdmin)
+    @Allow(ManagePaymentSchedulePermissionDefinition.Permission, Permission.SuperAdmin)
     async confirmCodReceived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID): Promise<any> {
         const result = await this.scheduleService.confirmCodReceived(ctx, orderId);
         return this.scheduleService.presentSchedule(result);
@@ -69,7 +70,7 @@ export class PaymentScheduleAdminResolver {
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateOrder, Permission.SuperAdmin)
+    @Allow(ManagePaymentSchedulePermissionDefinition.Permission, Permission.SuperAdmin)
     async releaseRentalDeposit(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID): Promise<any> {
         const result = await this.scheduleService.releaseDepositForRental(ctx, orderId);
         return this.scheduleService.presentSchedule(result);

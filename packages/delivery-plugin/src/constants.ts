@@ -132,6 +132,8 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ManageMember',
     'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
     'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
+    // 代收 COD / 释放租赁押金（payment-schedule-plugin 自定义权限；不给 UpdateOrder 以免放开改单）
+    'ManagePaymentSchedule',
     // Vendure 原生权限（manager 需查看商品/客户/订单/管理员）
     ...VENDURE_NATIVE_READ_PERMS,
     'UpdateCatalog', 'UpdateProduct', 'UpdateCustomer',
@@ -146,6 +148,7 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ManageMember',
     'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
     'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
+    'ManagePaymentSchedule',
     'SuperAdmin',
     // Vendure 原生权限（super-admin 持有全部 Read + Update，等价于内置 superadmin 角色）
     ...VENDURE_NATIVE_READ_PERMS,

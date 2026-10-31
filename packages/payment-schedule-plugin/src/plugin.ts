@@ -11,7 +11,11 @@ import {
 } from '@vendure/core';
 import gql from 'graphql-tag';
 
-import { PAYMENT_SCHEDULE_PLUGIN_OPTIONS, loggerCtx } from './constants';
+import {
+    PAYMENT_SCHEDULE_PLUGIN_OPTIONS,
+    loggerCtx,
+    paymentSchedulePermissionDefinitions,
+} from './constants';
 import { OrderPaymentSchedule } from './order-payment-schedule.entity';
 import { OrderScheduleItem } from './order-schedule-item.entity';
 import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
@@ -171,6 +175,17 @@ function mergeCustomFields<T extends { name: string }>(
         resolvers: [PaymentScheduleShopResolver],
     },
     configuration: config => {
+        // 注册自定义权限（按 name 去重，避免与其他插件/重复 init 冲突）
+        const existingPermissionNames = new Set(
+            (config.authOptions.customPermissions ?? []).map(p => p.Permission),
+        );
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions ?? []),
+            ...paymentSchedulePermissionDefinitions.filter(
+                p => !existingPermissionNames.has(p.Permission),
+            ),
+        ];
+
         config.customFields.Order = mergeCustomFields(config.customFields.Order, paymentScheduleOrderCustomFields.Order);
 
         const orderProcesses = config.orderOptions?.process ?? [];

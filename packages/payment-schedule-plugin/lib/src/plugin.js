@@ -227,9 +227,15 @@ exports.PaymentSchedulePlugin = PaymentSchedulePlugin = PaymentSchedulePlugin_1 
             resolvers: [payment_schedule_shop_resolver_1.PaymentScheduleShopResolver],
         },
         configuration: config => {
-            var _a, _b;
+            var _a, _b, _c, _d;
+            // 注册自定义权限（按 name 去重，避免与其他插件/重复 init 冲突）
+            const existingPermissionNames = new Set(((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []).map(p => p.Permission));
+            config.authOptions.customPermissions = [
+                ...((_b = config.authOptions.customPermissions) !== null && _b !== void 0 ? _b : []),
+                ...constants_1.paymentSchedulePermissionDefinitions.filter(p => !existingPermissionNames.has(p.Permission)),
+            ];
             config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.paymentScheduleOrderCustomFields.Order);
-            const orderProcesses = (_b = (_a = config.orderOptions) === null || _a === void 0 ? void 0 : _a.process) !== null && _b !== void 0 ? _b : [];
+            const orderProcesses = (_d = (_c = config.orderOptions) === null || _c === void 0 ? void 0 : _c.process) !== null && _d !== void 0 ? _d : [];
             const registered = orderProcesses.some((p) => p.__paymentScheduleRegistered);
             if (!registered) {
                 payment_schedule_order_process_1.paymentScheduleOrderProcess.__paymentScheduleRegistered = true;
