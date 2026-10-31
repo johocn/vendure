@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { isGraphQlErrorResult, Order, OrderService, RequestContext, UserInputError } from '@vendure/core';
 import { DataSource } from 'typeorm';
 import { CampusBuilding } from './campus-building.entity';
-import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusFulfillmentConfig, STORE_NOTICE_MAX_LENGTH } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { DeliverySlot } from './delivery-slot.entity';
 import { normalizeDeliveryFeeTiers } from './delivery-fee-tiers';
@@ -230,7 +230,7 @@ export class CampusConfigService {
         }
         // 模板消息/域名等字符串字段做长度上限，防超长文本撑爆数据库列
         const stringLimits: Record<string, number> = {
-            storeAddress: 200, storePhone: 32, storeNotice: 500, h5BaseUrl: 200,
+            storeAddress: 200, storePhone: 32, storeNotice: STORE_NOTICE_MAX_LENGTH, h5BaseUrl: 200,
             compensationCouponTemplateId: 128, timeoutCompensationCouponTemplateId: 128,
             notifyTemplateAccepted: 128, notifyTemplateRiderAssigned: 128, notifyTemplateCookingDone: 128,
             notifyTemplateDelivered: 128, notifyTemplateExceptionHandled: 128,

@@ -1,4 +1,6 @@
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
+/** 店铺公告最大长度（列宽与应用层校验共用，避免「能填不能存」） */
+export declare const STORE_NOTICE_MAX_LENGTH = 500;
 export declare class CampusFulfillmentConfig extends VendureEntity {
     [key: string]: any;
     channelId: ID;

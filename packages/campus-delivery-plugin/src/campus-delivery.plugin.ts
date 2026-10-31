@@ -170,6 +170,8 @@ import { P28AfterSalesProductAndRulesMigration } from './migrations/p28-after-sa
 import { P29AfterSalesRefundReviewAndSlaMigration } from './migrations/p29-after-sales-refund-review-and-sla';
 import { P30AfterSalesAuditDutyCompensationMigration } from './migrations/p30-after-sales-audit-duty-compensation';
 import { P31NotifyHandoverFallbackMigration } from './migrations/p31-notify-handover-fallback';
+import { P32CampusConfigMissingColumnsMigration } from './migrations/p32-campus-config-missing-columns';
+import { P33ChannelWaimaiColumnsMigration } from './migrations/p33-channel-waimai-columns';
 import { AfterSalesReviewService } from './after-sales-review.service';
 import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './after-sales-review.resolver';
 
@@ -220,6 +222,8 @@ import { AfterSalesReviewAdminResolver, AfterSalesReviewShopResolver } from './a
         P29AfterSalesRefundReviewAndSlaMigration,
         P30AfterSalesAuditDutyCompensationMigration,
         P31NotifyHandoverFallbackMigration,
+        P32CampusConfigMissingColumnsMigration,
+        P33ChannelWaimaiColumnsMigration,
         AfterSalesReviewService,
         P11SoldOutAutoRestoreMigration,
         P12DailyLimitMigration,

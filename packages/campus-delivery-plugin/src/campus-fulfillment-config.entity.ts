@@ -1,6 +1,9 @@
 import { Column, Entity } from 'typeorm';
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
 
+/** 店铺公告最大长度（列宽与应用层校验共用，避免「能填不能存」） */
+export const STORE_NOTICE_MAX_LENGTH = 500;
+
 @Entity()
 export class CampusFulfillmentConfig extends VendureEntity {
     [key: string]: any;
@@ -18,7 +21,7 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'int', nullable: true }) deliveryFee: number | null; // 配送费（分，本期仅展示）
     @Column({ type: 'varchar', nullable: true }) storeAddress: string | null; // 自提地址
     @Column({ type: 'varchar', nullable: true }) storePhone: string | null; // 联系电话
-    @Column({ type: 'varchar', nullable: true }) storeNotice: string | null; // 店铺公告
+    @Column({ type: 'varchar', length: STORE_NOTICE_MAX_LENGTH, nullable: true }) storeNotice: string | null; // 店铺公告
     @Column({ type: 'int', nullable: true }) errandBaseFee: number | null; // R5 跑腿起步价（分；null=默认 200）
     @Column({ type: 'int', nullable: true }) thirdPartyBaseFee: number | null; // R2 第三方到校配送基价（分；null=不接管，沿用店铺普通快递运费；0=免费接管）
     @Column({ type: 'int', nullable: true }) freeShippingThreshold: number | null; // 满 X 元免配送费（分；null=不启用，仅 R1/R3 外卖单）

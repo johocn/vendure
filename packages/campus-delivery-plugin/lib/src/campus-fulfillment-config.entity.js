@@ -9,9 +9,11 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CampusFulfillmentConfig = void 0;
+exports.CampusFulfillmentConfig = exports.STORE_NOTICE_MAX_LENGTH = void 0;
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
+/** 店铺公告最大长度（列宽与应用层校验共用，避免「能填不能存」） */
+exports.STORE_NOTICE_MAX_LENGTH = 500;
 let CampusFulfillmentConfig = class CampusFulfillmentConfig extends core_1.VendureEntity {
     constructor(input) {
         super(input);
@@ -71,7 +73,7 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "storePhone", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar', length: exports.STORE_NOTICE_MAX_LENGTH, nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "storeNotice", void 0);
 __decorate([

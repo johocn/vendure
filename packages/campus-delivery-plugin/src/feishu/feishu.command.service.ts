@@ -387,6 +387,12 @@ export class FeishuCommandService {
                 case 'refund_diff':
                 case 'coupon':
                 case 'refund_all': {
+                    // 资金动作（退差价/发补偿券/全额退款）要求店主，普通操作员只能处理履约类操作
+                    if (!this.isOwner(chat, openId)) {
+                        await this.audit(chatId, openId, cmd, 'denied-card');
+                        await this.reply(chatId, '无权限操作（资金操作需店主）。');
+                        return;
+                    }
                     const found = await this.requireOrder(chat, chatId, code);
                     if (!found) return;
                     const actionName = action as 'refund_diff' | 'coupon' | 'refund_all';
@@ -952,9 +958,18 @@ export class FeishuCommandService {
             await this.reply(chatId, `未找到订单：${code}`);
             return null;
         }
-        const channel = chat.scope === 'platform'
-            ? order.channels?.[0]
-            : order.channels?.find(c => c.token === chat.channel);
+        const channels = order.channels ?? [];
+        let channel;
+        if (chat.scope === 'platform') {
+            // 平台群不绑定店铺：单渠道订单可直接确定；多渠道时取 channels[0] 可能写错店，直接拒绝
+            if (channels.length > 1) {
+                await this.reply(chatId, `订单 ${code} 属于多个店铺，请在对应店铺群操作。`);
+                return null;
+            }
+            channel = channels[0];
+        } else {
+            channel = channels.find(c => c.token === chat.channel);
+        }
         if (!channel) {
             await this.reply(chatId, chat.scope === 'platform' ? `订单 ${code} 未绑定店铺` : `未找到本店订单：${code}`);
             return null;
@@ -995,6 +1010,10 @@ export class FeishuCommandService {
 
     private isOperator(chat: FeishuChatConfig, openId: string): boolean {
         return chat.operators.includes(openId) || chat.owners.includes(openId);
+    }
+
+    private isOwner(chat: FeishuChatConfig, openId: string): boolean {
+        return chat.owners.includes(openId);
     }
 
     private isRateLimited(chatId: string): boolean {

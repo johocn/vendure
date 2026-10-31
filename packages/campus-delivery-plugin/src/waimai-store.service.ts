@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Channel, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
-import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusFulfillmentConfig, STORE_NOTICE_MAX_LENGTH } from './campus-fulfillment-config.entity';
 import { CampusRoute, normalizeRouteFirstLeg, ROUTE_FIRST_LEG_OPTIONS } from './route-matrix';
 import { isWithinBusinessHours } from './business-hours';
 import { normalizePackingFeeMode, PACKING_FEE_MODES } from './packing-fee';
@@ -505,7 +505,13 @@ export class WaimaiStoreService {
         if (input.deliveryFee !== undefined) cfg.deliveryFee = nums.deliveryFee ?? null;
         if (input.storeAddress !== undefined) cfg.storeAddress = input.storeAddress ?? null;
         if (input.storePhone !== undefined) cfg.storePhone = input.storePhone ?? null;
-        if (input.storeNotice !== undefined) cfg.storeNotice = input.storeNotice ?? null;
+        if (input.storeNotice !== undefined) {
+            const notice = input.storeNotice == null ? null : String(input.storeNotice);
+            if (notice && notice.length > STORE_NOTICE_MAX_LENGTH) {
+                throw new UserInputError(`店铺公告最多 ${STORE_NOTICE_MAX_LENGTH} 字`);
+            }
+            cfg.storeNotice = notice;
+        }
         if (input.errandBaseFee !== undefined) cfg.errandBaseFee = nums.errandBaseFee ?? null;
         // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
         if (input.thirdPartyBaseFee !== undefined) cfg.thirdPartyBaseFee = nums.thirdPartyBaseFee ?? null;

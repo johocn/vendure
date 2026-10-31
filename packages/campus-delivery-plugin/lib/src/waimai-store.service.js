@@ -211,7 +211,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
         // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
         const routes = Array.from(new Set(((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).map(r => String(r))));
         const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
@@ -314,15 +314,20 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.storeAddress = (_t = input.storeAddress) !== null && _t !== void 0 ? _t : null;
         if (input.storePhone !== undefined)
             cfg.storePhone = (_u = input.storePhone) !== null && _u !== void 0 ? _u : null;
-        if (input.storeNotice !== undefined)
-            cfg.storeNotice = (_v = input.storeNotice) !== null && _v !== void 0 ? _v : null;
+        if (input.storeNotice !== undefined) {
+            const notice = input.storeNotice == null ? null : String(input.storeNotice);
+            if (notice && notice.length > campus_fulfillment_config_entity_1.STORE_NOTICE_MAX_LENGTH) {
+                throw new core_1.UserInputError(`店铺公告最多 ${campus_fulfillment_config_entity_1.STORE_NOTICE_MAX_LENGTH} 字`);
+            }
+            cfg.storeNotice = notice;
+        }
         if (input.errandBaseFee !== undefined)
-            cfg.errandBaseFee = (_w = nums.errandBaseFee) !== null && _w !== void 0 ? _w : null;
+            cfg.errandBaseFee = (_v = nums.errandBaseFee) !== null && _v !== void 0 ? _v : null;
         // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
         if (input.thirdPartyBaseFee !== undefined)
-            cfg.thirdPartyBaseFee = (_x = nums.thirdPartyBaseFee) !== null && _x !== void 0 ? _x : null;
+            cfg.thirdPartyBaseFee = (_w = nums.thirdPartyBaseFee) !== null && _w !== void 0 ? _w : null;
         if (input.freeShippingThreshold !== undefined)
-            cfg.freeShippingThreshold = (_y = nums.freeShippingThreshold) !== null && _y !== void 0 ? _y : null;
+            cfg.freeShippingThreshold = (_x = nums.freeShippingThreshold) !== null && _x !== void 0 ? _x : null;
         // 配送费阶梯（P3-4）：未传即保留；传 null/空串关闭；JSON 解析失败或档位非法直接拒绝
         if (input.deliveryFeeTiers !== undefined) {
             let raw = input.deliveryFeeTiers;
@@ -334,7 +339,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                     try {
                         raw = JSON.parse(text);
                     }
-                    catch (_17) {
+                    catch (_16) {
                         throw new core_1.UserInputError('配送费阶梯不是合法 JSON');
                     }
                 }
@@ -348,10 +353,10 @@ let WaimaiStoreService = class WaimaiStoreService {
         }
         for (const key of NOTIFY_TEMPLATE_FIELDS) {
             if (input[key] !== undefined)
-                cfg[key] = (_z = input[key]) !== null && _z !== void 0 ? _z : null;
+                cfg[key] = (_y = input[key]) !== null && _y !== void 0 ? _y : null;
         }
         if (input.h5BaseUrl !== undefined)
-            cfg.h5BaseUrl = (_0 = input.h5BaseUrl) !== null && _0 !== void 0 ? _0 : null;
+            cfg.h5BaseUrl = (_z = input.h5BaseUrl) !== null && _z !== void 0 ? _z : null;
         /** 空串归一为 null（未配置即 C 端/小票不渲染）；undefined=保留原值 */
         const nullableText = (v) => (v === undefined ? undefined : String(v !== null && v !== void 0 ? v : '').trim() || null);
         if (input.printMode !== undefined) {
@@ -366,11 +371,11 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.printProvider = provider;
         }
         if (input.printAccount !== undefined)
-            cfg.printAccount = (_1 = nullableText(input.printAccount)) !== null && _1 !== void 0 ? _1 : null;
+            cfg.printAccount = (_0 = nullableText(input.printAccount)) !== null && _0 !== void 0 ? _0 : null;
         if (input.printDeviceSn !== undefined)
-            cfg.printDeviceSn = (_2 = nullableText(input.printDeviceSn)) !== null && _2 !== void 0 ? _2 : null;
+            cfg.printDeviceSn = (_1 = nullableText(input.printDeviceSn)) !== null && _1 !== void 0 ? _1 : null;
         if (input.printDeviceKey !== undefined)
-            cfg.printDeviceKey = (_3 = nullableText(input.printDeviceKey)) !== null && _3 !== void 0 ? _3 : null;
+            cfg.printDeviceKey = (_2 = nullableText(input.printDeviceKey)) !== null && _2 !== void 0 ? _2 : null;
         if (input.printCopies !== undefined && input.printCopies !== null) {
             const copies = Number(input.printCopies);
             if (!Number.isInteger(copies) || copies < 1 || copies > 5) {
@@ -379,7 +384,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.printCopies = copies;
         }
         // 未配置时与运行侧（cloud-print / merchant-admin）保持同一默认值 local，避免旧配置/裸对象被误判为云通道
-        if (String((_4 = cfg.printProvider) !== null && _4 !== void 0 ? _4 : 'local') !== 'local'
+        if (String((_3 = cfg.printProvider) !== null && _3 !== void 0 ? _3 : 'local') !== 'local'
             && (!cfg.printAccount || !cfg.printDeviceSn || !cfg.printDeviceKey)) {
             throw new core_1.UserInputError('选择云打印时请填写服务商账号、设备编号与密钥');
         }
@@ -435,7 +440,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_18) {
+                catch (_17) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -461,18 +466,18 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.privacyNumberTtlMinutes = ttl;
         }
         if (input.privacyNumberPrefix !== undefined) {
-            cfg.privacyNumberPrefix = String((_5 = input.privacyNumberPrefix) !== null && _5 !== void 0 ? _5 : '').trim() || null;
+            cfg.privacyNumberPrefix = String((_4 = input.privacyNumberPrefix) !== null && _4 !== void 0 ? _4 : '').trim() || null;
         }
         // 食安公示：空串归一为 null（未配置即 C 端不渲染）；等级/到期日做格式校验
         if (input.foodLicenseNo !== undefined)
-            cfg.foodLicenseNo = (_6 = nullableText(input.foodLicenseNo)) !== null && _6 !== void 0 ? _6 : null;
+            cfg.foodLicenseNo = (_5 = nullableText(input.foodLicenseNo)) !== null && _5 !== void 0 ? _5 : null;
         if (input.foodLicenseImage !== undefined)
-            cfg.foodLicenseImage = (_7 = nullableText(input.foodLicenseImage)) !== null && _7 !== void 0 ? _7 : null;
+            cfg.foodLicenseImage = (_6 = nullableText(input.foodLicenseImage)) !== null && _6 !== void 0 ? _6 : null;
         if (input.foodSafetyCommitmentImage !== undefined) {
-            cfg.foodSafetyCommitmentImage = (_8 = nullableText(input.foodSafetyCommitmentImage)) !== null && _8 !== void 0 ? _8 : null;
+            cfg.foodSafetyCommitmentImage = (_7 = nullableText(input.foodSafetyCommitmentImage)) !== null && _7 !== void 0 ? _7 : null;
         }
         if (input.kitchenLiveUrl !== undefined)
-            cfg.kitchenLiveUrl = (_9 = nullableText(input.kitchenLiveUrl)) !== null && _9 !== void 0 ? _9 : null;
+            cfg.kitchenLiveUrl = (_8 = nullableText(input.kitchenLiveUrl)) !== null && _8 !== void 0 ? _8 : null;
         if (input.foodLicenseExpiry !== undefined) {
             const expiry = nullableText(input.foodLicenseExpiry);
             if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
@@ -504,12 +509,12 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.packingFeeMode = mode;
         }
         if (input.packingFeeAmount !== undefined)
-            cfg.packingFeeAmount = (_10 = nums.packingFeeAmount) !== null && _10 !== void 0 ? _10 : 0;
+            cfg.packingFeeAmount = (_9 = nums.packingFeeAmount) !== null && _9 !== void 0 ? _9 : 0;
         if (input.packingFeeCap !== undefined)
-            cfg.packingFeeCap = (_11 = nums.packingFeeCap) !== null && _11 !== void 0 ? _11 : null;
+            cfg.packingFeeCap = (_10 = nums.packingFeeCap) !== null && _10 !== void 0 ? _10 : null;
         if (input.packingFeeLabel !== undefined)
-            cfg.packingFeeLabel = (_12 = nullableText(input.packingFeeLabel)) !== null && _12 !== void 0 ? _12 : null;
-        if (cfg.packingFeeEnabled && ((_13 = cfg.packingFeeAmount) !== null && _13 !== void 0 ? _13 : 0) <= 0) {
+            cfg.packingFeeLabel = (_11 = nullableText(input.packingFeeLabel)) !== null && _11 !== void 0 ? _11 : null;
+        if (cfg.packingFeeEnabled && ((_12 = cfg.packingFeeAmount) !== null && _12 !== void 0 ? _12 : 0) <= 0) {
             throw new core_1.UserInputError('开启打包费时请填写大于 0 的金额');
         }
         if (cfg.packingFeeCap != null && cfg.packingFeeAmount != null && cfg.packingFeeCap < cfg.packingFeeAmount) {
@@ -567,7 +572,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         for (const [field, label] of [['voiceSearchProvider', '语音搜索'], ['imageSearchProvider', '拍照搜索']]) {
             if (input[field] === undefined)
                 continue;
-            const provider = String((_14 = input[field]) !== null && _14 !== void 0 ? _14 : '').trim();
+            const provider = String((_13 = input[field]) !== null && _13 !== void 0 ? _13 : '').trim();
             if (!search_assist_1.SEARCH_ASSIST_PROVIDER_NAMES.includes(provider)) {
                 throw new core_1.UserInputError(`不支持的${label}服务商: ${provider || '(空)'}（仅接受 ${search_assist_1.SEARCH_ASSIST_PROVIDER_NAMES.join('/')}）`);
             }
@@ -586,10 +591,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_15 = input.storeAddress) !== null && _15 !== void 0 ? _15 : '').trim();
+        const address = ((_14 = input.storeAddress) !== null && _14 !== void 0 ? _14 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_16 = input.storePhone) !== null && _16 !== void 0 ? _16 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_15 = input.storePhone) !== null && _15 !== void 0 ? _15 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }

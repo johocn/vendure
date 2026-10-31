@@ -163,6 +163,17 @@ let FeishuCardService = class FeishuCardService {
             return null;
         return this.client.sendCard(chatId, card);
     }
+    /** 订单所属店铺 token（用于告警定向；查不到返回 undefined，调用方按平台级广播处理） */
+    async channelTokenForOrder(code) {
+        var _a, _b;
+        if (!code)
+            return undefined;
+        const order = await this.connection.rawConnection.getRepository(core_1.Order).findOne({
+            where: { code },
+            relations: ['channels'],
+        });
+        return (_b = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.token;
+    }
     /** 新订单卡片：只发「本店群 + 平台群」；一个都没发出去时返回 false，让调用方降级文本。
      *  渠道定向是必须的：旧实现全量群发会把 A 店单号/楼栋/金额泄露到 B 店群。 */
     async broadcastOrderCard(code, channelToken) {

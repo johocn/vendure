@@ -106,6 +106,16 @@ export class FeishuNotifyService {
             }
         }
 
+        // 订单级告警默认按订单所属店铺定向（平台群始终接收）：
+        // 旧实现各处调用不传 target，会把单号/异常描述广播到所有店铺群。
+        // 调用方显式传入 target 时尊重调用方（如平台级汇总告警）。
+        if (orderCode && !target) {
+            try {
+                const channelToken = await this.cards.channelTokenForOrder(orderCode);
+                if (channelToken) target = { channel: channelToken };
+            } catch { /* 查询失败退化为原有广播 */ }
+        }
+
         const ok = await this.push(scene, key, formatPush({ scene, title, content, orderCode, at: Date.now() }), target);
         if (ok && key) this.mark(key);
         return ok;

@@ -190,6 +190,15 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             .rejects.toThrow(UserInputError);
     });
 
+    it('公告超过 500 字拒绝，500 字可保存', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂麻辣香锅' }] });
+        env.repoByEntity.CampusFulfillmentConfig.findOne.mockResolvedValue({ channelId: 2, routesEnabled: ['R1'] });
+        await expect(env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R1'], storeNotice: 'x'.repeat(501) }))
+            .rejects.toThrow(UserInputError);
+        const out = await env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R1'], storeNotice: 'x'.repeat(500) });
+        expect(out.storeNotice).toHaveLength(500);
+    });
+
     it('渠道不存在抛 UserInputError', async () => {
         const env = makeEnv({});
         env.repoByEntity.Channel.findOne.mockResolvedValue(undefined);

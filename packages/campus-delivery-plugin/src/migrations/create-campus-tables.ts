@@ -39,7 +39,7 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "minOrderAmount" 
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "deliveryFee" int;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storeAddress" varchar(255);
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storePhone" varchar(255);
-ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storeNotice" varchar(255);
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storeNotice" varchar(500);
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "errandBaseFee" int;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "merchantConfirmEnabled" boolean DEFAULT false;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "merchantAutoOpenMinutes" int DEFAULT 15;

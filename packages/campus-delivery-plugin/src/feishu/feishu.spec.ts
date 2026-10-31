@@ -5,6 +5,7 @@ import { FeishuClient, buildWebhookPayload, buildWebhookSignature } from './feis
 import { AUDIT_TABLE_SQL, buildRestoreSQL, FeishuCommandService, parseCommand, requiredRole } from './feishu.command.service';
 import { parseChatMap, readFeishuSettings } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
+import { FeishuNotifyService } from './feishu-notify.service';
 import { campusHhmm } from './feishu.digest.service';
 import {
     buildOrderCard,
@@ -573,8 +574,8 @@ describe('FeishuClient.broadcast 定向推送', () => {
 });
 
 describe('FeishuCommandService 卡片读操作归属校验', () => {
-    function makeCmd(order: any) {
-        const chat = { scope: 'channel', channel: 'canteen-a', operators: ['ou_op'], owners: [] };
+    function makeCmd(order: any, chatOverride: Record<string, any> = {}) {
+        const chat = { scope: 'channel', channel: 'canteen-a', operators: ['ou_op'], owners: [], ...chatOverride };
         const cfg = { chatOf: vi.fn().mockReturnValue(chat) };
         const client = { enabled: true } as any;
         const connection = {
@@ -582,14 +583,15 @@ describe('FeishuCommandService 卡片读操作归属校验', () => {
                 getRepository: vi.fn().mockReturnValue({ findOne: vi.fn().mockResolvedValue(order) }),
             },
         };
+        const dispatchAdmin = { handleException: vi.fn() };
         const cmd: any = new FeishuCommandService(
             cfg as any, client, {} as any, { create: vi.fn().mockResolvedValue({}) } as any,
-            connection as any, {} as any, {} as any, {} as any,
+            connection as any, {} as any, dispatchAdmin as any, {} as any,
         );
         cmd.reply = vi.fn();
         cmd.replyInThread = vi.fn();
         cmd.statusText = vi.fn().mockResolvedValue('状态文本');
-        return { cmd, cfg, connection };
+        return { cmd, cfg, connection, dispatchAdmin };
     }
 
     it('店铺群点「状态」查看他店订单 → 拒绝，不读取详情', async () => {
@@ -605,5 +607,44 @@ describe('FeishuCommandService 卡片读操作归属校验', () => {
         await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'status', c: 'A2026' } });
         expect(cmd.statusText).toHaveBeenCalledWith('A2026');
         expect(cmd.replyInThread).toHaveBeenCalledWith('oc_a', undefined, '状态文本');
+    });
+
+    it('普通操作员点「全额退款」→ 拒绝，资金动作只允许店主', async () => {
+        const { cmd, dispatchAdmin } = makeCmd({ code: 'A2026', channels: [{ token: 'canteen-a' }] });
+        await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'refund_all', c: 'A2026' } });
+        expect(dispatchAdmin.handleException).not.toHaveBeenCalled();
+        expect(cmd.reply).toHaveBeenCalledWith('oc_a', '无权限操作（资金操作需店主）。');
+    });
+
+    it('店主点「全额退款」→ 正常执行', async () => {
+        const { cmd, dispatchAdmin } = makeCmd(
+            { code: 'A2026', channels: [{ token: 'canteen-a' }] },
+            { operators: [], owners: ['ou_op'] },
+        );
+        await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'refund_all', c: 'A2026' } });
+        expect(dispatchAdmin.handleException).toHaveBeenCalled();
+    });
+
+    it('平台群操作多渠道订单 → 拒绝，避免写入错误店铺', async () => {
+        const { cmd } = makeCmd(
+            { code: 'M2026', channels: [{ token: 'canteen-a' }, { token: 'canteen-b' }] },
+            { scope: 'platform', channel: undefined, owners: ['ou_op'] },
+        );
+        await cmd.handleCardAction({ chatId: 'oc_p', openId: 'ou_op', value: { a: 'status', c: 'M2026' } });
+        expect(cmd.reply).toHaveBeenCalledWith('oc_p', '订单 M2026 属于多个店铺，请在对应店铺群操作。');
+        expect(cmd.replyInThread).not.toHaveBeenCalled();
+    });
+});
+
+describe('FeishuNotifyService 告警渠道定向', () => {
+    it('pushEvent 带 orderCode 时自动按订单店铺定向', async () => {
+        const client = { enabled: true, broadcast: vi.fn().mockResolvedValue(true) } as any;
+        const cards = {
+            appendAlert: vi.fn().mockResolvedValue(false),
+            channelTokenForOrder: vi.fn().mockResolvedValue('canteen-a'),
+        } as any;
+        const notify = new FeishuNotifyService(client, cards);
+        await notify.pushEvent('alert', '取货超时', '内容', 'A2026');
+        expect(client.broadcast).toHaveBeenCalledWith(expect.any(String), { channel: 'canteen-a' });
     });
 });
