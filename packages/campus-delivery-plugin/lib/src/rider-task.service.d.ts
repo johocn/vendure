@@ -13,6 +13,9 @@ export declare class RiderTaskService {
     private notify;
     private privacy;
     private feishu?;
+    /** 交接码连续错误计数 / 锁止截止时间（orderId 维度，进程内即可；过期条目在下次访问时覆盖） */
+    private handoverFails;
+    private handoverLockUntil;
     constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService, privacy: PrivacyNumberService, feishu?: FeishuNotifyService | undefined);
     /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，真实号不出服务端。
      * 未开启号码保护时返回真实号（行为与旧版一致），前端统一用 display/callable 展示与拨号。 */

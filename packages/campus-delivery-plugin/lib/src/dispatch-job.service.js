@@ -60,8 +60,20 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         this.externalCancelFails = new Map();
         /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
         this.lastLocationCleanupAt = 0;
-        /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
-        this.externalExceptionAlerted = new Set();
+        /** §6 外部运单异常态告警去重 key（单号:外部运单号）→ 首次告警时间，状态恢复后移除 */
+        this.externalExceptionAlertedAt = new Map();
+    }
+    /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
+    shouldAlertExternalException(key) {
+        const now = Date.now();
+        const at = this.externalExceptionAlertedAt.get(key);
+        if (at != null) {
+            if (now - at < DispatchJobService_1.EXTERNAL_EXCEPTION_ALERT_TTL_MS)
+                return false;
+            this.externalExceptionAlertedAt.delete(key);
+        }
+        this.externalExceptionAlertedAt.set(key, now);
+        return true;
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     get injector() {
@@ -672,10 +684,9 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 // 去重键带外部运单号：回落重推后新运单异常会再次告警。
                 const exceptionKey = `${o.code}:${String((_v = cf.thirdPartyNo) !== null && _v !== void 0 ? _v : '')}`;
                 if (tpState !== 'exception') {
-                    this.externalExceptionAlerted.delete(exceptionKey);
+                    this.externalExceptionAlertedAt.delete(exceptionKey);
                 }
-                else if (cf.hallStatus === 'third_party' && !this.externalExceptionAlerted.has(exceptionKey)) {
-                    this.externalExceptionAlerted.add(exceptionKey);
+                else if (cf.hallStatus === 'third_party' && this.shouldAlertExternalException(exceptionKey)) {
                     core_2.Logger.warn(`Order ${o.code} external courier exception (${String((_w = cf.thirdPartyNo) !== null && _w !== void 0 ? _w : '-')})`, 'CampusDispatch');
                     void ((_x = this.feishu) === null || _x === void 0 ? void 0 : _x.pushEvent('exception', '外部运单异常', `订单 ${o.code} 外部运单${cf.thirdPartyNo ? ` ${cf.thirdPartyNo}` : ''} 状态异常，请尽快人工核实；超时将自动取消并回落。`, o.code, `${o.code}:external_exception`));
                     (_y = this.notify) === null || _y === void 0 ? void 0 : _y.user(ctx, Number(o.id), 'deliveryFallback', '运力异常，重新派送', (_z = cfg.h5BaseUrl) !== null && _z !== void 0 ? _z : undefined);
@@ -1155,6 +1166,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     }
 };
 exports.DispatchJobService = DispatchJobService;
+/** 外部异常告警去重 TTL（进程内幂等，pm2 单实例足够；多实例需换 Redis/DB） */
+DispatchJobService.EXTERNAL_EXCEPTION_ALERT_TTL_MS = 24 * 3600000;
 /**
  * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
  * - open：量最大，T2 强派 / T4 退款；

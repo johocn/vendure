@@ -50,9 +50,17 @@ export function parseChatMap(raw: string | undefined): Record<string, FeishuChat
         for (const [chatId, v] of Object.entries(parsed ?? {})) {
             const item = v as any;
             if (!item) continue;
-            // channel='*' 或 scope='platform' 表示平台管理群（跨店铺）
-            const platform = item.scope === 'platform' || item.channel === '*';
-            const channel = typeof item.channel === 'string' && item.channel !== '*' ? item.channel : undefined;
+            // 平台群只能由 scope='platform' 显式声明；channel='*' 属于历史写法，直接忽略并告警，
+            // 避免配置里多打一个字符就静默获得全店写权限。
+            if (item.channel === '*') {
+                Logger.warn(
+                    `FEISHU_CHAT_MAP 群 ${chatId} 使用了已废弃的 channel:'*'，已忽略；平台群请改用 scope:'platform'`,
+                    loggerCtx,
+                );
+                continue;
+            }
+            const platform = item.scope === 'platform';
+            const channel = typeof item.channel === 'string' ? item.channel : undefined;
             if (!platform && !channel) continue;
             out[chatId] = {
                 scope: platform ? 'platform' : 'channel',

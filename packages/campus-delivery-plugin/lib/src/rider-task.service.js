@@ -25,6 +25,10 @@ const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 /** 校园骑手平均速度（m/s）：约 15km/h，用于 ETA 粗估 */
 const RIDER_SPEED_MPS = 4.2;
+/** 交接码有效期 / 连续错误上限 / 锁定时长（进程内计数，pm2 单实例足够） */
+const HANDOVER_CODE_TTL_MS = 10 * 60000;
+const HANDOVER_MAX_FAILS = 5;
+const HANDOVER_LOCK_MS = 10 * 60000;
 /** 骑手异常上报类型白名单（与 H5 上报面板四类一致）：防任意字符串污染调度墙与追责记录 */
 const EXCEPTION_TYPES = ['merchant_issue', 'no_recipient', 'food_spilled', 'other'];
 /** 球面直线距离（米），gcj02 下作为短距离估算足够 */
@@ -46,6 +50,9 @@ let RiderTaskService = class RiderTaskService {
         this.notify = notify;
         this.privacy = privacy;
         this.feishu = feishu;
+        /** 交接码连续错误计数 / 锁止截止时间（orderId 维度，进程内即可；过期条目在下次访问时覆盖） */
+        this.handoverFails = new Map();
+        this.handoverLockUntil = new Map();
     }
     /** 骑手侧顾客联系方式（号码保护）：仅本单骑手可查，真实号不出服务端。
      * 未开启号码保护时返回真实号（行为与旧版一致），前端统一用 display/callable 展示与拨号。 */
@@ -240,18 +247,39 @@ let RiderTaskService = class RiderTaskService {
     /** 开始配送：assigned → in_progress。
      * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
     async start(ctx, orderId, code) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const order = await this.assertOwner(ctx, orderId, 'assigned');
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         const expected = String((_b = cf.handoverCode) !== null && _b !== void 0 ? _b : '');
-        if (expected && String(code !== null && code !== void 0 ? code : '').trim() !== expected) {
-            throw new core_1.UserInputError('交接码不正确，请与交接点核对后重试');
+        if (expected) {
+            const orderKey = Number(order.id);
+            const issuedAt = cf.handoverCodeAt ? new Date(cf.handoverCodeAt).getTime() : NaN;
+            if (!Number.isNaN(issuedAt) && Date.now() - issuedAt > HANDOVER_CODE_TTL_MS) {
+                throw new core_1.UserInputError('交接码已过期，请联系交接点重新核对');
+            }
+            const lockUntil = this.handoverLockUntil.get(orderKey);
+            if (lockUntil != null && lockUntil > Date.now()) {
+                throw new core_1.UserInputError('交接码错误次数过多，请 10 分钟后再试');
+            }
+            if (String(code !== null && code !== void 0 ? code : '').trim() !== expected) {
+                const fails = ((_c = this.handoverFails.get(orderKey)) !== null && _c !== void 0 ? _c : 0) + 1;
+                if (fails >= HANDOVER_MAX_FAILS) {
+                    this.handoverFails.delete(orderKey);
+                    this.handoverLockUntil.set(orderKey, Date.now() + HANDOVER_LOCK_MS);
+                }
+                else {
+                    this.handoverFails.set(orderKey, fails);
+                }
+                throw new core_1.UserInputError('交接码不正确，请与交接点核对后重试');
+            }
+            this.handoverFails.delete(orderKey);
+            this.handoverLockUntil.delete(orderKey);
         }
         // 条件写（P2-3）：与用户取消/运营改派并发时，不得把已脱厅/已取消单改成 in_progress
         const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1 '
             + 'WHERE id = $2 AND "customFieldsDeliverystatus" = $3 '
             + 'AND "customFieldsDeliverystaffid" = $4 AND "customFieldsHallstatus" = $5 '
-            + `AND "state" <> 'Cancelled' RETURNING id`, ['in_progress', order.id, 'assigned', String((_c = cf.deliveryStaffId) !== null && _c !== void 0 ? _c : ''), 'grabbed']);
+            + `AND "state" <> 'Cancelled' RETURNING id`, ['in_progress', order.id, 'assigned', String((_d = cf.deliveryStaffId) !== null && _d !== void 0 ? _d : ''), 'grabbed']);
         const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
         if (!Array.isArray(rows) || !rows.length) {
             throw new core_1.UserInputError('订单已被取消或改派，无法开始配送');

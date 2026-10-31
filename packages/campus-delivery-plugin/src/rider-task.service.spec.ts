@@ -61,6 +61,29 @@ describe('RiderTaskService', () => {
         await expect(svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
         await expect(svc.start({ channelId: 1 } as any, 10 as any)).rejects.toThrow('交接码不正确');
     });
+    it('接力单交接码超过 10 分钟 → 过期拒绝', async () => {
+        const relay = {
+            ...assigned,
+            customFields: {
+                ...assigned.customFields,
+                handoverCode: '1234',
+                handoverCodeAt: new Date(Date.now() - 20 * 60_000),
+            },
+        };
+        const { svc } = make(relay);
+        await expect(svc.start({ channelId: 1 } as any, 10 as any, '1234')).rejects.toThrow('交接码已过期');
+    });
+    it('接力单交接码连续错误 5 次 → 锁定，正确码也拒绝', async () => {
+        const relay = {
+            ...assigned,
+            customFields: { ...assigned.customFields, handoverCode: '1234', handoverCodeAt: new Date() },
+        };
+        const { svc } = make(relay);
+        for (let i = 0; i < 5; i++) {
+            await expect(svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
+        }
+        await expect(svc.start({ channelId: 1 } as any, 10 as any, '1234')).rejects.toThrow('错误次数过多');
+    });
     it('delivered 需照片且分成=配送费+小费（单条原子写终态 + 认领后入账）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
         const { svc, saved, rawQuery } = make(inProg, { riderCommissionRate: 100 });

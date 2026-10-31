@@ -282,7 +282,7 @@ export class HallService {
         // 第一段交接完成：给顾客一个明确节点（餐/包裹已到校园交接点，等待骑手接力）
         const point = String((order.customFields as any)?.handoverPointName ?? '校园交接点');
         this.notify?.user(ctx, order.id, 'arrivedHandover', point);
-        Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
+        Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码已生成并脱敏`, 'CampusHall');
         return handoverCode;
     }
 

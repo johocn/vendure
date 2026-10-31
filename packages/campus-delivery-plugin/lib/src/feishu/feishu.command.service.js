@@ -261,6 +261,12 @@ let FeishuCommandService = class FeishuCommandService {
             orderCode: code,
             cardAction: action,
         };
+        // 卡片回调与文本指令共用同一限流器（防脚本连点/误触连发）
+        if (this.isRateLimited(chatId)) {
+            await this.audit(chatId, openId, cmd, 'rate-limited-card');
+            await this.reply(chatId, '操作过于频繁，请稍后再试。');
+            return;
+        }
         if (!this.isOperator(chat, openId)) {
             await this.audit(chatId, openId, cmd, 'denied-card');
             await this.reply(chatId, '无权限操作（需操作员白名单）。');
@@ -359,7 +365,7 @@ let FeishuCommandService = class FeishuCommandService {
                     const actionName = action;
                     const label = actionName === 'refund_diff' ? '退差价' : actionName === 'coupon' ? '发补偿券' : '全额退款';
                     await this.dispatchAdmin.handleException(found.ctx, found.order.id, actionName);
-                    await this.audit(chatId, openId, { name: 'status', orderCode: code }, `ok-card:${actionName}`);
+                    await this.audit(chatId, openId, { name: 'status', orderCode: code, cardAction: actionName }, `ok-card:${actionName}`);
                     // Bug 10 修复：退款/发券后 hallStatus→exception_final，告警历史清掉
                     this.cards.clearAlerts(code);
                     if (!(await this.cards.refresh(messageId, code))) {

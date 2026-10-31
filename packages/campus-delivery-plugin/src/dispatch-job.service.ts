@@ -52,8 +52,10 @@ export class DispatchJobService implements OnApplicationShutdown {
     private externalCancelFails = new Map<string, { n: number; alertedAt: number }>();
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt = 0;
-    /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
-    private readonly externalExceptionAlerted = new Set<string>();
+    /** 外部异常告警去重 TTL（进程内幂等，pm2 单实例足够；多实例需换 Redis/DB） */
+    private static readonly EXTERNAL_EXCEPTION_ALERT_TTL_MS = 24 * 3600_000;
+    /** §6 外部运单异常态告警去重 key（单号:外部运单号）→ 首次告警时间，状态恢复后移除 */
+    private readonly externalExceptionAlertedAt = new Map<string, number>();
 
     /**
      * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
@@ -93,6 +95,18 @@ export class DispatchJobService implements OnApplicationShutdown {
         private feishu?: FeishuNotifyService,
         private notify?: CampusNotifyService,
     ) {}
+
+    /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
+    private shouldAlertExternalException(key: string): boolean {
+        const now = Date.now();
+        const at = this.externalExceptionAlertedAt.get(key);
+        if (at != null) {
+            if (now - at < DispatchJobService.EXTERNAL_EXCEPTION_ALERT_TTL_MS) return false;
+            this.externalExceptionAlertedAt.delete(key);
+        }
+        this.externalExceptionAlertedAt.set(key, now);
+        return true;
+    }
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector(): Injector {
@@ -780,9 +794,8 @@ export class DispatchJobService implements OnApplicationShutdown {
                 // 去重键带外部运单号：回落重推后新运单异常会再次告警。
                 const exceptionKey = `${o.code}:${String(cf.thirdPartyNo ?? '')}`;
                 if (tpState !== 'exception') {
-                    this.externalExceptionAlerted.delete(exceptionKey);
-                } else if (cf.hallStatus === 'third_party' && !this.externalExceptionAlerted.has(exceptionKey)) {
-                    this.externalExceptionAlerted.add(exceptionKey);
+                    this.externalExceptionAlertedAt.delete(exceptionKey);
+                } else if (cf.hallStatus === 'third_party' && this.shouldAlertExternalException(exceptionKey)) {
                     Logger.warn(`Order ${o.code} external courier exception (${String(cf.thirdPartyNo ?? '-')})`, 'CampusDispatch');
                     void this.feishu?.pushEvent(
                         'exception',

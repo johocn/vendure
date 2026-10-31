@@ -23,6 +23,11 @@ import { RiderService } from './rider.service';
 /** 校园骑手平均速度（m/s）：约 15km/h，用于 ETA 粗估 */
 const RIDER_SPEED_MPS = 4.2;
 
+/** 交接码有效期 / 连续错误上限 / 锁定时长（进程内计数，pm2 单实例足够） */
+const HANDOVER_CODE_TTL_MS = 10 * 60_000;
+const HANDOVER_MAX_FAILS = 5;
+const HANDOVER_LOCK_MS = 10 * 60_000;
+
 /** 骑手异常上报类型白名单（与 H5 上报面板四类一致）：防任意字符串污染调度墙与追责记录 */
 const EXCEPTION_TYPES = ['merchant_issue', 'no_recipient', 'food_spilled', 'other'];
 
@@ -40,6 +45,10 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 
 @Injectable()
 export class RiderTaskService {
+    /** 交接码连续错误计数 / 锁止截止时间（orderId 维度，进程内即可；过期条目在下次访问时覆盖） */
+    private handoverFails = new Map<number, number>();
+    private handoverLockUntil = new Map<number, number>();
+
     constructor(
         private connection: TransactionalConnection,
         private riderService: RiderService,
@@ -252,8 +261,28 @@ export class RiderTaskService {
         const order = await this.assertOwner(ctx, orderId, 'assigned');
         const cf = (order.customFields ?? {}) as any;
         const expected = String(cf.handoverCode ?? '');
-        if (expected && String(code ?? '').trim() !== expected) {
-            throw new UserInputError('交接码不正确，请与交接点核对后重试');
+        if (expected) {
+            const orderKey = Number(order.id);
+            const issuedAt = cf.handoverCodeAt ? new Date(cf.handoverCodeAt).getTime() : NaN;
+            if (!Number.isNaN(issuedAt) && Date.now() - issuedAt > HANDOVER_CODE_TTL_MS) {
+                throw new UserInputError('交接码已过期，请联系交接点重新核对');
+            }
+            const lockUntil = this.handoverLockUntil.get(orderKey);
+            if (lockUntil != null && lockUntil > Date.now()) {
+                throw new UserInputError('交接码错误次数过多，请 10 分钟后再试');
+            }
+            if (String(code ?? '').trim() !== expected) {
+                const fails = (this.handoverFails.get(orderKey) ?? 0) + 1;
+                if (fails >= HANDOVER_MAX_FAILS) {
+                    this.handoverFails.delete(orderKey);
+                    this.handoverLockUntil.set(orderKey, Date.now() + HANDOVER_LOCK_MS);
+                } else {
+                    this.handoverFails.set(orderKey, fails);
+                }
+                throw new UserInputError('交接码不正确，请与交接点核对后重试');
+            }
+            this.handoverFails.delete(orderKey);
+            this.handoverLockUntil.delete(orderKey);
         }
         // 条件写（P2-3）：与用户取消/运营改派并发时，不得把已脱厅/已取消单改成 in_progress
         const res: any = await this.connection.rawConnection.query(

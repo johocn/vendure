@@ -5,6 +5,7 @@ import {
     ForbiddenError,
     ID,
     Logger,
+    Order,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -98,6 +99,17 @@ export class ChatService {
     async startConversation(ctx: RequestContext, orderCode?: string | null, subject?: string | null) {
         const customer = await this.requireCustomer(ctx);
         const code = orderCode == null ? null : String(orderCode).trim() || null;
+        // 订单号来自顾客入参：必须校验归属（本渠道 + 本人），否则可拿他人单号建会话并推送目标群
+        if (code) {
+            const order = await this.connection.getRepository(ctx, Order).findOne({
+                where: { code },
+                relations: ['customer', 'channels'],
+            });
+            const inChannel = order?.channels?.some(c => Number(c.id) === Number(ctx.channelId));
+            if (!order || !inChannel || Number(order.customer?.id) !== Number(customer.id)) {
+                throw new UserInputError('订单不存在或不属于当前用户');
+            }
+        }
         const existing = await this.connection.getRepository(ctx, CampusChatConversation).findOne({
             where: {
                 channelId: ctx.channelId as any,

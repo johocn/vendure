@@ -245,7 +245,7 @@ let HallService = HallService_1 = class HallService {
         // 第一段交接完成：给顾客一个明确节点（餐/包裹已到校园交接点，等待骑手接力）
         const point = String((_b = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.handoverPointName) !== null && _b !== void 0 ? _b : '校园交接点');
         (_c = this.notify) === null || _c === void 0 ? void 0 : _c.user(ctx, order.id, 'arrivedHandover', point);
-        core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
+        core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码已生成并脱敏`, 'CampusHall');
         return handoverCode;
     }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。

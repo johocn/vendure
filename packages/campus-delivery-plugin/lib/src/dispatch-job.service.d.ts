@@ -29,8 +29,10 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private externalCancelFails;
     /** 轨迹清理上次执行时间（跨渠道全局，每 6h 一次） */
     private lastLocationCleanupAt;
-    /** §6 外部运单异常态告警去重（key=单号:外部运单号）：同一异常只推一次，状态恢复后移除 */
-    private readonly externalExceptionAlerted;
+    /** 外部异常告警去重 TTL（进程内幂等，pm2 单实例足够；多实例需换 Redis/DB） */
+    private static readonly EXTERNAL_EXCEPTION_ALERT_TTL_MS;
+    /** §6 外部运单异常态告警去重 key（单号:外部运单号）→ 首次告警时间，状态恢复后移除 */
+    private readonly externalExceptionAlertedAt;
     /**
      * 扫描分桶（P2 积压策略）：状态互斥、各自限额，保证任何单一状态爆量都不会挤掉其它状态的兜底。
      * - open：量最大，T2 强派 / T4 退款；
@@ -39,6 +41,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      */
     private static readonly SCAN_BUCKETS;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined, notify?: CampusNotifyService | undefined);
+    /** 外部异常告警去重：按「单号:运单号」保留 24h，过期自动清理（旧 Set 无回收路径会随历史单增长） */
+    private shouldAlertExternalException;
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     start(intervalMs?: number): void;

@@ -107,7 +107,7 @@ describe('feishu settings', () => {
         expect(chats.bad).toBeUndefined();
     });
 
-    it('平台管理群：scope=platform 或 channel=* 均可，且不绑定店铺', () => {
+    it('平台管理群必须显式 scope=platform，channel=* 已废弃并忽略', () => {
         const chats = parseChatMap(
             JSON.stringify({
                 oc_admin: { scope: 'platform', operators: 'ou_a', owners: 'ou_b' },
@@ -115,8 +115,7 @@ describe('feishu settings', () => {
             }),
         );
         expect(chats.oc_admin).toEqual({ scope: 'platform', channel: undefined, operators: ['ou_a'], owners: ['ou_b'] });
-        expect(chats.oc_admin2.scope).toBe('platform');
-        expect(chats.oc_admin2.channel).toBeUndefined();
+        expect(chats.oc_admin2).toBeUndefined();
     });
 
     it('坏 JSON 不抛错，退回空表', () => {
@@ -633,6 +632,15 @@ describe('FeishuCommandService 卡片读操作归属校验', () => {
         await cmd.handleCardAction({ chatId: 'oc_p', openId: 'ou_op', value: { a: 'status', c: 'M2026' } });
         expect(cmd.reply).toHaveBeenCalledWith('oc_p', '订单 M2026 属于多个店铺，请在对应店铺群操作。');
         expect(cmd.replyInThread).not.toHaveBeenCalled();
+    });
+
+    it('卡片回调超过每分钟上限 → 拒绝并提示', async () => {
+        const { cmd } = makeCmd({ code: 'A2026', channels: [{ token: 'canteen-a' }] });
+        for (let i = 0; i < 20; i++) {
+            await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'view', c: 'A2026' } });
+        }
+        await cmd.handleCardAction({ chatId: 'oc_a', openId: 'ou_op', value: { a: 'view', c: 'A2026' } });
+        expect(cmd.reply).toHaveBeenCalledWith('oc_a', '操作过于频繁，请稍后再试。');
     });
 });
 

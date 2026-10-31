@@ -91,8 +91,20 @@ let ChatService = class ChatService {
      * 订单详情「联系客服」与客服中心「在线咨询」都走这里，保证不产生重复会话。
      */
     async startConversation(ctx, orderCode, subject) {
+        var _a, _b;
         const customer = await this.requireCustomer(ctx);
         const code = orderCode == null ? null : String(orderCode).trim() || null;
+        // 订单号来自顾客入参：必须校验归属（本渠道 + 本人），否则可拿他人单号建会话并推送目标群
+        if (code) {
+            const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+                where: { code },
+                relations: ['customer', 'channels'],
+            });
+            const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => Number(c.id) === Number(ctx.channelId));
+            if (!order || !inChannel || Number((_b = order.customer) === null || _b === void 0 ? void 0 : _b.id) !== Number(customer.id)) {
+                throw new core_1.UserInputError('订单不存在或不属于当前用户');
+            }
+        }
         const existing = await this.connection.getRepository(ctx, chat_entities_1.CampusChatConversation).findOne({
             where: {
                 channelId: ctx.channelId,
