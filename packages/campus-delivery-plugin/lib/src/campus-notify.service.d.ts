@@ -18,6 +18,13 @@ export declare class CampusNotifyService {
     constructor(connection: TransactionalConnection, config: CampusConfigService, sms: CampusSmsService);
     /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果/改址新址，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页；dedupeSuffix：同一订单多次同类事件（如多次改址）的幂等键后缀 */
     user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string, h5BaseUrl?: string, dedupeSuffix?: string): void;
+    /** 模板消息不可用时的兜底：微信侧可能无模板的触点走站内信，其余维持短信兜底 */
+    private fallback;
+    /**
+     * 站内信兜底：复用 message-plugin 的 Message/MessageDelivery（与 support.service 同范式）。
+     * 未装 message-plugin / 订单或顾客缺失时静默跳过，绝不阻塞主流程。
+     */
+    private inAppFallback;
     /** 短信兜底：公众号模板消息不可用（未配模板/无 ssoId/发送失败）时补发一条短信；未配网关静默跳过 */
     private smsFallback;
     /** 单次发送（10s 超时）；非 2xx 或响应体异常抛错由上层重试 */

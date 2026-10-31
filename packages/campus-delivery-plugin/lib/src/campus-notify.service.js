@@ -49,6 +49,11 @@ const SMS_EVENT_LABEL = {
     afterSales: '售后进度更新',
     addressChanged: '收货地址已变更',
 };
+/** 微信侧可能没有对应模板的触点：模板消息不可用时降级为站内信（C 端消息中心），不发短信 */
+const INAPP_FALLBACK_EVENTS = new Set([
+    'arrivedHandover',
+    'deliveryFallback',
+]);
 // F7 最小补发：进程内重试 + 退避（首推失败不再只留一条日志）。
 // 不落库（1G 小机避免加表/迁移）；dedupe_key 固定为 campus:{event}:{orderId}，
 // SSO msg-job 侧按 key 幂等 → 超时重发不会产生重复消息。
@@ -79,14 +84,14 @@ let CampusNotifyService = class CampusNotifyService {
                 const appSecret = process.env.SSO_NOTIFY_APP_SECRET;
                 if (!baseUrl || !appCode || !appSecret) {
                     core_1.Logger.debug('SSO notify env not configured (SSO_NOTIFY_BASE_URL/APP_CODE/APP_SECRET), skip', 'CampusNotify');
-                    await this.smsFallback(ctx, orderId, event, text);
+                    await this.fallback(ctx, orderId, event, text);
                     return;
                 }
                 const cfg = await this.config.getConfig(ctx);
                 const templateCode = cfg[TEMPLATE_FIELD[event]];
                 if (!templateCode) {
                     core_1.Logger.debug(`channel ${ctx.channelId} has no ${TEMPLATE_FIELD[event]}, skip user notify`, 'CampusNotify');
-                    await this.smsFallback(ctx, orderId, event, text);
+                    await this.fallback(ctx, orderId, event, text);
                     return;
                 }
                 const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
@@ -96,14 +101,14 @@ let CampusNotifyService = class CampusNotifyService {
                 const ssoId = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.ssoId;
                 if (!order || ssoId == null || ssoId === '') {
                     core_1.Logger.debug(`order ${orderId} customer has no ssoId, skip user notify (${event})`, 'CampusNotify');
-                    await this.smsFallback(ctx, orderId, event, text);
+                    await this.fallback(ctx, orderId, event, text);
                     return;
                 }
                 // sso_user_id 必须是数字：非数字（脏数据/占位串）会让下游按 NaN 落库，这里提前拦下
                 const ssoUserId = Number(ssoId);
                 if (!Number.isFinite(ssoUserId)) {
                     core_1.Logger.warn(`order ${orderId} customer ssoId is not numeric (${String(ssoId)}), skip user notify (${event})`, 'CampusNotify');
-                    await this.smsFallback(ctx, orderId, event, text);
+                    await this.fallback(ctx, orderId, event, text);
                     return;
                 }
                 // 微信模板字段必填：按事件分型组装 params（与 sso_msg_templates.wx_template_fields 的 key 对应）
@@ -156,12 +161,63 @@ let CampusNotifyService = class CampusNotifyService {
                     }
                 }
                 core_1.Logger.error(`user notify ${event} for order ${orderId} dropped after ${SEND_ATTEMPTS} attempts: ${lastErr instanceof Error ? lastErr.message : lastErr}`, 'CampusNotify');
-                await this.smsFallback(ctx, orderId, event, text);
+                await this.fallback(ctx, orderId, event, text);
             }
             catch (e) {
                 core_1.Logger.warn(`user notify ${event} for order ${orderId} failed: ${(_v = e === null || e === void 0 ? void 0 : e.message) !== null && _v !== void 0 ? _v : e}`, 'CampusNotify');
             }
         })();
+    }
+    /** 模板消息不可用时的兜底：微信侧可能无模板的触点走站内信，其余维持短信兜底 */
+    async fallback(ctx, orderId, event, text) {
+        if (INAPP_FALLBACK_EVENTS.has(event)) {
+            await this.inAppFallback(ctx, orderId, event, text);
+            return;
+        }
+        await this.smsFallback(ctx, orderId, event, text);
+    }
+    /**
+     * 站内信兜底：复用 message-plugin 的 Message/MessageDelivery（与 support.service 同范式）。
+     * 未装 message-plugin / 订单或顾客缺失时静默跳过，绝不阻塞主流程。
+     */
+    async inAppFallback(ctx, orderId, event, text) {
+        var _a, _b;
+        try {
+            const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+                where: { id: orderId },
+                relations: ['customer'],
+            });
+            const customerId = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.id;
+            if (!order || customerId == null)
+                return;
+            const title = event === 'arrivedHandover' ? '订单已到校园交接点' : '配送方式调整';
+            const body = event === 'arrivedHandover'
+                ? `订单 ${order.code} 已到达${text || '校园交接点'}，正在安排校内接力配送。`
+                : `订单 ${order.code} ${text || '配送方式调整'}，配送时效可能略有延迟，请留意后续通知。`;
+            const msgRepo = this.connection.getRepository(ctx, 'Message');
+            const deliveryRepo = this.connection.getRepository(ctx, 'MessageDelivery');
+            const message = await msgRepo.save(msgRepo.create({
+                title,
+                body,
+                deliveryChannel: 'inapp',
+                audienceType: 'all',
+                status: 'sent',
+                totalTarget: 1,
+                totalSent: 1,
+                sentAt: new Date(),
+                channels: [ctx.channel],
+            }));
+            await deliveryRepo.save(deliveryRepo.create({
+                messageId: message.id,
+                customerId: Number(customerId),
+                deliveryStatus: 'sent',
+                channels: [ctx.channel],
+            }));
+            core_1.Logger.info(`in-app notify ${event} sent for ${order.code}`, 'CampusNotify');
+        }
+        catch (e) {
+            core_1.Logger.warn(`in-app notify ${event} for order ${orderId} failed: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'CampusNotify');
+        }
     }
     /** 短信兜底：公众号模板消息不可用（未配模板/无 ssoId/发送失败）时补发一条短信；未配网关静默跳过 */
     async smsFallback(ctx, orderId, event, text) {

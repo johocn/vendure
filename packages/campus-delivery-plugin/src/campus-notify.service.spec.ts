@@ -16,19 +16,28 @@ describe('CampusNotifyService', () => {
         lines: [{ productVariant: { name: '拿铁' } }, { productVariant: { name: '三明治' } }],
     };
 
-    function makeSvc(opts: { templateCode?: string | null; ssoId?: string | null }) {
+    function makeSvc(opts: { templateCode?: string | null; ssoId?: string | null; sms?: any }) {
         const findOne = vi.fn().mockResolvedValue(
             opts.ssoId === null
                 ? { ...ORDER, customer: { customFields: { wechatOpenid: 'o-123' } } }
-                : { ...ORDER, customer: { customFields: { ssoId: opts.ssoId ?? '3' } } },
+                : { ...ORDER, customer: { id: 21, customFields: { ssoId: opts.ssoId ?? '3' } } },
         );
+        const msgSave = vi.fn().mockResolvedValue({ id: 11 });
+        const deliverySave = vi.fn().mockResolvedValue({ id: 12 });
+        // 站内信实体按名称（字符串 token）解析，其余实体（Order）走 findOne
+        const getRepository = vi.fn((_ctx: any, entity: any) => {
+            if (entity === 'Message') return { create: (v: any) => v, save: msgSave };
+            if (entity === 'MessageDelivery') return { create: (v: any) => v, save: deliverySave };
+            return { findOne };
+        });
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ data: { job: { id: 9, status: 'sent' } } }),
         });
         vi.stubGlobal('fetch', fetchMock);
+        const sms = opts.sms ?? { configured: false, send: vi.fn() };
         const svc = new CampusNotifyService(
-            { getRepository: () => ({ findOne }) } as any,
+            { getRepository } as any,
             {
                 getConfig: vi.fn().mockResolvedValue({
                     notifyTemplateAccepted: opts.templateCode ?? null,
@@ -46,9 +55,9 @@ describe('CampusNotifyService', () => {
                 }),
             } as any,
             // 短信兜底通道：既有用例只验证公众号链路，这里按「网关未配置」静默跳过
-            { configured: false, send: vi.fn() } as any,
+            sms as any,
         );
-        return { svc, findOne, fetchMock };
+        return { svc, findOne, fetchMock, msgSave, deliverySave, sms };
     }
 
     beforeEach(() => {
@@ -149,6 +158,33 @@ describe('CampusNotifyService', () => {
             itemName: '拿铁 等2件',
             reason: '超时转传信者配送',
         });
+    });
+
+    it('arrivedHandover 未配置微信模板 → 落站内信（不发短信）', async () => {
+        const sms = { configured: true, send: vi.fn() };
+        const { svc, msgSave, deliverySave } = makeSvc({ templateCode: null, sms });
+        svc.user(makeCtx(), 5, 'arrivedHandover', '东区·桂1栋交接点');
+        await vi.waitFor(() => expect(msgSave).toHaveBeenCalled());
+        expect(sms.send).not.toHaveBeenCalled();
+        expect(deliverySave).toHaveBeenCalledWith(
+            expect.objectContaining({ messageId: 11, customerId: 21, deliveryStatus: 'sent' }),
+        );
+        expect(msgSave.mock.calls[0][0]).toMatchObject({
+            title: '订单已到校园交接点',
+            deliveryChannel: 'inapp',
+            status: 'sent',
+        });
+        expect(String(msgSave.mock.calls[0][0].body)).toContain('东区·桂1栋交接点');
+    });
+
+    it('deliveryFallback 未配置微信模板 → 落站内信（不发短信）', async () => {
+        const sms = { configured: true, send: vi.fn() };
+        const { svc, msgSave } = makeSvc({ templateCode: null, sms });
+        svc.user(makeCtx(), 6, 'deliveryFallback', '超时转传信者配送');
+        await vi.waitFor(() => expect(msgSave).toHaveBeenCalled());
+        expect(sms.send).not.toHaveBeenCalled();
+        expect(msgSave.mock.calls[0][0]).toMatchObject({ title: '配送方式调整' });
+        expect(String(msgSave.mock.calls[0][0].body)).toContain('超时转传信者配送');
     });
 
     it('orderCancelled → refundAmount 型 params', async () => {
