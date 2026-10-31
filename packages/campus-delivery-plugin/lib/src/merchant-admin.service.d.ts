@@ -1,6 +1,7 @@
 import { ModuleRef } from '@nestjs/core';
 import { ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
+import { CampusDedupeService } from './campus-dedupe.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { BusinessTransition } from './business-hours';
 import { ExternalProviderCode } from './route-matrix';
@@ -1003,7 +1004,11 @@ export declare class MerchantAdminService {
     private cloud;
     private feishu;
     private moduleRef?;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService, feishu: FeishuClient, moduleRef?: ModuleRef | undefined);
+    /** M5 跨实例冷却/预警去重；未注入退回进程内 Map */
+    private dedupe?;
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService, privacy: PrivacyNumberService, cloud: CloudPrintService, feishu: FeishuClient, moduleRef?: ModuleRef | undefined, 
+    /** M5 跨实例冷却/预警去重；未注入退回进程内 Map */
+    dedupe?: CampusDedupeService | undefined);
     /** 售后插件为可选依赖：未安装时售后清单为空，「售后申请」入口降级隐藏 */
     private afterSalesSvc?;
     /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */

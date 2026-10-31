@@ -95,7 +95,19 @@ export class OpsCheckJob implements OnApplicationShutdown {
                 return -1;
             }
         };
-        const [withdraw, refund, thirdParty, compFailed, compOverdue, slotDrift, notifyFallback] = await Promise.all([
+        const [
+            withdraw,
+            refund,
+            thirdParty,
+            compFailed,
+            compOverdue,
+            slotDrift,
+            notifyFallback,
+            thirdPartyLong,
+            compFailedLong,
+            ticketUnassigned,
+            ticketStaleAssigned,
+        ] = await Promise.all([
             count(
                 `SELECT COUNT(*)::int AS n FROM rider_withdrawal_request
                  WHERE "withdrawState" = 'intent' AND "createdAt" < now() - interval '10 minutes'`,
@@ -114,6 +126,28 @@ export class OpsCheckJob implements OnApplicationShutdown {
                 `SELECT COUNT(*)::int AS n FROM campus_track_event
                  WHERE "eventName" = 'notify_delivery' AND "createdAt" >= current_date`,
             ),
+            // 长尾：外部运力异常超 24h 仍未处置（工单关闭会回写 exceptionResolvedAt）
+            count(
+                `SELECT COUNT(*)::int AS n FROM "order"
+                 WHERE "customFieldsThirdpartystate" = 'exception'
+                   AND "customFieldsExceptionresolvedat" IS NULL
+                   AND "createdAt" < now() - interval '24 hours'`,
+            ),
+            // 长尾：补偿任务失败超 7 天（管理端可一键重试，超 30 天只提供归档 SQL）
+            count(
+                `SELECT COUNT(*)::int AS n FROM campus_compensation_task
+                 WHERE status = 'failed' AND "createdAt" < now() - interval '7 days'`,
+            ),
+            // 长尾：系统工单 24h 未指派（值班自动指派失败/无值班表时的兜底可见）
+            count(
+                `SELECT COUNT(*)::int AS n FROM campus_support_ticket
+                 WHERE status = 'open' AND "assigneeId" IS NULL AND "createdAt" < now() - interval '24 hours'`,
+            ),
+            // 长尾：已指派但 48h 仍未关闭（处理人失联或忘记回复）
+            count(
+                `SELECT COUNT(*)::int AS n FROM campus_support_ticket
+                 WHERE status = 'open' AND "assigneeId" IS NOT NULL AND "createdAt" < now() - interval '48 hours'`,
+            ),
         ]);
         await this.logBacklogP95();
         const metrics: CheckMetric[] = [
@@ -123,6 +157,10 @@ export class OpsCheckJob implements OnApplicationShutdown {
             { label: '补偿任务失败', count: compFailed },
             { label: '补偿任务超期未执行', count: compOverdue },
             { label: '锁位时段偏差', count: slotDrift },
+            { label: '外部异常超 24h 未处置', count: thirdPartyLong },
+            { label: '补偿失败超 7 天', count: compFailedLong },
+            { label: '系统工单 24h 未指派', count: ticketUnassigned },
+            { label: '系统工单已指派 48h 未关闭', count: ticketStaleAssigned },
         ];
         const notifyThreshold = Math.max(1, Number(process.env.CAMPUS_NOTIFY_FALLBACK_ALERT ?? 20) || 20);
         if (notifyFallback >= notifyThreshold) {

@@ -66,6 +66,18 @@ describe('OpsCheckJob', () => {
         expect(pushEvent).toHaveBeenCalled();
     });
 
+    it('长尾指标：外部异常超 24h / 补偿失败超 7 天 / 工单未指派与超时', async () => {
+        // 顺序：withdraw/refund/thirdParty/compFailed/compOverdue/slotDrift/notifyFallback/
+        //       thirdPartyLong/compFailedLong/ticketUnassigned/ticketStaleAssigned
+        const { job, pushEvent } = make([0, 0, 0, 0, 0, 0, 0, 4, 2, 1, 3]);
+        const text = await job.runOnce(AT_NOW);
+        expect(text).toContain('外部异常超 24h 未处置：4');
+        expect(text).toContain('补偿失败超 7 天：2');
+        expect(text).toContain('系统工单 24h 未指派：1');
+        expect(text).toContain('系统工单已指派 48h 未关闭：3');
+        expect(pushEvent).toHaveBeenCalledTimes(1);
+    });
+
     it('其他实例持有锁 → 本轮跳过', async () => {
         const { job, query, pushEvent } = make([1, 1, 1, 1, 1], false);
         expect(await job.runOnce(AT_NOW)).toBeNull();

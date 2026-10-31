@@ -18,6 +18,7 @@ const core_2 = require("@vendure/core");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_config_service_1 = require("./campus-config.service");
+const campus_dedupe_service_1 = require("./campus-dedupe.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const campus_time_1 = require("./campus-time");
 const business_hours_1 = require("./business-hours");
@@ -47,7 +48,9 @@ exports.KDS_LATE_MINUTES = 25;
  * campusMerchantCookingDone）→ 骑手 grabbed/delivering → delivered。
  */
 let MerchantAdminService = class MerchantAdminService {
-    constructor(connection, config, hall, notify, thirdParty, orderService, privacy, cloud, feishu, moduleRef) {
+    constructor(connection, config, hall, notify, thirdParty, orderService, privacy, cloud, feishu, moduleRef, 
+    /** M5 跨实例冷却/预警去重；未注入退回进程内 Map */
+    dedupe) {
         this.connection = connection;
         this.config = config;
         this.hall = hall;
@@ -58,6 +61,7 @@ let MerchantAdminService = class MerchantAdminService {
         this.cloud = cloud;
         this.feishu = feishu;
         this.moduleRef = moduleRef;
+        this.dedupe = dedupe;
         /** 退款重试冷却（§82）：同单 30 秒内只放行一次，防连点重复调用退款核心 */
         this.refundRetryAt = new Map();
         /** 催办顾客冷却（§84）：同单 60 秒内只发一次站内信，防对顾客骚扰 */
@@ -1825,16 +1829,24 @@ let MerchantAdminService = class MerchantAdminService {
         var _a, _b;
         await this.assertChannelAfterSales(ctx, id, ['RefundFailed']);
         const key = Number(id);
-        const now = Date.now();
-        if (now - ((_a = this.refundRetryAt.get(key)) !== null && _a !== void 0 ? _a : 0) < 30000) {
-            throw new core_2.UserInputError('退款重试过于频繁，请 30 秒后再试');
+        if (this.dedupe) {
+            // M5：跨实例共享冷却，避免多实例下连点绕过 30 秒限制
+            if (await this.dedupe.seenOrMark(`merchant_refund_retry:${key}`, 30000)) {
+                throw new core_2.UserInputError('退款重试过于频繁，请 30 秒后再试');
+            }
         }
-        this.refundRetryAt.set(key, now);
-        // 防内存增长：清理 1 分钟前的记录
-        if (this.refundRetryAt.size > 500) {
-            for (const [k, t] of this.refundRetryAt) {
-                if (now - t > 60000)
-                    this.refundRetryAt.delete(k);
+        else {
+            const now = Date.now();
+            if (now - ((_a = this.refundRetryAt.get(key)) !== null && _a !== void 0 ? _a : 0) < 30000) {
+                throw new core_2.UserInputError('退款重试过于频繁，请 30 秒后再试');
+            }
+            this.refundRetryAt.set(key, now);
+            // 防内存增长：清理 1 分钟前的记录
+            if (this.refundRetryAt.size > 500) {
+                for (const [k, t] of this.refundRetryAt) {
+                    if (now - t > 60000)
+                        this.refundRetryAt.delete(k);
+                }
             }
         }
         const svc = this.getAfterSales();
@@ -2186,7 +2198,7 @@ let MerchantAdminService = class MerchantAdminService {
         }));
         const duty = (0, after_sales_duty_1.dutyAssigneeAt)(roster, Date.now());
         if (roster.length && duty == null)
-            this.warnNoDuty(ctx, chId);
+            await this.warnNoDuty(ctx, chId);
         const assignees = await this.afterSalesAssignees(ctx);
         if (!assignees.length)
             return 0;
@@ -2243,17 +2255,24 @@ let MerchantAdminService = class MerchantAdminService {
         return assigned;
     }
     /** 无人值班预警（§100）：值班表非空但当前时段无人，飞书群提醒，同一校园日只发一次 */
-    warnNoDuty(ctx, chId) {
+    async warnNoDuty(ctx, chId) {
         var _a, _b;
         const day = (0, campus_time_1.campusDayKey)(Date.now());
         const key = `${chId}:${day}`;
-        if (this.dutyWarnAt.has(key))
-            return;
-        this.dutyWarnAt.set(key, day);
-        if (this.dutyWarnAt.size > 500) {
-            for (const [k, d] of this.dutyWarnAt) {
-                if (d !== day)
-                    this.dutyWarnAt.delete(k);
+        if (this.dedupe) {
+            // M5：跨实例共享（多实例各自排班任务都在跑，避免重复预警）
+            if (await this.dedupe.seenOrMark(`merchant_duty_warn:${key}`, 24 * 3600000))
+                return;
+        }
+        else {
+            if (this.dutyWarnAt.has(key))
+                return;
+            this.dutyWarnAt.set(key, day);
+            if (this.dutyWarnAt.size > 500) {
+                for (const [k, d] of this.dutyWarnAt) {
+                    if (d !== day)
+                        this.dutyWarnAt.delete(k);
+                }
             }
         }
         if (!this.feishu.enabled)
@@ -2270,18 +2289,25 @@ let MerchantAdminService = class MerchantAdminService {
         if (!svc)
             throw new core_2.UserInputError('售后插件未安装，暂不能处理售后申请');
         const key = Number(id);
-        const now = Date.now();
-        if (now - ((_a = this.remindAt.get(key)) !== null && _a !== void 0 ? _a : 0) < 60000) {
-            throw new core_2.UserInputError('催办过于频繁，请 1 分钟后再试');
-        }
         const extra = String(note !== null && note !== void 0 ? note : '').trim();
         if (extra.length > 200)
             throw new core_2.UserInputError('催办内容最多 200 字');
-        this.remindAt.set(key, now);
-        if (this.remindAt.size > 500) {
-            for (const [k, t] of this.remindAt) {
-                if (now - t > 120000)
-                    this.remindAt.delete(k);
+        if (this.dedupe) {
+            if (await this.dedupe.seenOrMark(`merchant_remind:${key}`, 60000)) {
+                throw new core_2.UserInputError('催办过于频繁，请 1 分钟后再试');
+            }
+        }
+        else {
+            const now = Date.now();
+            if (now - ((_a = this.remindAt.get(key)) !== null && _a !== void 0 ? _a : 0) < 60000) {
+                throw new core_2.UserInputError('催办过于频繁，请 1 分钟后再试');
+            }
+            this.remindAt.set(key, now);
+            if (this.remindAt.size > 500) {
+                for (const [k, t] of this.remindAt) {
+                    if (now - t > 120000)
+                        this.remindAt.delete(k);
+                }
             }
         }
         try {
@@ -5770,7 +5796,8 @@ exports.MerchantAdminService = MerchantAdminService = __decorate([
         privacy_number_service_1.PrivacyNumberService,
         cloud_print_service_1.CloudPrintService,
         feishu_client_1.FeishuClient,
-        core_1.ModuleRef])
+        core_1.ModuleRef,
+        campus_dedupe_service_1.CampusDedupeService])
 ], MerchantAdminService);
 /** 催单是否仍未处理（§78）：顾客置了 urged 且「已知晓」时间早于最近一次催单（顾客再催会重新变为待处理） */
 function isUrgePending(urged, urgedAt, ackedAt) {
