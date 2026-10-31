@@ -4421,8 +4421,8 @@ export class MerchantAdminService {
                 'SELECT DISTINCT ad."userId" AS id, ad."firstName", ad."lastName", u.identifier '
                 + 'FROM administrator ad '
                 + 'JOIN user u ON u.id = ad."userId" '
-                + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
-                + 'JOIN role r ON r.id = ar."roleId" '
+                + 'JOIN user_roles_role urr ON urr."userId" = ad."userId" '
+                + 'JOIN role r ON r.id = urr."roleId" '
                 + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $1 '
                 + 'WHERE ad."deletedAt" IS NULL '
                 + 'ORDER BY ad."userId" ASC LIMIT 50',
@@ -4462,8 +4462,8 @@ export class MerchantAdminService {
         const uid = Number(userId);
         const owned: any = await raw.query(
             'SELECT 1 FROM administrator ad '
-            + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
-            + 'JOIN role r ON r.id = ar."roleId" '
+            + 'JOIN user_roles_role urr ON urr."userId" = ad."userId" '
+            + 'JOIN role r ON r.id = urr."roleId" '
             + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $2 '
             + 'WHERE ad."userId" = $1 AND ad."deletedAt" IS NULL LIMIT 1',
             [uid, chId],
@@ -4512,8 +4512,8 @@ export class MerchantAdminService {
         if (fromId === uid) throw new UserInputError('该售后单已由该处理人负责，无需转交');
         const owned: any = await raw.query(
             'SELECT 1 FROM administrator ad '
-            + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
-            + 'JOIN role r ON r.id = ar."roleId" '
+            + 'JOIN user_roles_role urr ON urr."userId" = ad."userId" '
+            + 'JOIN role r ON r.id = urr."roleId" '
             + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $2 '
             + 'WHERE ad."userId" = $1 AND ad."deletedAt" IS NULL LIMIT 1',
             [uid, chId],
@@ -4705,8 +4705,8 @@ export class MerchantAdminService {
             uid = Number(userId);
             const owned: any = await raw.query(
                 'SELECT 1 FROM administrator ad '
-                + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
-                + 'JOIN role r ON r.id = ar."roleId" '
+                + 'JOIN user_roles_role urr ON urr."userId" = ad."userId" '
+                + 'JOIN role r ON r.id = urr."roleId" '
                 + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $2 '
                 + 'WHERE ad."userId" = $1 AND ad."deletedAt" IS NULL LIMIT 1',
                 [uid, chId],
@@ -6466,8 +6466,8 @@ export class MerchantAdminService {
         if (uids.length) {
             const owned: any = await this.connection.rawConnection.query(
                 'SELECT DISTINCT ad."userId" FROM administrator ad '
-                + 'JOIN administrator_role ar ON ar."administratorId" = ad.id '
-                + 'JOIN role r ON r.id = ar."roleId" '
+                + 'JOIN user_roles_role urr ON urr."userId" = ad."userId" '
+                + 'JOIN role r ON r.id = urr."roleId" '
                 + 'JOIN role_channels_channel rc ON rc."roleId" = r.id AND rc."channelId" = $1 '
                 + 'WHERE ad."userId" = ANY($2::int[]) AND ad."deletedAt" IS NULL',
                 [chId, uids],
