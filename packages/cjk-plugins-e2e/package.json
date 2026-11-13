@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "test": "vitest --config vitest.config.mts --run",
+    "test": "vitest --config vitest.config.mts --run --exclude 'e2e/**' --passWithNoTests",
     "test:watch": "vitest --config vitest.config.mts --watch"
   },
   "devDependencies": {

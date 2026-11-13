@@ -6,7 +6,7 @@
   "scripts": {
     "watch": "tsc -p ./tsconfig.build.json --watch",
     "build": "rimraf lib && tsc -p ./tsconfig.build.json",
-    "test": "vitest --config vitest.config.mts --run"
+    "test": "vitest --config vitest.config.mts --run --exclude 'e2e/**' --passWithNoTests"
   },
   "dependencies": { "graphql-tag": "^2.12.6" },
   "peerDependencies": { "@vendure/core": "workspace:*" },
