@@ -1,6 +1,8 @@
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 import { Column, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
 
+import { bigintToNumber } from './bigint-number.transformer';
+
 export type CommissionStatus = 'pending' | 'paid' | 'reversed';
 export type LoadOn = 'merchant' | 'platform';
 
@@ -35,7 +37,7 @@ export class AffiliateCommissionEntry extends VendureEntity implements ChannelAw
     shopId: number;
 
     /** 成交额，分。 */
-    @Column({ type: 'bigint' })
+    @Column({ type: 'bigint', transformer: bigintToNumber })
     baseAmount: number;
 
     /** 千分比。 */
@@ -43,7 +45,7 @@ export class AffiliateCommissionEntry extends VendureEntity implements ChannelAw
     rate: number;
 
     /** 佣金，分。 */
-    @Column({ type: 'bigint' })
+    @Column({ type: 'bigint', transformer: bigintToNumber })
     commissionAmount: number;
 
     @Column({ type: 'varchar', default: 'merchant' })
