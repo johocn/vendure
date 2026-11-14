@@ -228,12 +228,8 @@ let FlashSaleService = class FlashSaleService {
             .createQueryBuilder('fsa')
             .innerJoin('fsa.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('fsa.status = :status', { status: 'active' })
-            .andWhere('fsa.startAt <= (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
-            .andWhere('fsa.endAt >= (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
+            .andWhere('fsa.startAt <= :now', { now: new Date() })
+            .andWhere('fsa.endAt >= :now', { now: new Date() })
             .getMany();
     }
     async findActiveByVariant(ctx, variantId) {
@@ -243,12 +239,8 @@ let FlashSaleService = class FlashSaleService {
             .innerJoin('fsa.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('fsa.variantId = :variantId', { variantId: variantId })
             .andWhere('fsa.status = :status', { status: 'active' })
-            .andWhere('fsa.startAt <= (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
-            .andWhere('fsa.endAt >= (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
+            .andWhere('fsa.startAt <= :now', { now: new Date() })
+            .andWhere('fsa.endAt >= :now', { now: new Date() })
             .getOne();
         return result !== null && result !== void 0 ? result : undefined;
     }
