@@ -148,8 +148,12 @@ export class PreSaleService {
             // 已到货/已结束不应被重复置为 delivered
             throw new UserInputError(`PreSaleActivity with id ${id} cannot be delivered from ${activity.status}`);
         }
+        // MySQL/MariaDB 的 DATETIME 无小数秒且按四舍五入落库：毫秒 ≥500 时会把「现在」
+        // 存成未来的下一秒，导致刚开启的尾款窗口在随后的支付校验中被判为「尚未开始」。
+        // 这里向下取整到秒，保证落库值与读取值一致且不晚于当前时刻。
+        const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
         activity.status = 'delivered';
-        activity.releaseAt = activity.releaseAt ?? new Date();
+        activity.releaseAt = activity.releaseAt ?? openedAt;
         if (activity.mode === 'deposit' && !activity.tailStartAt) {
             activity.tailStartAt = activity.releaseAt;
         }

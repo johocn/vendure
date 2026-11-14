@@ -160,6 +160,9 @@ export class PaymentScheduleService {
         });
 
         const now = new Date();
+        // interval 锚点向下取整到秒：MySQL/MariaDB 的 DATETIME 无小数秒且四舍五入落库，
+        // 毫秒 ≥500 会把 count=0（立即应付）的 dueAt 存成未来的下一秒，支付时刻补偿解锁会误判未到期。
+        const dueAtAnchor = new Date(Math.floor(now.getTime() / 1000) * 1000);
         const schedule = new OrderPaymentSchedule({
             orderId: Number(input.orderId),
             channelId: ctx.channelId as number,
@@ -183,7 +186,7 @@ export class PaymentScheduleService {
                 amount: item.amount,
                 allowCod: item.allowCod ?? false,
                 trigger,
-                dueAt: computeDueAt(trigger, now) ?? undefined,
+                dueAt: computeDueAt(trigger, dueAtAnchor) ?? undefined,
                 graceHours: item.graceHours ?? 0,
                 lateFeeRule: item.lateFeeRule ?? null,
                 // 首期立即可付（首笔款），其余锁定等触发

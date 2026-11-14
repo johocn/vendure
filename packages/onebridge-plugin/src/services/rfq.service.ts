@@ -260,7 +260,9 @@ export class OnebridgeRfqService {
         if (rfq.stage === 'qc' && (target === 'customs' || target === 'delivered')) {
             const latest = await this.connection.getRepository(ctx, InspectionReport).findOne({
                 where: { rfqCode: rfq.code },
-                order: { inspectedAt: 'DESC' },
+                // inspectedAt 在 MySQL/MariaDB 仅精确到秒，同秒内多次报告会排序不确定；
+                // 加 id DESC 兜底，保证「最新一份报告」始终是最后创建的那份。
+                order: { inspectedAt: 'DESC', id: 'DESC' },
             });
             if (latest && !latest.passed) {
                 throw Errors.inspectionNotPassed(rfq.code);

@@ -466,7 +466,9 @@ export class InventoryService {
         options: { productId: ID; variantId?: ID; lat?: number; lng?: number; city?: string },
     ): Promise<Array<{ location: StockLocation; distanceKm: number; variants: Array<{ variantId: ID; variantName: string; sku: string; stockOnHand: number; stockAllocated: number; stockAvailable: number }> }>> {
         const locRepo = this.connection.rawConnection.getRepository(StockLocation);
-        const locations = await locRepo.find();
+        const locations = (await locRepo.find()).filter(
+            loc => !options.city || this.locationServesCity(loc, options.city),
+        );
         const variantRepo = this.connection.getRepository(ctx, ProductVariant);
         const rawVariants = await variantRepo.find({
             where: options.variantId

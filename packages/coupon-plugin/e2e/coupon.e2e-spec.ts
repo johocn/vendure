@@ -121,6 +121,28 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         return res.applyCouponToOrder;
     }
 
+    /**
+     * 券状态（USED/RETURNED）由 OrderPlacedEvent / OrderStateTransitionEvent 的异步订阅写入，
+     * 与支付/取消请求的响应之间存在竞态；轮询等待而不是立即断言。
+     */
+    async function waitForCouponStatus(
+        code: string,
+        status: 'USED' | 'RETURNED',
+        timeoutMs = 5000,
+    ): Promise<any> {
+        const deadline = Date.now() + timeoutMs;
+        let found: any;
+        while (Date.now() < deadline) {
+            const res = (await shopClient.query(gql`
+                query { myCoupons(status: ${status}) { code status usedOrderId } }
+            `)) as any;
+            found = res.myCoupons.find((c: any) => c.code === code);
+            if (found?.status === status) return found;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        return found;
+    }
+
     /** 清理遗留活动订单，保证用例间隔离（订单隔离层级：每个用自己干净的订单） */
     async function resetActiveOrder(): Promise<void> {
         const active = await shopClient.query(gql`
@@ -243,10 +265,7 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         const paid = await addPaymentToOrder(shopClient, testSuccessfulPaymentMethod);
         expect(paid.id).toBeDefined();
 
-        const used = await shopClient.query(gql`
-            query { myCoupons(status: USED) { code status usedOrderId } }
-        `);
-        const usedCc = used.myCoupons.find((c: any) => c.code === cc.code);
+        const usedCc = await waitForCouponStatus(cc.code, 'USED');
         expect(usedCc.status).toBe('USED');
         expect(String(usedCc.usedOrderId)).toBe(String(paid.id));
     });
@@ -333,19 +352,14 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         const paid = await addPaymentToOrder(shopClient, testSuccessfulPaymentMethod);
         const orderId = paid.id;
         // 支付成功（非取消态）时不回退，仍是 USED
-        const afterPaid = await shopClient.query(gql`
-            query { myCoupons(status: USED) { code status usedOrderId } }
-        `);
-        expect(afterPaid.myCoupons.find((c: any) => c.code === cc.code).status).toBe('USED');
+        const afterPaidCc = await waitForCouponStatus(cc.code, 'USED');
+        expect(afterPaidCc.status).toBe('USED');
 
         // 取消订单 → 回退为 RETURNED，usedOrderId 清空
         await adminClient.query(gql`
             mutation { cancelOrder(input: { orderId: "${orderId}" }) { ... on Order { id state } ... on ErrorResult { errorCode message } } }
         `);
-        const returned = await shopClient.query(gql`
-            query { myCoupons(status: RETURNED) { code status usedOrderId } }
-        `);
-        const r = returned.myCoupons.find((c: any) => c.code === cc.code);
+        const r = await waitForCouponStatus(cc.code, 'RETURNED');
         expect(r.status).toBe('RETURNED');
         expect(r.usedOrderId).toBeNull();
 
