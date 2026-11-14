@@ -268,9 +268,9 @@ let ShopService = class ShopService {
             permissions: [
                 merchant_permissions_1.manageOwnShop.Permission,
                 core_1.Permission.ReadPromotion,
-                'TenantSettingsManage',
+                merchant_permissions_1.tenantSettingsManage.Permission,
                 // B2：店主可管理本渠道营销活动（写操作另有渠道归属校验）
-                'TenantPromotionManage',
+                merchant_permissions_1.tenantPromotionManage.Permission,
             ],
         });
     }

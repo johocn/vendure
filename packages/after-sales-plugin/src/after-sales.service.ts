@@ -259,9 +259,12 @@ export class AfterSalesService {
         }
         // 下限校验：0/负数金额建单会在执行阶段因 planRefunds 返回空计划而直接置 Refunded，
         // 产生「已退款但实退 0 元」的假结案，必须在建单入口挡住。
-        if (!Number.isFinite(input.refundAmount) || input.refundAmount <= 0) {
+        // 换货（exchange）不产生退款，refundAmount 恒为 0，不参与该下限校验。
+        const isExchange = input.type === 'exchange';
+        if (!isExchange && (!Number.isFinite(input.refundAmount) || input.refundAmount <= 0)) {
             throw new UserInputError(`Refund amount must be a positive number, got ${input.refundAmount}`);
         }
+        const refundAmount = isExchange ? 0 : Math.round(input.refundAmount);
         // 含税口径（P1）：proratedLinePrice / order.total 均为不含税额，按此上限会少退税额，
         // 与 createSystemRequest 及实际退款额（支付单实收含税）不一致。优先取含税字段。
         const maxRefund = orderLine
@@ -272,8 +275,8 @@ export class AfterSalesService {
         // 无支付单信息（balance < 0）时保持旧行为，仅按订单行/订单金额上限校验。
         const balance = await this.refundableBalance(ctx, order.id as ID);
         const effectiveMax = balance >= 0 ? Math.min(maxRefund, balance) : maxRefund;
-        if (input.refundAmount > effectiveMax) {
-            throw new UserInputError(`Refund amount ${input.refundAmount} exceeds max ${effectiveMax}`);
+        if (refundAmount > effectiveMax) {
+            throw new UserInputError(`Refund amount ${refundAmount} exceeds max ${effectiveMax}`);
         }
 
         // 4.1 用解码后的实体 ID 存储外键：order.id / line.id 已是数据库内部数字 ID，
@@ -307,7 +310,7 @@ export class AfterSalesService {
             reason: input.reason,
             description: input.description || null,
             evidenceImages: input.evidenceImages || null,
-            refundAmount: input.refundAmount,
+            refundAmount,
             customerId: (order.customer as any).id as any,
         });
         request.channels = [ctx.channel];

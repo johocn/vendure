@@ -97,8 +97,8 @@ __decorate([
     __metadata("design:type", Object)
 ], ReviewAlert.prototype, "note", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], ReviewAlert.prototype, "handledAt", void 0);
 exports.ReviewAlert = ReviewAlert = __decorate([
     (0, typeorm_1.Entity)('campus_review_alert'),

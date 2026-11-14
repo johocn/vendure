@@ -4,6 +4,7 @@ import { DEFAULT_LANGUAGE_CODE } from '../../../common/constants';
 import { InternalServerError } from '../../../common/error/errors';
 import { UnwrappedArray } from '../../../common/types/common-types';
 import { Translatable, Translated, Translation } from '../../../common/types/locale-types';
+import { getConfig } from '../../../config/config-helpers';
 import { VendureEntity } from '../../../entity/base/base.entity';
 
 // prettier-ignore
@@ -87,13 +88,12 @@ export function translateEntity<T extends Translatable & VendureEntity>(
                 translated.customFields = {};
             }
             const customFields = value as Record<string, any>;
-            let needsFallback = false;
-            for (const cfValue of Object.values(customFields)) {
-                if (cfValue === '' || cfValue == null) {
-                    needsFallback = true;
-                    break;
-                }
-            }
+            const translatableFieldDefs = getTranslatableCustomFieldDefs(translatable);
+            const isEmpty = (v: any) => v === '' || v == null;
+            // 以 schema 中声明的可翻译字段为基准判断缺失：translation 里缺少该 key 时同样需要 fallback
+            const needsFallback =
+                Object.values(customFields).some(isEmpty) ||
+                translatableFieldDefs.some(def => isEmpty(customFields[def.name]));
             if (needsFallback) {
                 if (fallbackTranslations === undefined) {
                     fallbackTranslations = buildFieldFallbackChain(
@@ -104,15 +104,31 @@ export function translateEntity<T extends Translatable & VendureEntity>(
                     );
                 }
                 const mergedCustomFields: Record<string, any> = { ...customFields };
-                for (const [cfKey, cfValue] of Object.entries(mergedCustomFields)) {
-                    if (cfValue === '' || cfValue == null) {
-                        for (const fallback of fallbackTranslations) {
-                            const fallbackCf = (fallback as any).customFields;
-                            if (fallbackCf && fallbackCf[cfKey] !== '' && fallbackCf[cfKey] != null) {
-                                mergedCustomFields[cfKey] = fallbackCf[cfKey];
-                                break;
-                            }
+                const translationsToSearch: any[] = fallbackTranslations ?? [];
+                const applyFallback = (fieldName: string) => {
+                    for (const fallback of translationsToSearch) {
+                        const fallbackCf = (fallback as any).customFields;
+                        if (fallbackCf && !isEmpty(fallbackCf[fieldName])) {
+                            mergedCustomFields[fieldName] = fallbackCf[fieldName];
+                            return true;
                         }
+                    }
+                    return false;
+                };
+                // 1) schema 中声明但 translation 缺失的字段（缺少 key 时原逻辑不会触发 fallback）
+                for (const def of translatableFieldDefs) {
+                    if (!isEmpty(mergedCustomFields[def.name])) {
+                        continue;
+                    }
+                    const resolved = applyFallback(def.name);
+                    if (!resolved && def.defaultValue !== undefined) {
+                        mergedCustomFields[def.name] = def.defaultValue;
+                    }
+                }
+                // 2) 已存在但值为空的字段
+                for (const [cfKey, cfValue] of Object.entries(mergedCustomFields)) {
+                    if (isEmpty(cfValue)) {
+                        applyFallback(cfKey);
                     }
                 }
                 Object.assign(translated.customFields, mergedCustomFields);
@@ -186,6 +202,23 @@ function buildFieldFallbackChain(
     addIfNew(translations[0]);
 
     return fallbacks;
+}
+
+/**
+ * 取得该实体在 schema 中声明的可翻译自定义字段定义（含 defaultValue）。
+ * 用于在 translation 缺少某个 key 时也能走 fallback / 默认值。
+ */
+function getTranslatableCustomFieldDefs(
+    entity: VendureEntity,
+): Array<{ name: string; defaultValue?: any }> {
+    try {
+        const customFieldsConfig = getConfig().customFields as Record<string, any[]> | undefined;
+        const defs = customFieldsConfig?.[entity.constructor.name] ?? [];
+        return defs.filter(def => def.translatable === true);
+    } catch (e) {
+        // 单元测试等场景下配置可能尚未初始化，此时保持原有行为
+        return [];
+    }
 }
 
 /**

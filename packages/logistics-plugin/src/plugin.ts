@@ -13,7 +13,6 @@ import {
     PluginCommonModule,
     RequestContext,
     ScheduledTask,
-    TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
 
@@ -257,6 +256,7 @@ const shopSchema = () => gql`
 export class LogisticsPlugin implements OnApplicationBootstrap {
     private static options: LogisticsPluginOptions = {};
     private injector: Injector;
+    private recalcHandlerRegistered = false;
 
     constructor(
         @Inject(LOGISTICS_PLUGIN_OPTIONS) private options: LogisticsPluginOptions,
@@ -283,30 +283,42 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
         // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
         // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
         // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。
-        this.injector
-            .get(EventBus)
-            .ofType(OrderStateTransitionEvent)
-            .subscribe(async event => {
-                if (event.toState !== 'ArrangingPayment') {
-                    return;
-                }
-                await this.recalcSplitShipping(event.ctx, event.order.id);
+        //
+        // 必须用阻塞处理器（同一事务、发布方等待），不能用 ofType().subscribe()：
+        // 后者在事务提交后异步执行，且事件 ctx 仍带着已结束/已释放的事务管理器，
+        // 其整行 save 会把加载时的旧 state/active 写回，把随后提交的 PaymentSettled 打回 ArrangingPayment。
+        if (!this.recalcHandlerRegistered) {
+            this.injector.get(EventBus).registerBlockingEventHandler({
+                event: OrderStateTransitionEvent,
+                id: 'logistics-plugin.recalc-split-shipping',
+                handler: event => {
+                    if (event.toState !== 'ArrangingPayment') {
+                        return;
+                    }
+                    return this.recalcSplitShipping(event.ctx, event.order);
+                },
             });
+            this.recalcHandlerRegistered = true;
+        }
         Logger.info('LogisticsPlugin initialized', loggerCtx);
     }
 
     /**
      * 重算拆单订单运费：仅在存在 stockLocationsJson 拆分明细时触发，
      * 使 SplitShippingCalculator 按已落库的每包明细计费并写入 Order.packageShippingJson / shippingWithTax。
+     *
+     * 注意：本方法作为阻塞事件处理器，在 ArrangingPayment 过渡的事务内执行，且
+     * transitionToState 会在本回调之后再次 save 事件里的 order 实体。因此不能另起实例整行 save
+     * （会被外层 save 覆盖），而要把重算结果合并回传入的 order 实体，由外层统一落库。
      */
-    private async recalcSplitShipping(ctx: RequestContext, orderId: ID): Promise<void> {
+    private async recalcSplitShipping(ctx: RequestContext, order: Order): Promise<void> {
         try {
             const orderService = this.injector.get(OrderService);
-            const order = await orderService.findOne(ctx, orderId);
-            if (!order || !(order.shippingLines?.length)) {
+            const loaded = await orderService.findOne(ctx, order.id, ['lines', 'shippingLines']);
+            if (!loaded || !(loaded.shippingLines?.length)) {
                 return;
             }
-            const hasSplit = (order.lines ?? []).some((line: OrderLine & { customFields?: any }) => {
+            const hasSplit = (loaded.lines ?? []).some((line: OrderLine & { customFields?: any }) => {
                 const raw = (line.customFields as any)?.stockLocationsJson;
                 if (!raw) {
                     return false;
@@ -321,11 +333,14 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
             if (!hasSplit) {
                 return;
             }
-            const updated = await orderService.applyPriceAdjustments(ctx, order);
-            await this.injector.get(TransactionalConnection).getRepository(ctx, Order).save(updated, { reload: false });
-            Logger.info(`拆单运费重算 order#${order.code ?? orderId} -> shippingWithTax=${updated.shippingWithTax}`, loggerCtx);
+            const updated = await orderService.applyPriceAdjustments(ctx, loaded);
+            // 回写到事件里的 order 实体（外层随后会 save 它），customFields 含 packageShippingJson。
+            order.shipping = updated.shipping;
+            order.shippingWithTax = updated.shippingWithTax;
+            order.customFields = { ...(order.customFields as any), ...(updated.customFields as any) };
+            Logger.info(`拆单运费重算 order#${order.code ?? order.id} -> shippingWithTax=${updated.shippingWithTax}`, loggerCtx);
         } catch (e: any) {
-            Logger.warn(`拆单运费重算失败 order#${orderId}: ${e?.message ?? e}`, loggerCtx);
+            Logger.warn(`拆单运费重算失败 order#${order.id}: ${e?.message ?? e}`, loggerCtx);
         }
     }
 }

@@ -1,6 +1,8 @@
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 import { Column, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
 
+import { bigintToNumber } from './bigint-number.transformer';
+
 export type AffiliateStatus = 'active' | 'suspended';
 
 @Entity()
@@ -35,10 +37,10 @@ export class Affiliate extends VendureEntity implements ChannelAware {
     status: AffiliateStatus;
 
     /** 累计佣金，分。 */
-    @Column({ type: 'bigint', default: 0 })
+    @Column({ type: 'bigint', default: 0, transformer: bigintToNumber })
     totalCommission: number;
 
     /** 可提现余额，分。 */
-    @Column({ type: 'bigint', default: 0 })
+    @Column({ type: 'bigint', default: 0, transformer: bigintToNumber })
     withdrawableCommission: number;
 }

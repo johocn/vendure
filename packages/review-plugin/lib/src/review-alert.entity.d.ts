@@ -35,5 +35,5 @@ export declare class ReviewAlert extends VendureEntity {
     status: ReviewAlertStatus;
     /** 处置备注（关闭原因 / 发券失败原因） */
     note: string | null;
-    handledAt: Date | null;
+    handledAt?: Date;
 }

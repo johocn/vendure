@@ -10,8 +10,22 @@ import { MemberLevelPlugin } from '@vendure/member-level-plugin';
 import { PointsMallPlugin } from '../src/plugin';
 import { PointsMallService } from '../src/points-mall.service';
 import { pointsOrderRefundRetryTask } from '../src/points-order-refund-retry.task';
+import { PointsOrderPayment } from '../src/points-order-payment.entity';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
+
+/** 跨库裸 SQL 辅助：postgres 用 $n 占位符，标识符按方言加引号；sqljs 时间需写成 UTC 字符串。 */
+function sqlDialect(conn: TransactionalConnection) {
+    const type = conn.rawConnection.options.type;
+    return {
+        quote: (name: string) => (type === 'postgres' ? `"${name}"` : `\`${name}\``),
+        param: (index: number) => (type === 'postgres' ? `$${index}` : '?'),
+        date: (value: Date) =>
+            type === 'sqljs' || type === 'sqlite' || type === 'better-sqlite3'
+                ? value.toISOString().slice(0, 23).replace('T', ' ')
+                : value,
+    };
+}
 
 describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/履约）', () => {
     const config = mergeConfig(testConfig(), {
@@ -490,16 +504,15 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         expect(await myPoints()).toBe(pointsBefore - 100);
 
         // 直接改库把该单 createdAt 拨回 31 分钟前
-        // （order.id 是编码 ID（如 T_5），raw repo 不解码 → 由 code 反推数字主键；裸 SQL 绕开 CreateDateColumn 限制；
-        //   写入格式须与 typeorm sqlite 序列化一致 "YYYY-MM-DD HH:mm:ss.SSS"（UTC 空格分隔），否则 SQL 字符串比较失效）
+        // （order.id 是编码 ID（如 T_5），raw repo 不解码 → 由 code 反推数字主键；裸 SQL 绕开 CreateDateColumn 限制）
         const conn = server.app.get(TransactionalConnection);
         const numericId = Number(order.code.replace('PO-', ''));
         expect(numericId).toBeGreaterThan(0);
-        const sqliteUtc = (d: Date) => d.toISOString().slice(0, 23).replace('T', ' ');
-        await conn.rawConnection.query('UPDATE points_order SET "createdAt" = ? WHERE id = ?', [
-            sqliteUtc(new Date(Date.now() - 31 * 60 * 1000)),
-            numericId,
-        ]);
+        const { quote, param, date } = sqlDialect(conn);
+        await conn.rawConnection.query(
+            `UPDATE ${quote('points_order')} SET ${quote('createdAt')} = ${param(1)} WHERE ${quote('id')} = ${param(2)}`,
+            [date(new Date(Date.now() - 31 * 60 * 1000)), numericId],
+        );
 
         const svc = server.app.get(PointsMallService);
         const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
@@ -591,10 +604,8 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
 
         // 创建支付后 methodCode 已写入支付行（退款据此路由商户凭证）
         const conn = server.app.get(TransactionalConnection);
-        const createdRows = await conn.rawConnection.query(
-            'SELECT "methodCode" FROM points_order_payment WHERE orderId = ?',
-            [numericId],
-        );
+        const payRepo = conn.rawConnection.getRepository(PointsOrderPayment);
+        const createdRows = await payRepo.find({ where: { orderId: numericId } as any });
         expect(createdRows[0].methodCode).toBe('wechatpay');
 
         // 客户先取消：退分 + 回补库存 + 支付单 cancelled
@@ -622,10 +633,7 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             // 退款按支付行 methodCode 路由凭证
             expect(callInput.methodCode).toBe('wechatpay');
 
-            const payRows = await conn.rawConnection.query(
-                'SELECT status, "transactionId", "refundStatus", "refundNo", "refundedAt", "methodCode" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            const payRows = await payRepo.find({ where: { orderId: numericId } as any });
             expect(payRows.length).toBe(1);
             expect(payRows[0].status).toBe('paid');
             expect(payRows[0].transactionId).toBe('WX-LATE-1');
@@ -695,21 +703,20 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
             await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-3');
 
-            let payRows = await conn.rawConnection.query(
-                'SELECT status, "refundStatus", "refundError", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            let payRows = await conn.rawConnection
+                .getRepository(PointsOrderPayment)
+                .find({ where: { orderId: numericId } as any });
             expect(payRows[0].status).toBe('paid');
             expect(payRows[0].refundStatus).toBe('failed');
             expect(payRows[0].refundError).toContain('wx refund boom');
             expect(payRows[0].refundAttempts).toBe(1);
 
             // 退避窗口：attempts=1 → 10min；拨回 updatedAt 使重试到期
-            const sqliteUtc = (d: Date) => d.toISOString().slice(0, 23).replace('T', ' ');
-            await conn.rawConnection.query('UPDATE points_order_payment SET "updatedAt" = ? WHERE orderId = ?', [
-                sqliteUtc(new Date(Date.now() - 11 * 60 * 1000)),
-                numericId,
-            ]);
+            const { quote, param, date } = sqlDialect(conn);
+            await conn.rawConnection.query(
+                `UPDATE ${quote('points_order_payment')} SET ${quote('updatedAt')} = ${param(1)} WHERE ${quote('orderId')} = ${param(2)}`,
+                [date(new Date(Date.now() - 11 * 60 * 1000)), numericId],
+            );
 
             // 网关恢复成功，跑真实 ScheduledTask（跨渠道分组 → retryPointsOrderRefunds）
             refundMock.mockResolvedValue({ refundId: 'RF-WX-3', status: 'SUCCESS' });
@@ -717,10 +724,9 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             const result = await pointsOrderRefundRetryTask.execute(injector);
             expect(result.refunded).toBeGreaterThanOrEqual(1);
 
-            payRows = await conn.rawConnection.query(
-                'SELECT status, "refundStatus", "refundedAt" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            payRows = await conn.rawConnection
+                .getRepository(PointsOrderPayment)
+                .find({ where: { orderId: numericId } as any });
             expect(payRows[0].refundStatus).toBe('refunded');
             expect(payRows[0].refundedAt).toBeTruthy();
             expect(refundMock).toHaveBeenCalledTimes(2);
@@ -748,10 +754,9 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WXTX-TEST-123');
 
         const conn = server.app.get(TransactionalConnection);
-        const payRows = await conn.rawConnection.query(
-            'SELECT status, "transactionId" FROM points_order_payment WHERE orderId = ?',
-            [numericId],
-        );
+        const payRows = await conn.rawConnection
+            .getRepository(PointsOrderPayment)
+            .find({ where: { orderId: numericId } as any });
         expect(payRows.length).toBe(1);
         expect(payRows[0].status).toBe('paid');
         expect(payRows[0].transactionId).toBe('WXTX-TEST-123');
@@ -784,30 +789,28 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         let reconcileStatus = 'PROCESSING';
         const findMock = vi.fn(() => Promise.resolve({ refundId: 'rx1', status: reconcileStatus }));
         svc.setWechatpayGateway({ refundBarePayment: refundMock, findBareRefund: findMock });
-        const sqliteUtc = (d: Date) => d.toISOString().slice(0, 23).replace('T', ' ');
+        const { quote, param, date } = sqlDialect(conn);
         try {
             const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
             // settle：微信受理但 PROCESSING → 保持 refunding，不落终态
             await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-4');
-            let payRows = await conn.rawConnection.query(
-                'SELECT "refundStatus", "refundError", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            let payRows = await conn.rawConnection
+                .getRepository(PointsOrderPayment)
+                .find({ where: { orderId: numericId } as any });
             expect(payRows[0].refundStatus).toBe('refunding');
             expect(refundMock).toHaveBeenCalledTimes(1);
 
             // 拨回 updatedAt 满足卡单条件（>10min），跑 task：对账仍 PROCESSING → 保持 refunding 且不重发
-            await conn.rawConnection.query('UPDATE points_order_payment SET "updatedAt" = ? WHERE orderId = ?', [
-                sqliteUtc(new Date(Date.now() - 11 * 60 * 1000)),
-                numericId,
-            ]);
+            await conn.rawConnection.query(
+                `UPDATE ${quote('points_order_payment')} SET ${quote('updatedAt')} = ${param(1)} WHERE ${quote('orderId')} = ${param(2)}`,
+                [date(new Date(Date.now() - 11 * 60 * 1000)), numericId],
+            );
             const injector = new Injector(server.app.get(ModuleRef));
             const r1 = await pointsOrderRefundRetryTask.execute(injector);
             expect(r1.processing).toBeGreaterThanOrEqual(1);
-            payRows = await conn.rawConnection.query(
-                'SELECT "refundStatus", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            payRows = await conn.rawConnection
+                .getRepository(PointsOrderPayment)
+                .find({ where: { orderId: numericId } as any });
             expect(payRows[0].refundStatus).toBe('refunding');
             expect(refundMock).toHaveBeenCalledTimes(1); // PROCESSING 不重发
             // 对账 findBareRefund 同样按支付行 methodCode 路由（第三参）
@@ -817,10 +820,9 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             reconcileStatus = 'SUCCESS';
             const r2 = await pointsOrderRefundRetryTask.execute(injector);
             expect(r2.refunded).toBeGreaterThanOrEqual(1);
-            payRows = await conn.rawConnection.query(
-                'SELECT "refundStatus", "refundedAt" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            payRows = await conn.rawConnection
+                .getRepository(PointsOrderPayment)
+                .find({ where: { orderId: numericId } as any });
             expect(payRows[0].refundStatus).toBe('refunded');
             expect(payRows[0].refundedAt).toBeTruthy();
             expect(refundMock).toHaveBeenCalledTimes(1);
@@ -850,10 +852,9 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
             await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-5');
 
-            const payRows = await conn.rawConnection.query(
-                'SELECT "refundStatus", "refundError", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
-                [numericId],
-            );
+            const payRows = await conn.rawConnection
+                .getRepository(PointsOrderPayment)
+                .find({ where: { orderId: numericId } as any });
             expect(payRows[0].refundStatus).toBe('failed');
             expect(String(payRows[0].refundError)).toContain('CLOSED');
             // attempts 走 JS 计算值自增（去裸 SQL 方言依赖）

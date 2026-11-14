@@ -954,6 +954,11 @@ let PaymentScheduleService = class PaymentScheduleService {
                 core_1.Logger.warn(`Refund for payment ${payment.id} failed: ${result.message}`, constants_1.loggerCtx);
                 return false;
             }
+            if (String(result === null || result === void 0 ? void 0 : result.state) === 'Settled') {
+                // 处理器 createRefund 已同步返回 Settled（如单阶段退款方式），createRefund 内部已完成状态流转，
+                // 再 settleRefund 会因 Settled → Settled 非法流转而失败。
+                return true;
+            }
             return await this.settleRefundAndVerify(ctx, result, payment);
         }
         catch (e) {

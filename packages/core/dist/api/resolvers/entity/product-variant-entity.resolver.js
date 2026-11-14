@@ -52,9 +52,9 @@ let ProductVariantEntityResolver = class ProductVariantEntityResolver {
         return this.productVariantService.hydratePriceFields(ctx, productVariant, 'taxRateApplied');
     }
     async product(ctx, productVariant) {
-        var _a;
-        if ((_a = productVariant.product) === null || _a === void 0 ? void 0 : _a.name) {
-            return productVariant.product;
+        var _a, _b;
+        if ((_b = (_a = productVariant.product) === null || _a === void 0 ? void 0 : _a.translations) === null || _b === void 0 ? void 0 : _b.length) {
+            return this.productVariantService.getProductForVariant(ctx, productVariant);
         }
         return this.requestContextCache.get(ctx, `ProductVariantEntityResolver.product(${productVariant.productId})`, () => this.productVariantService.getProductForVariant(ctx, productVariant));
     }

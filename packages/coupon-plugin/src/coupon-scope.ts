@@ -20,8 +20,10 @@ export function isDefaultMallChannel(ctx: RequestContext): boolean {
  * 行商品 Product.customFields.shopId === 指定 shopId。
  * 当券没有发行 shopId（平台级券）时视为不限定，任何行都算本店行。
  */
-export function lineHasShopId(line: any, shopId: number | undefined): boolean {
+export function lineHasShopId(line: any, shopId: number | string | undefined): boolean {
     if (shopId == null) return true;
     const sid = (line?.productVariant?.product?.customFields ?? {})?.shopId;
-    return sid != null && Number(sid) === shopId;
+    // CouponTemplate.shopId 是 bigint：Postgres 驱动会返回字符串，而 product 的
+    // customFields.shopId 是 JSON 数字；统一转 Number 再比较，避免把本店行误判为非本店。
+    return sid != null && Number(sid) === Number(shopId);
 }

@@ -301,9 +301,10 @@ export class ProductVariantService {
     async getProductForVariant(ctx: RequestContext, variant: ProductVariant): Promise<Translated<Product>> {
         let product;
 
-        if (!variant.product) {
+        if (!variant.product || !variant.product.translations) {
             product = await this.connection.getEntityOrThrow(ctx, Product, variant.productId, {
                 includeSoftDeleted: true,
+                relations: ['translations'],
             });
         } else {
             product = variant.product;

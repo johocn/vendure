@@ -609,7 +609,16 @@ export class CouponService {
         ctx: RequestContext,
         options?: ListQueryOptions<CustomerCoupon>,
     ): Promise<{ items: CustomerCoupon[]; totalItems: number }> {
-        const qb = this.listQueryBuilder.build(CustomerCoupon, options, { ctx });
+        // filter 走 JSON 输入，不经 GraphQL ID 解码；templateId 收到的是 T_13 这类编码 ID，
+        // 直接下推 SQL 在 Postgres 会报 int 类型错误、在 MySQL/SQLite 则静默查不到。
+        const filter: any = (options as any)?.filter;
+        const normalizedOptions = filter?.templateId
+            ? ({
+                  ...options,
+                  filter: { ...filter, templateId: this.decodeIdOperators(filter.templateId) },
+              } as ListQueryOptions<CustomerCoupon>)
+            : options;
+        const qb = this.listQueryBuilder.build(CustomerCoupon, normalizedOptions, { ctx });
         qb.leftJoinAndSelect('customercoupon.template', 'tpl');
         // 属店隔离：店主管理员只看「本店券实例 + 平台级券实例」（与 assertManagedByShop 同法）；
         // 超级管理员（无属店）→ 全量。
@@ -618,6 +627,23 @@ export class CouponService {
             qb.andWhere('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', { adminShopId });
         }
         return qb.getManyAndCount().then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    /** 把 JSON filter 里的编码 ID（测试策略 T_13 / 生产裸数字）还原为数据库主键 */
+    private decodeIdOperators(value: unknown): any {
+        const decode = (v: unknown) =>
+            typeof v === 'string' && /^[A-Za-z]+_\d+$/.test(v)
+                ? Number(v.slice(v.indexOf('_') + 1))
+                : v;
+        if (value == null || typeof value !== 'object') return value;
+        const out: any = { ...(value as any) };
+        for (const key of ['eq', 'notEq']) {
+            if (key in out) out[key] = decode(out[key]);
+        }
+        for (const key of ['in', 'notIn']) {
+            if (Array.isArray(out[key])) out[key] = out[key].map(decode);
+        }
+        return out;
     }
 
     /* ------------------------- 核销看板（FR-A3，t1 营销补齐 PRD） ------------------------- */

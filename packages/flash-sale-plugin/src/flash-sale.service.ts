@@ -15,11 +15,7 @@ import {
 
 import { loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
-import {
-    PLATFORM_TIME_ZONE,
-    platformNowMs,
-    wallClockMs,
-} from './platform-time';
+import { platformNowMs, wallClockMs } from './platform-time';
 import { setFlashSaleConnection } from './flash-sale-runtime';
 
 /**
@@ -261,12 +257,8 @@ export class FlashSaleService {
             .createQueryBuilder('fsa')
             .innerJoin('fsa.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('fsa.status = :status', { status: 'active' })
-            .andWhere('fsa.startAt <= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
-            .andWhere('fsa.endAt >= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
+            .andWhere('fsa.startAt <= :now', { now: new Date() })
+            .andWhere('fsa.endAt >= :now', { now: new Date() })
             .getMany();
     }
 
@@ -277,12 +269,8 @@ export class FlashSaleService {
             .innerJoin('fsa.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('fsa.variantId = :variantId', { variantId: variantId as any })
             .andWhere('fsa.status = :status', { status: 'active' })
-            .andWhere('fsa.startAt <= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
-            .andWhere('fsa.endAt >= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
+            .andWhere('fsa.startAt <= :now', { now: new Date() })
+            .andWhere('fsa.endAt >= :now', { now: new Date() })
             .getOne();
         return result ?? undefined;
     }

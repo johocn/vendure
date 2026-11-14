@@ -169,7 +169,8 @@ describe('DiyPlugin · DIY 商品（素材合并/方案/报价/下单/回补）'
         const all = await shopClient.query(gql`
             query { diyMaterials { items { id code stock enabled } total } }
         `) as any;
-        expect(all.diyMaterials.total).toBe(2);
+        // 平台配饰 15 件（seed）+ 租户素材 2 件，两层合并共 17 件
+        expect(all.diyMaterials.total).toBe(17);
 
         const rounds = await shopClient.query(gql`
             query { diyMaterials(filter: { shapes: ["round"] }) { items { code } total } }

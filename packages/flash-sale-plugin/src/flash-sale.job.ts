@@ -2,7 +2,6 @@ import { Logger, ScheduledTask, TransactionalConnection } from '@vendure/core';
 
 import { loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
-import { PLATFORM_TIME_ZONE } from './platform-time';
 
 /**
  * 秒杀活动状态转换 ScheduledTask。
@@ -38,9 +37,7 @@ export const flashSaleStatusTask = new ScheduledTask({
         const toActivate = await repo
             .createQueryBuilder('fsa')
             .where('fsa.status = :status', { status: 'upcoming' })
-            .andWhere('fsa.startAt <= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
+            .andWhere('fsa.startAt <= :now', { now: new Date() })
             .getMany();
 
         for (const activity of toActivate) {
@@ -58,9 +55,7 @@ export const flashSaleStatusTask = new ScheduledTask({
         const toEnd = await repo
             .createQueryBuilder('fsa')
             .where('fsa.status = :status', { status: 'active' })
-            .andWhere('fsa.endAt <= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
+            .andWhere('fsa.endAt <= :now', { now: new Date() })
             .getMany();
 
         for (const activity of toEnd) {

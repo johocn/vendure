@@ -11,6 +11,7 @@ import { ShopPlugin } from '@vendure/shop-plugin';
 
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
+import { MerchantPlugin } from '../../merchant-plugin/src/merchant.plugin';
 import { BillPayService } from '../src/bill-pay.service';
 import { BillPayPlugin } from '../src/plugin';
 
@@ -26,7 +27,12 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('BillPay × Coupon · 到店买单券抵扣代买单委托单', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
-            plugins: [CouponPlugin.init(), ShopPlugin.init(), BillPayPlugin.init()],
+            plugins: [
+                CouponPlugin.init(),
+                ShopPlugin.init(),
+                MerchantPlugin.init(),
+                BillPayPlugin.init(),
+            ],
             // 商品 CSV 引用的图片在 core 的 e2e fixtures 下；不覆盖会让导入报「图片不存在」噪音日志。
             importExportOptions: {
                 importAssetsDir: path.join(__dirname, '../../core/e2e/fixtures/assets'),
@@ -269,6 +275,55 @@ describe('BillPay × Coupon · 到店买单券抵扣代买单委托单', () => {
         });
         await adminClient.asSuperAdmin();
         await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+
+        // 用券单要求商户存在且被当前渠道认领（券是租户资产，不能抵未认领商户的买单），
+        // 故先建主数据并把门店认领给默认渠道；merchantName 与下单入参保持一致以便按名称解析。
+        const merchantRes = (await adminClient.query(
+            gql`
+                mutation CreateMerchant($input: CreateMerchantInput!) {
+                    createMerchant(input: $input) {
+                        id
+                    }
+                }
+            `,
+            {
+                input: {
+                    code: 'M-E2E-BILLPAY',
+                    name: 'e2e-商家',
+                    legalName: 'e2e-商家有限公司',
+                },
+            },
+        )) as any;
+        const storeRes = (await adminClient.query(
+            gql`
+                mutation CreateStore($input: CreateMerchantStoreInput!) {
+                    createMerchantStore(input: $input) {
+                        id
+                    }
+                }
+            `,
+            {
+                input: {
+                    merchantId: merchantRes.createMerchant.id,
+                    code: 'S-E2E-BILLPAY',
+                    name: 'e2e-门店',
+                    city: '长春市',
+                    addressLine: '测试路 1 号',
+                },
+            },
+        )) as any;
+        const channel = await server.app.get(ChannelService).getDefaultChannel();
+        await adminClient.query(
+            gql`
+                mutation Claim($storeId: ID!, $channelId: ID!) {
+                    claimMerchantStore(storeId: $storeId, channelId: $channelId) {
+                        id
+                        status
+                    }
+                }
+            `,
+            { storeId: storeRes.createMerchantStore.id, channelId: channel.id },
+        );
     }, TEST_SETUP_TIMEOUT_MS);
 
     // 渠道配置是全局单行记录：每个用例重置回基线，保证拒绝/通过断言只由本用例的输入决定。
@@ -305,7 +360,7 @@ describe('BillPay × Coupon · 到店买单券抵扣代买单委托单', () => {
         expect(detail.some((d: any) => d.rule === 'coupon' && d.amount === 2000)).toBe(true);
     });
 
-    it('满载截断：FULL 券面额高于应付时，券抵扣不超过应付（应付 0、抵扣 10000）', async () => {
+    it('满载截断：FULL 券面额高于应付时，券抵扣不超过应付（保留 1 分应付、抵扣 9999）', async () => {
         const tplId = await createTemplate({
             name: 'e2e-无条件直减200',
             type: 'FULL',
@@ -316,16 +371,16 @@ describe('BillPay × Coupon · 到店买单券抵扣代买单委托单', () => {
 
         const order = await createOrder(10000, coupon.code);
 
-        // 券面额 20000 > 应付 10000：应付截断为 0，明细金额同步截断为 10000，
-        // 保证「明细合计 = 原价 - 应付」仍成立，避免对账出现负数抵扣。
+        // 券面额 20000 > 应付 10000：至少保留 1 分应付（0 元单无法唤起支付），
+        // 抵扣同步截断为 9999，保证「明细合计 = 原价 - 应付」仍成立，避免对账出现负数抵扣。
         expect(order).toMatchObject({
             status: 'QUOTED',
             expectedAmount: 10000,
-            quoteAmount: 0,
-            couponDiscount: 10000,
+            quoteAmount: 1,
+            couponDiscount: 9999,
         });
         const detail = discountDetailOf(order);
-        expect(detail.find((d: any) => d.rule === 'coupon')?.amount).toBe(10000);
+        expect(detail.find((d: any) => d.rule === 'coupon')?.amount).toBe(9999);
     });
 
     it('券被预占后不可重复使用：同码第二单报错、第一单仍为 QUOTED', async () => {

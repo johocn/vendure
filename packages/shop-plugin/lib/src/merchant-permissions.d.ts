@@ -4,3 +4,6 @@ import { PermissionDefinition } from '@vendure/core';
  * 归属隔离（按 Shop.administratorId）在 service 层二次把关。
  */
 export declare const manageOwnShop: PermissionDefinition;
+/** 店主角色分配的租户级权限：必须在插件配置中声明，否则 RoleService 会拒绝分配。 */
+export declare const tenantSettingsManage: PermissionDefinition;
+export declare const tenantPromotionManage: PermissionDefinition;

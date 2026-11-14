@@ -31,13 +31,13 @@ export const pointsOrderRefundRetryTask = new ScheduledTask({
         const groups = await connection.rawConnection
             .getRepository(PointsOrderPayment)
             .createQueryBuilder('p')
-            .select('p."channelId"', 'cid')
+            .select('p.channelId', 'cid')
             .where(
-                "(p.\"refundStatus\" = 'failed' OR (p.\"refundStatus\" = 'refunding' AND p.\"updatedAt\" < :stuckBefore))",
-                { stuckBefore },
+                '(p.refundStatus = :failed OR (p.refundStatus = :refunding AND p.updatedAt < :stuckBefore))',
+                { failed: 'failed', refunding: 'refunding', stuckBefore },
             )
-            .andWhere('p."refundAttempts" < :max', { max: MAX_ATTEMPTS })
-            .groupBy('p."channelId"')
+            .andWhere('p.refundAttempts < :max', { max: MAX_ATTEMPTS })
+            .groupBy('p.channelId')
             .getRawMany<{ cid: number | null }>();
         const channelRepo = connection.rawConnection.getRepository(Channel);
         let refunded = 0;

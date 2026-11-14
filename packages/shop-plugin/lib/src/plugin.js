@@ -278,8 +278,8 @@ exports.ShopPlugin = ShopPlugin = ShopPlugin_1 = __decorate([
         configuration: (config) => {
             // 商品归属店铺：Product.shopId（int, nullable, public）
             config.customFields.Product = mergeCustomFields(config.customFields.Product, shop_custom_fields_1.shopCustomFields.Product);
-            // 店主自营后台权限：ManageOwnShop（自定义权限，可分配到 Role）
-            config.authOptions.customPermissions = mergeCustomPermissions(config.authOptions.customPermissions, [merchant_permissions_1.manageOwnShop]);
+            // 店主自营后台权限：ManageOwnShop + 店主角色所需的两个租户级权限
+            config.authOptions.customPermissions = mergeCustomPermissions(config.authOptions.customPermissions, [merchant_permissions_1.manageOwnShop, merchant_permissions_1.tenantSettingsManage, merchant_permissions_1.tenantPromotionManage]);
             return config;
         },
         compatibility: '^3.0.0',

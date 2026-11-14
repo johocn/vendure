@@ -23,11 +23,7 @@ import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
 import { GroupBuyCompletedEvent, GroupBuyFailedEvent } from './events';
 import { setGroupBuyConnection } from './group-buy-runtime';
-import {
-    PLATFORM_TIME_ZONE,
-    platformNowMs,
-    wallClockMs,
-} from './platform-time';
+import { platformNowMs, wallClockMs } from './platform-time';
 
 const ALLOWED_UPDATE_FIELDS = [
     'name',
@@ -228,12 +224,8 @@ export class GroupBuyService {
                         allowJoin: activity.allowJoinAfterComplete,
                     },
                 )
-                .andWhere('startAt <= (now() AT TIME ZONE :platformTz)', {
-                    platformTz: PLATFORM_TIME_ZONE,
-                })
-                .andWhere('endAt >= (now() AT TIME ZONE :platformTz)', {
-                    platformTz: PLATFORM_TIME_ZONE,
-                })
+                .andWhere('startAt <= :now', { now: new Date(nowMs) })
+                .andWhere('endAt >= :now', { now: new Date(nowMs) })
                 .andWhere('(maxCount = 0 OR currentCount < maxCount)')
                 .execute();
             if ((incResult.affected ?? 0) === 0) {
@@ -300,9 +292,7 @@ export class GroupBuyService {
         const expiredActivities = await activityRepo
             .createQueryBuilder('gba')
             .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
-            .where('gba.endAt < (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
+            .where('gba.endAt < :now', { now: new Date() })
             .andWhere('gba.status = :status', { status: 'active' })
             .getMany();
 
@@ -363,12 +353,8 @@ export class GroupBuyService {
             .createQueryBuilder('gba')
             .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('gba.status = :status', { status: 'active' })
-            .andWhere('gba.startAt <= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
-            .andWhere('gba.endAt >= (now() AT TIME ZONE :platformTz)', {
-                platformTz: PLATFORM_TIME_ZONE,
-            })
+            .andWhere('gba.startAt <= :now', { now: new Date() })
+            .andWhere('gba.endAt >= :now', { now: new Date() })
             .getMany();
     }
 

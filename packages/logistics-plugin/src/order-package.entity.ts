@@ -28,7 +28,7 @@ export class OrderPackage extends VendureEntity {
     /** 关联配送单 DeliveryOrder（同城配送回填） */
     @EntityId({ nullable: true }) deliveryOrderId: ID | null;
     /** 包裹状态：待发货/已发货/已送达/配送取消 */
-    @Column({ default: 'pending' }) status: OrderPackageStatus;
+    @Column({ type: 'varchar', default: 'pending' }) status: OrderPackageStatus;
     /** 发货时间 */
     @Column({ nullable: true }) shippedAt?: Date;
     /** 送达时间 */

@@ -52,7 +52,7 @@ __decorate([
     __metadata("design:type", Object)
 ], OrderPackage.prototype, "deliveryOrderId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'pending' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'pending' }),
     __metadata("design:type", String)
 ], OrderPackage.prototype, "status", void 0);
 __decorate([

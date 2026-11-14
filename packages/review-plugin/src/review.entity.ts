@@ -57,8 +57,8 @@ export class Review extends VendureEntity implements ChannelAware {
     giftChoice: string | null;
 
     /** 审核时间（approve/reject 留痕）；追评窗口以此为基准。 */
-    @Column({ type: 'timestamptz', nullable: true })
-    reviewedAt?: Date | null;
+    @Column({ nullable: true })
+    reviewedAt?: Date;
 
     // ---------------- 差评申诉（P0-4）----------------
     // 列由 campus-delivery-plugin 的 p8-p0-privacy-food-safety 迁移补齐（iframe 环境 synchronize:false）。
@@ -73,8 +73,8 @@ export class Review extends VendureEntity implements ChannelAware {
     @Column({ type: 'simple-json', nullable: true })
     appealImages: string[] | null;
 
-    @Column({ type: 'timestamptz', nullable: true })
-    appealAt: Date | null;
+    @Column({ nullable: true })
+    appealAt?: Date;
 
     /** 审核说明（通过/驳回均留痕，同步展示给申诉人） */
     @Column({ type: 'text', nullable: true })
@@ -83,6 +83,6 @@ export class Review extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', nullable: true })
     appealReviewedBy: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true })
-    appealReviewedAt: Date | null;
+    @Column({ nullable: true })
+    appealReviewedAt?: Date;
 }

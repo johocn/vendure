@@ -6,6 +6,7 @@ import gql from 'graphql-tag';
 
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { OnebridgePlugin } from '../src/plugin';
+import { StageEvent } from '../src/entities/stage-event.entity';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
@@ -94,10 +95,10 @@ describe('OnebridgePlugin · M3 联调桩', () => {
         });
 
         const connection = server.app.get(TransactionalConnection);
-        const rows: Array<{ stage: string; idempotencyKey: string; titleCn: string }> = await connection.rawConnection.query(
-            `SELECT stage, idempotencyKey, titleCn FROM onebridge_stage_event WHERE ownerType='order' AND ownerCode=?`,
-            [order.code],
-        );
+        const rows = await connection.rawConnection.getRepository(StageEvent).find({
+            where: { ownerType: 'order', ownerCode: order.code } as any,
+            order: { id: 'ASC' },
+        });
         expect(rows).toHaveLength(1);
         expect(rows[0]).toMatchObject({ stage: 'wait_pay', titleCn: '支付完成' });
         expect(rows[0].idempotencyKey).toContain(':paid');

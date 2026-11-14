@@ -148,8 +148,12 @@ export class PreSaleService {
             // 已到货/已结束不应被重复置为 delivered
             throw new UserInputError(`PreSaleActivity with id ${id} cannot be delivered from ${activity.status}`);
         }
+        // MySQL/MariaDB 的 DATETIME 无小数秒且按四舍五入落库：毫秒 ≥500 时会把「现在」
+        // 存成未来的下一秒，导致刚开启的尾款窗口在随后的支付校验中被判为「尚未开始」。
+        // 这里向下取整到秒，保证落库值与读取值一致且不晚于当前时刻。
+        const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
         activity.status = 'delivered';
-        activity.releaseAt = activity.releaseAt ?? new Date();
+        activity.releaseAt = activity.releaseAt ?? openedAt;
         if (activity.mode === 'deposit' && !activity.tailStartAt) {
             activity.tailStartAt = activity.releaseAt;
         }
@@ -588,19 +592,21 @@ export class PreSaleService {
     }
 
     private async restoreActiveIfPossible(ctx: RequestContext, activityId: ID): Promise<void> {
-        const activity = await this.findOne(ctx, activityId);
-        if (!activity) return;
-        if (activity.status !== 'ended') return;
+        // 直接走条件 UPDATE，避免 MySQL 可重复读下读到旧快照导致 soldCount 判断失效。
         const now = new Date();
-        const inWindow =
-            (!activity.startAt || now >= activity.startAt) && (!activity.endAt || now <= activity.endAt);
-        if (inWindow && activity.soldCount < activity.totalStock) {
-            activity.status = 'active';
-            await this.connection.getRepository(ctx, PreSaleActivity).save(activity);
-            Logger.info(
-                `PreSaleActivity ${activityId} restored to active after stock release (sold ${activity.soldCount}/${activity.totalStock})`,
-                loggerCtx,
-            );
+        const result = await this.connection
+            .getRepository(ctx, PreSaleActivity)
+            .createQueryBuilder()
+            .update()
+            .set({ status: 'active' })
+            .where('id = :id', { id: activityId as any })
+            .andWhere('status = :ended', { ended: 'ended' })
+            .andWhere('soldCount < totalStock')
+            .andWhere('(startAt IS NULL OR startAt <= :now)', { now })
+            .andWhere('(endAt IS NULL OR endAt >= :now)', { now })
+            .execute();
+        if ((result.affected ?? 0) > 0) {
+            Logger.info(`PreSaleActivity ${activityId} restored to active after stock release`, loggerCtx);
         }
     }
 }

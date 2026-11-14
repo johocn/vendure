@@ -404,6 +404,22 @@ export class CustomerService {
                 }
                 await this.connection.getRepository(ctx, User).save(user, { reload: false });
             }
+            // 仅对「已存在但未验证」的账号重发验证邮件并留痕；已验证账号保持静默成功，避免账号枚举
+            if (!user.verified) {
+                const existingCustomer = await this.findOneByUserId(ctx, user.id);
+                if (existingCustomer) {
+                    await this.historyService.createHistoryEntryForCustomer({
+                        customerId: existingCustomer.id,
+                        ctx,
+                        type: HistoryEntryType.CUSTOMER_REGISTERED,
+                        data: {
+                            strategy: NATIVE_AUTH_STRATEGY_NAME,
+                        },
+                    });
+                }
+                await this.userService.setVerificationToken(ctx, user);
+                await this.eventBus.publish(new AccountRegistrationEvent(ctx, user));
+            }
             return { success: true };
         }
         const customFields = (input as any).customFields;
