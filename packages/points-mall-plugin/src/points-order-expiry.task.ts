@@ -30,10 +30,10 @@ export const pointsOrderExpiryTask = new ScheduledTask({
         const groups = await connection.rawConnection
             .getRepository(PointsOrder)
             .createQueryBuilder('po')
-            .select('po."channelId"', 'cid')
+            .select('po.channelId', 'cid')
             .where('po.status = :status', { status: 'pending_payment' })
-            .andWhere('po."createdAt" < :before', { before })
-            .groupBy('po."channelId"')
+            .andWhere('po.createdAt < :before', { before })
+            .groupBy('po.channelId')
             .getRawMany<{ cid: number | null }>();
         const channelRepo = connection.rawConnection.getRepository(Channel);
         let cancelled = 0;

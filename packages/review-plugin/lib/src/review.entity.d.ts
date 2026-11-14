@@ -27,14 +27,14 @@ export declare class Review extends VendureEntity implements ChannelAware {
      */
     giftChoice: string | null;
     /** 审核时间（approve/reject 留痕）；追评窗口以此为基准。 */
-    reviewedAt?: Date | null;
+    reviewedAt?: Date;
     /** null=未申诉；pending=待审核；approved=申诉成立（评价被隐藏）；rejected=申诉驳回 */
     appealStatus: string | null;
     appealReason: string | null;
     appealImages: string[] | null;
-    appealAt: Date | null;
+    appealAt?: Date;
     /** 审核说明（通过/驳回均留痕，同步展示给申诉人） */
     appealResult: string | null;
     appealReviewedBy: string | null;
-    appealReviewedAt: Date | null;
+    appealReviewedAt?: Date;
 }

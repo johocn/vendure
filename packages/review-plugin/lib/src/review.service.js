@@ -378,7 +378,7 @@ let ReviewService = class ReviewService {
         review.appealAt = new Date();
         review.appealResult = null;
         review.appealReviewedBy = null;
-        review.appealReviewedAt = null;
+        Object.assign(review, { appealReviewedAt: null });
         return this.connection.getRepository(ctx, review_entity_1.Review).save(review);
     }
     /** 后台申诉列表：status 为申诉状态（pending/approved/rejected），缺省列出全部有申诉记录的评价。 */
