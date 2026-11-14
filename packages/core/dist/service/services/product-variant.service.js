@@ -244,9 +244,10 @@ let ProductVariantService = class ProductVariantService {
      */
     async getProductForVariant(ctx, variant) {
         let product;
-        if (!variant.product) {
+        if (!variant.product || !variant.product.translations) {
             product = await this.connection.getEntityOrThrow(ctx, product_entity_1.Product, variant.productId, {
                 includeSoftDeleted: true,
+                relations: ['translations'],
             });
         }
         else {
