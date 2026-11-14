@@ -1,4 +1,4 @@
-import { mergeConfig, PermissionDefinition } from '@vendure/core';
+import { mergeConfig } from '@vendure/core';
 import {
     testConfig as defaultTestConfig,
     MysqlInitializer,
@@ -44,20 +44,6 @@ export const testConfig = () => {
             importAssetsDir: path.join(packageDir, 'fixtures/assets'),
         },
         dbConnectionOptions: getDbConfig(),
-        // 与生产 dev-config 对齐：店主/租户角色会分配这两个租户级权限，
-        // 未注册时 RoleService 会抛 "may not be assigned"。
-        authOptions: {
-            customPermissions: [
-                new PermissionDefinition({
-                    name: 'TenantSettingsManage',
-                    description: '管理本渠道租户配置（支付/地图/登录方式等）',
-                }),
-                new PermissionDefinition({
-                    name: 'TenantPromotionManage',
-                    description: '管理本渠道营销活动（秒杀/拼团/预售）',
-                }),
-            ],
-        },
     });
 };
 

@@ -2,7 +2,7 @@ import { Inject, Type } from '@nestjs/common';
 import { PermissionDefinition, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { SHOP_PLUGIN_OPTIONS } from './constants';
-import { manageOwnShop } from './merchant-permissions';
+import { manageOwnShop, tenantPromotionManage, tenantSettingsManage } from './merchant-permissions';
 import { MerchantResolver } from './merchant-resolver';
 import { Shop } from './shop.entity';
 import { ShopAdminResolver } from './shop-admin.resolver';
@@ -267,10 +267,10 @@ const shopSchema = () => gql`
             config.customFields.Product,
             shopCustomFields.Product,
         );
-        // 店主自营后台权限：ManageOwnShop（自定义权限，可分配到 Role）
+        // 店主自营后台权限：ManageOwnShop + 店主角色所需的两个租户级权限
         config.authOptions.customPermissions = mergeCustomPermissions(
             config.authOptions.customPermissions,
-            [manageOwnShop],
+            [manageOwnShop, tenantSettingsManage, tenantPromotionManage],
         );
         return config;
     },

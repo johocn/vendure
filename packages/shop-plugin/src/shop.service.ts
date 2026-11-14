@@ -27,7 +27,7 @@ import { Review } from '@vendure/review-plugin';
 import { In, IsNull } from 'typeorm';
 
 import { loggerCtx, SHOP_OWNER_ROLE_CODE } from './constants';
-import { manageOwnShop } from './merchant-permissions';
+import { manageOwnShop, tenantPromotionManage, tenantSettingsManage } from './merchant-permissions';
 import { Shop } from './shop.entity';
 import {
     AssignProductsInput,
@@ -318,9 +318,9 @@ export class ShopService {
             permissions: [
                 manageOwnShop.Permission,
                 Permission.ReadPromotion,
-                'TenantSettingsManage' as Permission,
+                tenantSettingsManage.Permission,
                 // B2：店主可管理本渠道营销活动（写操作另有渠道归属校验）
-                'TenantPromotionManage' as Permission,
+                tenantPromotionManage.Permission,
             ],
         });
     }
