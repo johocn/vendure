@@ -53,27 +53,38 @@ function translateEntity(translatable, languageCode) {
             const translatableFieldDefs = getTranslatableCustomFieldDefs(translatable);
             const isEmpty = (v) => v === '' || v == null;
             // 以 schema 中声明的可翻译字段为基准判断缺失：translation 里缺少该 key 时同样需要 fallback
-            const needsFallback = translatableFieldDefs.some(def => isEmpty(customFields[def.name]));
+            const needsFallback = Object.values(customFields).some(isEmpty) ||
+                translatableFieldDefs.some(def => isEmpty(customFields[def.name]));
             if (needsFallback) {
                 if (fallbackTranslations === undefined) {
                     fallbackTranslations = buildFieldFallbackChain(translatable.translations, translation, languageCode, defaultTranslation);
                 }
                 const mergedCustomFields = Object.assign({}, customFields);
+                const translationsToSearch = fallbackTranslations !== null && fallbackTranslations !== void 0 ? fallbackTranslations : [];
+                const applyFallback = (fieldName) => {
+                    for (const fallback of translationsToSearch) {
+                        const fallbackCf = fallback.customFields;
+                        if (fallbackCf && !isEmpty(fallbackCf[fieldName])) {
+                            mergedCustomFields[fieldName] = fallbackCf[fieldName];
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                // 1) schema 中声明但 translation 缺失的字段（缺少 key 时原逻辑不会触发 fallback）
                 for (const def of translatableFieldDefs) {
                     if (!isEmpty(mergedCustomFields[def.name])) {
                         continue;
                     }
-                    let resolved = false;
-                    for (const fallback of fallbackTranslations) {
-                        const fallbackCf = fallback.customFields;
-                        if (fallbackCf && !isEmpty(fallbackCf[def.name])) {
-                            mergedCustomFields[def.name] = fallbackCf[def.name];
-                            resolved = true;
-                            break;
-                        }
-                    }
+                    const resolved = applyFallback(def.name);
                     if (!resolved && def.defaultValue !== undefined) {
                         mergedCustomFields[def.name] = def.defaultValue;
+                    }
+                }
+                // 2) 已存在但值为空的字段
+                for (const [cfKey, cfValue] of Object.entries(mergedCustomFields)) {
+                    if (isEmpty(cfValue)) {
+                        applyFallback(cfKey);
                     }
                 }
                 Object.assign(translated.customFields, mergedCustomFields);
@@ -139,9 +150,15 @@ function buildFieldFallbackChain(translations, selectedTranslation, languageCode
  */
 function getTranslatableCustomFieldDefs(entity) {
     var _a;
-    const customFieldsConfig = (0, config_helpers_1.getConfig)().customFields;
-    const defs = (_a = customFieldsConfig === null || customFieldsConfig === void 0 ? void 0 : customFieldsConfig[entity.constructor.name]) !== null && _a !== void 0 ? _a : [];
-    return defs.filter(def => def.translatable === true);
+    try {
+        const customFieldsConfig = (0, config_helpers_1.getConfig)().customFields;
+        const defs = (_a = customFieldsConfig === null || customFieldsConfig === void 0 ? void 0 : customFieldsConfig[entity.constructor.name]) !== null && _a !== void 0 ? _a : [];
+        return defs.filter(def => def.translatable === true);
+    }
+    catch (e) {
+        // 单元测试等场景下配置可能尚未初始化，此时保持原有行为
+        return [];
+    }
 }
 /**
  * Translates an entity and its deeply-nested translatable properties. Supports up to 2 levels of nesting.
