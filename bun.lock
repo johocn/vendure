@@ -56,6 +56,21 @@
         "@swc/core-linux-x64-gnu": "1.4.7",
       },
     },
+    "packages/address-plugin": {
+      "name": "@vendure/address-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
     "packages/admin-ui": {
       "name": "@vendure/admin-ui",
       "version": "3.6.4",
@@ -80,7 +95,7 @@
         "@ng-select/ng-select": "^14.2.6",
         "@ngx-translate/core": "^16.0.4",
         "@ngx-translate/http-loader": "^16.0.1",
-        "@vendure/common": "3.6.3",
+        "@vendure/common": "workspace:*",
         "@webcomponents/custom-elements": "^1.6.0",
         "apollo-angular": "^10.0.3",
         "apollo-upload-client": "^18.0.1",
@@ -98,7 +113,7 @@
         "prosemirror-history": "^1.4.1",
         "prosemirror-inputrules": "^1.5.0",
         "prosemirror-keymap": "^1.2.2",
-        "prosemirror-menu": "^1.2.4",
+        "prosemirror-menu": "^1.3.2",
         "prosemirror-schema-basic": "^1.2.4",
         "prosemirror-schema-list": "^1.5.1",
         "prosemirror-state": "^1.4.3",
@@ -156,12 +171,48 @@
       "devDependencies": {
         "@types/express": "^5.0.1",
         "@types/fs-extra": "^11.0.4",
-        "@vendure/admin-ui": "3.6.3",
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/admin-ui": "workspace:*",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "express": "^5.1.0",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
+      },
+    },
+    "packages/affiliate-plugin": {
+      "name": "@vendure/affiliate-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
+    "packages/after-sales-plugin": {
+      "name": "@vendure/after-sales-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/inventory-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
       },
     },
     "packages/alipay-plugin": {
@@ -171,12 +222,13 @@
         "alipay-sdk": "^4.10.0",
       },
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
       "peerDependencies": {
+        "@vendure/cjk-plugin": "^0.0.1",
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0",
       },
@@ -195,20 +247,98 @@
         "@types/express": "^5.0.1",
         "@types/fs-extra": "^11.0.4",
         "@types/node-fetch": "^2.6.11",
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "express": "^5.1.0",
         "node-fetch": "^2.7.0",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
     },
+    "packages/bill-pay-plugin": {
+      "name": "@vendure/bill-pay-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/coupon-plugin": "workspace:*",
+        "@vendure/recharge-card-plugin": "workspace:*",
+        "@vendure/wechatpay-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/campus-delivery-plugin": {
+      "name": "@vendure/campus-delivery-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "graphql-tag": "^2.12.6",
+      },
+      "devDependencies": {
+        "rimraf": "^5",
+        "typescript": "^5",
+        "vitest": "^2",
+      },
+      "peerDependencies": {
+        "@vendure/core": "workspace:*",
+      },
+    },
+    "packages/campus-jianghu-plugin": {
+      "name": "@vendure/campus-jianghu-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "graphql-tag": "^2.12.6",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "rimraf": "^5",
+        "typescript": "^5",
+        "vitest": "^2",
+      },
+      "peerDependencies": {
+        "@vendure/core": "workspace:*",
+      },
+    },
+    "packages/checkin-plugin": {
+      "name": "@vendure/checkin-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/member-level-plugin": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/member-level-plugin": "^0.0.1",
+      },
+    },
     "packages/cjk-plugin": {
       "name": "@vendure/cjk-plugin",
       "version": "0.0.1",
+      "dependencies": {
+        "@nestjs/event-emitter": "^3.1.0",
+        "@vendure/after-sales-plugin": "workspace:*",
+        "@vendure/coupon-plugin": "workspace:*",
+        "@vendure/distribution-plugin": "workspace:*",
+        "@vendure/logistics-plugin": "workspace:*",
+      },
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -221,21 +351,22 @@
       "name": "@vendure/cjk-plugins-e2e",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/alipay-plugin": "*",
-        "@vendure/cjk-plugin": "*",
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
-        "@vendure/distribution-plugin": "*",
-        "@vendure/flash-sale-plugin": "*",
-        "@vendure/group-buy-plugin": "*",
-        "@vendure/invoice-plugin": "*",
-        "@vendure/logistics-plugin": "*",
-        "@vendure/order-timeout-plugin": "*",
-        "@vendure/oss-plugin": "*",
-        "@vendure/phone-auth-plugin": "*",
-        "@vendure/testing": "3.6.4",
-        "@vendure/wechat-auth-plugin": "*",
-        "@vendure/wechatpay-plugin": "*",
+        "@vendure/alipay-plugin": "workspace:*",
+        "@vendure/cjk-plugin": "workspace:*",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/distribution-plugin": "workspace:*",
+        "@vendure/flash-sale-plugin": "workspace:*",
+        "@vendure/group-buy-plugin": "workspace:*",
+        "@vendure/invoice-plugin": "workspace:*",
+        "@vendure/logistics-plugin": "workspace:*",
+        "@vendure/order-timeout-plugin": "workspace:*",
+        "@vendure/oss-plugin": "workspace:*",
+        "@vendure/phone-auth-plugin": "workspace:*",
+        "@vendure/tcm-clinic-plugin": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "@vendure/wechat-auth-plugin": "workspace:*",
+        "@vendure/wechatpay-plugin": "workspace:*",
         "graphql-tag": "^2.12.6",
         "unplugin-swc": "^1.4.0",
         "vitest": "^2.0.0",
@@ -249,7 +380,7 @@
       },
       "dependencies": {
         "@clack/prompts": "^0.7.0",
-        "@vendure/common": "3.6.3",
+        "@vendure/common": "workspace:*",
         "change-case": "^4.1.2",
         "commander": "^11.0.0",
         "dotenv": "^16.4.5",
@@ -261,8 +392,8 @@
         "tsconfig-paths": "^4.2.0",
       },
       "devDependencies": {
-        "@vendure/core": "3.6.3",
-        "@vendure/testing": "3.6.3",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
         "cross-env": "^7.0.3",
         "typescript": "5.8.2",
       },
@@ -273,6 +404,21 @@
       "devDependencies": {
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
+      },
+    },
+    "packages/community-plugin": {
+      "name": "@vendure/community-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
       },
     },
     "packages/core": {
@@ -288,7 +434,7 @@
         "@nestjs/platform-express": "^11.0.12",
         "@nestjs/terminus": "^11.0.0",
         "@nestjs/typeorm": "^11.0.0",
-        "@vendure/common": "3.6.4",
+        "@vendure/common": "workspace:*",
         "bcrypt": "^6.0.0",
         "body-parser": "^1.20.2",
         "cookie-session": "^2.1.0",
@@ -318,7 +464,7 @@
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.1",
         "semver": "^7.6.0",
-        "typeorm": "^0.3.21",
+        "typeorm": "^0.3.31",
       },
       "devDependencies": {
         "@nestjs/testing": "^11.0.12",
@@ -352,6 +498,29 @@
         "ioredis",
       ],
     },
+    "packages/coupon-plugin": {
+      "name": "@vendure/coupon-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/merchant-plugin": "workspace:*",
+        "@vendure/recharge-card-plugin": "workspace:*",
+        "@vendure/wechatpay-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
     "packages/create": {
       "name": "@vendure/create",
       "version": "3.6.4",
@@ -360,7 +529,7 @@
       },
       "dependencies": {
         "@clack/prompts": "^0.11.0",
-        "@vendure/common": "3.6.3",
+        "@vendure/common": "workspace:*",
         "commander": "^14.0.1",
         "cross-spawn": "^7.0.6",
         "fs-extra": "^11.2.0",
@@ -376,10 +545,21 @@
         "@types/fs-extra": "^11.0.4",
         "@types/handlebars": "^4.1.0",
         "@types/semver": "^7.5.8",
-        "@vendure/core": "3.6.3",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "ts-node": "^10.9.2",
         "typescript": "5.8.2",
+      },
+    },
+    "packages/customer-service-plugin": {
+      "name": "@vendure/customer-service-plugin",
+      "version": "1.0.0",
+      "dependencies": {
+        "@vendure/after-sales-plugin": "workspace:*",
+        "@vendure/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
       },
     },
     "packages/dashboard": {
@@ -462,8 +642,8 @@
         "@storybook/addon-vitest": "^10.3.1",
         "@storybook/react-vite": "^10.3.1",
         "@types/node": "^22.19.0",
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "@vitest/browser": "^3.2.4",
         "@vitest/coverage-v8": "^3.2.4",
         "eslint": "^9.39.0",
@@ -481,21 +661,108 @@
         "lightningcss-linux-x64-musl": "^1.29.1",
       },
     },
+    "packages/delivery-gateway-plugin": {
+      "name": "@vendure/delivery-gateway-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/delivery-plugin": {
+      "name": "@vendure/delivery-plugin",
+      "version": "1.0.0",
+      "dependencies": {
+        "@vendure/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/dev-server": {
       "name": "dev-server",
       "version": "3.6.4",
       "dependencies": {
         "@nestjs/axios": "^4.0.0",
-        "@vendure/admin-ui-plugin": "3.6.3",
-        "@vendure/asset-server-plugin": "3.6.3",
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
-        "@vendure/email-plugin": "3.6.3",
+        "@vendure/admin-ui": "3.6.4",
+        "@vendure/admin-ui-plugin": "3.6.4",
+        "@vendure/after-sales-plugin": "0.0.1",
+        "@vendure/alipay-plugin": "0.0.1",
+        "@vendure/asset-server-plugin": "3.6.4",
+        "@vendure/bill-pay-plugin": "0.0.1",
+        "@vendure/campus-delivery-plugin": "0.0.1",
+        "@vendure/campus-jianghu-plugin": "0.0.1",
+        "@vendure/checkin-plugin": "0.0.1",
+        "@vendure/cjk-plugin": "0.0.1",
+        "@vendure/common": "3.6.4",
+        "@vendure/core": "3.6.4",
+        "@vendure/coupon-plugin": "0.0.1",
+        "@vendure/customer-service-plugin": "1.0.0",
+        "@vendure/dashboard": "3.6.4",
+        "@vendure/delivery-gateway-plugin": "0.0.1",
+        "@vendure/delivery-plugin": "1.0.0",
+        "@vendure/distribution-plugin": "0.0.1",
+        "@vendure/diy-plugin": "0.0.1",
+        "@vendure/douyin-auth-plugin": "0.0.1",
+        "@vendure/eco-plugin": "0.0.1",
+        "@vendure/email-plugin": "3.6.4",
+        "@vendure/favorite-plugin": "0.0.1",
+        "@vendure/feedback-plugin": "0.0.1",
+        "@vendure/flash-sale-plugin": "0.0.1",
+        "@vendure/graphiql-plugin": "3.6.4",
+        "@vendure/group-buy-plugin": "0.0.1",
+        "@vendure/harden-plugin": "3.6.4",
+        "@vendure/installment-plugin": "0.0.1",
+        "@vendure/inventory-plugin": "1.0.0",
+        "@vendure/invoice-pdf-plugin": "1.0.0",
+        "@vendure/invoice-plugin": "0.0.1",
+        "@vendure/live-streaming-plugin": "0.0.1",
+        "@vendure/logistics-api-plugin": "1.0.0",
+        "@vendure/logistics-plugin": "0.0.1",
+        "@vendure/lottery-plugin": "0.0.1",
+        "@vendure/marketplace-plugin": "0.1.0",
+        "@vendure/meilisearch-plugin": "0.0.1",
+        "@vendure/member-level-plugin": "0.0.1",
+        "@vendure/merchant-plugin": "0.0.1",
+        "@vendure/message-plugin": "0.0.1",
+        "@vendure/notification-plugin": "0.0.1",
+        "@vendure/onebridge-plugin": "0.0.1",
+        "@vendure/operations-plugin": "1.0.0",
+        "@vendure/order-timeout-plugin": "0.0.1",
+        "@vendure/oss-plugin": "0.0.1",
+        "@vendure/payment-schedule-plugin": "0.0.1",
+        "@vendure/phone-auth-plugin": "0.0.1",
+        "@vendure/pickup-plugin": "0.0.1",
+        "@vendure/points-mall-plugin": "0.0.1",
+        "@vendure/pre-sale-plugin": "0.0.1",
+        "@vendure/product-survey-plugin": "0.0.1",
+        "@vendure/recharge-card-plugin": "0.0.1",
+        "@vendure/redis-stock-plugin": "1.0.0",
+        "@vendure/rental-plugin": "0.0.1",
+        "@vendure/review-plugin": "0.0.1",
+        "@vendure/sales-plugin": "1.0.0",
+        "@vendure/shop-plugin": "0.0.1",
+        "@vendure/shop-template-plugin": "0.0.1",
+        "@vendure/shopping-circle-plugin": "0.0.1",
+        "@vendure/tcm-clinic-plugin": "0.0.1",
+        "@vendure/telemetry-plugin": "3.6.4",
+        "@vendure/vcash-offline-plugin": "0.0.1",
+        "@vendure/vcash-pos-plugin": "0.0.1",
+        "@vendure/wechat-auth-plugin": "0.0.1",
+        "@vendure/wechat-shopping-assistant-plugin": "0.0.1",
+        "@vendure/wechat-subscribe-message-plugin": "0.0.1",
+        "@vendure/wechatpay-plugin": "0.0.1",
         "typescript": "5.8.2",
       },
       "devDependencies": {
-        "@vendure/testing": "3.6.3",
-        "@vendure/ui-devkit": "3.6.3",
+        "@vendure/testing": "3.6.4",
+        "@vendure/ui-devkit": "3.6.4",
         "commander": "^12.0.0",
         "concurrently": "^9.2.0",
         "csv-stringify": "^6.4.6",
@@ -509,14 +776,76 @@
       "name": "@vendure/distribution-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
       "peerDependencies": {
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/diy-calc": {
+      "name": "@diy/calc",
+      "version": "0.1.0",
+      "devDependencies": {
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+    },
+    "packages/diy-plugin": {
+      "name": "@vendure/diy-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@diy/calc": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/douyin-auth-plugin": {
+      "name": "@vendure/douyin-auth-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/cjk-plugin": "^0.0.1",
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/eco-plugin": {
+      "name": "@vendure/eco-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/distribution-plugin": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/distribution-plugin": "^0.0.1",
       },
     },
     "packages/email-plugin": {
@@ -527,7 +856,7 @@
         "dateformat": "^3.0.3",
         "express": "^5.1.0",
         "fs-extra": "^11.2.0",
-        "handlebars": "^4.7.8",
+        "handlebars": "^4.7.10",
         "mjml": "^4.14.1",
         "nodemailer": "^6.9.4",
       },
@@ -536,18 +865,47 @@
         "@types/express": "^5.0.1",
         "@types/fs-extra": "^11.0.4",
         "@types/mjml": "^4.7.4",
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
+      },
+    },
+    "packages/favorite-plugin": {
+      "name": "@vendure/favorite-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
+    "packages/feedback-plugin": {
+      "name": "@vendure/feedback-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
       },
     },
     "packages/flash-sale-plugin": {
       "name": "@vendure/flash-sale-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -567,8 +925,8 @@
         "@types/express": "^5.0.0",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "@vitejs/plugin-react": "^5.0.4",
         "graphiql": "^4.0.2",
         "react": "^19.0.0",
@@ -582,8 +940,8 @@
       "name": "@vendure/group-buy-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -599,11 +957,41 @@
         "graphql-query-complexity": "^0.12.0",
       },
       "devDependencies": {
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
       },
       "peerDependencies": {
         "@apollo/server": "^4.12.2",
+      },
+    },
+    "packages/installment-plugin": {
+      "name": "@vendure/installment-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/core": "^3.6.0",
+        "@vendure/testing": "^3.6.0",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^3.0.2",
+        "typescript": "5.8.2",
+        "vitest": "^3.2.4",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/inventory-plugin": {
+      "name": "@vendure/inventory-plugin",
+      "version": "1.0.0",
+      "dependencies": {
+        "@vendure/core": "^3.6.0",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+      },
+      "peerDependencies": {
+        "@vendure/shop-plugin": "^0.0.1",
       },
     },
     "packages/invoice-pdf-plugin": {
@@ -614,14 +1002,15 @@
       },
       "peerDependencies": {
         "@vendure/core": "^3.0.0",
+        "@vendure/invoice-plugin": "0.0.1",
       },
     },
     "packages/invoice-plugin": {
       "name": "@vendure/invoice-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -634,8 +1023,8 @@
       "name": "@vendure/job-queue-plugin",
       "version": "3.6.4",
       "devDependencies": {
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "bullmq": "^5.67.1",
         "ioredis": "5.9.3",
         "rimraf": "^5.0.5",
@@ -650,6 +1039,21 @@
         "ioredis",
       ],
     },
+    "packages/live-streaming-plugin": {
+      "name": "@vendure/live-streaming-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/distribution-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/core": "^3.6.0",
+      },
+    },
     "packages/logistics-api-plugin": {
       "name": "@vendure/logistics-api-plugin",
       "version": "1.0.0",
@@ -661,8 +1065,8 @@
       "name": "@vendure/logistics-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -671,12 +1075,161 @@
         "@vendure/core": "^3.6.0",
       },
     },
+    "packages/lottery-plugin": {
+      "name": "@vendure/lottery-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/member-level-plugin": "0.0.1",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/member-level-plugin": "^0.0.1",
+      },
+    },
+    "packages/marketplace-plugin": {
+      "name": "@vendure/marketplace-plugin",
+      "version": "0.1.0",
+      "dependencies": {
+        "@vendure/core": "workspace:*",
+        "@vendure/logistics-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
+    "packages/meilisearch-plugin": {
+      "name": "@vendure/meilisearch-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/member-level-plugin": {
+      "name": "@vendure/member-level-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/merchant-plugin": {
+      "name": "@vendure/merchant-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/message-plugin": {
+      "name": "@vendure/message-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/delivery-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/notification-plugin": {
+      "name": "@vendure/notification-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/coupon-plugin": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/address-plugin": "^0.0.1",
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/coupon-plugin": "^0.0.1",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
+    "packages/onebridge-plugin": {
+      "name": "@vendure/onebridge-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/operation-plugin": {
+      "name": "@vendure/operation-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/operations-plugin": {
+      "name": "@vendure/operations-plugin",
+      "version": "1.0.0",
+      "dependencies": {
+        "@vendure/core": "workspace:*",
+        "@vendure/coupon-plugin": "workspace:*",
+        "@vendure/delivery-plugin": "workspace:*",
+        "@vendure/flash-sale-plugin": "workspace:*",
+        "@vendure/group-buy-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/order-timeout-plugin": {
       "name": "@vendure/order-timeout-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -692,8 +1245,22 @@
         "ali-oss": "^6.21.0",
       },
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/payment-schedule-plugin": {
+      "name": "@vendure/payment-schedule-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -708,10 +1275,96 @@
       "dependencies": {
         "@alicloud/dysmsapi20170525": "^3.0.0",
         "@alicloud/openapi-client": "^0.4.0",
+        "ioredis": "5.11.1",
       },
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/cjk-plugin": "^0.0.1",
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/pickup-plugin": {
+      "name": "@vendure/pickup-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
+    "packages/points-mall-plugin": {
+      "name": "@vendure/points-mall-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/wechatpay-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/member-level-plugin": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/pre-sale-plugin": {
+      "name": "@vendure/pre-sale-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/product-survey-plugin": {
+      "name": "@vendure/product-survey-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/recharge-card-plugin": {
+      "name": "@vendure/recharge-card-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vendure/wechatpay-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -730,6 +1383,138 @@
         "@vendure/core": "^3.0.0",
       },
     },
+    "packages/rental-plugin": {
+      "name": "@vendure/rental-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/core": "^3.6.0",
+        "@vendure/testing": "^3.6.0",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^3.0.2",
+        "typescript": "5.8.2",
+        "vitest": "^3.2.4",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/review-plugin": {
+      "name": "@vendure/review-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/sales-plugin": {
+      "name": "@vendure/sales-plugin",
+      "version": "1.0.0",
+      "dependencies": {
+        "@vendure/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
+    "packages/settlement-plugin": {
+      "name": "@vendure/settlement-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
+    "packages/shop-plugin": {
+      "name": "@vendure/shop-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/review-plugin": "^0.0.1",
+      },
+    },
+    "packages/shop-template-plugin": {
+      "name": "@vendure/shop-template-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/shopping-circle-plugin": {
+      "name": "@vendure/shopping-circle-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/subscription-plugin": {
+      "name": "@vendure/subscription-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/settlement-plugin": "^0.0.1",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
+    "packages/tcm-clinic-plugin": {
+      "name": "@vendure/tcm-clinic-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
     "packages/telemetry-plugin": {
       "name": "@vendure/telemetry-plugin",
       "version": "3.6.4",
@@ -745,8 +1530,8 @@
         "javascript-stringify": "^2.1.0",
       },
       "devDependencies": {
-        "@vendure/common": "3.6.3",
-        "@vendure/core": "3.6.3",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "typescript": "5.8.2",
       },
     },
@@ -755,7 +1540,7 @@
       "version": "3.6.4",
       "dependencies": {
         "@graphql-typed-document-node/core": "^3.2.0",
-        "@vendure/common": "3.6.4",
+        "@vendure/common": "workspace:*",
         "faker": "^4.1.0",
         "form-data": "^4.0.0",
         "graphql": "^16.11.0",
@@ -768,7 +1553,7 @@
         "@types/mysql": "^2.15.26",
         "@types/node-fetch": "^2.6.4",
         "@types/pg": "^8.11.2",
-        "@vendure/core": "3.6.4",
+        "@vendure/core": "workspace:*",
         "mysql2": "^3.15.0",
         "pg": "^8.11.3",
         "rimraf": "^5.0.5",
@@ -783,8 +1568,8 @@
         "@angular/cli": "^19.2.5",
         "@angular/compiler": "^19.2.4",
         "@angular/compiler-cli": "^19.2.4",
-        "@vendure/admin-ui": "3.6.3",
-        "@vendure/common": "3.6.3",
+        "@vendure/admin-ui": "workspace:*",
+        "@vendure/common": "workspace:*",
         "chalk": "^4.1.0",
         "chokidar": "^3.6.0",
         "fs-extra": "^11.2.0",
@@ -795,7 +1580,7 @@
         "@rollup/plugin-node-resolve": "^15.2.3",
         "@rollup/plugin-terser": "^0.4.4",
         "@types/fs-extra": "^11.0.4",
-        "@vendure/core": "3.6.3",
+        "@vendure/core": "workspace:*",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "rimraf": "^5.0.5",
@@ -805,12 +1590,104 @@
         "typescript": "5.8.2",
       },
     },
+    "packages/vcash-offline-plugin": {
+      "name": "@vendure/vcash-offline-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@nestjs/common": "^11.0.0",
+        "@nestjs/graphql": "^13.0.0",
+        "@nestjs/typeorm": "^11.0.0",
+        "@vendure/vcash-pos-plugin": "workspace:*",
+        "graphql-tag": "2.12.6",
+        "typeorm": "^0.3.31",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/vcash-pos-plugin": {
+      "name": "@vendure/vcash-pos-plugin",
+      "version": "0.0.1",
+      "dependencies": {
+        "@nestjs/common": "^11.0.0",
+        "@nestjs/graphql": "^13.0.0",
+        "@nestjs/typeorm": "^11.0.0",
+        "graphql-tag": "2.12.6",
+        "typeorm": "^0.3.31",
+      },
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/voucher-plugin": {
+      "name": "@vendure/voucher-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/shop-plugin": "^0.0.1",
+      },
+    },
     "packages/wechat-auth-plugin": {
       "name": "@vendure/wechat-auth-plugin",
       "version": "0.0.1",
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/cjk-plugin": "^0.0.1",
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+      },
+    },
+    "packages/wechat-shopping-assistant-plugin": {
+      "name": "@vendure/wechat-shopping-assistant-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/meilisearch-plugin": "workspace:*",
+        "@vendure/wechat-auth-plugin": "workspace:*",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2",
+      },
+      "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0",
+        "@vendure/meilisearch-plugin": "^0.0.1",
+        "@vendure/wechat-auth-plugin": "^0.0.1",
+      },
+    },
+    "packages/wechat-subscribe-message-plugin": {
+      "name": "@vendure/wechat-subscribe-message-plugin",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
@@ -826,12 +1703,13 @@
         "wechatpay-node-v3": "^2.1.8",
       },
       "devDependencies": {
-        "@vendure/common": "3.6.4",
-        "@vendure/core": "3.6.4",
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2",
       },
       "peerDependencies": {
+        "@vendure/cjk-plugin": "^0.0.1",
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0",
       },
@@ -842,6 +1720,7 @@
     "better-sqlite3",
   ],
   "overrides": {
+    "@graphql-tools/stitch": "10.1.16",
     "graphql": "^16.11.0",
   },
   "packages": {
@@ -1359,6 +2238,8 @@
 
     "@discoveryjs/json-ext": ["@discoveryjs/json-ext@0.6.3", "https://registry.npmmirror.com/@discoveryjs/json-ext/-/json-ext-0.6.3.tgz", {}, "sha512-4B4OijXeVNOPZlYA2oEwWOTkzyltLao+xbotHQeqN++Rv27Y6s818+n2Qkp8q+Fxhn0t/5lA5X1Mxktud8eayQ=="],
 
+    "@diy/calc": ["@diy/calc@workspace:packages/diy-calc"],
+
     "@dnd-kit/accessibility": ["@dnd-kit/accessibility@3.1.1", "https://registry.npmmirror.com/@dnd-kit/accessibility/-/accessibility-3.1.1.tgz", { "dependencies": { "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0" } }, "sha512-2P+YgaXF+gRsIihwwY1gCsQSYnu9Zyj2py8kY5fFvUM1qm2WA2u639R6YNVfU4GWr+ZM5mqEsfHZZLoRONbemw=="],
 
     "@dnd-kit/core": ["@dnd-kit/core@6.3.1", "https://registry.npmmirror.com/@dnd-kit/core/-/core-6.3.1.tgz", { "dependencies": { "@dnd-kit/accessibility": "^3.1.1", "@dnd-kit/utilities": "^3.2.2", "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-xkGBRQQab4RLwgXxoqETICr6S5JlogafbhNsidmrkVv2YRs5MLwpjoF2qpiGjQt8S9AoxtIV603s0GIUpY5eYQ=="],
@@ -1687,7 +2568,7 @@
 
     "@inquirer/type": ["@inquirer/type@3.0.10", "https://registry.npmmirror.com/@inquirer/type/-/type-3.0.10.tgz", { "peerDependencies": { "@types/node": ">=18" } }, "sha512-BvziSRxfz5Ov8ch0z/n3oijRSEcEsHnhggm4xFZe93DHcUCTlutlq9Ox4SVENAfcRD22UQq7T/atg9Wr3k09eA=="],
 
-    "@ioredis/commands": ["@ioredis/commands@1.5.0", "https://registry.npmmirror.com/@ioredis/commands/-/commands-1.5.0.tgz", {}, "sha512-eUgLqrMf8nJkZxT24JvVRrQya1vZkQh8BBeYNwGDqa5I0VUi8ACx7uFvAaLxintokpTenkK6DASvo/bvNbBGow=="],
+    "@ioredis/commands": ["@ioredis/commands@1.10.0", "https://registry.npmmirror.com/@ioredis/commands/-/commands-1.10.0.tgz", {}, "sha512-UmeW7z4LfctwoQ5wkhVzgq8tXkreED2xZGpX+Bg+zA+WJFZCT6c062AfCK/Dfk81xZnnwdhJCUMkitihRaoC2Q=="],
 
     "@isaacs/balanced-match": ["@isaacs/balanced-match@4.0.1", "https://registry.npmmirror.com/@isaacs/balanced-match/-/balanced-match-4.0.1.tgz", {}, "sha512-yzMTt9lEb8Gv7zRioUilSglI0c0smZ9k5D65677DLWLtWJaXIS3CqcGyUFByYKlnUj6TkjLVs54fBl6+TiGQDQ=="],
 
@@ -1870,6 +2751,8 @@
     "@nestjs/common": ["@nestjs/common@11.1.11", "https://registry.npmmirror.com/@nestjs/common/-/common-11.1.11.tgz", { "dependencies": { "file-type": "21.2.0", "iterare": "1.2.1", "load-esm": "1.0.3", "tslib": "2.8.1", "uid": "2.0.2" }, "peerDependencies": { "class-transformer": ">=0.4.1", "class-validator": ">=0.13.2", "reflect-metadata": "^0.1.12 || ^0.2.0", "rxjs": "^7.1.0" }, "optionalPeers": ["class-transformer", "class-validator"] }, "sha512-R/+A8XFqLgN8zNs2twhrOaE7dJbRQhdPX3g46am4RT/x8xGLqDphrXkUIno4cGUZHxbczChBAaAPTdPv73wDZA=="],
 
     "@nestjs/core": ["@nestjs/core@11.1.11", "https://registry.npmmirror.com/@nestjs/core/-/core-11.1.11.tgz", { "dependencies": { "@nuxt/opencollective": "0.4.1", "fast-safe-stringify": "2.1.1", "iterare": "1.2.1", "path-to-regexp": "8.3.0", "tslib": "2.8.1", "uid": "2.0.2" }, "peerDependencies": { "@nestjs/common": "^11.0.0", "@nestjs/microservices": "^11.0.0", "@nestjs/platform-express": "^11.0.0", "@nestjs/websockets": "^11.0.0", "reflect-metadata": "^0.1.12 || ^0.2.0", "rxjs": "^7.1.0" }, "optionalPeers": ["@nestjs/microservices", "@nestjs/websockets"] }, "sha512-H9i+zT3RvHi7tDc+lCmWHJ3ustXveABCr+Vcpl96dNOxgmrx4elQSTC4W93Mlav2opfLV+p0UTHY6L+bpUA4zA=="],
+
+    "@nestjs/event-emitter": ["@nestjs/event-emitter@3.1.0", "https://registry.npmmirror.com/@nestjs/event-emitter/-/event-emitter-3.1.0.tgz", { "dependencies": { "eventemitter2": "6.4.9" }, "peerDependencies": { "@nestjs/common": "^10.0.0 || ^11.0.0", "@nestjs/core": "^10.0.0 || ^11.0.0" } }, "sha512-DOY/4XBGyIjYyOJKkO6jl1kzFE0ZfX0wV+M2HR5NWymPT9Z0zdCEcZGxTXXkoMRwPtglnvCGJALSjOpXPIcM3g=="],
 
     "@nestjs/graphql": ["@nestjs/graphql@13.1.0", "https://registry.npmmirror.com/@nestjs/graphql/-/graphql-13.1.0.tgz", { "dependencies": { "@graphql-tools/merge": "9.0.24", "@graphql-tools/schema": "10.0.23", "@graphql-tools/utils": "10.8.6", "@nestjs/mapped-types": "2.1.0", "chokidar": "4.0.3", "fast-glob": "3.3.3", "graphql-tag": "2.12.6", "graphql-ws": "6.0.4", "lodash": "4.17.21", "normalize-path": "3.0.0", "subscriptions-transport-ws": "0.11.0", "tslib": "2.8.1", "ws": "8.18.1" }, "peerDependencies": { "@apollo/subgraph": "^2.9.3", "@nestjs/common": "^11.0.1", "@nestjs/core": "^11.0.1", "class-transformer": "*", "class-validator": "*", "graphql": "^16.10.0", "reflect-metadata": "^0.1.13 || ^0.2.0", "ts-morph": "^20.0.0 || ^21.0.0 || ^24.0.0 || ^25.0.0" }, "optionalPeers": ["@apollo/subgraph", "class-transformer", "class-validator"] }, "sha512-frjUJOPJNEZVqiFynhDs/+rEor3ySAj4pITTa/szAWRfdPhAxIJzOtZnn+eCLubr4lymlK/q71azFwTFyeVShg=="],
 
@@ -2965,13 +3848,27 @@
 
     "@vendure-io/ui": ["@vendure-io/ui@1.1.0", "https://registry.npmmirror.com/@vendure-io/ui/-/ui-1.1.0.tgz", { "dependencies": { "@base-ui/react": "^1.2.0", "@vendure-io/design-tokens": "^1.1.2", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cmdk": "^1.1.1", "date-fns": "^4.1.0", "embla-carousel-react": "^8.6.0", "input-otp": "^1.4.2", "lucide-react": "^0.575.0", "motion": "^12.23.13", "react-day-picker": "^9.14.0", "react-resizable-panels": "^4.7.0", "recharts": "2.15.4", "sonner": "^2.0.7", "tailwind-merge": "^3.5.0", "vaul": "^1.1.2" }, "peerDependencies": { "next": ">=14", "next-themes": "^0.4.6", "react": ">=19", "react-dom": ">=19", "react-hook-form": ">=7" }, "optionalPeers": ["next", "next-themes", "react-hook-form"] }, "sha512-AIemgiSrSX7Vph+DfwO12wF58GTzwx1A/KmHLMv4U9q222VpCXWPA9bdrXG1qmJtSdazi56LiboSDAMNBQOWJA=="],
 
+    "@vendure/address-plugin": ["@vendure/address-plugin@workspace:packages/address-plugin"],
+
     "@vendure/admin-ui": ["@vendure/admin-ui@workspace:packages/admin-ui"],
 
     "@vendure/admin-ui-plugin": ["@vendure/admin-ui-plugin@workspace:packages/admin-ui-plugin"],
 
+    "@vendure/affiliate-plugin": ["@vendure/affiliate-plugin@workspace:packages/affiliate-plugin"],
+
+    "@vendure/after-sales-plugin": ["@vendure/after-sales-plugin@workspace:packages/after-sales-plugin"],
+
     "@vendure/alipay-plugin": ["@vendure/alipay-plugin@workspace:packages/alipay-plugin"],
 
     "@vendure/asset-server-plugin": ["@vendure/asset-server-plugin@workspace:packages/asset-server-plugin"],
+
+    "@vendure/bill-pay-plugin": ["@vendure/bill-pay-plugin@workspace:packages/bill-pay-plugin"],
+
+    "@vendure/campus-delivery-plugin": ["@vendure/campus-delivery-plugin@workspace:packages/campus-delivery-plugin"],
+
+    "@vendure/campus-jianghu-plugin": ["@vendure/campus-jianghu-plugin@workspace:packages/campus-jianghu-plugin"],
+
+    "@vendure/checkin-plugin": ["@vendure/checkin-plugin@workspace:packages/checkin-plugin"],
 
     "@vendure/cjk-plugin": ["@vendure/cjk-plugin@workspace:packages/cjk-plugin"],
 
@@ -2981,15 +3878,35 @@
 
     "@vendure/common": ["@vendure/common@workspace:packages/common"],
 
+    "@vendure/community-plugin": ["@vendure/community-plugin@workspace:packages/community-plugin"],
+
     "@vendure/core": ["@vendure/core@workspace:packages/core"],
+
+    "@vendure/coupon-plugin": ["@vendure/coupon-plugin@workspace:packages/coupon-plugin"],
 
     "@vendure/create": ["@vendure/create@workspace:packages/create"],
 
+    "@vendure/customer-service-plugin": ["@vendure/customer-service-plugin@workspace:packages/customer-service-plugin"],
+
     "@vendure/dashboard": ["@vendure/dashboard@workspace:packages/dashboard"],
+
+    "@vendure/delivery-gateway-plugin": ["@vendure/delivery-gateway-plugin@workspace:packages/delivery-gateway-plugin"],
+
+    "@vendure/delivery-plugin": ["@vendure/delivery-plugin@workspace:packages/delivery-plugin"],
 
     "@vendure/distribution-plugin": ["@vendure/distribution-plugin@workspace:packages/distribution-plugin"],
 
+    "@vendure/diy-plugin": ["@vendure/diy-plugin@workspace:packages/diy-plugin"],
+
+    "@vendure/douyin-auth-plugin": ["@vendure/douyin-auth-plugin@workspace:packages/douyin-auth-plugin"],
+
+    "@vendure/eco-plugin": ["@vendure/eco-plugin@workspace:packages/eco-plugin"],
+
     "@vendure/email-plugin": ["@vendure/email-plugin@workspace:packages/email-plugin"],
+
+    "@vendure/favorite-plugin": ["@vendure/favorite-plugin@workspace:packages/favorite-plugin"],
+
+    "@vendure/feedback-plugin": ["@vendure/feedback-plugin@workspace:packages/feedback-plugin"],
 
     "@vendure/flash-sale-plugin": ["@vendure/flash-sale-plugin@workspace:packages/flash-sale-plugin"],
 
@@ -2999,25 +3916,81 @@
 
     "@vendure/harden-plugin": ["@vendure/harden-plugin@workspace:packages/harden-plugin"],
 
+    "@vendure/installment-plugin": ["@vendure/installment-plugin@workspace:packages/installment-plugin"],
+
+    "@vendure/inventory-plugin": ["@vendure/inventory-plugin@workspace:packages/inventory-plugin"],
+
     "@vendure/invoice-pdf-plugin": ["@vendure/invoice-pdf-plugin@workspace:packages/invoice-pdf-plugin"],
 
     "@vendure/invoice-plugin": ["@vendure/invoice-plugin@workspace:packages/invoice-plugin"],
 
     "@vendure/job-queue-plugin": ["@vendure/job-queue-plugin@workspace:packages/job-queue-plugin"],
 
+    "@vendure/live-streaming-plugin": ["@vendure/live-streaming-plugin@workspace:packages/live-streaming-plugin"],
+
     "@vendure/logistics-api-plugin": ["@vendure/logistics-api-plugin@workspace:packages/logistics-api-plugin"],
 
     "@vendure/logistics-plugin": ["@vendure/logistics-plugin@workspace:packages/logistics-plugin"],
 
+    "@vendure/lottery-plugin": ["@vendure/lottery-plugin@workspace:packages/lottery-plugin"],
+
+    "@vendure/marketplace-plugin": ["@vendure/marketplace-plugin@workspace:packages/marketplace-plugin"],
+
+    "@vendure/meilisearch-plugin": ["@vendure/meilisearch-plugin@workspace:packages/meilisearch-plugin"],
+
+    "@vendure/member-level-plugin": ["@vendure/member-level-plugin@workspace:packages/member-level-plugin"],
+
+    "@vendure/merchant-plugin": ["@vendure/merchant-plugin@workspace:packages/merchant-plugin"],
+
+    "@vendure/message-plugin": ["@vendure/message-plugin@workspace:packages/message-plugin"],
+
     "@vendure/ngx-translate-extract": ["@vendure/ngx-translate-extract@9.4.2", "https://registry.npmmirror.com/@vendure/ngx-translate-extract/-/ngx-translate-extract-9.4.2.tgz", { "dependencies": { "@phenomnomnominal/tsquery": "^6.1.3", "braces": "^3.0.3", "colorette": "^2.0.20", "flat": "^6.0.1", "gettext-parser": "^4.2.0", "glob": "^10.4.5", "json5": "^2.2.3", "tsconfig": "^7.0.0", "yargs": "^17.7.2" }, "peerDependencies": { "@angular/compiler": ">=17.0.0", "typescript": ">=5.2.0" }, "bin": { "ngx-translate-extract": "bin/cli.js" } }, "sha512-J7ZUv2hba3TQDoQLbKCf/hU8ILD1yKc09a/WYHYtN/xNTbLYzGv1XaSFmgPCviXBBXQX5ChTU0IXRrHsZBB3qg=="],
+
+    "@vendure/notification-plugin": ["@vendure/notification-plugin@workspace:packages/notification-plugin"],
+
+    "@vendure/onebridge-plugin": ["@vendure/onebridge-plugin@workspace:packages/onebridge-plugin"],
+
+    "@vendure/operation-plugin": ["@vendure/operation-plugin@workspace:packages/operation-plugin"],
+
+    "@vendure/operations-plugin": ["@vendure/operations-plugin@workspace:packages/operations-plugin"],
 
     "@vendure/order-timeout-plugin": ["@vendure/order-timeout-plugin@workspace:packages/order-timeout-plugin"],
 
     "@vendure/oss-plugin": ["@vendure/oss-plugin@workspace:packages/oss-plugin"],
 
+    "@vendure/payment-schedule-plugin": ["@vendure/payment-schedule-plugin@workspace:packages/payment-schedule-plugin"],
+
     "@vendure/phone-auth-plugin": ["@vendure/phone-auth-plugin@workspace:packages/phone-auth-plugin"],
 
+    "@vendure/pickup-plugin": ["@vendure/pickup-plugin@workspace:packages/pickup-plugin"],
+
+    "@vendure/points-mall-plugin": ["@vendure/points-mall-plugin@workspace:packages/points-mall-plugin"],
+
+    "@vendure/pre-sale-plugin": ["@vendure/pre-sale-plugin@workspace:packages/pre-sale-plugin"],
+
+    "@vendure/product-survey-plugin": ["@vendure/product-survey-plugin@workspace:packages/product-survey-plugin"],
+
+    "@vendure/recharge-card-plugin": ["@vendure/recharge-card-plugin@workspace:packages/recharge-card-plugin"],
+
     "@vendure/redis-stock-plugin": ["@vendure/redis-stock-plugin@workspace:packages/redis-stock-plugin"],
+
+    "@vendure/rental-plugin": ["@vendure/rental-plugin@workspace:packages/rental-plugin"],
+
+    "@vendure/review-plugin": ["@vendure/review-plugin@workspace:packages/review-plugin"],
+
+    "@vendure/sales-plugin": ["@vendure/sales-plugin@workspace:packages/sales-plugin"],
+
+    "@vendure/settlement-plugin": ["@vendure/settlement-plugin@workspace:packages/settlement-plugin"],
+
+    "@vendure/shop-plugin": ["@vendure/shop-plugin@workspace:packages/shop-plugin"],
+
+    "@vendure/shop-template-plugin": ["@vendure/shop-template-plugin@workspace:packages/shop-template-plugin"],
+
+    "@vendure/shopping-circle-plugin": ["@vendure/shopping-circle-plugin@workspace:packages/shopping-circle-plugin"],
+
+    "@vendure/subscription-plugin": ["@vendure/subscription-plugin@workspace:packages/subscription-plugin"],
+
+    "@vendure/tcm-clinic-plugin": ["@vendure/tcm-clinic-plugin@workspace:packages/tcm-clinic-plugin"],
 
     "@vendure/telemetry-plugin": ["@vendure/telemetry-plugin@workspace:packages/telemetry-plugin"],
 
@@ -3025,7 +3998,17 @@
 
     "@vendure/ui-devkit": ["@vendure/ui-devkit@workspace:packages/ui-devkit"],
 
+    "@vendure/vcash-offline-plugin": ["@vendure/vcash-offline-plugin@workspace:packages/vcash-offline-plugin"],
+
+    "@vendure/vcash-pos-plugin": ["@vendure/vcash-pos-plugin@workspace:packages/vcash-pos-plugin"],
+
+    "@vendure/voucher-plugin": ["@vendure/voucher-plugin@workspace:packages/voucher-plugin"],
+
     "@vendure/wechat-auth-plugin": ["@vendure/wechat-auth-plugin@workspace:packages/wechat-auth-plugin"],
+
+    "@vendure/wechat-shopping-assistant-plugin": ["@vendure/wechat-shopping-assistant-plugin@workspace:packages/wechat-shopping-assistant-plugin"],
+
+    "@vendure/wechat-subscribe-message-plugin": ["@vendure/wechat-subscribe-message-plugin@workspace:packages/wechat-subscribe-message-plugin"],
 
     "@vendure/wechatpay-plugin": ["@vendure/wechatpay-plugin@workspace:packages/wechatpay-plugin"],
 
@@ -3181,7 +4164,7 @@
 
     "ansi-styles": ["ansi-styles@4.3.0", "https://registry.npmmirror.com/ansi-styles/-/ansi-styles-4.3.0.tgz", { "dependencies": { "color-convert": "^2.0.1" } }, "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg=="],
 
-    "ansis": ["ansis@4.2.0", "https://registry.npmmirror.com/ansis/-/ansis-4.2.0.tgz", {}, "sha512-HqZ5rWlFjGiV0tDm3UxxgNRqsOTniqoKZu0pIAfh7TZQMGuZK+hH0drySty0si0QXj1ieop4+SkSfPZBPPkHig=="],
+    "ansis": ["ansis@4.5.0", "https://registry.npmmirror.com/ansis/-/ansis-4.5.0.tgz", {}, "sha512-KwIVkfFfJSSzBmZhDGuTmkhWqTdyB5oNVzzznBJbBZ5bZtHiqSrcugRF0RKJKT4Ss3d7ZrcjnlFVDlQNmtWfWw=="],
 
     "any-promise": ["any-promise@1.3.0", "https://registry.npmmirror.com/any-promise/-/any-promise-1.3.0.tgz", {}, "sha512-7UvmKalWRt1wgjL1RrGxoSJW/0QZFIegpeGvZG9kjp8vrRu55XTHbwnqq2GpXm9uLbcuhxm3IqX9OB4MZR1b2A=="],
 
@@ -3429,7 +4412,7 @@
 
     "clsx": ["clsx@2.1.1", "https://registry.npmmirror.com/clsx/-/clsx-2.1.1.tgz", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
-    "cluster-key-slot": ["cluster-key-slot@1.1.2", "https://registry.npmmirror.com/cluster-key-slot/-/cluster-key-slot-1.1.2.tgz", {}, "sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA=="],
+    "cluster-key-slot": ["cluster-key-slot@1.1.1", "https://registry.npmmirror.com/cluster-key-slot/-/cluster-key-slot-1.1.1.tgz", {}, "sha512-rwHwUfXL40Chm1r08yrhU3qpUvdVlgkKNeyeGPOxnW8/SyVDvgRaed/Uz54AqWNaTCAThlj6QAs3TZcKI0xDEw=="],
 
     "cmd-shim": ["cmd-shim@6.0.3", "https://registry.npmmirror.com/cmd-shim/-/cmd-shim-6.0.3.tgz", {}, "sha512-FMabTRlc5t5zjdenF6mS0MBeFZm0XqHqeOkcskKFb/LYCcRQ5fVgLOHVc4Lq9CqABd9zhjwPjMBCJvMCziSVtA=="],
 
@@ -3641,7 +4624,7 @@
 
     "dateformat": ["dateformat@3.0.3", "https://registry.npmmirror.com/dateformat/-/dateformat-3.0.3.tgz", {}, "sha512-jyCETtSl3VMZMWeRo7iY1FL19ges1t55hMo5yaam4Jrsm5EPL89UQkoQRyiI+Yf4k8r2ZpdngkV8hr1lIdjb3Q=="],
 
-    "dayjs": ["dayjs@1.11.19", "https://registry.npmmirror.com/dayjs/-/dayjs-1.11.19.tgz", {}, "sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw=="],
+    "dayjs": ["dayjs@1.11.23", "https://registry.npmmirror.com/dayjs/-/dayjs-1.11.23.tgz", {}, "sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ=="],
 
     "de-indent": ["de-indent@1.0.2", "https://registry.npmmirror.com/de-indent/-/de-indent-1.0.2.tgz", {}, "sha512-e/1zu3xH5MQryN2zdVaF0OrdNLUbvWxzMbi+iNA6Bky7l1RoP8a2fIbRocyHclXt/arDrrR6lL3TqFD9pMQTsg=="],
 
@@ -3884,6 +4867,8 @@
     "esutils": ["esutils@2.0.3", "https://registry.npmmirror.com/esutils/-/esutils-2.0.3.tgz", {}, "sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g=="],
 
     "etag": ["etag@1.8.1", "https://registry.npmmirror.com/etag/-/etag-1.8.1.tgz", {}, "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg=="],
+
+    "eventemitter2": ["eventemitter2@6.4.9", "https://registry.npmmirror.com/eventemitter2/-/eventemitter2-6.4.9.tgz", {}, "sha512-JEPTiaOt9f04oa6NOkc4aH+nVp5I3wEjpHbIPqfgCdD5v5bUzy7xQqwcVO2aDQgOWhI28da57HksMrzK9HlRxg=="],
 
     "eventemitter3": ["eventemitter3@4.0.7", "https://registry.npmmirror.com/eventemitter3/-/eventemitter3-4.0.7.tgz", {}, "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw=="],
 
@@ -4259,7 +5244,7 @@
 
     "invariant": ["invariant@2.2.4", "https://registry.npmmirror.com/invariant/-/invariant-2.2.4.tgz", { "dependencies": { "loose-envify": "^1.0.0" } }, "sha512-phJfQVBuaJM5raOpJjSfkiD6BpbCE4Ns//LaXl6wGYtUBY83nWS6Rf9tXm2e8VaK60JEjYldbPif/A2B1C2gNA=="],
 
-    "ioredis": ["ioredis@5.9.3", "https://registry.npmmirror.com/ioredis/-/ioredis-5.9.3.tgz", { "dependencies": { "@ioredis/commands": "1.5.0", "cluster-key-slot": "^1.1.0", "debug": "^4.3.4", "denque": "^2.1.0", "lodash.defaults": "^4.2.0", "lodash.isarguments": "^3.1.0", "redis-errors": "^1.2.0", "redis-parser": "^3.0.0", "standard-as-callback": "^2.1.0" } }, "sha512-VI5tMCdeoxZWU5vjHWsiE/Su76JGhBvWF1MJnV9ZtGltHk9BmD48oDq8Tj8haZ85aceXZMxLNDQZRVo5QKNgXA=="],
+    "ioredis": ["ioredis@5.11.1", "https://registry.npmmirror.com/ioredis/-/ioredis-5.11.1.tgz", { "dependencies": { "@ioredis/commands": "1.10.0", "cluster-key-slot": "1.1.1", "debug": "4.4.3", "denque": "2.1.0", "redis-errors": "1.2.0", "redis-parser": "3.0.0", "standard-as-callback": "2.1.0" } }, "sha512-ehuGcf94bQXhfagULNXrJdfnWO38v070jxSx/qE87Kjzmu2fU7ro5EFAb+OPituLqgfyuQaym5DlrNydW2sJ9A=="],
 
     "ip-address": ["ip-address@10.1.0", "https://registry.npmmirror.com/ip-address/-/ip-address-10.1.0.tgz", {}, "sha512-XXADHxXmvT9+CRxhXg56LJovE+bmWnEWB78LB83VZTprKTmaC5QfruXocxzTZ2Kl0DNwKuBdlIhjL8LeY8Sf8Q=="],
 
@@ -5239,7 +6224,7 @@
 
     "prosemirror-markdown": ["prosemirror-markdown@1.13.2", "https://registry.npmmirror.com/prosemirror-markdown/-/prosemirror-markdown-1.13.2.tgz", { "dependencies": { "@types/markdown-it": "^14.0.0", "markdown-it": "^14.0.0", "prosemirror-model": "^1.25.0" } }, "sha512-FPD9rHPdA9fqzNmIIDhhnYQ6WgNoSWX9StUZ8LEKapaXU9i6XgykaHKhp6XMyXlOWetmaFgGDS/nu/w9/vUc5g=="],
 
-    "prosemirror-menu": ["prosemirror-menu@1.2.5", "https://registry.npmmirror.com/prosemirror-menu/-/prosemirror-menu-1.2.5.tgz", { "dependencies": { "crelt": "^1.0.0", "prosemirror-commands": "^1.0.0", "prosemirror-history": "^1.0.0", "prosemirror-state": "^1.0.0" } }, "sha512-qwXzynnpBIeg1D7BAtjOusR+81xCp53j7iWu/IargiRZqRjGIlQuu1f3jFi+ehrHhWMLoyOQTSRx/IWZJqOYtQ=="],
+    "prosemirror-menu": ["prosemirror-menu@1.3.2", "https://registry.npmmirror.com/prosemirror-menu/-/prosemirror-menu-1.3.2.tgz", { "dependencies": { "crelt": "^1.0.0", "prosemirror-commands": "^1.0.0", "prosemirror-history": "^1.0.0", "prosemirror-state": "^1.0.0" } }, "sha512-6VgUJTYod0nMBlCaYJGhXGLu7Gt4AvcwcOq0YfJCY/6Uh+3S7UsWhpy6rJFCBFOmonq1hD8KyWOtZhkppd4YPg=="],
 
     "prosemirror-model": ["prosemirror-model@1.25.4", "https://registry.npmmirror.com/prosemirror-model/-/prosemirror-model-1.25.4.tgz", { "dependencies": { "orderedmap": "^2.0.0" } }, "sha512-PIM7E43PBxKce8OQeezAs9j4TP+5yDpZVbuurd1h5phUxEKIu+G2a+EUZzIC5nS1mJktDJWzbqS23n1tsAf5QA=="],
 
@@ -5853,7 +6838,7 @@
 
     "typedarray": ["typedarray@0.0.6", "https://registry.npmmirror.com/typedarray/-/typedarray-0.0.6.tgz", {}, "sha512-/aCDEGatGvZ2BIk+HmLf4ifCJFwvKFNb9/JeZPMulfgFracn9QFcAf5GO8B/mweUjSoblS5In0cWhqpfs/5PQA=="],
 
-    "typeorm": ["typeorm@0.3.28", "https://registry.npmmirror.com/typeorm/-/typeorm-0.3.28.tgz", { "dependencies": { "@sqltools/formatter": "^1.2.5", "ansis": "^4.2.0", "app-root-path": "^3.1.0", "buffer": "^6.0.3", "dayjs": "^1.11.19", "debug": "^4.4.3", "dedent": "^1.7.0", "dotenv": "^16.6.1", "glob": "^10.5.0", "reflect-metadata": "^0.2.2", "sha.js": "^2.4.12", "sql-highlight": "^6.1.0", "tslib": "^2.8.1", "uuid": "^11.1.0", "yargs": "^17.7.2" }, "peerDependencies": { "@google-cloud/spanner": "^5.18.0 || ^6.0.0 || ^7.0.0 || ^8.0.0", "@sap/hana-client": "^2.14.22", "better-sqlite3": "^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0", "ioredis": "^5.0.4", "mongodb": "^5.8.0 || ^6.0.0", "mssql": "^9.1.1 || ^10.0.0 || ^11.0.0 || ^12.0.0", "mysql2": "^2.2.5 || ^3.0.1", "oracledb": "^6.3.0", "pg": "^8.5.1", "pg-native": "^3.0.0", "pg-query-stream": "^4.0.0", "redis": "^3.1.1 || ^4.0.0 || ^5.0.14", "sql.js": "^1.4.0", "sqlite3": "^5.0.3", "ts-node": "^10.7.0", "typeorm-aurora-data-api-driver": "^2.0.0 || ^3.0.0" }, "optionalPeers": ["@google-cloud/spanner", "@sap/hana-client", "better-sqlite3", "mongodb", "mssql", "oracledb", "pg-native", "pg-query-stream", "redis", "sqlite3", "typeorm-aurora-data-api-driver"], "bin": { "typeorm": "cli.js", "typeorm-ts-node-commonjs": "cli-ts-node-commonjs.js", "typeorm-ts-node-esm": "cli-ts-node-esm.js" } }, "sha512-6GH7wXhtfq2D33ZuRXYwIsl/qM5685WZcODZb7noOOcRMteM9KF2x2ap3H0EBjnSV0VO4gNAfJT5Ukp0PkOlvg=="],
+    "typeorm": ["typeorm@0.3.31", "https://registry.npmmirror.com/typeorm/-/typeorm-0.3.31.tgz", { "dependencies": { "@sqltools/formatter": "^1.2.5", "ansis": "^4.3.1", "app-root-path": "^3.1.0", "buffer": "^6.0.3", "dayjs": "^1.11.21", "debug": "^4.4.3", "dedent": "^1.7.2", "dotenv": "^16.6.1", "glob": "^10.5.0", "reflect-metadata": "^0.2.2", "sha.js": "^2.4.12", "sql-highlight": "^6.1.0", "tslib": "^2.8.1", "uuid": "^11.1.1", "yargs": "^17.7.3" }, "peerDependencies": { "@google-cloud/spanner": "^5.18.0 || ^6.0.0 || ^7.0.0 || ^8.0.0", "@sap/hana-client": "^2.14.22", "better-sqlite3": "^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0", "ioredis": "^5.0.4", "mongodb": "^5.8.0 || ^6.0.0", "mssql": "^9.1.1 || ^10.0.0 || ^11.0.0 || ^12.0.0", "mysql2": "^2.2.5 || ^3.0.1", "oracledb": "^6.3.0 || ^7.0.0", "pg": "^8.5.1", "pg-native": "^3.0.0", "pg-query-stream": "^4.0.0", "redis": "^3.1.1 || ^4.0.0 || ^5.0.14", "sql.js": "^1.4.0", "sqlite3": "^5.0.3 || ^6.0.0", "ts-node": "^10.7.0", "typeorm-aurora-data-api-driver": "^2.0.0 || ^3.0.0" }, "optionalPeers": ["@google-cloud/spanner", "@sap/hana-client", "better-sqlite3", "ioredis", "mongodb", "mssql", "mysql2", "oracledb", "pg", "pg-native", "pg-query-stream", "redis", "sql.js", "sqlite3", "ts-node", "typeorm-aurora-data-api-driver"], "bin": { "typeorm": "cli.js", "typeorm-ts-node-commonjs": "cli-ts-node-commonjs.js", "typeorm-ts-node-esm": "cli-ts-node-esm.js" } }, "sha512-6u9EFtdLBgHjnPm78NStVeM+I/1MolTzKykDDcydzKUkh6E++YS6XViU/fePJbvDvEGU4Xq34KOM/CLeer9I2A=="],
 
     "typescript": ["typescript@5.8.2", "https://registry.npmmirror.com/typescript/-/typescript-5.8.2.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
 
@@ -6182,6 +7167,8 @@
     "@angular/compiler-cli/chokidar": ["chokidar@4.0.3", "https://registry.npmmirror.com/chokidar/-/chokidar-4.0.3.tgz", { "dependencies": { "readdirp": "^4.0.1" } }, "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA=="],
 
     "@angular/compiler-cli/semver": ["semver@7.7.1", "https://registry.npmmirror.com/semver/-/semver-7.7.1.tgz", { "bin": "bin/semver.js" }, "sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA=="],
+
+    "@antfu/ni/ansis": ["ansis@4.2.0", "https://registry.npmmirror.com/ansis/-/ansis-4.2.0.tgz", {}, "sha512-HqZ5rWlFjGiV0tDm3UxxgNRqsOTniqoKZu0pIAfh7TZQMGuZK+hH0drySty0si0QXj1ieop4+SkSfPZBPPkHig=="],
 
     "@apollo/protobufjs/long": ["long@4.0.0", "https://registry.npmmirror.com/long/-/long-4.0.0.tgz", {}, "sha512-XsP+KhQif4bjX1kbuSiySJFNAehNxgLb6hPRGJ9QsUr8ajHkuXGdrHmFUTUUXhDwVX2R5bY4JNZEwbUiMhV+MA=="],
 
@@ -6617,6 +7604,8 @@
 
     "@tanstack/router-utils/@babel/generator": ["@babel/generator@7.29.1", "https://registry.npmmirror.com/@babel/generator/-/generator-7.29.1.tgz", { "dependencies": { "@babel/parser": "^7.29.0", "@babel/types": "^7.29.0", "@jridgewell/gen-mapping": "^0.3.12", "@jridgewell/trace-mapping": "^0.3.28", "jsesc": "^3.0.2" } }, "sha512-qsaF+9Qcm2Qv8SRIMMscAvG4O3lJ0F1GuMo5HR/Bp02LopNgnZBC/EkbevHFeGs4ls/oPz9v+Bsmzbkbe+0dUw=="],
 
+    "@tanstack/router-utils/ansis": ["ansis@4.2.0", "https://registry.npmmirror.com/ansis/-/ansis-4.2.0.tgz", {}, "sha512-HqZ5rWlFjGiV0tDm3UxxgNRqsOTniqoKZu0pIAfh7TZQMGuZK+hH0drySty0si0QXj1ieop4+SkSfPZBPPkHig=="],
+
     "@tanstack/router-utils/diff": ["diff@8.0.2", "https://registry.npmmirror.com/diff/-/diff-8.0.2.tgz", {}, "sha512-sSuxWU5j5SR9QQji/o2qMvqRNYRDOcBTgsJ/DeCf4iSN4gW+gNMXM7wFIP+fdXZxoNiAnHUTGjCr+TSWXdRDKg=="],
 
     "@tanstack/router-utils/tinyglobby": ["tinyglobby@0.2.15", "https://registry.npmmirror.com/tinyglobby/-/tinyglobby-0.2.15.tgz", { "dependencies": { "fdir": "^6.5.0", "picomatch": "^4.0.3" } }, "sha512-j2Zq4NyQYG5XMST4cbs02Ak8iJUdxRM0XI5QyxXuZOzKOINmWurp3smXu3y5wDcJrptwpSjgXHzIQxR0omXljQ=="],
@@ -6628,6 +7617,8 @@
     "@testing-library/jest-dom/aria-query": ["aria-query@5.3.0", "https://registry.npmmirror.com/aria-query/-/aria-query-5.3.0.tgz", { "dependencies": { "dequal": "^2.0.3" } }, "sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A=="],
 
     "@testing-library/jest-dom/dom-accessibility-api": ["dom-accessibility-api@0.6.3", "https://registry.npmmirror.com/dom-accessibility-api/-/dom-accessibility-api-0.6.3.tgz", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
+
+    "@tiptap/pm/prosemirror-menu": ["prosemirror-menu@1.2.5", "https://registry.npmmirror.com/prosemirror-menu/-/prosemirror-menu-1.2.5.tgz", { "dependencies": { "crelt": "^1.0.0", "prosemirror-commands": "^1.0.0", "prosemirror-history": "^1.0.0", "prosemirror-state": "^1.0.0" } }, "sha512-qwXzynnpBIeg1D7BAtjOusR+81xCp53j7iWu/IargiRZqRjGIlQuu1f3jFi+ehrHhWMLoyOQTSRx/IWZJqOYtQ=="],
 
     "@ts-morph/common/minimatch": ["minimatch@9.0.5", "https://registry.npmmirror.com/minimatch/-/minimatch-9.0.5.tgz", { "dependencies": { "brace-expansion": "^2.0.1" } }, "sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow=="],
 
@@ -6653,6 +7644,10 @@
 
     "@vendure/admin-ui/@types/node": ["@types/node@18.19.129", "https://registry.npmmirror.com/@types/node/-/node-18.19.129.tgz", { "dependencies": { "undici-types": "~5.26.4" } }, ""],
 
+    "@vendure/campus-delivery-plugin/vitest": ["vitest@2.1.9", "https://registry.npmmirror.com/vitest/-/vitest-2.1.9.tgz", { "dependencies": { "@vitest/expect": "2.1.9", "@vitest/mocker": "2.1.9", "@vitest/pretty-format": "^2.1.9", "@vitest/runner": "2.1.9", "@vitest/snapshot": "2.1.9", "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "debug": "^4.3.7", "expect-type": "^1.1.0", "magic-string": "^0.30.12", "pathe": "^1.1.2", "std-env": "^3.8.0", "tinybench": "^2.9.0", "tinyexec": "^0.3.1", "tinypool": "^1.0.1", "tinyrainbow": "^1.2.0", "vite": "^5.0.0", "vite-node": "2.1.9", "why-is-node-running": "^2.3.0" }, "peerDependencies": { "@edge-runtime/vm": "*", "@types/node": "^18.0.0 || >=20.0.0", "@vitest/browser": "2.1.9", "@vitest/ui": "2.1.9", "happy-dom": "*", "jsdom": "*" }, "optionalPeers": ["@edge-runtime/vm", "@types/node", "@vitest/browser", "@vitest/ui", "happy-dom", "jsdom"], "bin": { "vitest": "vitest.mjs" } }, "sha512-MSmPM9REYqDGBI8439mA4mWhV5sKmDlBKWIYbA3lRb2PTHACE0mgKwA8yQ2xq9vxDTuk4iPrECBAEW2aoFXY0Q=="],
+
+    "@vendure/campus-jianghu-plugin/vitest": ["vitest@2.1.9", "https://registry.npmmirror.com/vitest/-/vitest-2.1.9.tgz", { "dependencies": { "@vitest/expect": "2.1.9", "@vitest/mocker": "2.1.9", "@vitest/pretty-format": "^2.1.9", "@vitest/runner": "2.1.9", "@vitest/snapshot": "2.1.9", "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "debug": "^4.3.7", "expect-type": "^1.1.0", "magic-string": "^0.30.12", "pathe": "^1.1.2", "std-env": "^3.8.0", "tinybench": "^2.9.0", "tinyexec": "^0.3.1", "tinypool": "^1.0.1", "tinyrainbow": "^1.2.0", "vite": "^5.0.0", "vite-node": "2.1.9", "why-is-node-running": "^2.3.0" }, "peerDependencies": { "@edge-runtime/vm": "*", "@types/node": "^18.0.0 || >=20.0.0", "@vitest/browser": "2.1.9", "@vitest/ui": "2.1.9", "happy-dom": "*", "jsdom": "*" }, "optionalPeers": ["@edge-runtime/vm", "@types/node", "@vitest/browser", "@vitest/ui", "happy-dom", "jsdom"], "bin": { "vitest": "vitest.mjs" } }, "sha512-MSmPM9REYqDGBI8439mA4mWhV5sKmDlBKWIYbA3lRb2PTHACE0mgKwA8yQ2xq9vxDTuk4iPrECBAEW2aoFXY0Q=="],
+
     "@vendure/cjk-plugins-e2e/vitest": ["vitest@2.1.9", "https://registry.npmmirror.com/vitest/-/vitest-2.1.9.tgz", { "dependencies": { "@vitest/expect": "2.1.9", "@vitest/mocker": "2.1.9", "@vitest/pretty-format": "^2.1.9", "@vitest/runner": "2.1.9", "@vitest/snapshot": "2.1.9", "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "debug": "^4.3.7", "expect-type": "^1.1.0", "magic-string": "^0.30.12", "pathe": "^1.1.2", "std-env": "^3.8.0", "tinybench": "^2.9.0", "tinyexec": "^0.3.1", "tinypool": "^1.0.1", "tinyrainbow": "^1.2.0", "vite": "^5.0.0", "vite-node": "2.1.9", "why-is-node-running": "^2.3.0" }, "peerDependencies": { "@edge-runtime/vm": "*", "@types/node": "^18.0.0 || >=20.0.0", "@vitest/browser": "2.1.9", "@vitest/ui": "2.1.9", "happy-dom": "*", "jsdom": "*" }, "optionalPeers": ["@edge-runtime/vm", "@types/node", "@vitest/browser", "@vitest/ui", "happy-dom", "jsdom"], "bin": { "vitest": "vitest.mjs" } }, "sha512-MSmPM9REYqDGBI8439mA4mWhV5sKmDlBKWIYbA3lRb2PTHACE0mgKwA8yQ2xq9vxDTuk4iPrECBAEW2aoFXY0Q=="],
 
     "@vendure/core/@types/node": ["@types/node@18.19.129", "https://registry.npmmirror.com/@types/node/-/node-18.19.129.tgz", { "dependencies": { "undici-types": "~5.26.4" } }, ""],
@@ -6665,7 +7660,15 @@
 
     "@vendure/dashboard/eslint": ["eslint@9.39.4", "https://registry.npmmirror.com/eslint/-/eslint-9.39.4.tgz", { "dependencies": { "@eslint-community/eslint-utils": "^4.8.0", "@eslint-community/regexpp": "^4.12.1", "@eslint/config-array": "^0.21.2", "@eslint/config-helpers": "^0.4.2", "@eslint/core": "^0.17.0", "@eslint/eslintrc": "^3.3.5", "@eslint/js": "9.39.4", "@eslint/plugin-kit": "^0.4.1", "@humanfs/node": "^0.16.6", "@humanwhocodes/module-importer": "^1.0.1", "@humanwhocodes/retry": "^0.4.2", "@types/estree": "^1.0.6", "ajv": "^6.14.0", "chalk": "^4.0.0", "cross-spawn": "^7.0.6", "debug": "^4.3.2", "escape-string-regexp": "^4.0.0", "eslint-scope": "^8.4.0", "eslint-visitor-keys": "^4.2.1", "espree": "^10.4.0", "esquery": "^1.5.0", "esutils": "^2.0.2", "fast-deep-equal": "^3.1.3", "file-entry-cache": "^8.0.0", "find-up": "^5.0.0", "glob-parent": "^6.0.2", "ignore": "^5.2.0", "imurmurhash": "^0.1.4", "is-glob": "^4.0.0", "json-stable-stringify-without-jsonify": "^1.0.1", "lodash.merge": "^4.6.2", "minimatch": "^3.1.5", "natural-compare": "^1.4.0", "optionator": "^0.9.3" }, "peerDependencies": { "jiti": "*" }, "bin": "bin/eslint.js" }, "sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ=="],
 
+    "@vendure/email-plugin/handlebars": ["handlebars@4.7.10", "https://registry.npmmirror.com/handlebars/-/handlebars-4.7.10.tgz", { "dependencies": { "minimist": "^1.2.8", "neo-async": "^2.6.2", "source-map": "^0.6.1", "wordwrap": "^1.0.0" }, "optionalDependencies": { "uglify-js": "^3.1.4" }, "bin": { "handlebars": "bin/handlebars" } }, "sha512-P5VJMVM7qgBn6vjXMw8WG9uVI+ncf2pi72j4de4yz5ZULLj2RGqLYaKOYGsgyrViQ0tePOVlN1tDCCXXtFqXKg=="],
+
     "@vendure/graphiql-plugin/rimraf": ["rimraf@6.0.1", "https://registry.npmmirror.com/rimraf/-/rimraf-6.0.1.tgz", { "dependencies": { "glob": "^11.0.0", "package-json-from-dist": "^1.0.0" }, "bin": "dist/esm/bin.mjs" }, ""],
+
+    "@vendure/installment-plugin/rimraf": ["rimraf@3.0.2", "https://registry.npmmirror.com/rimraf/-/rimraf-3.0.2.tgz", { "dependencies": { "glob": "^7.1.3" }, "bin": "bin.js" }, "sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA=="],
+
+    "@vendure/job-queue-plugin/ioredis": ["ioredis@5.9.3", "https://registry.npmmirror.com/ioredis/-/ioredis-5.9.3.tgz", { "dependencies": { "@ioredis/commands": "1.5.0", "cluster-key-slot": "^1.1.0", "debug": "^4.3.4", "denque": "^2.1.0", "lodash.defaults": "^4.2.0", "lodash.isarguments": "^3.1.0", "redis-errors": "^1.2.0", "redis-parser": "^3.0.0", "standard-as-callback": "^2.1.0" } }, "sha512-VI5tMCdeoxZWU5vjHWsiE/Su76JGhBvWF1MJnV9ZtGltHk9BmD48oDq8Tj8haZ85aceXZMxLNDQZRVo5QKNgXA=="],
+
+    "@vendure/rental-plugin/rimraf": ["rimraf@3.0.2", "https://registry.npmmirror.com/rimraf/-/rimraf-3.0.2.tgz", { "dependencies": { "glob": "^7.1.3" }, "bin": "bin.js" }, "sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA=="],
 
     "@vendure/testing/sql.js": ["sql.js@1.14.1", "https://registry.npmmirror.com/sql.js/-/sql.js-1.14.1.tgz", {}, "sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A=="],
 
@@ -6735,6 +7738,8 @@
 
     "browserify-zlib/pako": ["pako@1.0.11", "https://registry.npmmirror.com/pako/-/pako-1.0.11.tgz", {}, "sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw=="],
 
+    "bullmq/ioredis": ["ioredis@5.9.3", "https://registry.npmmirror.com/ioredis/-/ioredis-5.9.3.tgz", { "dependencies": { "@ioredis/commands": "1.5.0", "cluster-key-slot": "^1.1.0", "debug": "^4.3.4", "denque": "^2.1.0", "lodash.defaults": "^4.2.0", "lodash.isarguments": "^3.1.0", "redis-errors": "^1.2.0", "redis-parser": "^3.0.0", "standard-as-callback": "^2.1.0" } }, "sha512-VI5tMCdeoxZWU5vjHWsiE/Su76JGhBvWF1MJnV9ZtGltHk9BmD48oDq8Tj8haZ85aceXZMxLNDQZRVo5QKNgXA=="],
+
     "cacache/@npmcli/fs": ["@npmcli/fs@5.0.0", "https://registry.npmmirror.com/@npmcli/fs/-/fs-5.0.0.tgz", { "dependencies": { "semver": "^7.3.5" } }, "sha512-7OsC1gNORBEawOa5+j2pXN9vsicaIOH5cPXxoR6fJOmH6/EXpJB2CajXOu1fPRFun2m1lktEFX11+P89hqO/og=="],
 
     "cacache/glob": ["glob@13.0.0", "https://registry.npmmirror.com/glob/-/glob-13.0.0.tgz", { "dependencies": { "minimatch": "^10.1.1", "minipass": "^7.1.2", "path-scurry": "^2.0.0" } }, "sha512-tvZgpqk6fz4BaNZ66ZsRaZnbHvP/jG3uKJvAZOwEVUL4RTA5nJeeLYfyN9/VA8NX/V3IBG+hkeuGpKjvELkVhA=="],
@@ -6800,6 +7805,8 @@
     "defaults/clone": ["clone@1.0.4", "https://registry.npmmirror.com/clone/-/clone-1.0.4.tgz", {}, "sha512-JQHZ2QMW6l3aH/j6xCqQThY/9OH4D/9ls34cgkUBiEeocRTU04tHfKPBsUK1PqZCUQM7GiA0IIXJSuXHI64Kbg=="],
 
     "dev-server/commander": ["commander@12.1.0", "https://registry.npmmirror.com/commander/-/commander-12.1.0.tgz", {}, ""],
+
+    "dev-server/dayjs": ["dayjs@1.11.19", "https://registry.npmmirror.com/dayjs/-/dayjs-1.11.19.tgz", {}, "sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw=="],
 
     "dom-serializer/entities": ["entities@4.5.0", "https://registry.npmmirror.com/entities/-/entities-4.5.0.tgz", {}, "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="],
 
@@ -7347,7 +8354,11 @@
 
     "typeorm/buffer": ["buffer@6.0.3", "https://registry.npmmirror.com/buffer/-/buffer-6.0.3.tgz", { "dependencies": { "base64-js": "^1.3.1", "ieee754": "^1.2.1" } }, "sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA=="],
 
-    "typeorm/dedent": ["dedent@1.7.1", "https://registry.npmmirror.com/dedent/-/dedent-1.7.1.tgz", { "peerDependencies": { "babel-plugin-macros": "^3.1.0" }, "optionalPeers": ["babel-plugin-macros"] }, "sha512-9JmrhGZpOlEgOLdQgSm0zxFaYoQon408V1v49aqTWuXENVlnCuY9JBZcXZiCsZQWDjTm5Qf/nIvAy77mXDAjEg=="],
+    "typeorm/dedent": ["dedent@1.7.2", "https://registry.npmmirror.com/dedent/-/dedent-1.7.2.tgz", { "peerDependencies": { "babel-plugin-macros": "^3.1.0" }, "optionalPeers": ["babel-plugin-macros"] }, "sha512-WzMx3mW98SN+zn3hgemf4OzdmyNhhhKz5Ay0pUfQiMQ3e1g+xmTJWp/pKdwKVXhdSkAEGIIzqeuWrL3mV/AXbA=="],
+
+    "typeorm/uuid": ["uuid@11.1.1", "https://registry.npmmirror.com/uuid/-/uuid-11.1.1.tgz", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
+
+    "typeorm/yargs": ["yargs@17.7.3", "https://registry.npmmirror.com/yargs/-/yargs-17.7.3.tgz", { "dependencies": { "cliui": "^8.0.1", "escalade": "^3.1.1", "get-caller-file": "^2.0.5", "require-directory": "^2.1.1", "string-width": "^4.2.3", "y18n": "^5.0.5", "yargs-parser": "^21.1.1" } }, "sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g=="],
 
     "unixify/normalize-path": ["normalize-path@2.1.1", "https://registry.npmmirror.com/normalize-path/-/normalize-path-2.1.1.tgz", { "dependencies": { "remove-trailing-separator": "^1.0.1" } }, "sha512-3pKJwH184Xo/lnH6oyP1q2pMd7HcypqqmRs91/6/i2CGtWwIKGCkOOMTm/zXbgTEWHw1uNpNi/igc3ePOYHb6w=="],
 
@@ -7879,6 +8890,58 @@
 
     "@vendure/admin-ui/@types/node/undici-types": ["undici-types@5.26.5", "https://registry.npmmirror.com/undici-types/-/undici-types-5.26.5.tgz", {}, ""],
 
+    "@vendure/campus-delivery-plugin/vitest/@vitest/expect": ["@vitest/expect@2.1.9", "https://registry.npmmirror.com/@vitest/expect/-/expect-2.1.9.tgz", { "dependencies": { "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "tinyrainbow": "^1.2.0" } }, "sha512-UJCIkTBenHeKT1TTlKMJWy1laZewsRIzYighyYiJKZreqtdxSos/S1t+ktRMQWu2CKqaarrkeszJx1cgC5tGZw=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/mocker": ["@vitest/mocker@2.1.9", "https://registry.npmmirror.com/@vitest/mocker/-/mocker-2.1.9.tgz", { "dependencies": { "@vitest/spy": "2.1.9", "estree-walker": "^3.0.3", "magic-string": "^0.30.12" }, "peerDependencies": { "msw": "^2.4.9", "vite": "^5.0.0" }, "optionalPeers": ["msw", "vite"] }, "sha512-tVL6uJgoUdi6icpxmdrn5YNo3g3Dxv+IHJBr0GXHaEdTcw3F+cPKnsXFhli6nO+f/6SDKPHEK1UN+k+TQv0Ehg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/pretty-format": ["@vitest/pretty-format@2.1.9", "https://registry.npmmirror.com/@vitest/pretty-format/-/pretty-format-2.1.9.tgz", { "dependencies": { "tinyrainbow": "^1.2.0" } }, "sha512-KhRIdGV2U9HOUzxfiHmY8IFHTdqtOhIzCpd8WRdJiE7D/HUcZVD0EgQCVjm+Q9gkUXWgBvMmTtZgIG48wq7sOQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/runner": ["@vitest/runner@2.1.9", "https://registry.npmmirror.com/@vitest/runner/-/runner-2.1.9.tgz", { "dependencies": { "@vitest/utils": "2.1.9", "pathe": "^1.1.2" } }, "sha512-ZXSSqTFIrzduD63btIfEyOmNcBmQvgOVsPNPe0jYtESiXkhd8u2erDLnMxmGrDCwHCCHE7hxwRDCT3pt0esT4g=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/snapshot": ["@vitest/snapshot@2.1.9", "https://registry.npmmirror.com/@vitest/snapshot/-/snapshot-2.1.9.tgz", { "dependencies": { "@vitest/pretty-format": "2.1.9", "magic-string": "^0.30.12", "pathe": "^1.1.2" } }, "sha512-oBO82rEjsxLNJincVhLhaxxZdEtV0EFHMK5Kmx5sJ6H9L183dHECjiefOAdnqpIgT5eZwT04PoggUnW88vOBNQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/spy": ["@vitest/spy@2.1.9", "https://registry.npmmirror.com/@vitest/spy/-/spy-2.1.9.tgz", { "dependencies": { "tinyspy": "^3.0.2" } }, "sha512-E1B35FwzXXTs9FHNK6bDszs7mtydNi5MIfUWpceJ8Xbfb1gBMscAnwLbEu+B44ed6W3XjL9/ehLPHR1fkf1KLQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/utils": ["@vitest/utils@2.1.9", "https://registry.npmmirror.com/@vitest/utils/-/utils-2.1.9.tgz", { "dependencies": { "@vitest/pretty-format": "2.1.9", "loupe": "^3.1.2", "tinyrainbow": "^1.2.0" } }, "sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/magic-string": ["magic-string@0.30.21", "https://registry.npmmirror.com/magic-string/-/magic-string-0.30.21.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/pathe": ["pathe@1.1.2", "https://registry.npmmirror.com/pathe/-/pathe-1.1.2.tgz", {}, "sha512-whLdWMYL2TwI08hn8/ZqAbrVemu0LNaNNJZX73O6qaIdCTfXutsLhMkjdENX0qhsQ9uIimo4/aQOmXkoon2nDQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/tinyexec": ["tinyexec@0.3.2", "https://registry.npmmirror.com/tinyexec/-/tinyexec-0.3.2.tgz", {}, "sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/tinyrainbow": ["tinyrainbow@1.2.0", "https://registry.npmmirror.com/tinyrainbow/-/tinyrainbow-1.2.0.tgz", {}, "sha512-weEDEq7Z5eTHPDh4xjX789+fHfF+P8boiFB+0vbWzpbnbsEr/GRaohi/uMKxg8RZMXnl1ItAi/IUHWMsjDV7kQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite": ["vite@5.4.21", "https://registry.npmmirror.com/vite/-/vite-5.4.21.tgz", { "dependencies": { "esbuild": "^0.21.3", "postcss": "^8.4.43", "rollup": "^4.20.0" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^18.0.0 || >=20.0.0", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "sass-embedded": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite-node": ["vite-node@2.1.9", "https://registry.npmmirror.com/vite-node/-/vite-node-2.1.9.tgz", { "dependencies": { "cac": "^6.7.14", "debug": "^4.3.7", "es-module-lexer": "^1.5.4", "pathe": "^1.1.2", "vite": "^5.0.0" }, "bin": { "vite-node": "vite-node.mjs" } }, "sha512-AM9aQ/IPrW/6ENLQg3AGY4K1N2TGZdR5e4gu/MmmR2xR3Ll1+dib+nook92g4TV3PXVyeyxdWwtaCAiUL0hMxA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/expect": ["@vitest/expect@2.1.9", "https://registry.npmmirror.com/@vitest/expect/-/expect-2.1.9.tgz", { "dependencies": { "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "tinyrainbow": "^1.2.0" } }, "sha512-UJCIkTBenHeKT1TTlKMJWy1laZewsRIzYighyYiJKZreqtdxSos/S1t+ktRMQWu2CKqaarrkeszJx1cgC5tGZw=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/mocker": ["@vitest/mocker@2.1.9", "https://registry.npmmirror.com/@vitest/mocker/-/mocker-2.1.9.tgz", { "dependencies": { "@vitest/spy": "2.1.9", "estree-walker": "^3.0.3", "magic-string": "^0.30.12" }, "peerDependencies": { "msw": "^2.4.9", "vite": "^5.0.0" }, "optionalPeers": ["msw", "vite"] }, "sha512-tVL6uJgoUdi6icpxmdrn5YNo3g3Dxv+IHJBr0GXHaEdTcw3F+cPKnsXFhli6nO+f/6SDKPHEK1UN+k+TQv0Ehg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/pretty-format": ["@vitest/pretty-format@2.1.9", "https://registry.npmmirror.com/@vitest/pretty-format/-/pretty-format-2.1.9.tgz", { "dependencies": { "tinyrainbow": "^1.2.0" } }, "sha512-KhRIdGV2U9HOUzxfiHmY8IFHTdqtOhIzCpd8WRdJiE7D/HUcZVD0EgQCVjm+Q9gkUXWgBvMmTtZgIG48wq7sOQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/runner": ["@vitest/runner@2.1.9", "https://registry.npmmirror.com/@vitest/runner/-/runner-2.1.9.tgz", { "dependencies": { "@vitest/utils": "2.1.9", "pathe": "^1.1.2" } }, "sha512-ZXSSqTFIrzduD63btIfEyOmNcBmQvgOVsPNPe0jYtESiXkhd8u2erDLnMxmGrDCwHCCHE7hxwRDCT3pt0esT4g=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/snapshot": ["@vitest/snapshot@2.1.9", "https://registry.npmmirror.com/@vitest/snapshot/-/snapshot-2.1.9.tgz", { "dependencies": { "@vitest/pretty-format": "2.1.9", "magic-string": "^0.30.12", "pathe": "^1.1.2" } }, "sha512-oBO82rEjsxLNJincVhLhaxxZdEtV0EFHMK5Kmx5sJ6H9L183dHECjiefOAdnqpIgT5eZwT04PoggUnW88vOBNQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/spy": ["@vitest/spy@2.1.9", "https://registry.npmmirror.com/@vitest/spy/-/spy-2.1.9.tgz", { "dependencies": { "tinyspy": "^3.0.2" } }, "sha512-E1B35FwzXXTs9FHNK6bDszs7mtydNi5MIfUWpceJ8Xbfb1gBMscAnwLbEu+B44ed6W3XjL9/ehLPHR1fkf1KLQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/utils": ["@vitest/utils@2.1.9", "https://registry.npmmirror.com/@vitest/utils/-/utils-2.1.9.tgz", { "dependencies": { "@vitest/pretty-format": "2.1.9", "loupe": "^3.1.2", "tinyrainbow": "^1.2.0" } }, "sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/magic-string": ["magic-string@0.30.21", "https://registry.npmmirror.com/magic-string/-/magic-string-0.30.21.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/pathe": ["pathe@1.1.2", "https://registry.npmmirror.com/pathe/-/pathe-1.1.2.tgz", {}, "sha512-whLdWMYL2TwI08hn8/ZqAbrVemu0LNaNNJZX73O6qaIdCTfXutsLhMkjdENX0qhsQ9uIimo4/aQOmXkoon2nDQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/tinyexec": ["tinyexec@0.3.2", "https://registry.npmmirror.com/tinyexec/-/tinyexec-0.3.2.tgz", {}, "sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/tinyrainbow": ["tinyrainbow@1.2.0", "https://registry.npmmirror.com/tinyrainbow/-/tinyrainbow-1.2.0.tgz", {}, "sha512-weEDEq7Z5eTHPDh4xjX789+fHfF+P8boiFB+0vbWzpbnbsEr/GRaohi/uMKxg8RZMXnl1ItAi/IUHWMsjDV7kQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite": ["vite@5.4.21", "https://registry.npmmirror.com/vite/-/vite-5.4.21.tgz", { "dependencies": { "esbuild": "^0.21.3", "postcss": "^8.4.43", "rollup": "^4.20.0" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^18.0.0 || >=20.0.0", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "sass-embedded": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite-node": ["vite-node@2.1.9", "https://registry.npmmirror.com/vite-node/-/vite-node-2.1.9.tgz", { "dependencies": { "cac": "^6.7.14", "debug": "^4.3.7", "es-module-lexer": "^1.5.4", "pathe": "^1.1.2", "vite": "^5.0.0" }, "bin": { "vite-node": "vite-node.mjs" } }, "sha512-AM9aQ/IPrW/6ENLQg3AGY4K1N2TGZdR5e4gu/MmmR2xR3Ll1+dib+nook92g4TV3PXVyeyxdWwtaCAiUL0hMxA=="],
+
     "@vendure/cjk-plugins-e2e/vitest/@vitest/expect": ["@vitest/expect@2.1.9", "https://registry.npmmirror.com/@vitest/expect/-/expect-2.1.9.tgz", { "dependencies": { "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "tinyrainbow": "^1.2.0" } }, "sha512-UJCIkTBenHeKT1TTlKMJWy1laZewsRIzYighyYiJKZreqtdxSos/S1t+ktRMQWu2CKqaarrkeszJx1cgC5tGZw=="],
 
     "@vendure/cjk-plugins-e2e/vitest/@vitest/mocker": ["@vitest/mocker@2.1.9", "https://registry.npmmirror.com/@vitest/mocker/-/mocker-2.1.9.tgz", { "dependencies": { "@vitest/spy": "2.1.9", "estree-walker": "^3.0.3", "magic-string": "^0.30.12" }, "peerDependencies": { "msw": "^2.4.9", "vite": "^5.0.0" }, "optionalPeers": ["msw", "vite"] }, "sha512-tVL6uJgoUdi6icpxmdrn5YNo3g3Dxv+IHJBr0GXHaEdTcw3F+cPKnsXFhli6nO+f/6SDKPHEK1UN+k+TQv0Ehg=="],
@@ -7924,6 +8987,14 @@
     "@vendure/dashboard/eslint/minimatch": ["minimatch@3.1.5", "https://registry.npmmirror.com/minimatch/-/minimatch-3.1.5.tgz", { "dependencies": { "brace-expansion": "^1.1.7" } }, "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w=="],
 
     "@vendure/graphiql-plugin/rimraf/glob": ["glob@11.1.0", "https://registry.npmmirror.com/glob/-/glob-11.1.0.tgz", { "dependencies": { "foreground-child": "^3.3.1", "jackspeak": "^4.1.1", "minimatch": "^10.1.1", "minipass": "^7.1.2", "package-json-from-dist": "^1.0.0", "path-scurry": "^2.0.0" }, "bin": "dist/esm/bin.mjs" }, "sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw=="],
+
+    "@vendure/installment-plugin/rimraf/glob": ["glob@7.2.3", "https://registry.npmmirror.com/glob/-/glob-7.2.3.tgz", { "dependencies": { "fs.realpath": "^1.0.0", "inflight": "^1.0.4", "inherits": "2", "minimatch": "^3.1.1", "once": "^1.3.0", "path-is-absolute": "^1.0.0" } }, "sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q=="],
+
+    "@vendure/job-queue-plugin/ioredis/@ioredis/commands": ["@ioredis/commands@1.5.0", "https://registry.npmmirror.com/@ioredis/commands/-/commands-1.5.0.tgz", {}, "sha512-eUgLqrMf8nJkZxT24JvVRrQya1vZkQh8BBeYNwGDqa5I0VUi8ACx7uFvAaLxintokpTenkK6DASvo/bvNbBGow=="],
+
+    "@vendure/job-queue-plugin/ioredis/cluster-key-slot": ["cluster-key-slot@1.1.2", "https://registry.npmmirror.com/cluster-key-slot/-/cluster-key-slot-1.1.2.tgz", {}, "sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA=="],
+
+    "@vendure/rental-plugin/rimraf/glob": ["glob@7.2.3", "https://registry.npmmirror.com/glob/-/glob-7.2.3.tgz", { "dependencies": { "fs.realpath": "^1.0.0", "inflight": "^1.0.4", "inherits": "2", "minimatch": "^3.1.1", "once": "^1.3.0", "path-is-absolute": "^1.0.0" } }, "sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q=="],
 
     "@vendure/ui-devkit/glob/minimatch": ["minimatch@8.0.4", "https://registry.npmmirror.com/minimatch/-/minimatch-8.0.4.tgz", { "dependencies": { "brace-expansion": "^2.0.1" } }, "sha512-W0Wvr9HyFXZRGIDgCicunpQ299OKXs9RgZfaukz4qAW/pJhcpUfupc9c+OObPOFueNy8VSrZgEmDtk6Kh4WzDA=="],
 
@@ -8006,6 +9077,10 @@
     "body-parser/type-is/media-typer": ["media-typer@0.3.0", "https://registry.npmmirror.com/media-typer/-/media-typer-0.3.0.tgz", {}, "sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ=="],
 
     "body-parser/type-is/mime-types": ["mime-types@2.1.35", "https://registry.npmmirror.com/mime-types/-/mime-types-2.1.35.tgz", { "dependencies": { "mime-db": "1.52.0" } }, "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw=="],
+
+    "bullmq/ioredis/@ioredis/commands": ["@ioredis/commands@1.5.0", "https://registry.npmmirror.com/@ioredis/commands/-/commands-1.5.0.tgz", {}, "sha512-eUgLqrMf8nJkZxT24JvVRrQya1vZkQh8BBeYNwGDqa5I0VUi8ACx7uFvAaLxintokpTenkK6DASvo/bvNbBGow=="],
+
+    "bullmq/ioredis/cluster-key-slot": ["cluster-key-slot@1.1.2", "https://registry.npmmirror.com/cluster-key-slot/-/cluster-key-slot-1.1.2.tgz", {}, "sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA=="],
 
     "cacache/@npmcli/fs/semver": ["semver@7.7.1", "https://registry.npmmirror.com/semver/-/semver-7.7.1.tgz", { "bin": "bin/semver.js" }, "sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA=="],
 
@@ -8813,6 +9888,26 @@
 
     "@tanstack/eslint-plugin-query/@typescript-eslint/utils/@typescript-eslint/typescript-estree/tinyglobby": ["tinyglobby@0.2.15", "https://registry.npmmirror.com/tinyglobby/-/tinyglobby-0.2.15.tgz", { "dependencies": { "fdir": "^6.5.0", "picomatch": "^4.0.3" } }, "sha512-j2Zq4NyQYG5XMST4cbs02Ak8iJUdxRM0XI5QyxXuZOzKOINmWurp3smXu3y5wDcJrptwpSjgXHzIQxR0omXljQ=="],
 
+    "@vendure/campus-delivery-plugin/vitest/@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "https://registry.npmmirror.com/estree-walker/-/estree-walker-3.0.3.tgz", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
+
+    "@vendure/campus-delivery-plugin/vitest/@vitest/spy/tinyspy": ["tinyspy@3.0.2", "https://registry.npmmirror.com/tinyspy/-/tinyspy-3.0.2.tgz", {}, "sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild": ["esbuild@0.21.5", "https://registry.npmmirror.com/esbuild/-/esbuild-0.21.5.tgz", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.21.5", "@esbuild/android-arm": "0.21.5", "@esbuild/android-arm64": "0.21.5", "@esbuild/android-x64": "0.21.5", "@esbuild/darwin-arm64": "0.21.5", "@esbuild/darwin-x64": "0.21.5", "@esbuild/freebsd-arm64": "0.21.5", "@esbuild/freebsd-x64": "0.21.5", "@esbuild/linux-arm": "0.21.5", "@esbuild/linux-arm64": "0.21.5", "@esbuild/linux-ia32": "0.21.5", "@esbuild/linux-loong64": "0.21.5", "@esbuild/linux-mips64el": "0.21.5", "@esbuild/linux-ppc64": "0.21.5", "@esbuild/linux-riscv64": "0.21.5", "@esbuild/linux-s390x": "0.21.5", "@esbuild/linux-x64": "0.21.5", "@esbuild/netbsd-x64": "0.21.5", "@esbuild/openbsd-x64": "0.21.5", "@esbuild/sunos-x64": "0.21.5", "@esbuild/win32-arm64": "0.21.5", "@esbuild/win32-ia32": "0.21.5", "@esbuild/win32-x64": "0.21.5" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-mg3OPMV4hXywwpoDxu3Qda5xCKQi+vCTZq8S9J/EpkhB2HzKXq4SNFZE3+NK93JYxc8VMSep+lOUSC/RVKaBqw=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/postcss": ["postcss@8.5.8", "https://registry.npmmirror.com/postcss/-/postcss-8.5.8.tgz", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup": ["rollup@4.59.0", "https://registry.npmmirror.com/rollup/-/rollup-4.59.0.tgz", { "dependencies": { "@types/estree": "1.0.8" }, "optionalDependencies": { "@rollup/rollup-android-arm-eabi": "4.59.0", "@rollup/rollup-android-arm64": "4.59.0", "@rollup/rollup-darwin-arm64": "4.59.0", "@rollup/rollup-darwin-x64": "4.59.0", "@rollup/rollup-freebsd-arm64": "4.59.0", "@rollup/rollup-freebsd-x64": "4.59.0", "@rollup/rollup-linux-arm-gnueabihf": "4.59.0", "@rollup/rollup-linux-arm-musleabihf": "4.59.0", "@rollup/rollup-linux-arm64-gnu": "4.59.0", "@rollup/rollup-linux-arm64-musl": "4.59.0", "@rollup/rollup-linux-loong64-gnu": "4.59.0", "@rollup/rollup-linux-loong64-musl": "4.59.0", "@rollup/rollup-linux-ppc64-gnu": "4.59.0", "@rollup/rollup-linux-ppc64-musl": "4.59.0", "@rollup/rollup-linux-riscv64-gnu": "4.59.0", "@rollup/rollup-linux-riscv64-musl": "4.59.0", "@rollup/rollup-linux-s390x-gnu": "4.59.0", "@rollup/rollup-linux-x64-gnu": "4.59.0", "@rollup/rollup-linux-x64-musl": "4.59.0", "@rollup/rollup-openbsd-x64": "4.59.0", "@rollup/rollup-openharmony-arm64": "4.59.0", "@rollup/rollup-win32-arm64-msvc": "4.59.0", "@rollup/rollup-win32-ia32-msvc": "4.59.0", "@rollup/rollup-win32-x64-gnu": "4.59.0", "@rollup/rollup-win32-x64-msvc": "4.59.0", "fsevents": "~2.3.2" }, "bin": "dist/bin/rollup" }, "sha512-2oMpl67a3zCH9H79LeMcbDhXW/UmWG/y2zuqnF2jQq5uq9TbM9TVyXvA4+t+ne2IIkBdrLpAaRQAvo7YI/Yyeg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "https://registry.npmmirror.com/estree-walker/-/estree-walker-3.0.3.tgz", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/@vitest/spy/tinyspy": ["tinyspy@3.0.2", "https://registry.npmmirror.com/tinyspy/-/tinyspy-3.0.2.tgz", {}, "sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild": ["esbuild@0.21.5", "https://registry.npmmirror.com/esbuild/-/esbuild-0.21.5.tgz", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.21.5", "@esbuild/android-arm": "0.21.5", "@esbuild/android-arm64": "0.21.5", "@esbuild/android-x64": "0.21.5", "@esbuild/darwin-arm64": "0.21.5", "@esbuild/darwin-x64": "0.21.5", "@esbuild/freebsd-arm64": "0.21.5", "@esbuild/freebsd-x64": "0.21.5", "@esbuild/linux-arm": "0.21.5", "@esbuild/linux-arm64": "0.21.5", "@esbuild/linux-ia32": "0.21.5", "@esbuild/linux-loong64": "0.21.5", "@esbuild/linux-mips64el": "0.21.5", "@esbuild/linux-ppc64": "0.21.5", "@esbuild/linux-riscv64": "0.21.5", "@esbuild/linux-s390x": "0.21.5", "@esbuild/linux-x64": "0.21.5", "@esbuild/netbsd-x64": "0.21.5", "@esbuild/openbsd-x64": "0.21.5", "@esbuild/sunos-x64": "0.21.5", "@esbuild/win32-arm64": "0.21.5", "@esbuild/win32-ia32": "0.21.5", "@esbuild/win32-x64": "0.21.5" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-mg3OPMV4hXywwpoDxu3Qda5xCKQi+vCTZq8S9J/EpkhB2HzKXq4SNFZE3+NK93JYxc8VMSep+lOUSC/RVKaBqw=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/postcss": ["postcss@8.5.8", "https://registry.npmmirror.com/postcss/-/postcss-8.5.8.tgz", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup": ["rollup@4.59.0", "https://registry.npmmirror.com/rollup/-/rollup-4.59.0.tgz", { "dependencies": { "@types/estree": "1.0.8" }, "optionalDependencies": { "@rollup/rollup-android-arm-eabi": "4.59.0", "@rollup/rollup-android-arm64": "4.59.0", "@rollup/rollup-darwin-arm64": "4.59.0", "@rollup/rollup-darwin-x64": "4.59.0", "@rollup/rollup-freebsd-arm64": "4.59.0", "@rollup/rollup-freebsd-x64": "4.59.0", "@rollup/rollup-linux-arm-gnueabihf": "4.59.0", "@rollup/rollup-linux-arm-musleabihf": "4.59.0", "@rollup/rollup-linux-arm64-gnu": "4.59.0", "@rollup/rollup-linux-arm64-musl": "4.59.0", "@rollup/rollup-linux-loong64-gnu": "4.59.0", "@rollup/rollup-linux-loong64-musl": "4.59.0", "@rollup/rollup-linux-ppc64-gnu": "4.59.0", "@rollup/rollup-linux-ppc64-musl": "4.59.0", "@rollup/rollup-linux-riscv64-gnu": "4.59.0", "@rollup/rollup-linux-riscv64-musl": "4.59.0", "@rollup/rollup-linux-s390x-gnu": "4.59.0", "@rollup/rollup-linux-x64-gnu": "4.59.0", "@rollup/rollup-linux-x64-musl": "4.59.0", "@rollup/rollup-openbsd-x64": "4.59.0", "@rollup/rollup-openharmony-arm64": "4.59.0", "@rollup/rollup-win32-arm64-msvc": "4.59.0", "@rollup/rollup-win32-ia32-msvc": "4.59.0", "@rollup/rollup-win32-x64-gnu": "4.59.0", "@rollup/rollup-win32-x64-msvc": "4.59.0", "fsevents": "~2.3.2" }, "bin": "dist/bin/rollup" }, "sha512-2oMpl67a3zCH9H79LeMcbDhXW/UmWG/y2zuqnF2jQq5uq9TbM9TVyXvA4+t+ne2IIkBdrLpAaRQAvo7YI/Yyeg=="],
+
     "@vendure/cjk-plugins-e2e/vitest/@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "https://registry.npmmirror.com/estree-walker/-/estree-walker-3.0.3.tgz", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
     "@vendure/cjk-plugins-e2e/vitest/@vitest/spy/tinyspy": ["tinyspy@3.0.2", "https://registry.npmmirror.com/tinyspy/-/tinyspy-3.0.2.tgz", {}, "sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q=="],
@@ -8834,6 +9929,10 @@
     "@vendure/graphiql-plugin/rimraf/glob/minimatch": ["minimatch@10.1.1", "https://registry.npmmirror.com/minimatch/-/minimatch-10.1.1.tgz", { "dependencies": { "@isaacs/brace-expansion": "^5.0.0" } }, "sha512-enIvLvRAFZYXJzkCYG5RKmPfrFArdLv+R+lbQ53BmIMLIry74bjKzX6iHAm8WYamJkhSSEabrWN5D97XnKObjQ=="],
 
     "@vendure/graphiql-plugin/rimraf/glob/path-scurry": ["path-scurry@2.0.2", "https://registry.npmmirror.com/path-scurry/-/path-scurry-2.0.2.tgz", { "dependencies": { "lru-cache": "^11.0.0", "minipass": "^7.1.2" } }, "sha512-3O/iVVsJAPsOnpwWIeD+d6z/7PmqApyQePUtCndjatj/9I5LylHvt5qluFaBT3I5h3r1ejfR056c+FCv+NnNXg=="],
+
+    "@vendure/installment-plugin/rimraf/glob/minimatch": ["minimatch@3.1.2", "https://registry.npmmirror.com/minimatch/-/minimatch-3.1.2.tgz", { "dependencies": { "brace-expansion": "^1.1.7" } }, "sha512-J7p63hRiAjw1NDEww1W7i37+ByIrOWO5XQQAzZ3VOcL0PNybwpfmV/N05zFAzwQ9USyEcX6t3UO+K5aqBQOIHw=="],
+
+    "@vendure/rental-plugin/rimraf/glob/minimatch": ["minimatch@3.1.2", "https://registry.npmmirror.com/minimatch/-/minimatch-3.1.2.tgz", { "dependencies": { "brace-expansion": "^1.1.7" } }, "sha512-J7p63hRiAjw1NDEww1W7i37+ByIrOWO5XQQAzZ3VOcL0PNybwpfmV/N05zFAzwQ9USyEcX6t3UO+K5aqBQOIHw=="],
 
     "@vendure/ui-devkit/glob/minimatch/brace-expansion": ["brace-expansion@2.0.2", "https://registry.npmmirror.com/brace-expansion/-/brace-expansion-2.0.2.tgz", { "dependencies": { "balanced-match": "^1.0.0" } }, "sha512-Jt0vHyM+jmUBqojB7E1NIYadt0vI0Qxjxd2TErW94wDz+E2LAm5vKMXXwg6ZZBTHPuUlDgQHKXvjGBdfcF1ZDQ=="],
 
@@ -9128,6 +10227,198 @@
     "@tanstack/eslint-plugin-query/@typescript-eslint/utils/@typescript-eslint/typescript-estree/@typescript-eslint/visitor-keys/eslint-visitor-keys": ["eslint-visitor-keys@4.2.1", "https://registry.npmmirror.com/eslint-visitor-keys/-/eslint-visitor-keys-4.2.1.tgz", {}, "sha512-Uhdk5sfqcee/9H/rCOJikYz67o0a2Tw2hGRPOG2Y1R2dg7brRe1uG0yaNQDHu+TO/uQPF/5eCapvYSmHUjt7JQ=="],
 
     "@tanstack/eslint-plugin-query/@typescript-eslint/utils/@typescript-eslint/typescript-estree/minimatch/brace-expansion": ["brace-expansion@2.0.2", "https://registry.npmmirror.com/brace-expansion/-/brace-expansion-2.0.2.tgz", { "dependencies": { "balanced-match": "^1.0.0" } }, "sha512-Jt0vHyM+jmUBqojB7E1NIYadt0vI0Qxjxd2TErW94wDz+E2LAm5vKMXXwg6ZZBTHPuUlDgQHKXvjGBdfcF1ZDQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.21.5", "https://registry.npmmirror.com/@esbuild/aix-ppc64/-/aix-ppc64-0.21.5.tgz", { "os": "aix", "cpu": "ppc64" }, "sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/android-arm": ["@esbuild/android-arm@0.21.5", "https://registry.npmmirror.com/@esbuild/android-arm/-/android-arm-0.21.5.tgz", { "os": "android", "cpu": "arm" }, "sha512-vCPvzSjpPHEi1siZdlvAlsPxXl7WbOVUBBAowWug4rJHb68Ox8KualB+1ocNvT5fjv6wpkX6o/iEpbDrf68zcg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/android-arm64": ["@esbuild/android-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/android-arm64/-/android-arm64-0.21.5.tgz", { "os": "android", "cpu": "arm64" }, "sha512-c0uX9VAUBQ7dTDCjq+wdyGLowMdtR/GoC2U5IYk/7D1H1JYC0qseD7+11iMP2mRLN9RcCMRcjC4YMclCzGwS/A=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/android-x64": ["@esbuild/android-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/android-x64/-/android-x64-0.21.5.tgz", { "os": "android", "cpu": "x64" }, "sha512-D7aPRUUNHRBwHxzxRvp856rjUHRFW1SdQATKXH2hqA0kAZb1hKmi02OpYRacl0TxIGz/ZmXWlbZgjwWYaCakTA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/darwin-arm64": ["@esbuild/darwin-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/darwin-arm64/-/darwin-arm64-0.21.5.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-DwqXqZyuk5AiWWf3UfLiRDJ5EDd49zg6O9wclZ7kUMv2WRFr4HKjXp/5t8JZ11QbQfUS6/cRCKGwYhtNAY88kQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/darwin-x64": ["@esbuild/darwin-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/darwin-x64/-/darwin-x64-0.21.5.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-se/JjF8NlmKVG4kNIuyWMV/22ZaerB+qaSi5MdrXtd6R08kvs2qCN4C09miupktDitvh8jRFflwGFBQcxZRjbw=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/freebsd-arm64": ["@esbuild/freebsd-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/freebsd-arm64/-/freebsd-arm64-0.21.5.tgz", { "os": "freebsd", "cpu": "arm64" }, "sha512-5JcRxxRDUJLX8JXp/wcBCy3pENnCgBR9bN6JsY4OmhfUtIHe3ZW0mawA7+RDAcMLrMIZaf03NlQiX9DGyB8h4g=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/freebsd-x64": ["@esbuild/freebsd-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/freebsd-x64/-/freebsd-x64-0.21.5.tgz", { "os": "freebsd", "cpu": "x64" }, "sha512-J95kNBj1zkbMXtHVH29bBriQygMXqoVQOQYA+ISs0/2l3T9/kj42ow2mpqerRBxDJnmkUDCaQT/dfNXWX/ZZCQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-arm": ["@esbuild/linux-arm@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-arm/-/linux-arm-0.21.5.tgz", { "os": "linux", "cpu": "arm" }, "sha512-bPb5AHZtbeNGjCKVZ9UGqGwo8EUu4cLq68E95A53KlxAPRmUyYv2D6F0uUI65XisGOL1hBP5mTronbgo+0bFcA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-arm64": ["@esbuild/linux-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-arm64/-/linux-arm64-0.21.5.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-ibKvmyYzKsBeX8d8I7MH/TMfWDXBF3db4qM6sy+7re0YXya+K1cem3on9XgdT2EQGMu4hQyZhan7TeQ8XkGp4Q=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-ia32": ["@esbuild/linux-ia32@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-ia32/-/linux-ia32-0.21.5.tgz", { "os": "linux", "cpu": "ia32" }, "sha512-YvjXDqLRqPDl2dvRODYmmhz4rPeVKYvppfGYKSNGdyZkA01046pLWyRKKI3ax8fbJoK5QbxblURkwK/MWY18Tg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-loong64": ["@esbuild/linux-loong64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-loong64/-/linux-loong64-0.21.5.tgz", { "os": "linux", "cpu": "none" }, "sha512-uHf1BmMG8qEvzdrzAqg2SIG/02+4/DHB6a9Kbya0XDvwDEKCoC8ZRWI5JJvNdUjtciBGFQ5PuBlpEOXQj+JQSg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-mips64el": ["@esbuild/linux-mips64el@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-mips64el/-/linux-mips64el-0.21.5.tgz", { "os": "linux", "cpu": "none" }, "sha512-IajOmO+KJK23bj52dFSNCMsz1QP1DqM6cwLUv3W1QwyxkyIWecfafnI555fvSGqEKwjMXVLokcV5ygHW5b3Jbg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-ppc64": ["@esbuild/linux-ppc64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-ppc64/-/linux-ppc64-0.21.5.tgz", { "os": "linux", "cpu": "ppc64" }, "sha512-1hHV/Z4OEfMwpLO8rp7CvlhBDnjsC3CttJXIhBi+5Aj5r+MBvy4egg7wCbe//hSsT+RvDAG7s81tAvpL2XAE4w=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-riscv64": ["@esbuild/linux-riscv64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-riscv64/-/linux-riscv64-0.21.5.tgz", { "os": "linux", "cpu": "none" }, "sha512-2HdXDMd9GMgTGrPWnJzP2ALSokE/0O5HhTUvWIbD3YdjME8JwvSCnNGBnTThKGEB91OZhzrJ4qIIxk/SBmyDDA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-s390x": ["@esbuild/linux-s390x@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-s390x/-/linux-s390x-0.21.5.tgz", { "os": "linux", "cpu": "s390x" }, "sha512-zus5sxzqBJD3eXxwvjN1yQkRepANgxE9lgOW2qLnmr8ikMTphkjgXu1HR01K4FJg8h1kEEDAqDcZQtbrRnB41A=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/linux-x64": ["@esbuild/linux-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-x64/-/linux-x64-0.21.5.tgz", { "os": "linux", "cpu": "x64" }, "sha512-1rYdTpyv03iycF1+BhzrzQJCdOuAOtaqHTWJZCWvijKD2N5Xu0TtVC8/+1faWqcP9iBCWOmjmhoH94dH82BxPQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/netbsd-x64": ["@esbuild/netbsd-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/netbsd-x64/-/netbsd-x64-0.21.5.tgz", { "os": "none", "cpu": "x64" }, "sha512-Woi2MXzXjMULccIwMnLciyZH4nCIMpWQAs049KEeMvOcNADVxo0UBIQPfSmxB3CWKedngg7sWZdLvLczpe0tLg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/openbsd-x64": ["@esbuild/openbsd-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/openbsd-x64/-/openbsd-x64-0.21.5.tgz", { "os": "openbsd", "cpu": "x64" }, "sha512-HLNNw99xsvx12lFBUwoT8EVCsSvRNDVxNpjZ7bPn947b8gJPzeHWyNVhFsaerc0n3TsbOINvRP2byTZ5LKezow=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/sunos-x64": ["@esbuild/sunos-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/sunos-x64/-/sunos-x64-0.21.5.tgz", { "os": "sunos", "cpu": "x64" }, "sha512-6+gjmFpfy0BHU5Tpptkuh8+uw3mnrvgs+dSPQXQOv3ekbordwnzTVEb4qnIvQcYXq6gzkyTnoZ9dZG+D4garKg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/win32-arm64": ["@esbuild/win32-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/win32-arm64/-/win32-arm64-0.21.5.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-Z0gOTd75VvXqyq7nsl93zwahcTROgqvuAcYDUr+vOv8uHhNSKROyU961kgtCD1e95IqPKSQKH7tBTslnS3tA8A=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.21.5", "https://registry.npmmirror.com/@esbuild/win32-ia32/-/win32-ia32-0.21.5.tgz", { "os": "win32", "cpu": "ia32" }, "sha512-SWXFF1CL2RVNMaVs+BBClwtfZSvDgtL//G/smwAc5oVK/UPu2Gu9tIaRgFmYFFKrmg3SyAjSrElf0TiJ1v8fYA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/esbuild/@esbuild/win32-x64": ["@esbuild/win32-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/win32-x64/-/win32-x64-0.21.5.tgz", { "os": "win32", "cpu": "x64" }, "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.59.0.tgz", { "os": "android", "cpu": "arm" }, "sha512-upnNBkA6ZH2VKGcBj9Fyl9IGNPULcjXRlg0LLeaioQWueH30p6IXtJEbKAgvyv+mJaMxSm1l6xwDXYjpEMiLMg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-android-arm64": ["@rollup/rollup-android-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-android-arm64/-/rollup-android-arm64-4.59.0.tgz", { "os": "android", "cpu": "arm64" }, "sha512-hZ+Zxj3SySm4A/DylsDKZAeVg0mvi++0PYVceVyX7hemkw7OreKdCvW2oQ3T1FMZvCaQXqOTHb8qmBShoqk69Q=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-darwin-arm64": ["@rollup/rollup-darwin-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-darwin-arm64/-/rollup-darwin-arm64-4.59.0.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-W2Psnbh1J8ZJw0xKAd8zdNgF9HRLkdWwwdWqubSVk0pUuQkoHnv7rx4GiF9rT4t5DIZGAsConRE3AxCdJ4m8rg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-darwin-x64": ["@rollup/rollup-darwin-x64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-darwin-x64/-/rollup-darwin-x64-4.59.0.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-ZW2KkwlS4lwTv7ZVsYDiARfFCnSGhzYPdiOU4IM2fDbL+QGlyAbjgSFuqNRbSthybLbIJ915UtZBtmuLrQAT/w=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-freebsd-arm64": ["@rollup/rollup-freebsd-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-freebsd-arm64/-/rollup-freebsd-arm64-4.59.0.tgz", { "os": "freebsd", "cpu": "arm64" }, "sha512-EsKaJ5ytAu9jI3lonzn3BgG8iRBjV4LxZexygcQbpiU0wU0ATxhNVEpXKfUa0pS05gTcSDMKpn3Sx+QB9RlTTA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-freebsd-x64": ["@rollup/rollup-freebsd-x64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-freebsd-x64/-/rollup-freebsd-x64-4.59.0.tgz", { "os": "freebsd", "cpu": "x64" }, "sha512-d3DuZi2KzTMjImrxoHIAODUZYoUUMsuUiY4SRRcJy6NJoZ6iIqWnJu9IScV9jXysyGMVuW+KNzZvBLOcpdl3Vg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm-gnueabihf": ["@rollup/rollup-linux-arm-gnueabihf@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm-gnueabihf/-/rollup-linux-arm-gnueabihf-4.59.0.tgz", { "os": "linux", "cpu": "arm" }, "sha512-t4ONHboXi/3E0rT6OZl1pKbl2Vgxf9vJfWgmUoCEVQVxhW6Cw/c8I6hbbu7DAvgp82RKiH7TpLwxnJeKv2pbsw=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm-musleabihf": ["@rollup/rollup-linux-arm-musleabihf@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm-musleabihf/-/rollup-linux-arm-musleabihf-4.59.0.tgz", { "os": "linux", "cpu": "arm" }, "sha512-CikFT7aYPA2ufMD086cVORBYGHffBo4K8MQ4uPS/ZnY54GKj36i196u8U+aDVT2LX4eSMbyHtyOh7D7Zvk2VvA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm64-gnu": ["@rollup/rollup-linux-arm64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm64-gnu/-/rollup-linux-arm64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-jYgUGk5aLd1nUb1CtQ8E+t5JhLc9x5WdBKew9ZgAXg7DBk0ZHErLHdXM24rfX+bKrFe+Xp5YuJo54I5HFjGDAA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm64-musl": ["@rollup/rollup-linux-arm64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm64-musl/-/rollup-linux-arm64-musl-4.59.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-peZRVEdnFWZ5Bh2KeumKG9ty7aCXzzEsHShOZEFiCQlDEepP1dpUl/SrUNXNg13UmZl+gzVDPsiCwnV1uI0RUA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-loong64-gnu": ["@rollup/rollup-linux-loong64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-loong64-gnu/-/rollup-linux-loong64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-gbUSW/97f7+r4gHy3Jlup8zDG190AuodsWnNiXErp9mT90iCy9NKKU0Xwx5k8VlRAIV2uU9CsMnEFg/xXaOfXg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-loong64-musl": ["@rollup/rollup-linux-loong64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-loong64-musl/-/rollup-linux-loong64-musl-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-yTRONe79E+o0FWFijasoTjtzG9EBedFXJMl888NBEDCDV9I2wGbFFfJQQe63OijbFCUZqxpHz1GzpbtSFikJ4Q=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-ppc64-gnu": ["@rollup/rollup-linux-ppc64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-ppc64-gnu/-/rollup-linux-ppc64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "ppc64" }, "sha512-sw1o3tfyk12k3OEpRddF68a1unZ5VCN7zoTNtSn2KndUE+ea3m3ROOKRCZxEpmT9nsGnogpFP9x6mnLTCaoLkA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-ppc64-musl": ["@rollup/rollup-linux-ppc64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-ppc64-musl/-/rollup-linux-ppc64-musl-4.59.0.tgz", { "os": "linux", "cpu": "ppc64" }, "sha512-+2kLtQ4xT3AiIxkzFVFXfsmlZiG5FXYW7ZyIIvGA7Bdeuh9Z0aN4hVyXS/G1E9bTP/vqszNIN/pUKCk/BTHsKA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-riscv64-gnu": ["@rollup/rollup-linux-riscv64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-riscv64-gnu/-/rollup-linux-riscv64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-NDYMpsXYJJaj+I7UdwIuHHNxXZ/b/N2hR15NyH3m2qAtb/hHPA4g4SuuvrdxetTdndfj9b1WOmy73kcPRoERUg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-riscv64-musl": ["@rollup/rollup-linux-riscv64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-riscv64-musl/-/rollup-linux-riscv64-musl-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-nLckB8WOqHIf1bhymk+oHxvM9D3tyPndZH8i8+35p/1YiVoVswPid2yLzgX7ZJP0KQvnkhM4H6QZ5m0LzbyIAg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-s390x-gnu": ["@rollup/rollup-linux-s390x-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-s390x-gnu/-/rollup-linux-s390x-gnu-4.59.0.tgz", { "os": "linux", "cpu": "s390x" }, "sha512-oF87Ie3uAIvORFBpwnCvUzdeYUqi2wY6jRFWJAy1qus/udHFYIkplYRW+wo+GRUP4sKzYdmE1Y3+rY5Gc4ZO+w=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-x64-gnu": ["@rollup/rollup-linux-x64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-3AHmtQq/ppNuUspKAlvA8HtLybkDflkMuLK4DPo77DfthRb71V84/c4MlWJXixZz4uruIH4uaa07IqoAkG64fg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-linux-x64-musl": ["@rollup/rollup-linux-x64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.59.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-2UdiwS/9cTAx7qIUZB/fWtToJwvt0Vbo0zmnYt7ED35KPg13Q0ym1g442THLC7VyI6JfYTP4PiSOWyoMdV2/xg=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-openbsd-x64": ["@rollup/rollup-openbsd-x64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-openbsd-x64/-/rollup-openbsd-x64-4.59.0.tgz", { "os": "openbsd", "cpu": "x64" }, "sha512-M3bLRAVk6GOwFlPTIxVBSYKUaqfLrn8l0psKinkCFxl4lQvOSz8ZrKDz2gxcBwHFpci0B6rttydI4IpS4IS/jQ=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-openharmony-arm64": ["@rollup/rollup-openharmony-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-openharmony-arm64/-/rollup-openharmony-arm64-4.59.0.tgz", { "os": "none", "cpu": "arm64" }, "sha512-tt9KBJqaqp5i5HUZzoafHZX8b5Q2Fe7UjYERADll83O4fGqJ49O1FsL6LpdzVFQcpwvnyd0i+K/VSwu/o/nWlA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-win32-arm64-msvc": ["@rollup/rollup-win32-arm64-msvc@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-arm64-msvc/-/rollup-win32-arm64-msvc-4.59.0.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-V5B6mG7OrGTwnxaNUzZTDTjDS7F75PO1ae6MJYdiMu60sq0CqN5CVeVsbhPxalupvTX8gXVSU9gq+Rx1/hvu6A=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-win32-ia32-msvc": ["@rollup/rollup-win32-ia32-msvc@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-ia32-msvc/-/rollup-win32-ia32-msvc-4.59.0.tgz", { "os": "win32", "cpu": "ia32" }, "sha512-UKFMHPuM9R0iBegwzKF4y0C4J9u8C6MEJgFuXTBerMk7EJ92GFVFYBfOZaSGLu6COf7FxpQNqhNS4c4icUPqxA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-win32-x64-gnu": ["@rollup/rollup-win32-x64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-x64-gnu/-/rollup-win32-x64-gnu-4.59.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-laBkYlSS1n2L8fSo1thDNGrCTQMmxjYY5G0WFWjFFYZkKPjsMBsgJfGf4TLxXrF6RyhI60L8TMOjBMvXiTcxeA=="],
+
+    "@vendure/campus-delivery-plugin/vitest/vite/rollup/@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.59.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.21.5", "https://registry.npmmirror.com/@esbuild/aix-ppc64/-/aix-ppc64-0.21.5.tgz", { "os": "aix", "cpu": "ppc64" }, "sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/android-arm": ["@esbuild/android-arm@0.21.5", "https://registry.npmmirror.com/@esbuild/android-arm/-/android-arm-0.21.5.tgz", { "os": "android", "cpu": "arm" }, "sha512-vCPvzSjpPHEi1siZdlvAlsPxXl7WbOVUBBAowWug4rJHb68Ox8KualB+1ocNvT5fjv6wpkX6o/iEpbDrf68zcg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/android-arm64": ["@esbuild/android-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/android-arm64/-/android-arm64-0.21.5.tgz", { "os": "android", "cpu": "arm64" }, "sha512-c0uX9VAUBQ7dTDCjq+wdyGLowMdtR/GoC2U5IYk/7D1H1JYC0qseD7+11iMP2mRLN9RcCMRcjC4YMclCzGwS/A=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/android-x64": ["@esbuild/android-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/android-x64/-/android-x64-0.21.5.tgz", { "os": "android", "cpu": "x64" }, "sha512-D7aPRUUNHRBwHxzxRvp856rjUHRFW1SdQATKXH2hqA0kAZb1hKmi02OpYRacl0TxIGz/ZmXWlbZgjwWYaCakTA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/darwin-arm64": ["@esbuild/darwin-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/darwin-arm64/-/darwin-arm64-0.21.5.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-DwqXqZyuk5AiWWf3UfLiRDJ5EDd49zg6O9wclZ7kUMv2WRFr4HKjXp/5t8JZ11QbQfUS6/cRCKGwYhtNAY88kQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/darwin-x64": ["@esbuild/darwin-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/darwin-x64/-/darwin-x64-0.21.5.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-se/JjF8NlmKVG4kNIuyWMV/22ZaerB+qaSi5MdrXtd6R08kvs2qCN4C09miupktDitvh8jRFflwGFBQcxZRjbw=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/freebsd-arm64": ["@esbuild/freebsd-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/freebsd-arm64/-/freebsd-arm64-0.21.5.tgz", { "os": "freebsd", "cpu": "arm64" }, "sha512-5JcRxxRDUJLX8JXp/wcBCy3pENnCgBR9bN6JsY4OmhfUtIHe3ZW0mawA7+RDAcMLrMIZaf03NlQiX9DGyB8h4g=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/freebsd-x64": ["@esbuild/freebsd-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/freebsd-x64/-/freebsd-x64-0.21.5.tgz", { "os": "freebsd", "cpu": "x64" }, "sha512-J95kNBj1zkbMXtHVH29bBriQygMXqoVQOQYA+ISs0/2l3T9/kj42ow2mpqerRBxDJnmkUDCaQT/dfNXWX/ZZCQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-arm": ["@esbuild/linux-arm@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-arm/-/linux-arm-0.21.5.tgz", { "os": "linux", "cpu": "arm" }, "sha512-bPb5AHZtbeNGjCKVZ9UGqGwo8EUu4cLq68E95A53KlxAPRmUyYv2D6F0uUI65XisGOL1hBP5mTronbgo+0bFcA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-arm64": ["@esbuild/linux-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-arm64/-/linux-arm64-0.21.5.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-ibKvmyYzKsBeX8d8I7MH/TMfWDXBF3db4qM6sy+7re0YXya+K1cem3on9XgdT2EQGMu4hQyZhan7TeQ8XkGp4Q=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-ia32": ["@esbuild/linux-ia32@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-ia32/-/linux-ia32-0.21.5.tgz", { "os": "linux", "cpu": "ia32" }, "sha512-YvjXDqLRqPDl2dvRODYmmhz4rPeVKYvppfGYKSNGdyZkA01046pLWyRKKI3ax8fbJoK5QbxblURkwK/MWY18Tg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-loong64": ["@esbuild/linux-loong64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-loong64/-/linux-loong64-0.21.5.tgz", { "os": "linux", "cpu": "none" }, "sha512-uHf1BmMG8qEvzdrzAqg2SIG/02+4/DHB6a9Kbya0XDvwDEKCoC8ZRWI5JJvNdUjtciBGFQ5PuBlpEOXQj+JQSg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-mips64el": ["@esbuild/linux-mips64el@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-mips64el/-/linux-mips64el-0.21.5.tgz", { "os": "linux", "cpu": "none" }, "sha512-IajOmO+KJK23bj52dFSNCMsz1QP1DqM6cwLUv3W1QwyxkyIWecfafnI555fvSGqEKwjMXVLokcV5ygHW5b3Jbg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-ppc64": ["@esbuild/linux-ppc64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-ppc64/-/linux-ppc64-0.21.5.tgz", { "os": "linux", "cpu": "ppc64" }, "sha512-1hHV/Z4OEfMwpLO8rp7CvlhBDnjsC3CttJXIhBi+5Aj5r+MBvy4egg7wCbe//hSsT+RvDAG7s81tAvpL2XAE4w=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-riscv64": ["@esbuild/linux-riscv64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-riscv64/-/linux-riscv64-0.21.5.tgz", { "os": "linux", "cpu": "none" }, "sha512-2HdXDMd9GMgTGrPWnJzP2ALSokE/0O5HhTUvWIbD3YdjME8JwvSCnNGBnTThKGEB91OZhzrJ4qIIxk/SBmyDDA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-s390x": ["@esbuild/linux-s390x@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-s390x/-/linux-s390x-0.21.5.tgz", { "os": "linux", "cpu": "s390x" }, "sha512-zus5sxzqBJD3eXxwvjN1yQkRepANgxE9lgOW2qLnmr8ikMTphkjgXu1HR01K4FJg8h1kEEDAqDcZQtbrRnB41A=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/linux-x64": ["@esbuild/linux-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/linux-x64/-/linux-x64-0.21.5.tgz", { "os": "linux", "cpu": "x64" }, "sha512-1rYdTpyv03iycF1+BhzrzQJCdOuAOtaqHTWJZCWvijKD2N5Xu0TtVC8/+1faWqcP9iBCWOmjmhoH94dH82BxPQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/netbsd-x64": ["@esbuild/netbsd-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/netbsd-x64/-/netbsd-x64-0.21.5.tgz", { "os": "none", "cpu": "x64" }, "sha512-Woi2MXzXjMULccIwMnLciyZH4nCIMpWQAs049KEeMvOcNADVxo0UBIQPfSmxB3CWKedngg7sWZdLvLczpe0tLg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/openbsd-x64": ["@esbuild/openbsd-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/openbsd-x64/-/openbsd-x64-0.21.5.tgz", { "os": "openbsd", "cpu": "x64" }, "sha512-HLNNw99xsvx12lFBUwoT8EVCsSvRNDVxNpjZ7bPn947b8gJPzeHWyNVhFsaerc0n3TsbOINvRP2byTZ5LKezow=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/sunos-x64": ["@esbuild/sunos-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/sunos-x64/-/sunos-x64-0.21.5.tgz", { "os": "sunos", "cpu": "x64" }, "sha512-6+gjmFpfy0BHU5Tpptkuh8+uw3mnrvgs+dSPQXQOv3ekbordwnzTVEb4qnIvQcYXq6gzkyTnoZ9dZG+D4garKg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/win32-arm64": ["@esbuild/win32-arm64@0.21.5", "https://registry.npmmirror.com/@esbuild/win32-arm64/-/win32-arm64-0.21.5.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-Z0gOTd75VvXqyq7nsl93zwahcTROgqvuAcYDUr+vOv8uHhNSKROyU961kgtCD1e95IqPKSQKH7tBTslnS3tA8A=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.21.5", "https://registry.npmmirror.com/@esbuild/win32-ia32/-/win32-ia32-0.21.5.tgz", { "os": "win32", "cpu": "ia32" }, "sha512-SWXFF1CL2RVNMaVs+BBClwtfZSvDgtL//G/smwAc5oVK/UPu2Gu9tIaRgFmYFFKrmg3SyAjSrElf0TiJ1v8fYA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/esbuild/@esbuild/win32-x64": ["@esbuild/win32-x64@0.21.5", "https://registry.npmmirror.com/@esbuild/win32-x64/-/win32-x64-0.21.5.tgz", { "os": "win32", "cpu": "x64" }, "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.59.0.tgz", { "os": "android", "cpu": "arm" }, "sha512-upnNBkA6ZH2VKGcBj9Fyl9IGNPULcjXRlg0LLeaioQWueH30p6IXtJEbKAgvyv+mJaMxSm1l6xwDXYjpEMiLMg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-android-arm64": ["@rollup/rollup-android-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-android-arm64/-/rollup-android-arm64-4.59.0.tgz", { "os": "android", "cpu": "arm64" }, "sha512-hZ+Zxj3SySm4A/DylsDKZAeVg0mvi++0PYVceVyX7hemkw7OreKdCvW2oQ3T1FMZvCaQXqOTHb8qmBShoqk69Q=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-darwin-arm64": ["@rollup/rollup-darwin-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-darwin-arm64/-/rollup-darwin-arm64-4.59.0.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-W2Psnbh1J8ZJw0xKAd8zdNgF9HRLkdWwwdWqubSVk0pUuQkoHnv7rx4GiF9rT4t5DIZGAsConRE3AxCdJ4m8rg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-darwin-x64": ["@rollup/rollup-darwin-x64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-darwin-x64/-/rollup-darwin-x64-4.59.0.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-ZW2KkwlS4lwTv7ZVsYDiARfFCnSGhzYPdiOU4IM2fDbL+QGlyAbjgSFuqNRbSthybLbIJ915UtZBtmuLrQAT/w=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-freebsd-arm64": ["@rollup/rollup-freebsd-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-freebsd-arm64/-/rollup-freebsd-arm64-4.59.0.tgz", { "os": "freebsd", "cpu": "arm64" }, "sha512-EsKaJ5ytAu9jI3lonzn3BgG8iRBjV4LxZexygcQbpiU0wU0ATxhNVEpXKfUa0pS05gTcSDMKpn3Sx+QB9RlTTA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-freebsd-x64": ["@rollup/rollup-freebsd-x64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-freebsd-x64/-/rollup-freebsd-x64-4.59.0.tgz", { "os": "freebsd", "cpu": "x64" }, "sha512-d3DuZi2KzTMjImrxoHIAODUZYoUUMsuUiY4SRRcJy6NJoZ6iIqWnJu9IScV9jXysyGMVuW+KNzZvBLOcpdl3Vg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm-gnueabihf": ["@rollup/rollup-linux-arm-gnueabihf@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm-gnueabihf/-/rollup-linux-arm-gnueabihf-4.59.0.tgz", { "os": "linux", "cpu": "arm" }, "sha512-t4ONHboXi/3E0rT6OZl1pKbl2Vgxf9vJfWgmUoCEVQVxhW6Cw/c8I6hbbu7DAvgp82RKiH7TpLwxnJeKv2pbsw=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm-musleabihf": ["@rollup/rollup-linux-arm-musleabihf@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm-musleabihf/-/rollup-linux-arm-musleabihf-4.59.0.tgz", { "os": "linux", "cpu": "arm" }, "sha512-CikFT7aYPA2ufMD086cVORBYGHffBo4K8MQ4uPS/ZnY54GKj36i196u8U+aDVT2LX4eSMbyHtyOh7D7Zvk2VvA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm64-gnu": ["@rollup/rollup-linux-arm64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm64-gnu/-/rollup-linux-arm64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-jYgUGk5aLd1nUb1CtQ8E+t5JhLc9x5WdBKew9ZgAXg7DBk0ZHErLHdXM24rfX+bKrFe+Xp5YuJo54I5HFjGDAA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-arm64-musl": ["@rollup/rollup-linux-arm64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-arm64-musl/-/rollup-linux-arm64-musl-4.59.0.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-peZRVEdnFWZ5Bh2KeumKG9ty7aCXzzEsHShOZEFiCQlDEepP1dpUl/SrUNXNg13UmZl+gzVDPsiCwnV1uI0RUA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-loong64-gnu": ["@rollup/rollup-linux-loong64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-loong64-gnu/-/rollup-linux-loong64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-gbUSW/97f7+r4gHy3Jlup8zDG190AuodsWnNiXErp9mT90iCy9NKKU0Xwx5k8VlRAIV2uU9CsMnEFg/xXaOfXg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-loong64-musl": ["@rollup/rollup-linux-loong64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-loong64-musl/-/rollup-linux-loong64-musl-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-yTRONe79E+o0FWFijasoTjtzG9EBedFXJMl888NBEDCDV9I2wGbFFfJQQe63OijbFCUZqxpHz1GzpbtSFikJ4Q=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-ppc64-gnu": ["@rollup/rollup-linux-ppc64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-ppc64-gnu/-/rollup-linux-ppc64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "ppc64" }, "sha512-sw1o3tfyk12k3OEpRddF68a1unZ5VCN7zoTNtSn2KndUE+ea3m3ROOKRCZxEpmT9nsGnogpFP9x6mnLTCaoLkA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-ppc64-musl": ["@rollup/rollup-linux-ppc64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-ppc64-musl/-/rollup-linux-ppc64-musl-4.59.0.tgz", { "os": "linux", "cpu": "ppc64" }, "sha512-+2kLtQ4xT3AiIxkzFVFXfsmlZiG5FXYW7ZyIIvGA7Bdeuh9Z0aN4hVyXS/G1E9bTP/vqszNIN/pUKCk/BTHsKA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-riscv64-gnu": ["@rollup/rollup-linux-riscv64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-riscv64-gnu/-/rollup-linux-riscv64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-NDYMpsXYJJaj+I7UdwIuHHNxXZ/b/N2hR15NyH3m2qAtb/hHPA4g4SuuvrdxetTdndfj9b1WOmy73kcPRoERUg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-riscv64-musl": ["@rollup/rollup-linux-riscv64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-riscv64-musl/-/rollup-linux-riscv64-musl-4.59.0.tgz", { "os": "linux", "cpu": "none" }, "sha512-nLckB8WOqHIf1bhymk+oHxvM9D3tyPndZH8i8+35p/1YiVoVswPid2yLzgX7ZJP0KQvnkhM4H6QZ5m0LzbyIAg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-s390x-gnu": ["@rollup/rollup-linux-s390x-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-s390x-gnu/-/rollup-linux-s390x-gnu-4.59.0.tgz", { "os": "linux", "cpu": "s390x" }, "sha512-oF87Ie3uAIvORFBpwnCvUzdeYUqi2wY6jRFWJAy1qus/udHFYIkplYRW+wo+GRUP4sKzYdmE1Y3+rY5Gc4ZO+w=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-x64-gnu": ["@rollup/rollup-linux-x64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.59.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-3AHmtQq/ppNuUspKAlvA8HtLybkDflkMuLK4DPo77DfthRb71V84/c4MlWJXixZz4uruIH4uaa07IqoAkG64fg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-linux-x64-musl": ["@rollup/rollup-linux-x64-musl@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.59.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-2UdiwS/9cTAx7qIUZB/fWtToJwvt0Vbo0zmnYt7ED35KPg13Q0ym1g442THLC7VyI6JfYTP4PiSOWyoMdV2/xg=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-openbsd-x64": ["@rollup/rollup-openbsd-x64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-openbsd-x64/-/rollup-openbsd-x64-4.59.0.tgz", { "os": "openbsd", "cpu": "x64" }, "sha512-M3bLRAVk6GOwFlPTIxVBSYKUaqfLrn8l0psKinkCFxl4lQvOSz8ZrKDz2gxcBwHFpci0B6rttydI4IpS4IS/jQ=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-openharmony-arm64": ["@rollup/rollup-openharmony-arm64@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-openharmony-arm64/-/rollup-openharmony-arm64-4.59.0.tgz", { "os": "none", "cpu": "arm64" }, "sha512-tt9KBJqaqp5i5HUZzoafHZX8b5Q2Fe7UjYERADll83O4fGqJ49O1FsL6LpdzVFQcpwvnyd0i+K/VSwu/o/nWlA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-win32-arm64-msvc": ["@rollup/rollup-win32-arm64-msvc@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-arm64-msvc/-/rollup-win32-arm64-msvc-4.59.0.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-V5B6mG7OrGTwnxaNUzZTDTjDS7F75PO1ae6MJYdiMu60sq0CqN5CVeVsbhPxalupvTX8gXVSU9gq+Rx1/hvu6A=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-win32-ia32-msvc": ["@rollup/rollup-win32-ia32-msvc@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-ia32-msvc/-/rollup-win32-ia32-msvc-4.59.0.tgz", { "os": "win32", "cpu": "ia32" }, "sha512-UKFMHPuM9R0iBegwzKF4y0C4J9u8C6MEJgFuXTBerMk7EJ92GFVFYBfOZaSGLu6COf7FxpQNqhNS4c4icUPqxA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-win32-x64-gnu": ["@rollup/rollup-win32-x64-gnu@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-x64-gnu/-/rollup-win32-x64-gnu-4.59.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-laBkYlSS1n2L8fSo1thDNGrCTQMmxjYY5G0WFWjFFYZkKPjsMBsgJfGf4TLxXrF6RyhI60L8TMOjBMvXiTcxeA=="],
+
+    "@vendure/campus-jianghu-plugin/vitest/vite/rollup/@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.59.0", "https://registry.npmmirror.com/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.59.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA=="],
 
     "@vendure/cjk-plugins-e2e/vitest/vite/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.21.5", "https://registry.npmmirror.com/@esbuild/aix-ppc64/-/aix-ppc64-0.21.5.tgz", { "os": "aix", "cpu": "ppc64" }, "sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ=="],
 

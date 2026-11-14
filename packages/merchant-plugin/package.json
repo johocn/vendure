@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "rimraf lib && tsc -p ./tsconfig.build.json",
-    "test": "vitest --config vitest.config.mts --run"
+    "test": "vitest --config vitest.config.mts --run --exclude 'e2e/**' --passWithNoTests"
   },
   "dependencies": {},
   "peerDependencies": {

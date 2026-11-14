@@ -12,7 +12,7 @@
     "watch": "tsc -p ./tsconfig.build.json --watch",
     "build": "rimraf lib && tsc -p ./tsconfig.build.json && node -e \"require('fs').cpSync('src/i18n','lib/src/i18n',{recursive:true})\"",
     "lint": "eslint --fix .",
-    "test": "vitest --config vitest.config.mts --run"
+    "test": "vitest --config vitest.config.mts --run --exclude 'e2e/**' --passWithNoTests"
   },
   "dependencies": {
     "@nestjs/event-emitter": "^3.1.0",

@@ -82,6 +82,7 @@ describe('CouponSettlementService.runSettlementCycle', () => {
     let settleRepo: any;
     let billRepo: any;
     let service: CouponSettlementService;
+    let settlementCutoff: Date;
 
     beforeEach(() => {
         selectQb = {
@@ -116,7 +117,8 @@ describe('CouponSettlementService.runSettlementCycle', () => {
             getRepository: vi.fn(() => settleRepo),
         };
         service = new CouponSettlementService(connection);
-        vi.spyOn(service as any, 'settlementCutoff').mockReturnValue(new Date('2026-10-19T00:00:00'));
+        settlementCutoff = new Date('2026-10-19T00:00:00');
+        vi.spyOn(service as any, 'settlementCutoff').mockReturnValue(settlementCutoff);
     });
 
     it('提交查询 SQL 下推：PENDING + attempts 上限 + T+1 界线（Date 绑定，非字符串比较）', async () => {
@@ -129,7 +131,7 @@ describe('CouponSettlementService.runSettlementCycle', () => {
         );
         expect(cutoffCall).toBeTruthy();
         expect(cutoffCall![1].cutoff).toBeInstanceOf(Date);
-        expect((cutoffCall![1].cutoff as Date).toISOString()).toBe('2026-10-18T16:00:00.000Z'); // 东八区零点
+        expect(cutoffCall![1].cutoff).toBe(settlementCutoff); // 原样透传（不依赖运行环境时区）
     });
 
     it('提交成功 → 带原状态条件原子更新为 SETTLED（含回执号与模式快照）', async () => {
