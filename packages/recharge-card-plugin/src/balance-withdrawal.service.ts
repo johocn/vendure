@@ -130,17 +130,19 @@ export class BalanceWithdrawalService {
             throw new UserInputError('Insufficient balance');
         }
 
-        // 原子条件扣减：列名为 camelCase（TypeORM 建列带双引号），Postgres 下必须显式加双引号，
-        // 否则未加引号的标识符被折叠成小写而报「列不存在」。
+        // 原子条件扣减：列名为 camelCase（TypeORM 建列带引号），标识符必须按方言加引号：
+        // Postgres 未加引号会被折叠成小写，MySQL 双引号则被当成字符串字面量。
+        const dbType = this.connection.rawConnection.options.type;
+        const q = (name: string) => (dbType === 'postgres' ? `"${name}"` : `\`${name}\``);
         const claim = await balanceRepo
             .createQueryBuilder()
             .update(CustomerBalance)
             .set({
-                balance: () => `"balance" - ${amount}`,
-                frozenBalance: () => `"frozenBalance" + ${amount}`,
+                balance: () => `${q('balance')} - ${amount}`,
+                frozenBalance: () => `${q('frozenBalance')} + ${amount}`,
             })
             .where('id = :id', { id: row.id })
-            .andWhere(`"balance" >= ${amount}`)
+            .andWhere(`${q('balance')} >= ${amount}`)
             .execute();
         if (claim.affected === 0) {
             throw new UserInputError('Insufficient balance');

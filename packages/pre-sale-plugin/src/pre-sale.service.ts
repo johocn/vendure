@@ -588,19 +588,21 @@ export class PreSaleService {
     }
 
     private async restoreActiveIfPossible(ctx: RequestContext, activityId: ID): Promise<void> {
-        const activity = await this.findOne(ctx, activityId);
-        if (!activity) return;
-        if (activity.status !== 'ended') return;
+        // 直接走条件 UPDATE，避免 MySQL 可重复读下读到旧快照导致 soldCount 判断失效。
         const now = new Date();
-        const inWindow =
-            (!activity.startAt || now >= activity.startAt) && (!activity.endAt || now <= activity.endAt);
-        if (inWindow && activity.soldCount < activity.totalStock) {
-            activity.status = 'active';
-            await this.connection.getRepository(ctx, PreSaleActivity).save(activity);
-            Logger.info(
-                `PreSaleActivity ${activityId} restored to active after stock release (sold ${activity.soldCount}/${activity.totalStock})`,
-                loggerCtx,
-            );
+        const result = await this.connection
+            .getRepository(ctx, PreSaleActivity)
+            .createQueryBuilder()
+            .update()
+            .set({ status: 'active' })
+            .where('id = :id', { id: activityId as any })
+            .andWhere('status = :ended', { ended: 'ended' })
+            .andWhere('soldCount < totalStock')
+            .andWhere('(startAt IS NULL OR startAt <= :now)', { now })
+            .andWhere('(endAt IS NULL OR endAt >= :now)', { now })
+            .execute();
+        if ((result.affected ?? 0) > 0) {
+            Logger.info(`PreSaleActivity ${activityId} restored to active after stock release`, loggerCtx);
         }
     }
 }

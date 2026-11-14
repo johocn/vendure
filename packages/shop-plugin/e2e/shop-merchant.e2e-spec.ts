@@ -2,7 +2,7 @@ import { createTestEnvironment, registerInitializer, SimpleGraphQLClient, SqljsI
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { mergeConfig } from '@vendure/core';
+import { mergeConfig, PermissionDefinition } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { ShopPlugin } from '../src/plugin';
@@ -19,6 +19,19 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('ShopPlugin · 阶段18 店主自营后台账权体系（店主管理员账号/自定义权限/归属隔离/店铺商品订单评价自营）', () => {
     const config = mergeConfig(testConfig(), {
         plugins: [ShopPlugin.init({}), ReviewPlugin.init({ minContentLength: 5, autoApprove: false })],
+        // 与生产 dev-config 对齐：店主角色会分配这两个租户级权限，未注册时 RoleService 会拒绝
+        authOptions: {
+            customPermissions: [
+                new PermissionDefinition({
+                    name: 'TenantSettingsManage',
+                    description: '管理本渠道租户配置（支付/地图/登录方式等）',
+                }),
+                new PermissionDefinition({
+                    name: 'TenantPromotionManage',
+                    description: '管理本渠道营销活动（秒杀/拼团/预售）',
+                }),
+            ],
+        },
         paymentOptions: {
             paymentMethodHandlers: [singleStageRefundablePaymentMethod],
         },
