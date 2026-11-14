@@ -54,11 +54,8 @@ describe('OnebridgePlugin · M1 骨架冒烟', () => {
 
     it('creates the onebridge_* tables via the idempotent migration', async () => {
         const connection = server.app.get(TransactionalConnection);
-        const raw = connection.rawConnection;
-        const rows: Array<{ name: string }> = await raw.query(
-            `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'onebridge_%' ORDER BY name`,
-        );
-        expect(rows.map(r => r.name)).toEqual([
+        const queryRunner = connection.rawConnection.createQueryRunner();
+        const expectedTables = [
             'onebridge_content_entry',
             'onebridge_customs_record',
             'onebridge_exchange_rate',
@@ -67,7 +64,19 @@ describe('OnebridgePlugin · M1 骨架冒烟', () => {
             'onebridge_rfq_quote',
             'onebridge_rfq_sample',
             'onebridge_stage_event',
-        ]);
+        ];
+        try {
+            await queryRunner.connect();
+            const existingTables: string[] = [];
+            for (const table of expectedTables) {
+                if (await queryRunner.hasTable(table)) {
+                    existingTables.push(table);
+                }
+            }
+            expect(existingTables).toEqual(expectedTables);
+        } finally {
+            await queryRunner.release();
+        }
     });
 
     it('adds the Order custom fields (businessLine / crossBorderStage / rfqCode)', async () => {

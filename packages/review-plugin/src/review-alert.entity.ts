@@ -77,6 +77,6 @@ export class ReviewAlert extends VendureEntity {
     @Column({ type: 'text', nullable: true })
     note: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true })
-    handledAt: Date | null;
+    @Column({ nullable: true })
+    handledAt?: Date;
 }

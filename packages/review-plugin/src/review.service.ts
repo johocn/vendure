@@ -415,7 +415,7 @@ export class ReviewService {
         review.appealAt = new Date();
         review.appealResult = null;
         review.appealReviewedBy = null;
-        review.appealReviewedAt = null;
+        Object.assign(review, { appealReviewedAt: null });
         return this.connection.getRepository(ctx, Review).save(review);
     }
 
