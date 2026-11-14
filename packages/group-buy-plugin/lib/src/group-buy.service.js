@@ -184,12 +184,8 @@ let GroupBuyService = class GroupBuyService {
                 completed: 'completed',
                 allowJoin: activity.allowJoinAfterComplete,
             })
-                .andWhere('startAt <= (now() AT TIME ZONE :platformTz)', {
-                platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-            })
-                .andWhere('endAt >= (now() AT TIME ZONE :platformTz)', {
-                platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-            })
+                .andWhere('startAt <= :now', { now: new Date(nowMs) })
+                .andWhere('endAt >= :now', { now: new Date(nowMs) })
                 .andWhere('(maxCount = 0 OR currentCount < maxCount)')
                 .execute();
             if (((_d = incResult.affected) !== null && _d !== void 0 ? _d : 0) === 0) {
@@ -246,9 +242,7 @@ let GroupBuyService = class GroupBuyService {
         const expiredActivities = await activityRepo
             .createQueryBuilder('gba')
             .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
-            .where('gba.endAt < (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
+            .where('gba.endAt < :now', { now: new Date() })
             .andWhere('gba.status = :status', { status: 'active' })
             .getMany();
         const processed = [];
@@ -300,12 +294,8 @@ let GroupBuyService = class GroupBuyService {
             .createQueryBuilder('gba')
             .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('gba.status = :status', { status: 'active' })
-            .andWhere('gba.startAt <= (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
-            .andWhere('gba.endAt >= (now() AT TIME ZONE :platformTz)', {
-            platformTz: platform_time_1.PLATFORM_TIME_ZONE,
-        })
+            .andWhere('gba.startAt <= :now', { now: new Date() })
+            .andWhere('gba.endAt >= :now', { now: new Date() })
             .getMany();
     }
     /**

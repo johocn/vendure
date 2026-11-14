@@ -1085,6 +1085,11 @@ export class PaymentScheduleService {
                 Logger.warn(`Refund for payment ${payment.id} failed: ${(result as any).message}`, loggerCtx);
                 return false;
             }
+            if (String((result as any)?.state) === 'Settled') {
+                // 处理器 createRefund 已同步返回 Settled（如单阶段退款方式），createRefund 内部已完成状态流转，
+                // 再 settleRefund 会因 Settled → Settled 非法流转而失败。
+                return true;
+            }
             return await this.settleRefundAndVerify(ctx, result as Refund, payment);
         } catch (e: any) {
             Logger.error(`Failed to refund payment ${payment.id}: ${e?.message ?? e}`, loggerCtx);
